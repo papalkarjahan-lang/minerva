@@ -35,10 +35,19 @@ export async function geocodeAddress(address) {
 
 // ============================================================
 // GENERATE PIN
-// Creates a random 6-digit PIN for technician login.
+// Creates a random 8-character alphanumeric PIN for technician login.
+// (Not a numeric-only 6-digit PIN: with no rate limiting on the lookup,
+// 900,000 combinations is brute-forceable. 8 chars from a 32-symbol
+// alphabet, excluding visually ambiguous characters, gives ~1e12
+// combinations while staying easy to read off a phone screen.)
 // ============================================================
+const PIN_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789' // no 0/O/1/I
 export function generatePin() {
-  return String(Math.floor(100000 + Math.random() * 900000))
+  let pin = ''
+  for (let i = 0; i < 8; i++) {
+    pin += PIN_ALPHABET[Math.floor(Math.random() * PIN_ALPHABET.length)]
+  }
+  return pin
 }
 
 // ============================================================

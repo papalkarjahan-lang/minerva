@@ -50,6 +50,27 @@ export default function TechnicianView() {
     if (data) setCurrentJob(data)
   }
 
+  // Listen for the dispatcher assigning a new job (or clearing one) without
+  // requiring the technician to manually refresh the page.
+  useEffect(() => {
+    if (!tech) return
+    const channel = supabase
+      .channel(`tech-${tech.id}`)
+      .on('postgres_changes', {
+        event: 'UPDATE', schema: 'public', table: 'technicians',
+        filter: `id=eq.${tech.id}`
+      }, (payload) => {
+        const newJobId = payload.new.current_job_id
+        if (newJobId && newJobId !== currentJob?.id) {
+          loadJob(newJobId)
+        } else if (!newJobId) {
+          setCurrentJob(null)
+        }
+      })
+      .subscribe()
+    return () => supabase.removeChannel(channel)
+  }, [tech?.id, currentJob?.id])
+
   // GPS tracking loop
   useEffect(() => {
     if (!tracking || !tech) return

@@ -13,7 +13,11 @@ A live GPS dispatch tracking tool for trade businesses. Technicians share their 
 3. Create a new project named `minerva-prod`, region: Asia Pacific (Sydney)
 4. Go to **SQL Editor** → paste the entire contents of `supabase_schema.sql` → click Run
 5. Go to **Database → Replication** → toggle ON for `technicians` table
-6. Go to **Settings → API** → copy your Project URL and anon key
+6. Go to **Settings → API** → copy your Project URL, anon key, and **service_role key**
+   (the service role key is only used server-side by the `stripe-webhook`
+   function — never put it in `.env.local` or any client-side code)
+7. Go to **Authentication → Providers** → turn **off** "Allow new users to
+   sign up" (see `SECURITY_NOTES.md` for why)
 
 ### 2. Mapbox (maps)
 1. Go to https://mapbox.com → Sign up
@@ -80,14 +84,26 @@ supabase secrets set STRIPE_SECRET_KEY=sk_live_xxx
 supabase secrets set STRIPE_PRICE_ID_STD=price_xxx
 supabase secrets set STRIPE_PRICE_ID_STD_DISCOUNTED=price_xxx
 supabase secrets set APP_URL=https://minervaops.com.au
+supabase secrets set SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+supabase secrets set STRIPE_WEBHOOK_SECRET=whsec_xxx
 ```
+(`STRIPE_WEBHOOK_SECRET` comes from Stripe Dashboard → Developers → Webhooks,
+after you create the endpoint in the next step — come back and set it once
+you have it.)
 
 Deploy all functions:
 ```bash
 supabase functions deploy send-eta-sms
 supabase functions deploy send-setup-sms
 supabase functions deploy create-checkout-session
+supabase functions deploy stripe-webhook --no-verify-jwt
 ```
+
+Then in Stripe Dashboard → Developers → Webhooks, add an endpoint:
+`https://YOUR_PROJECT_REF.supabase.co/functions/v1/stripe-webhook`, listening
+for `checkout.session.completed` and `customer.subscription.deleted`. Without
+this step, the Customer Portal cancellation link on the pricing page won't
+work — the business's Stripe subscription ID never gets saved.
 
 ---
 

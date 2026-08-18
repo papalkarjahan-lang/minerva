@@ -59,26 +59,65 @@ alter table technicians
 
 -- ============================================================
 -- ROW LEVEL SECURITY
+--
+-- Minerva has no login step for business owners, technicians, or clients —
+-- by design, access is via unguessable UUID links (dispatch URL, tracking
+-- URL) or a technician PIN. That means every operation below runs as the
+-- anon role. There is deliberately NO "authenticated" bypass policy: a
+-- generic "auth.role() = authenticated" policy would grant ANY visitor who
+-- self-registers a free Supabase Auth account (enabled by default on new
+-- projects) full read/write access to every business's data, since nothing
+-- in this schema ties an authenticated session to a specific tenant. See
+-- SECURITY_NOTES.md for the full threat model and the Phase 2 recommendation
+-- to add real per-owner authentication before scaling past pilot clients.
+--
+-- IMPORTANT Day-1 setup step: in Supabase Dashboard > Authentication >
+-- Providers, disable "Allow new users to sign up". This closes off the
+-- authenticated-role attack surface entirely as a belt-and-suspenders
+-- measure, even though no policy below currently grants it any access.
 -- ============================================================
 alter table businesses enable row level security;
 alter table technicians enable row level security;
 alter table jobs enable row level security;
 
-create policy "Auth users full access" on businesses
-  for all using (auth.role() = 'authenticated');
-
-create policy "Auth users full access" on technicians
-  for all using (auth.role() = 'authenticated');
-
-create policy "Auth users full access" on jobs
-  for all using (auth.role() = 'authenticated');
-
--- Anon read for tracking links (client tracking page reads a single job + tech)
-create policy "Anon can read single job for tracking" on jobs
+-- BUSINESSES
+-- Anon can create a business at signup (no login exists at that point).
+create policy "anon insert business" on businesses
+  for insert with check (true);
+-- Anon can read a business by its (unguessable) id — needed by the
+-- dispatcher view, tracking view, and technician view.
+create policy "anon select business" on businesses
   for select using (true);
 
-create policy "Anon can read technician position for tracking" on technicians
+-- TECHNICIANS
+-- Anon can create technician rows during onboarding.
+create policy "anon insert technicians" on technicians
+  for insert with check (true);
+-- Anon can read technician rows — needed by PIN login, the dispatcher's
+-- live map, and the client tracking page. Realtime subscriptions (used for
+-- the live GPS map) also require a SELECT policy to deliver change events
+-- under RLS, so this cannot be narrowed to a security-definer RPC without
+-- breaking live tracking. Treat all technician/tracking/dispatch links as
+-- secrets — do not post them publicly or log them insecurely.
+create policy "anon select technicians" on technicians
   for select using (true);
+-- Anon (the technician's own phone, unauthenticated) must be able to push
+-- their live GPS position and clear current_job_id on job completion.
+create policy "anon update technicians" on technicians
+  for update using (true);
+
+-- JOBS
+-- Dispatcher creates jobs via the "Add Job" form (anon, no login).
+create policy "anon insert jobs" on jobs
+  for insert with check (true);
+-- Needed by dispatcher board, technician's current-job card, and the
+-- public client tracking link. Same realtime constraint as technicians above.
+create policy "anon select jobs" on jobs
+  for select using (true);
+-- Technician updates job status (start/complete) and sms_sent flag; the
+-- dispatcher assigns a technician_id to a job.
+create policy "anon update jobs" on jobs
+  for update using (true);
 
 -- ============================================================
 -- ENABLE REALTIME
