@@ -70,16 +70,26 @@ alter table technicians
 -- separate from `jobs` because a lead is unconfirmed/unscheduled — the
 -- dispatcher decides whether to convert it into a real job.
 create table leads (
-  id                uuid primary key default gen_random_uuid(),
-  business_id       uuid references businesses(id) on delete cascade,
-  client_name       text,
-  client_phone      text,
-  suburb            text,
-  urgency           text default 'routine', -- 'emergency' | 'routine' | 'out_of_scope'
-  job_description   text,
-  transcript        jsonb, -- full chat history at time of capture, for context
-  status            text default 'new', -- 'new' | 'contacted' | 'converted' | 'closed'
-  created_at        timestamptz default now()
+  id                    uuid primary key default gen_random_uuid(),
+  business_id           uuid references businesses(id) on delete cascade,
+  client_name           text,
+  client_phone          text,
+  suburb                text,
+  urgency               text default 'routine', -- 'emergency' | 'routine' | 'out_of_scope'
+  job_description       text,
+  transcript            jsonb, -- full chat history at time of capture, for context
+  status                text default 'new', -- 'new' | 'contacted' | 'quoted' | 'converted' | 'lost'
+  score                 int, -- 0-100 heuristic priority, set by Claude from the conversation
+                              -- content (urgency + specificity) at capture time, then boosted
+                              -- deterministically if is_repeat_client. NOT a trained/predictive
+                              -- model (no historical conversion data exists to train one yet).
+  score_reason          text, -- one-line human-readable explanation of the score
+  estimated_value_tier  text, -- 'low' | 'medium' | 'high' — rough job-size signal from the
+                               -- conversation, not a dollar figure or external valuation
+  is_repeat_client      bool default false, -- true if this phone number already has a prior
+                                             -- lead or job under the same business_id
+  source                text default 'ai_intake_chat',
+  created_at            timestamptz default now()
 );
 
 -- ============================================================

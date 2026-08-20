@@ -70,10 +70,25 @@ You need these fields before you can capture a lead: client_name, client_phone,
 suburb, urgency, job_description. Do not invent or guess values — only fill a
 field once the visitor has actually provided it.
 
+Do NOT capture a lead for "out_of_scope" requests — just tell the visitor
+honestly that this isn't something ${business.name} handles (or that they're
+outside the service area), and suggest they search for the right kind of
+business. lead_captured must stay false for those conversations.
+
+Once you have all five fields for an emergency or routine request, also score
+the lead 0-100 based ONLY on what's in this conversation — how urgent it is,
+how specific/detailed the job description is, and how well-defined the scope
+sounds. Higher = more urgent and more clearly a real, ready-to-book job. Give
+a one-sentence score_reason. Also estimate_value_tier as "low", "medium", or
+"high" based on the apparent scope of the job described (e.g. "leaky tap" is
+low, "full bathroom renovation" is high) — this is a rough signal from the
+conversation, not a real valuation.
+
 Respond with ONLY a JSON object, no markdown fences, matching exactly this shape:
 {"reply": "<what to say to the visitor next>", "lead_captured": <true only on the
-turn you have ALL five fields>, "lead": {"name": "", "phone": "", "suburb": "",
-"urgency": "", "job_description": ""} or null if not yet captured}`
+turn you have ALL five fields AND urgency is not out_of_scope>, "lead": {"name": "",
+"phone": "", "suburb": "", "urgency": "", "job_description": "", "score": 0,
+"score_reason": "", "estimated_value_tier": ""} or null if not yet captured}`
 
     const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -112,6 +127,28 @@ turn you have ALL five fields>, "lead": {"name": "", "phone": "", "suburb": "",
     // On capture: persist the lead and notify the business, best-effort.
     if (parsed.lead_captured && parsed.lead) {
       const { name, phone, suburb, urgency, job_description } = parsed.lead
+      let score = Math.max(0, Math.min(100, Number(parsed.lead.score) || 0))
+      let scoreReason = parsed.lead.score_reason || ''
+
+      // Duplicate/repeat-client detection: has this phone number contacted
+      // this business before, either as a prior lead or a real job? A known
+      // client is a warmer lead than a stranger, so it earns a deterministic
+      // boost on top of the content-based score (not re-guessed by the model).
+      let isRepeatClient = false
+      if (phone) {
+        const [{ count: priorLeads }, { count: priorJobs }] = await Promise.all([
+          supabase.from('leads').select('id', { count: 'exact', head: true })
+            .eq('business_id', businessId).eq('client_phone', phone),
+          supabase.from('jobs').select('id', { count: 'exact', head: true })
+            .eq('business_id', businessId).eq('client_phone', phone),
+        ])
+        isRepeatClient = (priorLeads ?? 0) > 0 || (priorJobs ?? 0) > 0
+        if (isRepeatClient) {
+          score = Math.min(100, score + 15)
+          scoreReason = scoreReason ? `${scoreReason} Returning client (+15).` : 'Returning client.'
+        }
+      }
+
       await supabase.from('leads').insert({
         business_id: businessId,
         client_name: name,
@@ -119,6 +156,10 @@ turn you have ALL five fields>, "lead": {"name": "", "phone": "", "suburb": "",
         suburb,
         urgency,
         job_description,
+        score,
+        score_reason: scoreReason,
+        estimated_value_tier: parsed.lead.estimated_value_tier || null,
+        is_repeat_client: isRepeatClient,
         transcript: [...messages, { role: 'assistant', content: parsed.reply }],
       })
 
@@ -131,7 +172,8 @@ turn you have ALL five fields>, "lead": {"name": "", "phone": "", "suburb": "",
         if (!toPhone.startsWith('+')) toPhone = '+61' + toPhone
 
         const urgencyTag = urgency === 'emergency' ? '🚨 EMERGENCY' : 'New lead'
-        const smsBody = `${urgencyTag}: ${name}, ${phone}, ${suburb}. ${job_description}`.slice(0, 320)
+        const repeatTag = isRepeatClient ? ' (returning client)' : ''
+        const smsBody = `${urgencyTag} · score ${score}${repeatTag}: ${name}, ${phone}, ${suburb}. ${job_description}`.slice(0, 320)
 
         await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json`, {
           method: 'POST',

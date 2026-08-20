@@ -12,6 +12,8 @@ export default function DispatcherView() {
   const [business, setBusiness] = useState(null)
   const [technicians, setTechnicians] = useState([])
   const [jobs, setJobs] = useState([])
+  const [leads, setLeads] = useState([])
+  const [queueTab, setQueueTab] = useState('jobs') // 'jobs' | 'leads'
   const [selected, setSelected] = useState(null) // selected technician
   const [showAddJob, setShowAddJob] = useState(false)
   const [viewState, setViewState] = useState({
@@ -48,6 +50,14 @@ export default function DispatcherView() {
       .in('status', ['scheduled', 'active'])
       .order('scheduled_time', { ascending: true })
     setJobs(jobList || [])
+
+    const { data: leadList } = await supabase
+      .from('leads')
+      .select('*')
+      .eq('business_id', businessId)
+      .in('status', ['new', 'contacted', 'quoted'])
+      .order('score', { ascending: false, nullsFirst: false })
+    setLeads(leadList || [])
   }
 
   async function setMapCenter(city) {
@@ -81,6 +91,16 @@ export default function DispatcherView() {
           prev.map(j => j.id === payload.new.id ? { ...j, ...payload.new } : j)
         )
       })
+      // New leads land here the moment the AI Intake Assistant captures one —
+      // no refresh needed to see them show up in the Leads tab.
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'leads',
+        filter: `business_id=eq.${businessId}`
+      }, (payload) => {
+        setLeads(prev => [payload.new, ...prev].sort((a, b) => (b.score ?? 0) - (a.score ?? 0)))
+      })
       .subscribe()
     return () => supabase.removeChannel(channel)
   }, [businessId])
@@ -90,6 +110,33 @@ export default function DispatcherView() {
     await supabase.from('jobs').update({ technician_id: techId }).eq('id', jobId)
     await supabase.from('technicians').update({ current_job_id: jobId }).eq('id', techId)
     await loadAll()
+  }
+
+  // Lead pipeline actions
+  async function markLeadStatus(leadId, status) {
+    await supabase.from('leads').update({ status }).eq('id', leadId)
+    setLeads(prev => prev.filter(l => l.id !== leadId)) // leaves the active pipeline view
+  }
+
+  async function convertLeadToJob(lead) {
+    try {
+      const { lat, lng } = await geocodeAddress(`${lead.suburb}, Australia`)
+      await supabase.from('jobs').insert({
+        business_id: businessId,
+        client_name: lead.client_name,
+        client_phone: lead.client_phone,
+        client_address: lead.suburb,
+        client_lat: lat,
+        client_lng: lng,
+        notes: lead.job_description,
+        status: 'scheduled'
+      })
+      await supabase.from('leads').update({ status: 'converted' }).eq('id', lead.id)
+      setLeads(prev => prev.filter(l => l.id !== lead.id))
+      await loadAll()
+    } catch (err) {
+      alert(`Couldn't convert lead: ${err.message}`)
+    }
   }
 
   const techColors = ['#2D5FA8','#1D9E75','#A87C16','#8A2525','#534AB7','#185FA5']
@@ -128,29 +175,69 @@ export default function DispatcherView() {
           })}
         </div>
 
-        {/* Job queue */}
+        {/* Job queue / Leads tabs */}
         <div style={styles.section}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <p style={styles.sectionLabel}>JOB QUEUE ({jobs.length})</p>
-            <button style={styles.addJobBtn} onClick={() => setShowAddJob(true)}>+ Add</button>
-          </div>
-          {jobs.map(job => (
-            <div key={job.id} style={styles.jobRow}>
-              <p style={styles.jobClient}>{job.client_name}</p>
-              <p style={styles.jobAddr}>{job.client_address}</p>
-              <p style={styles.jobStatus(job.status)}>{job.status.toUpperCase()}</p>
-              {job.status === 'scheduled' && !job.technician_id && (
-                <select style={styles.assignSelect}
-                  onChange={(e) => e.target.value && assignJob(job.id, e.target.value)}>
-                  <option value="">Assign tech...</option>
-                  {technicians.map(t => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
-                  ))}
-                </select>
-              )}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button style={styles.tabBtn(queueTab === 'jobs')} onClick={() => setQueueTab('jobs')}>
+                JOBS ({jobs.length})
+              </button>
+              <button style={styles.tabBtn(queueTab === 'leads')} onClick={() => setQueueTab('leads')}>
+                LEADS ({leads.length})
+              </button>
             </div>
-          ))}
-          {jobs.length === 0 && <p style={{ color: '#444', fontSize: 13 }}>No active jobs</p>}
+            {queueTab === 'jobs' && <button style={styles.addJobBtn} onClick={() => setShowAddJob(true)}>+ Add</button>}
+          </div>
+
+          {queueTab === 'jobs' && (
+            <>
+              {jobs.map(job => (
+                <div key={job.id} style={styles.jobRow}>
+                  <p style={styles.jobClient}>{job.client_name}</p>
+                  <p style={styles.jobAddr}>{job.client_address}</p>
+                  <p style={styles.jobStatus(job.status)}>{job.status.toUpperCase()}</p>
+                  {job.status === 'scheduled' && !job.technician_id && (
+                    <select style={styles.assignSelect}
+                      onChange={(e) => e.target.value && assignJob(job.id, e.target.value)}>
+                      <option value="">Assign tech...</option>
+                      {technicians.map(t => (
+                        <option key={t.id} value={t.id}>{t.name}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              ))}
+              {jobs.length === 0 && <p style={{ color: '#444', fontSize: 13 }}>No active jobs</p>}
+            </>
+          )}
+
+          {queueTab === 'leads' && (
+            <>
+              {leads.map(lead => (
+                <div key={lead.id} style={styles.leadRow}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <p style={styles.jobClient}>{lead.client_name || 'Unnamed'}</p>
+                    <span style={styles.scoreBadge(lead.score)}>{lead.score ?? '–'}</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, margin: '2px 0 4px' }}>
+                    <span style={styles.urgencyBadge(lead.urgency)}>{(lead.urgency || 'routine').toUpperCase()}</span>
+                    {lead.is_repeat_client && <span style={styles.repeatBadge}>RETURNING</span>}
+                  </div>
+                  <p style={styles.jobAddr}>{lead.suburb} · {lead.client_phone}</p>
+                  <p style={styles.leadDesc}>{lead.job_description}</p>
+                  {lead.score_reason && <p style={styles.leadReason}>{lead.score_reason}</p>}
+                  <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                    <button style={styles.leadActionPrimary} onClick={() => convertLeadToJob(lead)}>Convert to job</button>
+                    {lead.status === 'new' && (
+                      <button style={styles.leadActionSecondary} onClick={() => markLeadStatus(lead.id, 'contacted')}>Contacted</button>
+                    )}
+                    <button style={styles.leadActionSecondary} onClick={() => markLeadStatus(lead.id, 'lost')}>Lost</button>
+                  </div>
+                </div>
+              ))}
+              {leads.length === 0 && <p style={{ color: '#444', fontSize: 13 }}>No open leads</p>}
+            </>
+          )}
         </div>
       </div>
 
@@ -312,6 +399,15 @@ const styles = {
   jobStatus: (s) => ({ fontSize: 11, fontWeight: 'bold', margin: '0 0 6px', color: s === 'active' ? '#1D9E75' : '#A87C16' }),
   assignSelect: { width: '100%', padding: '6px 8px', borderRadius: 8, border: '1px solid #1e293b', background: '#0a0f1d', color: '#aaa', fontSize: 13, cursor: 'pointer' },
   addJobBtn: { background: '#2D5FA8', color: '#fff', border: 'none', borderRadius: 8, padding: '4px 10px', fontSize: 12, cursor: 'pointer' },
+  tabBtn: (active) => ({ background: active ? '#2D5FA822' : 'transparent', color: active ? '#8fd0e8' : '#666', border: `1px solid ${active ? '#2D5FA8' : '#1e293b'}`, borderRadius: 8, padding: '3px 10px', fontSize: 11, fontWeight: 'bold', letterSpacing: 1, cursor: 'pointer' }),
+  leadRow: { padding: '10px 12px', background: '#050811', borderRadius: 10, marginBottom: 8 },
+  leadDesc: { color: '#8899a6', fontSize: 12, margin: '0 0 4px', lineHeight: 1.4 },
+  leadReason: { color: '#555', fontSize: 11, fontStyle: 'italic', margin: '0 0 2px' },
+  scoreBadge: (score) => ({ fontSize: 12, fontWeight: 'bold', color: '#fff', background: score >= 70 ? '#8A2525' : score >= 40 ? '#A87C16' : '#2D5FA8', borderRadius: 12, padding: '1px 8px', minWidth: 20, textAlign: 'center' }),
+  urgencyBadge: (urgency) => ({ fontSize: 10, fontWeight: 'bold', letterSpacing: 1, padding: '2px 6px', borderRadius: 6, color: urgency === 'emergency' ? '#fff' : '#1D9E75', background: urgency === 'emergency' ? '#8A2525' : '#1D9E7522' }),
+  repeatBadge: { fontSize: 10, fontWeight: 'bold', letterSpacing: 1, padding: '2px 6px', borderRadius: 6, color: '#534AB7', background: '#534AB722' },
+  leadActionPrimary: { flex: 1, background: '#1D9E75', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 0', fontSize: 12, fontWeight: 'bold', cursor: 'pointer' },
+  leadActionSecondary: { background: 'transparent', color: '#888', border: '1px solid #1e293b', borderRadius: 8, padding: '6px 10px', fontSize: 12, cursor: 'pointer' },
   marker: { width: 36, height: 36, borderRadius: '50%', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: 14, border: '2px solid #fff', cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.5)' },
   jobMarker: { fontSize: 20, cursor: 'pointer' },
   modalOverlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999 },
