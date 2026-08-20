@@ -16,6 +16,7 @@ export default function DispatcherView() {
   const [queueTab, setQueueTab] = useState('jobs') // 'jobs' | 'leads'
   const [selected, setSelected] = useState(null) // selected technician
   const [showAddJob, setShowAddJob] = useState(false)
+  const [linkCopied, setLinkCopied] = useState(false)
   const [viewState, setViewState] = useState({
     latitude: -33.87,
     longitude: 151.21,
@@ -139,6 +140,12 @@ export default function DispatcherView() {
     }
   }
 
+  function copyIntakeLink() {
+    navigator.clipboard.writeText(`${window.location.origin}/intake/${businessId}`)
+    setLinkCopied(true)
+    setTimeout(() => setLinkCopied(false), 2000)
+  }
+
   const techColors = ['#2D5FA8','#1D9E75','#A87C16','#8A2525','#534AB7','#185FA5']
 
   return (
@@ -149,6 +156,11 @@ export default function DispatcherView() {
         <div style={styles.sidebarHeader}>
           <p style={styles.bizLabel}>{business?.name || 'Loading...'}</p>
           <h2 style={styles.sidebarTitle}>Dispatch</h2>
+          {businessId && (
+            <button style={styles.copyLinkBtn} onClick={copyIntakeLink}>
+              {linkCopied ? 'Copied!' : '🔗 Copy intake chat link'}
+            </button>
+          )}
         </div>
 
         {/* Technician list */}
@@ -387,7 +399,8 @@ const styles = {
   sidebar: { width: 280, background: '#0a0f1d', borderRight: '1px solid #1e293b', display: 'flex', flexDirection: 'column', overflow: 'hidden' },
   sidebarHeader: { padding: '20px 16px 12px', borderBottom: '1px solid #1e293b' },
   bizLabel: { color: '#555', fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', margin: '0 0 4px' },
-  sidebarTitle: { color: '#fff', fontSize: 22, margin: 0, fontWeight: 'bold' },
+  sidebarTitle: { color: '#fff', fontSize: 22, margin: '0 0 10px', fontWeight: 'bold' },
+  copyLinkBtn: { background: 'transparent', border: '1px solid #1e293b', color: '#8fd0e8', borderRadius: 8, padding: '5px 10px', fontSize: 11, cursor: 'pointer', width: '100%', textAlign: 'left' },
   section: { padding: '12px 16px', borderBottom: '1px solid #1e293b', overflowY: 'auto', maxHeight: '50vh' },
   sectionLabel: { color: '#555', fontSize: 10, letterSpacing: 2, textTransform: 'uppercase', margin: '0 0 10px' },
   techRow: { padding: '10px 10px 10px 12px', background: '#050811', borderRadius: 10, marginBottom: 8, cursor: 'pointer' },

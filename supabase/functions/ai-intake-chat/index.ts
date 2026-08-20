@@ -36,7 +36,10 @@ serve(async (req: Request) => {
   try {
     const { businessId, messages }: ChatPayload = await req.json()
     if (!businessId || !Array.isArray(messages) || messages.length === 0) {
-      return new Response(JSON.stringify({ error: 'Missing businessId or messages' }), { status: 400 })
+      return new Response(JSON.stringify({ error: 'Missing businessId or messages' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
     }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
@@ -49,7 +52,10 @@ serve(async (req: Request) => {
       .eq('id', businessId)
       .single()
     if (bizErr || !business) {
-      return new Response(JSON.stringify({ error: 'Business not found' }), { status: 404 })
+      return new Response(JSON.stringify({ error: 'Business not found' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
     }
 
     const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY')
@@ -79,8 +85,8 @@ Once you have all five fields for an emergency or routine request, also score
 the lead 0-100 based ONLY on what's in this conversation — how urgent it is,
 how specific/detailed the job description is, and how well-defined the scope
 sounds. Higher = more urgent and more clearly a real, ready-to-book job. Give
-a one-sentence score_reason. Also estimate_value_tier as "low", "medium", or
-"high" based on the apparent scope of the job described (e.g. "leaky tap" is
+a one-sentence score_reason. Also give estimated_value_tier as "low", "medium",
+or "high" based on the apparent scope of the job described (e.g. "leaky tap" is
 low, "full bathroom renovation" is high) — this is a rough signal from the
 conversation, not a real valuation.
 
@@ -89,6 +95,16 @@ Respond with ONLY a JSON object, no markdown fences, matching exactly this shape
 turn you have ALL five fields AND urgency is not out_of_scope>, "lead": {"name": "",
 "phone": "", "suburb": "", "urgency": "", "job_description": "", "score": 0,
 "score_reason": "", "estimated_value_tier": ""} or null if not yet captured}`
+
+    // The widget's first message is a static assistant greeting rendered
+    // client-side (not something Claude said), so it isn't part of the real
+    // turn history. The Anthropic API requires the message list to start
+    // with a 'user' turn — trim any leading assistant message(s) before
+    // sending, or the request errors out on every very first exchange.
+    let apiMessages = messages
+    while (apiMessages.length && apiMessages[0].role !== 'user') {
+      apiMessages = apiMessages.slice(1)
+    }
 
     const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -102,7 +118,7 @@ turn you have ALL five fields AND urgency is not out_of_scope>, "lead": {"name":
         max_tokens: 1024,
         thinking: { type: 'adaptive' },
         system: systemPrompt,
-        messages: messages.map(m => ({ role: m.role, content: m.content })),
+        messages: apiMessages.map(m => ({ role: m.role, content: m.content })),
       }),
     })
 

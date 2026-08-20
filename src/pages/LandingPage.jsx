@@ -40,7 +40,7 @@ export default function LandingPage() {
         {[
           ['📍', 'Live map', 'See every technician in real time without making a single call.'],
           ['📱', 'Client SMS', 'Automatic text with a live tracking link when your tech is 15 minutes away.'],
-          ['⚡', '20-minute setup', 'Works on every phone in the browser. No download. Set up on the call.'],
+          ['🤖', 'AI lead intake', 'A chat widget for your website that triages enquiries and texts you qualified leads, scored by urgency.'],
         ].map(([icon, title, desc]) => (
           <div key={title} style={{ background: '#0a0f1d', borderRadius: 16, padding: 24, border: '1px solid #1e293b' }}>
             <p style={{ fontSize: 28, margin: '0 0 12px' }}>{icon}</p>
@@ -57,7 +57,7 @@ export default function LandingPage() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
           {[
             ['Starter', '$49', 'per tech/month', ['Live GPS map', 'Client ETA SMS', 'Job start/complete', 'Works on any phone']],
-            ['Standard', '$79', 'per tech/month', ['Everything in Starter', 'Dispatch board', 'Job scheduling', 'Job history log'], true],
+            ['Standard', '$79', 'per tech/month', ['Everything in Starter', 'Dispatch board', 'AI intake chat & lead scoring', 'Job scheduling'], true],
             ['Pro', '$119', 'per tech/month', ['Everything in Standard', 'On-site invoicing', 'Asset tracking', 'Compliance checklists']],
           ].map(([name, price, period, features, highlight]) => (
             <div key={name} style={{ background: highlight ? '#2D5FA8' : '#0a0f1d', borderRadius: 16, padding: 24, border: `1px solid ${highlight ? '#2D5FA8' : '#1e293b'}` }}>
