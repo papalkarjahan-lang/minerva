@@ -5,6 +5,7 @@ import DispatcherView from './pages/DispatcherView'
 import TechnicianView from './pages/TechnicianView'
 import TrackingView from './pages/TrackingView'
 import SuccessPage from './pages/SuccessPage'
+import IntakeAssistant from './pages/IntakeAssistant'
 import './index.css'
 
 export default function App() {
@@ -27,6 +28,10 @@ export default function App() {
         {/* Dispatcher dashboard - accessed after login */}
         {/* URL: /dispatch/:businessId */}
         <Route path="/dispatch/:businessId" element={<DispatcherView />} />
+
+        {/* AI Intake Assistant - embedded/linked from the business's own
+            website to triage inbound leads. URL: /intake/:businessId */}
+        <Route path="/intake/:businessId" element={<IntakeAssistant />} />
       </Routes>
     </BrowserRouter>
   )

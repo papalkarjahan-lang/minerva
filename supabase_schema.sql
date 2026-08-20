@@ -64,6 +64,24 @@ alter table technicians
   add constraint fk_current_job
   foreign key (current_job_id) references jobs(id) on delete set null;
 
+-- Table 4: leads
+-- Captured by the AI Intake Assistant widget (ai-intake-chat edge function)
+-- when a website visitor's chat gets triaged into a qualified lead. Kept
+-- separate from `jobs` because a lead is unconfirmed/unscheduled — the
+-- dispatcher decides whether to convert it into a real job.
+create table leads (
+  id                uuid primary key default gen_random_uuid(),
+  business_id       uuid references businesses(id) on delete cascade,
+  client_name       text,
+  client_phone      text,
+  suburb            text,
+  urgency           text default 'routine', -- 'emergency' | 'routine' | 'out_of_scope'
+  job_description   text,
+  transcript        jsonb, -- full chat history at time of capture, for context
+  status            text default 'new', -- 'new' | 'contacted' | 'converted' | 'closed'
+  created_at        timestamptz default now()
+);
+
 -- ============================================================
 -- ROW LEVEL SECURITY
 --
@@ -86,6 +104,7 @@ alter table technicians
 alter table businesses enable row level security;
 alter table technicians enable row level security;
 alter table jobs enable row level security;
+alter table leads enable row level security;
 
 -- BUSINESSES
 -- Anon can create a business at signup (no login exists at that point).
@@ -126,6 +145,18 @@ create policy "anon select jobs" on jobs
 create policy "anon update jobs" on jobs
   for update using (true);
 
+-- LEADS
+-- The ai-intake-chat edge function inserts a lead using the anon key once
+-- the chat has captured enough info. Anon insert only — the widget runs on
+-- the business's public website with no login. Anon select is needed so the
+-- dispatcher board (also anon, unguessable-link model) can list new leads.
+create policy "anon insert leads" on leads
+  for insert with check (true);
+create policy "anon select leads" on leads
+  for select using (true);
+create policy "anon update leads" on leads
+  for update using (true);
+
 -- ============================================================
 -- ENABLE REALTIME
 -- Run this after the tables are created.
@@ -133,3 +164,4 @@ create policy "anon update jobs" on jobs
 -- ============================================================
 alter publication supabase_realtime add table technicians;
 alter publication supabase_realtime add table jobs;
+alter publication supabase_realtime add table leads;
