@@ -56,6 +56,10 @@ export default function TechnicianView() {
   // In-memory queue of GPS points that failed to reach Supabase. Mirrored to
   // localStorage so a backlog survives a page reload while offline.
   const queueRef = useRef(loadQueuedPoints())
+  // Guards against calling sync-technician-billing on every 15-second GPS
+  // tick — only needs to fire once per page load, since the sync function
+  // recomputes the full count server-side anyway.
+  const billingSyncedRef = useRef(false)
 
   // Reflect any backlog restored from localStorage in the UI on first render.
   useEffect(() => {
@@ -185,6 +189,17 @@ export default function TechnicianView() {
           }).eq('id', tech.id)
           if (updateError) throw updateError
           setLastUpdate(new Date(timestamp))
+
+          // First successful GPS push this session = this technician's phone
+          // is confirmed "connected". Sync the business's Stripe subscription
+          // quantity to the live count of connected technicians. Fire-and-
+          // forget: billing sync should never block or break GPS tracking.
+          if (!billingSyncedRef.current) {
+            billingSyncedRef.current = true
+            supabase.functions.invoke('sync-technician-billing', {
+              body: { businessId: tech.business_id }
+            }).catch(() => {})
+          }
 
           // This point made it through, which is more recent than anything
           // still queued from earlier failures — safe to drop the backlog.

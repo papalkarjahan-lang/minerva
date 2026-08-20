@@ -60,11 +60,22 @@ serve(async (req: Request) => {
         const session = event.data.object as Stripe.Checkout.Session
         const businessId = session.metadata?.business_id
         if (businessId && session.customer && session.subscription) {
+          // Also fetch the subscription item id — sync-technician-billing needs
+          // it to update billed quantity later, and it isn't on the session object.
+          let subItemId: string | null = null
+          try {
+            const sub = await stripe.subscriptions.retrieve(session.subscription as string)
+            subItemId = sub.items.data[0]?.id ?? null
+          } catch (err) {
+            console.error('Failed to retrieve subscription for item id:', err.message)
+          }
+
           const { error } = await supabaseAdmin
             .from('businesses')
             .update({
               stripe_customer_id: session.customer as string,
               stripe_sub_id: session.subscription as string,
+              stripe_sub_item_id: subItemId,
             })
             .eq('id', businessId)
           if (error) console.error('Failed to save Stripe IDs:', error.message)

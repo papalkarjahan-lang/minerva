@@ -166,6 +166,9 @@ export default function DispatcherView() {
         {/* Technician list */}
         <div style={styles.section}>
           <p style={styles.sectionLabel}>TECHNICIANS ({technicians.length})</p>
+          <p style={styles.billingNote} title="Billing is based on technicians who have opened their phone link and started tracking at least once, not just how many were added at signup.">
+            {technicians.filter(t => t.last_seen).length} of {technicians.length} billed (phone connected)
+          </p>
           {technicians.map((tech, i) => {
             const job = jobs.find(j => j.id === tech.current_job_id)
             return (
@@ -403,6 +406,7 @@ const styles = {
   copyLinkBtn: { background: 'transparent', border: '1px solid #1e293b', color: '#8fd0e8', borderRadius: 8, padding: '5px 10px', fontSize: 11, cursor: 'pointer', width: '100%', textAlign: 'left' },
   section: { padding: '12px 16px', borderBottom: '1px solid #1e293b', overflowY: 'auto', maxHeight: '50vh' },
   sectionLabel: { color: '#555', fontSize: 10, letterSpacing: 2, textTransform: 'uppercase', margin: '0 0 10px' },
+  billingNote: { color: '#666', fontSize: 11, margin: '-4px 0 10px', cursor: 'default' },
   techRow: { padding: '10px 10px 10px 12px', background: '#050811', borderRadius: 10, marginBottom: 8, cursor: 'pointer' },
   techName: { color: '#fff', fontSize: 14, fontWeight: 'bold', margin: '0 0 3px' },
   techMeta: { color: '#666', fontSize: 12, margin: '0 0 2px' },

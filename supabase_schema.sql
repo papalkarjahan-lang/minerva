@@ -14,6 +14,11 @@ create table businesses (
   subscription_tier   text default 'standard',
   stripe_customer_id  text,
   stripe_sub_id       text,
+  stripe_sub_item_id  text, -- the Stripe subscription *item* id (not the subscription
+                             -- id) — required to call subscriptionItems.update() and
+                             -- change billed quantity. Saved by stripe-webhook on
+                             -- checkout.session.completed. Written by
+                             -- sync-technician-billing.
   data_sharing_optin  bool default false,
   twilio_number       text, -- E.164 Twilio number for this business (e.g. +61412345678),
                              -- used by missed-call-webhook to match an inbound call's
