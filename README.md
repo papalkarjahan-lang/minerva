@@ -15,7 +15,8 @@ A live GPS dispatch tracking tool for trade businesses. Technicians share their 
 5. Go to **Database → Replication** → toggle ON for `technicians` table
 6. Go to **Settings → API** → copy your Project URL, anon key, and **service_role key**
    (the service role key is only used server-side by the `stripe-webhook`
-   function — never put it in `.env.local` or any client-side code)
+   and `missed-call-webhook` functions — never put it in `.env.local` or any
+   client-side code)
 7. Go to **Authentication → Providers** → turn **off** "Allow new users to
    sign up" (see `SECURITY_NOTES.md` for why)
 
@@ -27,6 +28,14 @@ A live GPS dispatch tracking tool for trade businesses. Technicians share their 
 1. Go to https://twilio.com → Sign up
 2. Get a trial Australian number
 3. Copy your Account SID and Auth Token from the Console
+4. (Optional — missed-call auto-reply) Once `missed-call-webhook` is deployed
+   (see "Deploy Supabase Edge Functions" below), go to your number's
+   configuration page in the Twilio Console → **Voice Configuration** → set
+   **"A call comes in"** to Webhook, paste
+   `https://YOUR_PROJECT_REF.supabase.co/functions/v1/missed-call-webhook`,
+   method `HTTP POST`. Also set the business's number in the `businesses`
+   table (`twilio_number` column, E.164 format e.g. `+61412345678`) so the
+   webhook can look up the right business name for the auto-reply SMS.
 
 ### 4. Stripe (billing)
 1. Go to https://stripe.com/au → Sign up with your ABN
@@ -95,8 +104,10 @@ Deploy all functions:
 ```bash
 supabase functions deploy send-eta-sms
 supabase functions deploy send-setup-sms
+supabase functions deploy send-completion-sms
 supabase functions deploy create-checkout-session
 supabase functions deploy stripe-webhook --no-verify-jwt
+supabase functions deploy missed-call-webhook --no-verify-jwt
 ```
 
 Then in Stripe Dashboard → Developers → Webhooks, add an endpoint:
@@ -104,6 +115,16 @@ Then in Stripe Dashboard → Developers → Webhooks, add an endpoint:
 for `checkout.session.completed` and `customer.subscription.deleted`. Without
 this step, the Customer Portal cancellation link on the pricing page won't
 work — the business's Stripe subscription ID never gets saved.
+
+Then, for the missed-call auto-reply, go to the Twilio Console → **Phone
+Numbers → Manage → Active Numbers** → select the business's number →
+**Voice Configuration** → set "A call comes in" to Webhook:
+`https://YOUR_PROJECT_REF.supabase.co/functions/v1/missed-call-webhook`
+(HTTP POST). Also make sure that number is saved in the `twilio_number`
+column on the matching `businesses` row, so the webhook can look up the
+right business name. `--no-verify-jwt` is required here too, since Twilio's
+servers call this webhook directly without a Supabase auth header (same
+reason `stripe-webhook` uses it).
 
 ---
 
@@ -122,6 +143,15 @@ Run through this on TWO real devices (your phone + your laptop):
 - [ ] Walk within 2km of home address → client SMS arrives with tracking link
 - [ ] Open tracking link → see technician dot → walk further → dot updates
 - [ ] Tap Complete Job → job status updates to "complete" in dispatcher view
+- [ ] Client receives a "job complete" SMS after Complete Job is tapped
+- [ ] Turn on flight mode on the technician's phone for ~1 min while tracking →
+      an "Offline - X pending" badge appears; turn flight mode back off → badge
+      clears and the dispatcher map catches up with the latest position
+- [ ] On the current job card, tap "Add voice note" (Chrome/Android only —
+      button is hidden on browsers without Web Speech API support), speak a
+      short note → transcribed text appears appended to the job's notes
+- [ ] Call the business's Twilio number and let it go unanswered → caller
+      receives the "missed you" auto-reply SMS
 
 **Do not call a single client until every checkbox above is ticked.**
 
@@ -149,6 +179,8 @@ minerva/
 │   └── functions/
 │       ├── send-eta-sms/          # Fires the 15-min client SMS
 │       ├── send-setup-sms/        # Fires technician setup SMS on onboarding
+│       ├── send-completion-sms/   # Fires the "job complete" client SMS
+│       ├── missed-call-webhook/   # Twilio Voice webhook: TwiML + missed-call SMS auto-reply
 │       └── create-checkout-session/ # Creates Stripe checkout
 ├── index.html
 ├── package.json

@@ -15,6 +15,11 @@ create table businesses (
   stripe_customer_id  text,
   stripe_sub_id       text,
   data_sharing_optin  bool default false,
+  twilio_number       text, -- E.164 Twilio number for this business (e.g. +61412345678),
+                             -- used by missed-call-webhook to match an inbound call's
+                             -- "To" number back to a business row. Nullable: only needed
+                             -- if the business has its own Twilio number configured for
+                             -- voice + the missed-call-to-SMS auto-reply.
   created_at          timestamptz default now()
 );
 
@@ -48,6 +53,8 @@ create table jobs (
   started_at      timestamptz,
   completed_at    timestamptz,
   sms_sent        bool default false,
+  completion_sms_sent bool default false, -- prevents duplicate "job complete" SMS if
+                                           -- handleCompleteJob is somehow triggered twice
   notes           text,
   created_at      timestamptz default now()
 );

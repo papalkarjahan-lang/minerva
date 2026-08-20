@@ -58,6 +58,28 @@ than "you need to already know the row's id" without breaking the live map
 entirely. This is a real constraint of the anon-key + no-login + Realtime
 combination, not an oversight.
 
+## Known follow-up: missed-call-webhook doesn't validate Twilio's signature
+
+`missed-call-webhook` is deployed with `--no-verify-jwt` (like
+`stripe-webhook`) so Twilio's servers can call it without a Supabase auth
+header. Unlike `stripe-webhook`, it does **not** currently validate Twilio's
+`X-Twilio-Signature` request header, which is how Twilio lets you confirm a
+webhook request genuinely came from Twilio (HMAC-SHA1 over the URL + sorted
+POST params, using your Auth Token as the key). Right now, anyone who
+discovers the function URL could POST a fake "missed call" payload and
+trigger an outbound SMS send through the business's Twilio account (a
+nuisance-SMS / cost-abuse risk, not a customer-data exposure — the function
+only reads `businesses.name` via the service_role key and writes nothing to
+the database; the only side effect of a forged request is an SMS send).
+
+This mirrors how `stripe-webhook` validates `stripe-signature` before
+trusting a request — the same pattern (verify a signature computed from a
+shared secret before acting on the payload) should be added here before
+relying on this function in a way where SMS volume/cost matters. Deliberately
+shipped without it for now to avoid blocking the feature on the extra
+complexity of implementing Twilio's signature scheme in Deno; add it before
+this function is exposed to real, non-trusted-pilot traffic.
+
 ## Phase 2 priority: before scaling past ~10-15 trusted pilot clients
 
 Add real per-owner authentication (Supabase Auth magic-link email login for
