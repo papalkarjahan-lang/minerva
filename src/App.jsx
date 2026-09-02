@@ -2,10 +2,13 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import LandingPage from './pages/LandingPage'
 import Onboarding from './pages/Onboarding'
 import DispatcherView from './pages/DispatcherView'
+import IndustrialDispatcherView from './pages/IndustrialDispatcherView'
 import TechnicianView from './pages/TechnicianView'
 import TrackingView from './pages/TrackingView'
+import InvoiceView from './pages/InvoiceView'
 import SuccessPage from './pages/SuccessPage'
 import IntakeAssistant from './pages/IntakeAssistant'
+import DisputeView from './pages/DisputeView'
 import './index.css'
 
 export default function App() {
@@ -25,13 +28,26 @@ export default function App() {
         {/* URL: /track/:jobId */}
         <Route path="/track/:jobId" element={<TrackingView />} />
 
+        {/* Client invoice route (Pro tier) - accessed via SMS link */}
+        {/* URL: /invoice/:invoiceId */}
+        <Route path="/invoice/:invoiceId" element={<InvoiceView />} />
+
         {/* Dispatcher dashboard - accessed after login */}
         {/* URL: /dispatch/:businessId */}
         <Route path="/dispatch/:businessId" element={<DispatcherView />} />
 
+        {/* Industrial sector console (Track B) — parallel to /dispatch,
+            used when a business's `sector` is 'industrial'. URL: /industrial/:businessId */}
+        <Route path="/industrial/:businessId" element={<IndustrialDispatcherView />} />
+
         {/* AI Intake Assistant - embedded/linked from the business's own
             website to triage inbound leads. URL: /intake/:businessId */}
         <Route path="/intake/:businessId" element={<IntakeAssistant />} />
+
+        {/* BONUS: Dispute Pack - read-only evidence page for a single job
+            (GPS route, checklist photos, materials, invoice), opened from
+            DispatcherView's Recently Completed section. URL: /dispute/:jobId */}
+        <Route path="/dispute/:jobId" element={<DisputeView />} />
       </Routes>
     </BrowserRouter>
   )

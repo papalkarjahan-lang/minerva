@@ -8,6 +8,14 @@ domain that matches your website.
 Send Tue–Thu, 7:30–8:30am local time (before their workday starts, when owners check
 email on their phone). Never send Mon (inbox flooded) or Fri afternoon (ignored).
 
+**Target segments (TAM):** plumbing, electrical, HVAC, locksmith, pest control,
+courier/delivery, security patrol, automotive mobile service, and mobile veterinary —
+any business that dispatches technicians/drivers to client locations and wants to kill
+"where are you" calls. Swap [trade type] below for the specific segment, and lead with
+a segment-relevant detail (e.g. couriers care about proof-of-delivery ETAs, security
+patrol cares about verified patrol routes, mobile vets care about client peace of mind
+for an at-home visit) rather than a generic pitch.
+
 ---
 
 ## Email 1 — Day 0 (the opener)
@@ -57,7 +65,7 @@ Subject: last one — [Business Name]
 
 Hi [First name],
 
-Last note from me on this. A few plumbing/electrical businesses in [region] are
+Last note from me on this. A few [trade type] businesses in [region] are
 already running Minerva — the common thing they say is it kills the "where are you"
 calls in the first week.
 

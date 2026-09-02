@@ -40,14 +40,40 @@ export async function geocodeAddress(address) {
 // 900,000 combinations is brute-forceable. 8 chars from a 32-symbol
 // alphabet, excluding visually ambiguous characters, gives ~1e12
 // combinations while staying easy to read off a phone screen.)
+// Uses crypto.getRandomValues (CSPRNG) rather than Math.random(), since
+// this PIN is a real access-control boundary (see SECURITY_NOTES.md) and
+// Math.random() is not cryptographically secure / predictable in some
+// engines.
 // ============================================================
 const PIN_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789' // no 0/O/1/I
 export function generatePin() {
+  const randomValues = new Uint32Array(8)
+  crypto.getRandomValues(randomValues)
   let pin = ''
   for (let i = 0; i < 8; i++) {
-    pin += PIN_ALPHABET[Math.floor(Math.random() * PIN_ALPHABET.length)]
+    pin += PIN_ALPHABET[randomValues[i] % PIN_ALPHABET.length]
   }
   return pin
+}
+
+// ============================================================
+// GENERATE REFERRAL CODE
+// Creates a random 6-character alphanumeric code for the Paid-Invoice
+// Referral Loop (see markInvoicePaid in DispatcherView.jsx). Shorter than
+// generatePin() on purpose — this isn't an access-control boundary like a
+// technician PIN, it's a code a past client reads out over the phone or
+// texts to a friend, so it's optimized for brevity/readability rather than
+// combination space. Same CSPRNG approach and no-ambiguous-character
+// alphabet as generatePin() for consistency.
+// ============================================================
+export function generateReferralCode() {
+  const randomValues = new Uint32Array(6)
+  crypto.getRandomValues(randomValues)
+  let code = ''
+  for (let i = 0; i < 6; i++) {
+    code += PIN_ALPHABET[randomValues[i] % PIN_ALPHABET.length]
+  }
+  return code
 }
 
 // ============================================================

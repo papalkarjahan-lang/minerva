@@ -23,7 +23,7 @@ export default function LandingPage() {
         <Link to="/start" style={{ display: 'inline-block', background: '#1D9E75', color: '#fff', textDecoration: 'none', padding: '18px 48px', borderRadius: 14, fontSize: 18, fontWeight: 'bold', marginBottom: 14 }}>
           Start your free trial →
         </Link>
-        <p style={{ color: '#555', fontSize: 14, margin: 0 }}>7-day free trial. No card required. Set up on the call.</p>
+        <p style={{ color: '#555', fontSize: 14, margin: 0 }}>7-day free trial. Set up on the call. First charge after day 7.</p>
       </div>
 
       {/* Screenshot placeholder */}
@@ -40,7 +40,7 @@ export default function LandingPage() {
         {[
           ['📍', 'Live map', 'See every technician in real time without making a single call.'],
           ['📱', 'Client SMS', 'Automatic text with a live tracking link when your tech is 15 minutes away.'],
-          ['🤖', 'AI lead intake', 'A chat widget for your website that triages enquiries and texts you qualified leads, scored by urgency.'],
+          ['💬', 'Automatic lead intake', 'A chat widget for your website that triages enquiries and texts you qualified leads, scored by urgency.'],
         ].map(([icon, title, desc]) => (
           <div key={title} style={{ background: '#0a0f1d', borderRadius: 16, padding: 24, border: '1px solid #1e293b' }}>
             <p style={{ fontSize: 28, margin: '0 0 12px' }}>{icon}</p>
@@ -57,7 +57,7 @@ export default function LandingPage() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
           {[
             ['Starter', '$49', 'per tech/month', ['Live GPS map', 'Client ETA SMS', 'Job start/complete', 'Works on any phone']],
-            ['Standard', '$79', 'per tech/month', ['Everything in Starter', 'Dispatch board', 'AI intake chat & lead scoring', 'Job scheduling'], true],
+            ['Standard', '$79', 'per tech/month', ['Everything in Starter', 'Dispatch board', 'Automatic intake chat & lead scoring', 'Job scheduling'], true],
             ['Pro', '$119', 'per tech/month', ['Everything in Standard', 'On-site invoicing', 'Asset tracking', 'Compliance checklists']],
           ].map(([name, price, period, features, highlight]) => (
             <div key={name} style={{ background: highlight ? '#2D5FA8' : '#0a0f1d', borderRadius: 16, padding: 24, border: `1px solid ${highlight ? '#2D5FA8' : '#1e293b'}` }}>
@@ -69,7 +69,7 @@ export default function LandingPage() {
           ))}
         </div>
         <Link to="/start" style={{ display: 'inline-block', background: '#1D9E75', color: '#fff', textDecoration: 'none', padding: '16px 44px', borderRadius: 12, fontSize: 16, fontWeight: 'bold', marginTop: 32 }}>
-          Start free trial — no card required
+          Start your free trial
         </Link>
       </div>
 

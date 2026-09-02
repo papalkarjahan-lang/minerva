@@ -51,6 +51,43 @@ export default function TechnicianView() {
   const [pendingCount, setPendingCount] = useState(0)
   const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true)
   const [listening, setListening] = useState(false)
+  // Pro-tier on-site invoicing: shown after "Complete Job" is tapped, before
+  // the job is actually finalised, so the technician can optionally build
+  // an invoice and text it to the client.
+  const [showInvoiceBuilder, setShowInvoiceBuilder] = useState(false)
+  const [invoiceItems, setInvoiceItems] = useState([{ description: '', amount: '' }])
+  const [invoiceSubmitting, setInvoiceSubmitting] = useState(false)
+  const [invoiceError, setInvoiceError] = useState(null)
+  // Pro-tier compliance checklist: shown before invoicing, once per job, if
+  // the business has a template set up. Technician must tick every item
+  // before they can continue.
+  const [checklistTemplate, setChecklistTemplate] = useState(null)
+  const [showChecklist, setShowChecklist] = useState(false)
+  const [checklistChecks, setChecklistChecks] = useState([])
+  const [checklistDone, setChecklistDone] = useState(false)
+  // Optional photo evidence per checklist item — index-aligned with
+  // checklistTemplate.items/checklistChecks. Never required, so a tech
+  // without a good photo opportunity can still submit the checklist.
+  const [checklistPhotos, setChecklistPhotos] = useState([])
+  // Pro-tier materials-used: shown after the checklist (if any), lets the
+  // technician optionally log parts/materials consumed on this job against
+  // this business's inventory_items. Also optional — skips straight to
+  // invoicing if the business tracks no inventory items.
+  const [inventoryItems, setInventoryItems] = useState([])
+  const [showMaterials, setShowMaterials] = useState(false)
+  const [materialLines, setMaterialLines] = useState([{ inventory_item_id: '', quantity_used: '' }])
+  const [materialsDone, setMaterialsDone] = useState(false)
+  // Pro-tier onboarding checklist: shown once, before the technician's very
+  // first "Start Tracking" tap, gated on technicians.onboarding_completed_at.
+  const [onboardingTemplate, setOnboardingTemplate] = useState(null)
+  const [showOnboardingChecklist, setShowOnboardingChecklist] = useState(false)
+  const [onboardingChecks, setOnboardingChecks] = useState([])
+  // Pro-tier Licence/Ticket Expiry Guardian: read-only heads-up for the
+  // technician's own credentials expiring within 30 days (or already
+  // expired). Purely informational — this view can't edit or dismiss
+  // anything, it just mirrors what check-credential-expiry is watching so
+  // the technician isn't caught out mid-job. Never blocks any action here.
+  const [expiringCredentials, setExpiringCredentials] = useState([])
 
   const intervalRef = useRef(null)
   // In-memory queue of GPS points that failed to reach Supabase. Mirrored to
@@ -97,6 +134,50 @@ export default function TechnicianView() {
     setTech(data)
     setBusiness(data.businesses)
     if (data.current_job_id) loadJob(data.current_job_id)
+
+    // Compliance checklists are a Pro-tier feature — one template per
+    // business, applied to every job completion.
+    if (data.businesses?.subscription_tier === 'pro') {
+      const { data: template } = await supabase
+        .from('checklist_templates')
+        .select('*')
+        .eq('business_id', data.business_id)
+        .eq('type', 'completion')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      setChecklistTemplate(template || null)
+
+      const { data: onboardingTpl } = await supabase
+        .from('checklist_templates')
+        .select('*')
+        .eq('business_id', data.business_id)
+        .eq('type', 'onboarding')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      setOnboardingTemplate(onboardingTpl || null)
+
+      // Materials-used picker needs this business's inventory to select
+      // from — same table/query shape DispatcherView uses for its
+      // Inventory tab.
+      const { data: inventoryList } = await supabase
+        .from('inventory_items')
+        .select('*')
+        .eq('business_id', data.business_id)
+        .order('name', { ascending: true })
+      setInventoryItems(inventoryList || [])
+
+      // Read-only credentials-expiring-soon banner — see state comment above.
+      const thirtyDaysOut = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+      const { data: credList } = await supabase
+        .from('technician_credentials')
+        .select('credential_name, expiry_date')
+        .eq('technician_id', data.id)
+        .lte('expiry_date', thirtyDaysOut)
+        .order('expiry_date', { ascending: true })
+      setExpiringCredentials(credList || [])
+    }
   }
 
   async function loadJob(jobId) {
@@ -165,6 +246,17 @@ export default function TechnicianView() {
         last_seen: new Date(latest.timestamp).toISOString()
       }).eq('id', tech.id)
       if (updateError) throw updateError
+      // Breadcrumb history — same best-effort spirit as the live position
+      // update above. Only the single most recent queued point (consistent
+      // with the comment above: we don't backfill the whole offline gap).
+      supabase.from('technician_locations').insert({
+        technician_id: tech.id,
+        business_id: tech.business_id,
+        job_id: currentJob?.id || null,
+        lat: latest.lat,
+        lng: latest.lng,
+        recorded_at: new Date(latest.timestamp).toISOString()
+      }).then(({ error }) => { if (error) console.error('technician_locations insert failed', error) })
       clearQueue()
       setLastUpdate(new Date(latest.timestamp))
     } catch (_) {
@@ -189,6 +281,16 @@ export default function TechnicianView() {
           }).eq('id', tech.id)
           if (updateError) throw updateError
           setLastUpdate(new Date(timestamp))
+
+          // Breadcrumb history — fire-and-forget, same as billing sync below;
+          // must never block or break live GPS tracking.
+          supabase.from('technician_locations').insert({
+            technician_id: tech.id,
+            business_id: tech.business_id,
+            job_id: currentJob?.id || null,
+            lat, lng,
+            recorded_at: new Date(timestamp).toISOString()
+          }).then(({ error }) => { if (error) console.error('technician_locations insert failed', error) })
 
           // First successful GPS push this session = this technician's phone
           // is confirmed "connected". Sync the business's Stripe subscription
@@ -304,6 +406,133 @@ export default function TechnicianView() {
   }
 
   async function handleCompleteJob() {
+    // Pro-tier businesses may require a compliance checklist before the job
+    // can be finalised, then an optional materials-used log, then the option
+    // to build an invoice. Everyone else (or once every step is done/
+    // skipped) goes straight to finishTheJob().
+    if (business?.subscription_tier === 'pro') {
+      if (checklistTemplate && !checklistDone) {
+        setChecklistChecks(new Array(checklistTemplate.items.length).fill(false))
+        setChecklistPhotos(new Array(checklistTemplate.items.length).fill(null))
+        setShowChecklist(true)
+        return
+      }
+      if (inventoryItems.length > 0 && !materialsDone) {
+        setShowMaterials(true)
+        return
+      }
+      setShowInvoiceBuilder(true)
+      return
+    }
+    await finishTheJob()
+  }
+
+  function toggleChecklistItem(index) {
+    setChecklistChecks(prev => prev.map((checked, i) => i === index ? !checked : checked))
+  }
+
+  // Attach (or clear) an optional photo for one checklist item. Index-
+  // aligned with checklistTemplate.items — never required to tick the item.
+  function setChecklistPhoto(index, file) {
+    setChecklistPhotos(prev => prev.map((f, i) => i === index ? file : f))
+  }
+
+  // Uploads any attached checklist photos to the 'checklist-photos' bucket
+  // and inserts one checklist_photos row per successful upload. Fire-and-
+  // forget, same pattern as the technician_locations breadcrumb insert and
+  // the billing sync call above — a failed photo upload should never block
+  // job completion, just get logged.
+  function uploadChecklistPhotos() {
+    checklistTemplate.items.forEach((item, i) => {
+      const file = checklistPhotos[i]
+      if (!file) return
+      const slug = item.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 40) || 'item'
+      const path = `${currentJob.id}/${slug}-${Date.now()}.jpg`
+      supabase.storage.from('checklist-photos').upload(path, file)
+        .then(({ error: uploadError }) => {
+          if (uploadError) { console.error('checklist photo upload failed', uploadError); return }
+          supabase.from('checklist_photos').insert({
+            job_id: currentJob.id,
+            business_id: tech.business_id,
+            checklist_item: item,
+            storage_path: path
+          }).then(({ error }) => { if (error) console.error('checklist_photos insert failed', error) })
+        })
+    })
+  }
+
+  async function confirmChecklist() {
+    const results = checklistTemplate.items.map((item, i) => ({ item, checked: checklistChecks[i] }))
+    await supabase.from('jobs').update({ checklist_results: results }).eq('id', currentJob.id)
+    setCurrentJob(prev => ({ ...prev, checklist_results: results }))
+    uploadChecklistPhotos()
+    setChecklistDone(true)
+    setShowChecklist(false)
+    if (inventoryItems.length > 0) {
+      setShowMaterials(true)
+    } else {
+      setShowInvoiceBuilder(true)
+    }
+  }
+
+  function addMaterialLine() {
+    setMaterialLines(prev => [...prev, { inventory_item_id: '', quantity_used: '' }])
+  }
+
+  function removeMaterialLine(index) {
+    setMaterialLines(prev => prev.filter((_, i) => i !== index))
+  }
+
+  function updateMaterialLine(index, field, value) {
+    setMaterialLines(prev => prev.map((line, i) => i === index ? { ...line, [field]: value } : line))
+  }
+
+  function skipMaterials() {
+    setMaterialsDone(true)
+    setShowMaterials(false)
+    setShowInvoiceBuilder(true)
+  }
+
+  // For each valid material line: insert a job_materials row, then decrement
+  // the matching inventory_items.quantity. Both writes are fire-and-forget-
+  // safe (never block job completion) — errors just get logged, same
+  // pattern as the technician_locations insert above.
+  async function confirmMaterials() {
+    const validLines = materialLines
+      .filter(l => l.inventory_item_id && Number(l.quantity_used) > 0)
+      .map(l => {
+        const item = inventoryItems.find(i => i.id === l.inventory_item_id)
+        return {
+          inventory_item_id: l.inventory_item_id,
+          item_name: item?.name || 'Unknown item',
+          quantity_used: Number(l.quantity_used),
+          currentQty: item?.quantity ?? 0
+        }
+      })
+
+    validLines.forEach(line => {
+      supabase.from('job_materials').insert({
+        job_id: currentJob.id,
+        business_id: tech.business_id,
+        inventory_item_id: line.inventory_item_id,
+        item_name: line.item_name,
+        quantity_used: line.quantity_used
+      }).then(({ error }) => { if (error) console.error('job_materials insert failed', error) })
+
+      supabase.from('inventory_items').update({
+        quantity: Math.max(0, line.currentQty - line.quantity_used)
+      }).eq('id', line.inventory_item_id)
+        .then(({ error }) => { if (error) console.error('inventory_items decrement failed', error) })
+    })
+
+    setMaterialsDone(true)
+    setShowMaterials(false)
+    setShowInvoiceBuilder(true)
+  }
+
+  // The actual job-completion side effects, shared by both the "no invoice"
+  // path and the "invoice sent" path.
+  async function finishTheJob() {
     clearInterval(intervalRef.current)
     setTracking(false)
     await supabase.from('jobs').update({
@@ -314,10 +543,105 @@ export default function TechnicianView() {
       current_job_id: null
     }).eq('id', tech.id)
     await triggerCompletionSMS()
+    // Custom Workflows: fire the 'job.completed' trigger for this business, if any are configured.
+    supabase.functions.invoke('run-custom-workflows', {
+      body: { businessId: currentJob.business_id, event: 'job.completed', payload: { trade_type: currentJob.trade_type, client_address: currentJob.client_address } },
+    }).catch(() => {})
     setStatus('job_done')
   }
 
+  function addInvoiceItem() {
+    setInvoiceItems(prev => [...prev, { description: '', amount: '' }])
+  }
+
+  function removeInvoiceItem(index) {
+    setInvoiceItems(prev => prev.filter((_, i) => i !== index))
+  }
+
+  function updateInvoiceItem(index, field, value) {
+    setInvoiceItems(prev => prev.map((item, i) => i === index ? { ...item, [field]: value } : item))
+  }
+
+  function skipInvoice() {
+    setShowInvoiceBuilder(false)
+    finishTheJob()
+  }
+
+  async function submitInvoice() {
+    const validItems = invoiceItems
+      .filter(item => item.description.trim() && Number(item.amount) > 0)
+      .map(item => ({ description: item.description.trim(), amount: Number(item.amount) }))
+
+    if (validItems.length === 0) {
+      setInvoiceError('Add at least one line item with a description and amount, or skip the invoice.')
+      return
+    }
+    setInvoiceError(null)
+
+    setInvoiceSubmitting(true)
+    const subtotal = validItems.reduce((sum, item) => sum + item.amount, 0)
+    const gst = subtotal * 0.1
+    const total = subtotal + gst
+
+    try {
+      const { data, error: insertError } = await supabase.from('invoices').insert({
+        business_id: tech.business_id,
+        job_id: currentJob.id,
+        client_name: currentJob.client_name,
+        client_phone: currentJob.client_phone,
+        line_items: validItems,
+        subtotal,
+        gst,
+        total,
+        status: 'unpaid'
+      }).select().single()
+      if (insertError) throw insertError
+
+      if (currentJob.client_phone) {
+        const invoiceUrl = `${import.meta.env.VITE_APP_URL}/invoice/${data.id}`
+        await supabase.functions.invoke('send-invoice-sms', {
+          body: {
+            clientPhone: currentJob.client_phone,
+            clientName: currentJob.client_name,
+            businessName: business.name,
+            invoiceUrl,
+            total
+          }
+        })
+      }
+
+      setShowInvoiceBuilder(false)
+      setInvoiceItems([{ description: '', amount: '' }])
+      await finishTheJob()
+    } catch (err) {
+      setInvoiceError(`Failed to send invoice: ${err.message}`)
+    } finally {
+      setInvoiceSubmitting(false)
+    }
+  }
+
   function handleStartTracking() {
+    // Onboarding checklist (Pro tier) gates only the very first "Start
+    // Tracking" — once onboarding_completed_at is set on the technician row,
+    // this is skipped on every subsequent session.
+    if (onboardingTemplate && !tech.onboarding_completed_at) {
+      setOnboardingChecks(new Array(onboardingTemplate.items.length).fill(false))
+      setShowOnboardingChecklist(true)
+      return
+    }
+    setTracking(true)
+    setStatus('tracking')
+  }
+
+  function toggleOnboardingItem(index) {
+    setOnboardingChecks(prev => prev.map((checked, i) => i === index ? !checked : checked))
+  }
+
+  async function confirmOnboardingChecklist() {
+    const completedAt = new Date().toISOString()
+    await supabase.from('technicians').update({ onboarding_completed_at: completedAt }).eq('id', tech.id)
+    setTech(prev => ({ ...prev, onboarding_completed_at: completedAt }))
+    setShowOnboardingChecklist(false)
     setTracking(true)
     setStatus('tracking')
   }
@@ -360,6 +684,22 @@ export default function TechnicianView() {
         )}
       </div>
 
+      {/* Read-only Licence/Ticket Expiry Guardian banner — see state comment */}
+      {expiringCredentials.length > 0 && (
+        <div style={styles.credentialBanner}>
+          <p style={styles.credentialBannerTitle}>⚠️ Licence/ticket check</p>
+          {expiringCredentials.map((c, i) => {
+            const daysLeft = Math.ceil((new Date(c.expiry_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+            const label = daysLeft < 0 ? `expired ${Math.abs(daysLeft)}d ago` : daysLeft === 0 ? 'expires today' : `expires in ${daysLeft}d`
+            return (
+              <p key={i} style={styles.credentialBannerLine}>
+                {c.credential_name} — {label}
+              </p>
+            )
+          })}
+        </div>
+      )}
+
       {/* Current job card */}
       {currentJob && (
         <div style={styles.jobCard}>
@@ -392,9 +732,154 @@ export default function TechnicianView() {
         </div>
       )}
 
+      {/* Pro-tier onboarding checklist, shown once before the first "Start Tracking" */}
+      {showOnboardingChecklist && onboardingTemplate && (
+        <div style={styles.invoiceCard}>
+          <p style={styles.jobLabel}>{onboardingTemplate.name || 'ONBOARDING CHECKLIST'}</p>
+          {onboardingTemplate.items.map((item, i) => (
+            <label key={i} style={styles.checklistRow}>
+              <input
+                type="checkbox"
+                checked={onboardingChecks[i] || false}
+                onChange={() => toggleOnboardingItem(i)}
+                style={{ marginRight: 10 }}
+              />
+              <span style={{ color: '#ccc', fontSize: 14 }}>{item}</span>
+            </label>
+          ))}
+          <button
+            type="button"
+            style={styles.btnGreenSmall}
+            disabled={!onboardingChecks.every(Boolean) || onboardingChecks.length === 0}
+            onClick={confirmOnboardingChecklist}
+          >
+            Continue
+          </button>
+        </div>
+      )}
+
+      {/* Pro-tier compliance checklist, shown before invoicing */}
+      {showChecklist && checklistTemplate && (
+        <div style={styles.invoiceCard}>
+          <p style={styles.jobLabel}>{checklistTemplate.name || 'COMPLETION CHECKLIST'}</p>
+          {checklistTemplate.items.map((item, i) => (
+            <div key={i}>
+              <label style={styles.checklistRow}>
+                <input
+                  type="checkbox"
+                  checked={checklistChecks[i] || false}
+                  onChange={() => toggleChecklistItem(i)}
+                  style={{ marginRight: 10 }}
+                />
+                <span style={{ color: '#ccc', fontSize: 14 }}>{item}</span>
+              </label>
+              {/* Optional photo evidence for this item — e.g. proof of "gas
+                  shutoff confirmed" for a later dispute. Never required. */}
+              <label style={styles.photoAttachBtn}>
+                {checklistPhotos[i] ? `📷 ${checklistPhotos[i].name}` : '📷 Attach photo (optional)'}
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  style={{ display: 'none' }}
+                  onChange={(e) => setChecklistPhoto(i, e.target.files?.[0] || null)}
+                />
+              </label>
+            </div>
+          ))}
+          <button
+            type="button"
+            style={styles.btnGreenSmall}
+            disabled={!checklistChecks.every(Boolean) || checklistChecks.length === 0}
+            onClick={confirmChecklist}
+          >
+            Continue
+          </button>
+        </div>
+      )}
+
+      {/* Pro-tier materials-used log, shown after the checklist (if any),
+          before invoicing. Optional — a job with no parts used can Skip. */}
+      {showMaterials && (
+        <div style={styles.invoiceCard}>
+          <p style={styles.jobLabel}>MATERIALS USED (OPTIONAL)</p>
+          {materialLines.map((line, i) => (
+            <div key={i} style={styles.invoiceRow}>
+              <select
+                value={line.inventory_item_id}
+                onChange={(e) => updateMaterialLine(i, 'inventory_item_id', e.target.value)}
+                style={styles.materialSelect}
+              >
+                <option value="">Select part/material...</option>
+                {inventoryItems.map(item => (
+                  <option key={item.id} value={item.id}>
+                    {item.name} ({item.quantity} {item.unit || 'units'} on hand)
+                  </option>
+                ))}
+              </select>
+              <input
+                type="number"
+                min="0"
+                step="any"
+                placeholder="Qty"
+                value={line.quantity_used}
+                onChange={(e) => updateMaterialLine(i, 'quantity_used', e.target.value)}
+                style={styles.invoiceAmountInput}
+              />
+              {materialLines.length > 1 && (
+                <button type="button" style={styles.invoiceRemoveBtn} onClick={() => removeMaterialLine(i)}>✕</button>
+              )}
+            </div>
+          ))}
+          <button type="button" style={styles.invoiceAddBtn} onClick={addMaterialLine}>+ Add material</button>
+          <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+            <button type="button" style={styles.btnGreySmall} onClick={skipMaterials}>Skip</button>
+            <button type="button" style={styles.btnGreenSmall} onClick={confirmMaterials}>Continue</button>
+          </div>
+        </div>
+      )}
+
+      {/* Pro-tier invoice builder, shown after "Complete Job" is tapped */}
+      {showInvoiceBuilder && (
+        <div style={styles.invoiceCard}>
+          <p style={styles.jobLabel}>BUILD INVOICE (OPTIONAL)</p>
+          {invoiceItems.map((item, i) => (
+            <div key={i} style={styles.invoiceRow}>
+              <input
+                type="text"
+                placeholder="Description"
+                value={item.description}
+                onChange={(e) => updateInvoiceItem(i, 'description', e.target.value)}
+                style={styles.invoiceDescInput}
+              />
+              <input
+                type="number"
+                placeholder="$"
+                value={item.amount}
+                onChange={(e) => updateInvoiceItem(i, 'amount', e.target.value)}
+                style={styles.invoiceAmountInput}
+              />
+              {invoiceItems.length > 1 && (
+                <button type="button" style={styles.invoiceRemoveBtn} onClick={() => removeInvoiceItem(i)}>✕</button>
+              )}
+            </div>
+          ))}
+          <button type="button" style={styles.invoiceAddBtn} onClick={addInvoiceItem}>+ Add line item</button>
+          {invoiceError && <p style={{ color: '#8A2525', fontSize: 13, margin: '10px 0 0' }}>{invoiceError}</p>}
+          <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+            <button type="button" style={styles.btnGreySmall} onClick={skipInvoice} disabled={invoiceSubmitting}>
+              Skip
+            </button>
+            <button type="button" style={styles.btnGreenSmall} onClick={submitInvoice} disabled={invoiceSubmitting}>
+              {invoiceSubmitting ? 'Sending...' : 'Send Invoice'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Action buttons */}
       <div style={styles.btnGroup}>
-        {status === 'idle' && !tracking && (
+        {status === 'idle' && !tracking && !showOnboardingChecklist && (
           <button style={styles.btnGreen} onClick={handleStartTracking}>
             Start Tracking
           </button>
@@ -404,7 +889,7 @@ export default function TechnicianView() {
             Start Job
           </button>
         )}
-        {status === 'job_active' && (
+        {status === 'job_active' && !showInvoiceBuilder && !showChecklist && !showMaterials && (
           <button style={styles.btnOrange} onClick={handleCompleteJob}>
             Complete Job
           </button>
@@ -416,6 +901,10 @@ export default function TechnicianView() {
               setCurrentJob(null)
               setStatus('tracking')
               setTracking(true)
+              setChecklistDone(false)
+              setChecklistPhotos([])
+              setMaterialsDone(false)
+              setMaterialLines([{ inventory_item_id: '', quantity_used: '' }])
             }}>Ready for Next Job</button>
           </div>
         )}
@@ -451,5 +940,19 @@ const styles = {
   btnBlue: { background: '#2D5FA8', color: '#fff', border: 'none', borderRadius: 14, padding: '18px 0', fontSize: 17, fontWeight: 'bold', cursor: 'pointer', width: '100%' },
   btnOrange: { background: '#A87C16', color: '#fff', border: 'none', borderRadius: 14, padding: '18px 0', fontSize: 17, fontWeight: 'bold', cursor: 'pointer', width: '100%' },
   gpsNote: { color: '#444', fontSize: 12, marginTop: 24, textAlign: 'center' },
-  errorBox: { background: '#FAEAEA', border: '1px solid #8A2525', borderRadius: 12, padding: 20, maxWidth: 340, textAlign: 'center' }
+  errorBox: { background: '#FAEAEA', border: '1px solid #8A2525', borderRadius: 12, padding: 20, maxWidth: 340, textAlign: 'center' },
+  invoiceCard: { background: '#0a0f1d', border: '1px solid #1e293b', borderRadius: 16, padding: 20, width: '100%', maxWidth: 360, marginBottom: 20 },
+  checklistRow: { display: 'flex', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #1e293b', cursor: 'pointer' },
+  invoiceRow: { display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' },
+  invoiceDescInput: { flex: 2, background: '#050811', border: '1px solid #1e293b', borderRadius: 8, padding: '10px 12px', color: '#fff', fontSize: 13 },
+  invoiceAmountInput: { flex: 1, background: '#050811', border: '1px solid #1e293b', borderRadius: 8, padding: '10px 12px', color: '#fff', fontSize: 13, width: 0 },
+  invoiceRemoveBtn: { background: 'none', border: 'none', color: '#8A2525', fontSize: 16, cursor: 'pointer', padding: '0 4px' },
+  invoiceAddBtn: { background: 'none', border: '1px dashed #2D5FA8', color: '#2D5FA8', borderRadius: 8, padding: '8px 0', fontSize: 13, fontWeight: 'bold', cursor: 'pointer', width: '100%', marginTop: 4 },
+  btnGreySmall: { flex: 1, background: '#1e293b', color: '#ccc', border: 'none', borderRadius: 10, padding: '12px 0', fontSize: 14, fontWeight: 'bold', cursor: 'pointer' },
+  btnGreenSmall: { flex: 2, background: '#1D9E75', color: '#fff', border: 'none', borderRadius: 10, padding: '12px 0', fontSize: 14, fontWeight: 'bold', cursor: 'pointer' },
+  photoAttachBtn: { display: 'inline-block', background: '#1e293b', color: '#8899a6', border: '1px dashed #2D5FA8', borderRadius: 8, padding: '6px 10px', fontSize: 12, cursor: 'pointer', margin: '4px 0 8px' },
+  materialSelect: { flex: 2, background: '#050811', border: '1px solid #1e293b', borderRadius: 8, padding: '10px 12px', color: '#fff', fontSize: 13 },
+  credentialBanner: { background: '#2A1F0844', border: '1px solid #A87C16', borderRadius: 12, padding: '12px 16px', width: '100%', maxWidth: 360, marginBottom: 20 },
+  credentialBannerTitle: { color: '#A87C16', fontSize: 13, fontWeight: 'bold', margin: '0 0 6px' },
+  credentialBannerLine: { color: '#ccc', fontSize: 12, margin: '2px 0' }
 }

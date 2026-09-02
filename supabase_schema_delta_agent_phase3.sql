@@ -1,0 +1,40 @@
+-- ============================================================
+-- MINERVA — Delta: Agent Operating System, Phase 3 (Marketing + Scheduling), 2026-09-01.
+--
+-- This is Phase 3 of a 5-phase "Agent Operating System" build. Unlike
+-- Phase 1 (infra tables) and Phase 2 (code-only, no schema changes), Phase 3
+-- needs exactly ONE new column: a per-technician throttle for the new
+-- scheduling-conflict (job-overload) heuristic added to detect-wasted-trips.
+--
+-- detect-wasted-trips runs every ~15 minutes via pg_cron — without a
+-- throttle, a technician who genuinely has more than
+-- OVERLOAD_JOB_THRESHOLD (6) jobs scheduled on one calendar date would get
+-- a fresh agent_insights row written every single run until the situation
+-- changes, flooding the table. This column records the last calendar date
+-- (as a date, not a timestamp — see below) a given technician was already
+-- flagged for, so the same technician+date combination is only ever
+-- written once. It naturally "resets" the next calendar date without any
+-- extra cleanup logic needed.
+--
+-- Standalone file, safe to run independently in the Supabase SQL Editor —
+-- only adds one new column to the existing `technicians` table, does not
+-- touch any other table/column/row. Re-runnable is NOT guaranteed (plain
+-- `alter table add column` errors if the column already exists) — run once.
+--
+-- Run order:
+--   1. This file (supabase_schema_delta_agent_phase3.sql)
+--   2. Deploy the updated function: supabase functions deploy detect-wasted-trips
+--      (the function reads/writes this column; deploying first is harmless
+--      since the column simply won't exist yet, but the overload-check
+--      block will error on every run until this file has been applied —
+--      run the SQL first to avoid that noise).
+-- ============================================================
+
+-- technicians.overload_alert_date: throttle for the scheduling-conflict
+-- (job-overload) heuristic in detect-wasted-trips. Stores the calendar
+-- date (not a timestamp) of the last date this technician was already
+-- flagged for having more than the fixed OVERLOAD_JOB_THRESHOLD (6) jobs
+-- scheduled on one day — see that function's own header/inline comments
+-- for exactly what this heuristic can and can't detect given jobs having
+-- no duration/estimated_duration column.
+alter table technicians add column overload_alert_date date;

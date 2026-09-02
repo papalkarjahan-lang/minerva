@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import Map, { Marker } from 'react-map-gl'
+import Map, { Marker, Source, Layer } from 'react-map-gl'
 import { supabase } from '../supabaseClient'
 import { timeAgo } from '../utils'
 import 'mapbox-gl/dist/mapbox-gl.css'
@@ -14,8 +14,34 @@ export default function TrackingView() {
   const [business, setBusiness] = useState(null)
   const [error, setError] = useState(null)
   const [viewState, setViewState] = useState({
-    latitude: -33.87, longitude: 151.21, zoom: 13
+    latitude: -33.87, longitude: 151.21, zoom: 13, pitch: 50, bearing: -15
   })
+  // Client Self-Serve Rebooking Loop: shown once the job is complete, lets
+  // the client ask for the same job again without a phone call. Writes
+  // straight to `leads` (status='new', source='rebooking') — reuses the
+  // existing leads pipeline/tab the dispatcher already watches (leads has
+  // realtime enabled), so this needed no new table or edge function.
+  const [showRebook, setShowRebook] = useState(false)
+  const [rebookDetails, setRebookDetails] = useState('')
+  const [rebookSubmitting, setRebookSubmitting] = useState(false)
+  const [rebookDone, setRebookDone] = useState(false)
+
+  async function submitRebooking() {
+    setRebookSubmitting(true)
+    await supabase.from('leads').insert({
+      business_id: job.business_id,
+      client_name: job.client_name,
+      client_phone: job.client_phone,
+      suburb: job.client_address || null,
+      urgency: 'routine',
+      job_description: rebookDetails.trim() || `Repeat booking request from a past client (previous job: ${job.client_address || 'on file'}).`,
+      status: 'new',
+      source: 'rebooking',
+      is_repeat_client: true
+    })
+    setRebookSubmitting(false)
+    setRebookDone(true)
+  }
 
   useEffect(() => { loadJob() }, [jobId])
 
@@ -79,7 +105,36 @@ export default function TrackingView() {
       <div style={styles.completeCard}>
         <p style={{ fontSize: 40, margin: '0 0 12px' }}>✅</p>
         <h2 style={{ color: '#1D9E75', margin: '0 0 8px' }}>Job Complete</h2>
-        <p style={{ color: '#555', margin: 0 }}>{business?.name} has completed your service.</p>
+        <p style={{ color: '#555', margin: '0 0 18px' }}>{business?.name} has completed your service.</p>
+
+        {rebookDone ? (
+          <p style={{ color: '#1D9E75', fontSize: 14, margin: 0 }}>
+            Thanks! {business?.name} has been notified and will be in touch.
+          </p>
+        ) : showRebook ? (
+          <div style={{ textAlign: 'left' }}>
+            <label style={styles.rebookLabel}>Anything specific? (optional)</label>
+            <textarea
+              value={rebookDetails}
+              onChange={e => setRebookDetails(e.target.value)}
+              style={styles.rebookTextarea}
+              rows={3}
+              placeholder="e.g. same as last time, or describe the new job"
+            />
+            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+              <button type="button" style={styles.rebookCancelBtn} onClick={() => setShowRebook(false)} disabled={rebookSubmitting}>
+                Cancel
+              </button>
+              <button type="button" style={styles.rebookSubmitBtn} onClick={submitRebooking} disabled={rebookSubmitting}>
+                {rebookSubmitting ? 'Sending...' : 'Send Request'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button type="button" style={styles.rebookBtn} onClick={() => setShowRebook(true)}>
+            Need this again? Request another booking
+          </button>
+        )}
       </div>
     </div>
   )
@@ -103,7 +158,40 @@ export default function TrackingView() {
           onMove={e => setViewState(e.viewState)}
           style={{ width: '100%', height: '100%' }}
           mapStyle="mapbox://styles/mapbox/streets-v12"
+          terrain={{ source: 'mapbox-dem', exaggeration: 1.5 }}
         >
+          {/* 3D terrain elevation + sky atmosphere */}
+          <Source
+            id="mapbox-dem"
+            type="raster-dem"
+            url="mapbox://mapbox.mapbox-terrain-dem-v1"
+            tileSize={512}
+            maxzoom={14}
+          />
+          <Layer
+            id="sky"
+            type="sky"
+            paint={{
+              'sky-type': 'atmosphere',
+              'sky-atmosphere-sun-intensity': 15
+            }}
+          />
+          {/* 3D building extrusions — appear when zoomed in past street level */}
+          <Layer
+            id="3d-buildings"
+            source="composite"
+            source-layer="building"
+            filter={['==', 'extrude', 'true']}
+            type="fill-extrusion"
+            minzoom={14}
+            paint={{
+              'fill-extrusion-color': '#c8d4e0',
+              'fill-extrusion-height': ['get', 'height'],
+              'fill-extrusion-base': ['get', 'min_height'],
+              'fill-extrusion-opacity': 0.8
+            }}
+          />
+
           {/* Technician dot */}
           {tech.current_lat && (
             <Marker latitude={tech.current_lat} longitude={tech.current_lng} anchor="center">
@@ -148,5 +236,10 @@ const styles = {
   footer: { background: '#0a0f1d', padding: '16px 20px', borderTop: '1px solid #1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
   techName: { color: '#fff', fontSize: 16, fontWeight: 'bold', margin: '0 0 4px' },
   techMeta: { color: '#666', fontSize: 12, margin: 0 },
-  statusBadge: { background: '#1D9E7522', color: '#1D9E75', border: '1px solid #1D9E75', borderRadius: 20, padding: '4px 12px', fontSize: 12, fontWeight: 'bold', margin: 0 }
+  statusBadge: { background: '#1D9E7522', color: '#1D9E75', border: '1px solid #1D9E75', borderRadius: 20, padding: '4px 12px', fontSize: 12, fontWeight: 'bold', margin: 0 },
+  rebookBtn: { background: '#2D5FA8', color: '#fff', border: 'none', borderRadius: 10, padding: '12px 18px', fontSize: 14, fontWeight: 'bold', cursor: 'pointer', width: '100%' },
+  rebookLabel: { display: 'block', color: '#555', fontSize: 12, marginBottom: 6 },
+  rebookTextarea: { width: '100%', border: '1px solid #ddd', borderRadius: 8, padding: '8px 10px', fontSize: 13, fontFamily: 'Arial, sans-serif', resize: 'vertical', boxSizing: 'border-box' },
+  rebookCancelBtn: { flex: 1, background: '#eee', color: '#555', border: 'none', borderRadius: 8, padding: '10px 0', fontSize: 13, fontWeight: 'bold', cursor: 'pointer' },
+  rebookSubmitBtn: { flex: 2, background: '#1D9E75', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 0', fontSize: 13, fontWeight: 'bold', cursor: 'pointer' }
 }

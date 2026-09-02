@@ -28,7 +28,10 @@ serve(async (req: Request) => {
     const { clientPhone, clientName, techName, businessName, trackingUrl } = payload
 
     if (!clientPhone || !techName || !businessName) {
-      return new Response(JSON.stringify({ error: 'Missing required fields' }), { status: 400 })
+      return new Response(JSON.stringify({ error: 'Missing required fields' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+      })
     }
 
     // Format phone number to E.164 for Twilio
@@ -78,7 +81,7 @@ serve(async (req: Request) => {
     console.error('send-eta-sms error:', err)
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
-      headers: { 'Content-Type': 'application/json' }
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
     })
   }
 })

@@ -23,14 +23,11 @@
 //                                servers, so it uses the same admin client
 //                                pattern as stripe-webhook)
 //
-// Known limitation (see SECURITY_NOTES.md): this endpoint does not yet
-// validate the X-Twilio-Signature header, so in principle anyone who
-// discovers the URL could POST a fake "missed call" and trigger an SMS
-// send. Twilio signs every webhook request; validating that signature is
-// the standard hardening step (mirrors how stripe-webhook validates
-// Stripe's signature) but has been left as documented follow-up work
-// rather than blocking this feature — the worst case today is nuisance
-// SMS sends via the Twilio account, not any customer data exposure.
+// Validates the X-Twilio-Signature header (HMAC-SHA1 over the full request
+// URL + sorted POST params, keyed with TWILIO_AUTH_TOKEN) so that only
+// genuine requests from Twilio's servers can trigger an SMS send or read
+// business data. Mirrors how stripe-webhook validates Stripe's signature.
+// See SECURITY_NOTES.md — this closes the previously-documented gap.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
@@ -49,10 +46,48 @@ function escapeXml(str: string) {
     .replace(/'/g, '&apos;')
 }
 
+// Twilio's request-validation algorithm: sign (requestUrl + sorted
+// "key"+"value" pairs for every POST param, concatenated with no
+// delimiter) using HMAC-SHA1 keyed with the auth token, base64-encode the
+// result, and compare it to the X-Twilio-Signature header.
+// https://www.twilio.com/docs/usage/security#validating-requests
+async function isValidTwilioSignature(req: Request, form: FormData): Promise<boolean> {
+  const authToken = Deno.env.get('TWILIO_AUTH_TOKEN')
+  const twilioSignature = req.headers.get('X-Twilio-Signature')
+  if (!authToken || !twilioSignature) return false
+
+  const sortedKeys = [...form.keys()].sort()
+  let data = req.url
+  for (const key of sortedKeys) {
+    data += key + (form.get(key)?.toString() ?? '')
+  }
+
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(authToken),
+    { name: 'HMAC', hash: 'SHA-1' },
+    false,
+    ['sign']
+  )
+  const signatureBuffer = await crypto.subtle.sign('HMAC', cryptoKey, new TextEncoder().encode(data))
+  const computedSignature = btoa(String.fromCharCode(...new Uint8Array(signatureBuffer)))
+
+  // Twilio signatures aren't secret-length-sensitive the way session
+  // tokens are, but compare full strings (not a prefix) to avoid any
+  // truncation-based bypass.
+  return computedSignature === twilioSignature
+}
+
 serve(async (req: Request) => {
   try {
     // Twilio posts application/x-www-form-urlencoded params, not JSON.
     const form = await req.formData()
+
+    if (!(await isValidTwilioSignature(req, form))) {
+      console.error('missed-call-webhook: invalid or missing X-Twilio-Signature — rejecting request')
+      return new Response('Invalid signature', { status: 403 })
+    }
+
     const from = form.get('From')?.toString() // caller's number
     const to = form.get('To')?.toString()     // the business's Twilio number
 
