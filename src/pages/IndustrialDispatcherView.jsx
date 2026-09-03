@@ -24,6 +24,8 @@ export default function IndustrialDispatcherView() {
   const [showAddAsset, setShowAddAsset] = useState(false)
   const [showAddItem, setShowAddItem] = useState(false)
   const [busyId, setBusyId] = useState(null)
+  const [expandedAssetId, setExpandedAssetId] = useState(null)
+  const [assetEvents, setAssetEvents] = useState({}) // asset_id -> asset_telemetry_events rows, fetched lazily
 
   useEffect(() => { loadAll() }, [businessId])
 
@@ -54,6 +56,25 @@ export default function IndustrialDispatcherView() {
     const { data: packageList } = await supabase.from('client_verification_packages')
       .select('*').eq('business_id', businessId).order('created_at', { ascending: false })
     setPackages(packageList || [])
+  }
+
+  // Lazy-loads an asset's recent telemetry events (geofence breaches +
+  // maintenance-due flags — not routine 'ping' rows, those are too high-
+  // volume to be a useful human-facing feed) only when its row is expanded.
+  async function toggleAssetDetails(assetId) {
+    if (expandedAssetId === assetId) { setExpandedAssetId(null); return }
+    setExpandedAssetId(assetId)
+    if (!assetEvents[assetId]) {
+      const { data, error } = await supabase
+        .from('asset_telemetry_events')
+        .select('*')
+        .eq('asset_id', assetId)
+        .neq('event_type', 'ping')
+        .order('created_at', { ascending: false })
+        .limit(10)
+      if (error) console.error('asset_telemetry_events fetch failed', error)
+      setAssetEvents(prev => ({ ...prev, [assetId]: data || [] }))
+    }
   }
 
   async function addLead(e) {
@@ -215,9 +236,31 @@ export default function IndustrialDispatcherView() {
             {assets.length === 0 && <p style={styles.emptyText}>No assets registered yet.</p>}
             {assets.map(a => (
               <div key={a.id} style={styles.row}>
-                <p style={styles.rowTitle}>{a.name}</p>
-                <p style={styles.rowMeta}>{a.asset_type} · {a.tag_id ? `tag ${a.tag_id}` : 'no tag id'} · {a.engine_hours || 0} engine hrs</p>
-                <span style={styles.statusBadge(a.status)}>{a.status}</span>
+                <div style={{ cursor: 'pointer' }} onClick={() => toggleAssetDetails(a.id)}>
+                  <p style={styles.rowTitle}>{a.name}</p>
+                  <p style={styles.rowMeta}>{a.asset_type} · {a.tag_id ? `tag ${a.tag_id}` : 'no tag id'} · {a.engine_hours || 0} engine hrs</p>
+                  <span style={styles.statusBadge(a.status)}>{a.status}</span>
+                  <span style={{ ...styles.rowMeta, marginLeft: 8 }}>
+                    {expandedAssetId === a.id ? 'Hide event history ▲' : 'View event history ▼'}
+                  </span>
+                </div>
+                {expandedAssetId === a.id && (
+                  <div style={{ marginTop: 10, borderTop: '1px solid #1e293b', paddingTop: 8 }}>
+                    {(assetEvents[a.id] || []).length > 0 ? (
+                      assetEvents[a.id].map(ev => (
+                        <p key={ev.id} style={styles.rowMeta}>
+                          <span style={styles.statusBadge(ev.event_type === 'geofence_breach' ? 'open' : 'pending sign-off')}>
+                            {ev.event_type.replace('_', ' ').toUpperCase()}
+                          </span>
+                          {' '}{ev.detail || ''}
+                          <span style={{ color: '#444' }}> · {timeAgo(ev.created_at)}</span>
+                        </p>
+                      ))
+                    ) : (
+                      <p style={styles.rowMeta}>No breach or maintenance events recorded.</p>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </>

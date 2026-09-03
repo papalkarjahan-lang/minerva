@@ -50,6 +50,8 @@ export default function DispatcherView() {
   const [expandedJobId, setExpandedJobId] = useState(null)
   const [jobPhotos, setJobPhotos] = useState({}) // job_id -> checklist_photos rows, fetched lazily
   const [jobMaterials, setJobMaterials] = useState({}) // job_id -> job_materials rows, fetched lazily
+  const [jobIncidents, setJobIncidents] = useState({}) // job_id -> technician_incidents rows, fetched lazily
+  const [incidentDraft, setIncidentDraft] = useState({ category: 'note', description: '' })
   const [showSettingsModal, setShowSettingsModal] = useState(false)
   const [queueTab, setQueueTab] = useState('jobs') // 'jobs' | 'leads' | 'assets' | 'invoices' | 'inventory' | 'marketing' | 'credentials' | 'weather' | 'payroll' | 'agents'
   // Payroll v1 (Pro tier) — hours-worked CSV export only, computed on-demand
@@ -249,6 +251,38 @@ export default function DispatcherView() {
       if (error) console.error('job_materials fetch failed', error)
       setJobMaterials(prev => ({ ...prev, [jobId]: data || [] }))
     }
+    if (!jobIncidents[jobId]) {
+      const { data, error } = await supabase
+        .from('technician_incidents')
+        .select('*')
+        .eq('job_id', jobId)
+        .order('created_at', { ascending: false })
+      if (error) console.error('technician_incidents fetch failed', error)
+      setJobIncidents(prev => ({ ...prev, [jobId]: data || [] }))
+    }
+  }
+
+  // Crew Coordination accountability log — dispatcher-side quick-add for a
+  // dispute, near-miss, note, or commendation tied to a completed job. Table
+  // + RLS/grants already existed (Track A, 2026-09-01) but had no UI until now.
+  async function addIncident(job) {
+    const description = incidentDraft.description.trim()
+    if (!description) return
+    const { data, error } = await supabase
+      .from('technician_incidents')
+      .insert({
+        business_id: businessId,
+        technician_id: job.technician_id || null,
+        job_id: job.id,
+        category: incidentDraft.category,
+        description,
+        reported_by: 'dispatcher'
+      })
+      .select()
+      .single()
+    if (error) { console.error('addIncident failed', error); return }
+    setJobIncidents(prev => ({ ...prev, [job.id]: [data, ...(prev[job.id] || [])] }))
+    setIncidentDraft({ category: 'note', description: '' })
   }
 
   // Agent Operating System dashboard (Phase 5) — lazy-loads its 3 queries
@@ -902,9 +936,16 @@ export default function DispatcherView() {
                             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
                               {jobPhotos[job.id].map(photo => {
                                 const url = supabase.storage.from('checklist-photos').getPublicUrl(photo.storage_path).data.publicUrl
+                                const watchtowerTitle = photo.verification_status === 'unavailable'
+                                  ? photo.checklist_item
+                                  : `${photo.checklist_item}${photo.verification_notes ? ' — ' + photo.verification_notes : ''}`
                                 return (
-                                  <a key={photo.id} href={url} target="_blank" rel="noreferrer" title={photo.checklist_item}>
+                                  <a key={photo.id} href={url} target="_blank" rel="noreferrer" title={watchtowerTitle}
+                                    style={{ position: 'relative', display: 'inline-block' }}>
                                     <img src={url} alt={photo.checklist_item} style={styles.photoThumb} />
+                                    {(photo.verification_status === 'pass' || photo.verification_status === 'flagged') && (
+                                      <span style={styles.watchtowerDot(photo.verification_status)} />
+                                    )}
                                   </a>
                                 )
                               })}
@@ -921,6 +962,39 @@ export default function DispatcherView() {
                           ) : (
                             <p style={{ color: '#444', fontSize: 11 }}>No materials recorded</p>
                           )}
+                          <div style={{ marginTop: 10, borderTop: '1px solid #1e293b', paddingTop: 8 }}>
+                            <p style={{ color: '#555', fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', margin: '0 0 6px' }}>Incident Log</p>
+                            {(jobIncidents[job.id] || []).length > 0 ? (
+                              jobIncidents[job.id].map(inc => (
+                                <p key={inc.id} style={{ color: '#8899a6', fontSize: 12, margin: '0 0 4px' }}>
+                                  <span style={styles.incidentBadge(inc.category)}>{(inc.category || 'note').toUpperCase()}</span>
+                                  {' '}{inc.description}
+                                  <span style={{ color: '#444' }}> · {new Date(inc.created_at).toLocaleDateString('en-AU')}</span>
+                                </p>
+                              ))
+                            ) : (
+                              <p style={{ color: '#444', fontSize: 11, margin: '0 0 6px' }}>No incidents logged</p>
+                            )}
+                            <div style={{ display: 'flex', gap: 6, marginTop: 6 }} onClick={(e) => e.stopPropagation()}>
+                              <select
+                                value={incidentDraft.category}
+                                onChange={e => setIncidentDraft(prev => ({ ...prev, category: e.target.value }))}
+                                style={styles.incidentSelect}>
+                                <option value="note">Note</option>
+                                <option value="dispute">Dispute</option>
+                                <option value="near_miss">Near miss</option>
+                                <option value="commendation">Commendation</option>
+                              </select>
+                              <input
+                                type="text"
+                                placeholder="Add a note..."
+                                value={incidentDraft.description}
+                                onChange={e => setIncidentDraft(prev => ({ ...prev, description: e.target.value }))}
+                                style={styles.incidentInput}
+                              />
+                              <button style={styles.leadActionSecondary} onClick={() => addIncident(job)}>Add</button>
+                            </div>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -1009,6 +1083,11 @@ export default function DispatcherView() {
                     </span>
                   </div>
                   <p style={styles.jobAddr}>${Number(inv.total).toFixed(2)} · {new Date(inv.created_at).toLocaleDateString('en-AU')}</p>
+                  {inv.status !== 'paid' && inv.reminder_count > 0 && (
+                    <p style={{ ...styles.jobAddr, color: inv.reminder_count >= 3 ? '#c47a3d' : '#888' }}>
+                      {inv.reminder_count} reminder{inv.reminder_count === 1 ? '' : 's'} sent automatically
+                    </p>
+                  )}
                   {inv.status !== 'paid' && (
                     <button style={styles.leadActionPrimary} onClick={() => markInvoicePaid(inv.id)}>Mark paid</button>
                   )}
@@ -2253,5 +2332,27 @@ const styles = {
   input: { width: '100%', padding: '10px 12px', borderRadius: 10, border: '1px solid #ddd', fontSize: 14, boxSizing: 'border-box' },
   submitBtn: { flex: 1, background: '#2D5FA8', color: '#fff', border: 'none', borderRadius: 10, padding: '12px 0', fontSize: 15, fontWeight: 'bold', cursor: 'pointer' },
   cancelBtn: { flex: 1, background: '#f5f5f5', color: '#555', border: 'none', borderRadius: 10, padding: '12px 0', fontSize: 15, cursor: 'pointer' },
-  photoThumb: { width: 56, height: 56, objectFit: 'cover', borderRadius: 6, border: '1px solid #1e293b' }
+  photoThumb: { width: 56, height: 56, objectFit: 'cover', borderRadius: 6, border: '1px solid #1e293b' },
+  incidentBadge: (category) => ({
+    display: 'inline-block',
+    fontSize: 9,
+    fontWeight: 'bold',
+    letterSpacing: 0.5,
+    padding: '2px 6px',
+    borderRadius: 4,
+    color: '#fff',
+    background: category === 'dispute' ? '#8A2525' : category === 'near_miss' ? '#a86a2d' : category === 'commendation' ? '#1D9E75' : '#2D5FA8'
+  }),
+  incidentSelect: { background: '#050811', color: '#ddd', border: '1px solid #1e293b', borderRadius: 6, fontSize: 11, padding: '5px 4px' },
+  incidentInput: { flex: 1, background: '#050811', color: '#ddd', border: '1px solid #1e293b', borderRadius: 6, fontSize: 12, padding: '5px 8px' },
+  watchtowerDot: (status) => ({
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    width: 10,
+    height: 10,
+    borderRadius: '50%',
+    background: status === 'flagged' ? '#8A2525' : '#1D9E75',
+    border: '1.5px solid #050811'
+  })
 }
