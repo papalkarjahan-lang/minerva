@@ -26,9 +26,20 @@ serve(async (req: Request) => {
     const { data: site, error } = await supabase.from('site_projects').select('id, business_id, name, scope_of_work').eq('id', siteId).maybeSingle()
     if (error || !site) throw new Error('site not found')
 
+    // asset_telemetry_events has no site_id column — only asset_id — so
+    // scoping "this site's telemetry" means first finding which assets were
+    // assigned to this site (industrial_assets.geofence_site_id), then
+    // filtering events by that asset id list. Without this step, evidence
+    // would include telemetry from every asset the business owns, not just
+    // this site's, which would misrepresent what happened on-site.
+    const { data: siteAssets } = await supabase.from('industrial_assets').select('id').eq('geofence_site_id', siteId)
+    const siteAssetIds = (siteAssets || []).map(a => a.id)
+
     const [{ data: checkins }, { data: telemetry }, { data: incidents }] = await Promise.all([
       supabase.from('site_checkins').select('person_name, role, checkin_type, detail, created_at').eq('site_id', siteId).order('created_at'),
-      supabase.from('asset_telemetry_events').select('asset_id, event_type, detail, created_at').eq('business_id', site.business_id).order('created_at'),
+      siteAssetIds.length > 0
+        ? supabase.from('asset_telemetry_events').select('asset_id, event_type, detail, created_at').in('asset_id', siteAssetIds).order('created_at')
+        : Promise.resolve({ data: [] }),
       supabase.from('safety_incidents').select('severity, description, acknowledged_at, created_at').eq('site_id', siteId).order('created_at'),
     ])
 

@@ -31,12 +31,19 @@ serve(async (req: Request) => {
     if (req.method === 'POST') {
       const body = await req.json().catch(() => ({}))
       if (body.leadId) {
-        await supabase.from('industrial_leads').update({
+        const { data: updated, error: updateErr } = await supabase.from('industrial_leads').update({
           decision_maker_name: body.decision_maker_name || null,
           decision_maker_title: body.decision_maker_title || null,
           decision_maker_contact: body.decision_maker_contact || null,
           status: 'enriched',
-        }).eq('id', body.leadId)
+        }).eq('id', body.leadId).select().maybeSingle()
+
+        if (updateErr || !updated) {
+          return new Response(JSON.stringify({ success: false, error: updateErr?.message || 'lead not found' }), {
+            status: updateErr ? 500 : 404,
+            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+          })
+        }
 
         return new Response(JSON.stringify({ success: true, enriched: body.leadId }), {
           status: 200,

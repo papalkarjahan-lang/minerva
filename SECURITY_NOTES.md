@@ -187,9 +187,15 @@ new trust boundary is introduced. Worth calling out specifically:
 operational patterns (which functions are erroring, staleness, etc.) since
 `business_id` is nullable and rows aren't scoped per-caller — but this is
 the same class of risk already accepted project-wide (see "The model:
-unguessable links, not logins" above), not a new one. The kill-switch flag
-on `agent_functions` (`enabled`) is not yet read by any function, so it
-carries no security implication either way today.
+unguessable links, not logins" above), not a new one. **Update 2026-09-03:
+the kill-switch flag on `agent_functions` (`enabled`) IS now read** — all 11
+gated edge functions check `agent_functions.enabled === false` on entry and
+skip early if disabled (verified via code audit). Practical implication:
+anyone with a dispatch link who discovers `?agents=1` could disable another
+business's automated agents (e.g. `chase-unpaid-invoices`) via the toggle in
+the Agent Ops tab, since these rows aren't `business_id`-scoped — same
+"anon key = full access" tradeoff as everywhere else in this doc, not a new
+boundary, but worth naming now that the toggle actually does something.
 
 **Phase 5 note**: the new read-only Agents tab in `DispatcherView.jsx`
 surfaces this same already-anon-readable data (plus `agent_council_reports`,

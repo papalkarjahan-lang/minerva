@@ -172,7 +172,10 @@ The last eighteen functions above power the autonomous-operations layer
   `weather_reschedule_drafts` row's client SMS from the dispatcher's
   **Weather** tab. Never runs on its own.
 - **`send-referral-code-sms`** — fire-and-forget: called by the frontend
-  the moment a Pro or non-Pro invoice is marked paid, not scheduled.
+  the moment an invoice is marked paid, not scheduled. Invoicing itself is
+  a Pro-tier-only feature (see pricing below), so in practice this only
+  ever fires for Pro-tier businesses — there's no separate tier check in
+  the function itself, it just can't be reached any other way.
 
 Details on the three newest scheduled agents:
 - **`retention-checkin`** (weekly) — Customer Management pillar. Finds
@@ -265,7 +268,8 @@ above — purely additive, nothing below changes any existing behaviour):
   safe to automate, a pay calculation is not).
 - **`send-weather-reschedule-sms`** / **Weather tab** — see above.
 - **`send-referral-code-sms`** — Paid-Invoice Referral Loop. The moment an
-  invoice is marked paid (any tier), generates a short referral code for
+  invoice is marked paid (Pro tier only, since invoicing itself is a
+  Pro-tier feature), generates a short referral code for
   that invoice and texts the client a simple "share this with a friend"
   message — a single acknowledgment-tier nudge, not a marketing campaign,
   same low-stakes bar as the existing retention check-in SMS. If a future
