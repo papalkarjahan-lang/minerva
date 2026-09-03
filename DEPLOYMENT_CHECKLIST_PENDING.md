@@ -39,17 +39,17 @@ this time, just no credential in this particular shell.
    tab (calls `supabase.from('agent_functions').update({enabled})` directly
    from the frontend using the anon key, so no edge function redeploy is
    needed for this one — just ship the frontend build).
-2. **Shared-secret auth on `harvest-industrial-leads` /
-   `monitor-asset-telemetry`** — needs, in order:
-   - Run the new `alter table businesses add column ingestion_key text
-     default gen_random_uuid()::text;` statement in
-     `supabase_schema_delta_industrial.sql` (safe to run anytime, additive).
-   - `supabase functions deploy harvest-industrial-leads --no-verify-jwt`
-   - `supabase functions deploy monitor-asset-telemetry --no-verify-jwt`
-   - Until deployed, these two endpoints are still open (no key check live).
-     No real vendor is wired to either yet, so no live traffic is affected
-     either way — but don't forget this step before pointing a real feed at
-     them. See `SECURITY_NOTES.md` for the full rationale.
+2. **DONE, live as of 2026-09-03.** Shared-secret auth on
+   `harvest-industrial-leads` / `monitor-asset-telemetry`:
+   - `businesses.ingestion_key` column added (verified via
+     `information_schema.columns`: text, default `gen_random_uuid()::text`).
+     `businesses` table currently has 0 rows, so nothing needed backfilling.
+   - Both functions redeployed with `--no-verify-jwt`; confirmed via CLI
+     success response ("Deployed Functions.").
+   - Both endpoints now reject requests missing a matching `X-Ingestion-Key`
+     header with 401. No real vendor is wired to either yet, so this closed
+     the gap before any live traffic could hit it. See `SECURITY_NOTES.md`
+     for the full rationale.
 
 ---
 
