@@ -61,6 +61,10 @@ If it's not useful right now, no worries — just reply "not now" and I'll leave
 
 ## Email 3 — Day 7 (if no reply — social proof / breakup email)
 
+**Do not send this version until at least one real paying customer exists —
+see `SALES_CLAIMS_ACCURACY_NOTE.md`. Use the no-social-proof fallback below
+until then.**
+
 Subject: last one — [Business Name]
 
 Hi [First name],
@@ -68,6 +72,11 @@ Hi [First name],
 Last note from me on this. A few [trade type] businesses in [region] are
 already running Minerva — the common thing they say is it kills the "where are you"
 calls in the first week.
+
+**Fallback (use now, no real customers yet):**
+Last note from me on this. If it's not the right time, no worries at all —
+just wanted to put the option in front of you before your busiest season
+hits.
 
 If you want to see it live on your own phone (takes 2 minutes, no signup), here's a
 demo link: [link]. If not, no hard feelings — I'll stop here.

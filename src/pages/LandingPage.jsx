@@ -36,7 +36,7 @@ export default function LandingPage() {
       </div>
 
       {/* Features */}
-      <div style={{ maxWidth: 800, margin: '0 auto 80px', padding: '0 24px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 24 }}>
+      <div style={{ maxWidth: 800, margin: '0 auto 80px', padding: '0 24px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 24 }}>
         {[
           ['📍', 'Live map', 'See every technician in real time without making a single call.'],
           ['📱', 'Client SMS', 'Automatic text with a live tracking link when your tech is 15 minutes away.'],
@@ -54,7 +54,7 @@ export default function LandingPage() {
       <div style={{ maxWidth: 680, margin: '0 auto 80px', padding: '0 24px', textAlign: 'center' }}>
         <h2 style={{ fontSize: 32, fontWeight: 'bold', margin: '0 0 12px' }}>Simple, honest pricing</h2>
         <p style={{ color: '#aaa', margin: '0 0 36px' }}>Per technician. Cancel anytime.</p>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
           {[
             ['Starter', '$49', 'per tech/month', ['Live GPS map', 'Client ETA SMS', 'Job start/complete', 'Works on any phone']],
             ['Standard', '$79', 'per tech/month', ['Everything in Starter', 'Dispatch board', 'Automatic intake chat & lead scoring', 'Job scheduling'], true],

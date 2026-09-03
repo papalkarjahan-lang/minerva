@@ -12,6 +12,13 @@ the phone scripts might say "smart," and no email claims the system
 "learns." If `ANTHROPIC_API_KEY` is live by the time you send these, check
 `ANTHROPIC_KEY_LIVE_UPGRADE_NOTE.md` for which lines can upgrade.
 
+**One exception, flagged 2026-09-02:** the Day 7 emails for Client 1
+(Plumbing), Client 4 (Commercial Cleaning), and Client 6 (Pest Control) each
+include a social-proof line ("A few [trade type] businesses in [region] are
+already running Minerva..."). This is false until there's at least one real
+paying customer — don't send those three Email 3s as-written until then.
+Drop that sentence and go straight to the demo-link close in the meantime.
+
 Same send-time rule as the base sequence: Tue–Thu, 7:30–8:30am local time.
 Never Monday, never Friday afternoon.
 

@@ -31,6 +31,15 @@
 -- industrial agent functions below.
 alter table businesses add column sector text default 'trade'; -- 'trade' | 'industrial'
 
+-- Per-business shared secret for the two unauthenticated (--no-verify-jwt)
+-- ingestion webhooks below (harvest-industrial-leads, monitor-asset-telemetry).
+-- Auto-generated on column add so every existing business gets a real key
+-- for free — a real vendor feed or CSV-import script must send it back as
+-- the `X-Ingestion-Key` header or the request is rejected with 401. Closes
+-- the gap documented in SECURITY_NOTES.md ("a stronger case for adding a
+-- per-business shared-secret header... rather than leaving it open-ended").
+alter table businesses add column ingestion_key text default gen_random_uuid()::text;
+
 -- ------------------------------------------------------------
 -- Asset Tracking & Lifecycle Domain (Telemetry + Audit)
 -- ------------------------------------------------------------
@@ -166,3 +175,12 @@ create table client_verification_packages (
 alter table client_verification_packages enable row level security;
 create policy "anon all client_verification_packages" on client_verification_packages
   for all using (true) with check (true);
+
+-- Table-level grants — RLS policies above are inert without these (see the
+-- 2026-09-02 outage note in supabase_schema.sql's ROW LEVEL SECURITY
+-- section for the full story of why this line can't be skipped).
+grant select, insert, update, delete on
+  industrial_assets, asset_telemetry_events, industrial_leads,
+  site_projects, site_checkins, safety_incidents, consumables_items,
+  client_verification_packages
+to anon, authenticated, service_role;

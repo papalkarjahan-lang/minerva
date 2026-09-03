@@ -88,3 +88,10 @@ create table workflow_runs (
 alter table workflow_runs enable row level security;
 create policy "anon all workflow_runs" on workflow_runs
   for all using (true) with check (true);
+
+-- Table-level grants — RLS policies above are inert without these (see the
+-- 2026-09-02 outage note in supabase_schema.sql's ROW LEVEL SECURITY
+-- section for the full story of why this line can't be skipped).
+grant select, insert, update, delete on
+  technician_incidents, custom_workflows, workflow_runs
+to anon, authenticated, service_role;

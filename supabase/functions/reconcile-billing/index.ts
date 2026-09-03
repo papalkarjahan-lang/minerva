@@ -40,6 +40,11 @@ serve(async (req: Request) => {
   }
 
   try {
+    const { data: fnState } = await supabaseAdmin.from('agent_functions').select('enabled').eq('name', 'reconcile-billing').maybeSingle()
+    if (fnState?.enabled === false) {
+      return new Response(JSON.stringify({ success: true, skipped: true, reason: 'disabled via agent_functions.enabled' }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
+
     const { data: businesses, error } = await supabaseAdmin
       .from('businesses')
       .select('id, name, stripe_sub_item_id, subscription_tier')

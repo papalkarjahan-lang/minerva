@@ -83,18 +83,23 @@ entirely by possession of an unguessable URL or PIN:
   reachable/safe (no SSRF protection against internal/private IP ranges) —
   acceptable for a small number of trusted pilot clients pasting their own
   webhook URLs, revisit before opening this to self-serve signups.
-- **`harvest-industrial-leads`** and **`monitor-asset-telemetry`** are
-  deployed with `--no-verify-jwt` (same reasoning as `stripe-webhook` /
-  `missed-call-webhook`) so an external ingestion source can call them
-  without a Supabase auth header. Neither validates a shared secret or
-  signature today — anyone who discovers the URL can insert leads or asset
-  telemetry for **any** `businessId` they guess or already know. Since
-  `businessId` is the same 122-bit UUIDv4 used everywhere else in this
-  doc's trust model, this is consistent with (not worse than) the existing
-  "unguessable link = access" pattern, but unlike a read-only link this is
-  a write path — a stronger case for adding a per-business shared-secret
-  header (`X-Ingestion-Key`) once a real external vendor feed is actually
-  wired up, rather than leaving it open-ended indefinitely.
+- **Fixed 2026-09-02: `harvest-industrial-leads` and `monitor-asset-telemetry`
+  now validate a per-business shared secret.** Both are still deployed with
+  `--no-verify-jwt` (same reasoning as `stripe-webhook` / `missed-call-webhook`)
+  so an external ingestion source can call them without a Supabase auth
+  header, but each request must now also send an `X-Ingestion-Key` header
+  matching that business's `businesses.ingestion_key` value (a random UUID,
+  auto-generated on the column via `supabase_schema_delta_industrial.sql`).
+  A request with a missing or wrong key gets a 401 before any row is
+  written. This closes the previously-documented gap where anyone who
+  discovered the URL could insert leads or asset telemetry for any
+  `businessId`/`assetId` they guessed or already knew — that write path no
+  longer relies solely on the UUID being unguessable. No UI to view/rotate
+  the key exists yet (it's a plain column, readable via the same anon
+  `businesses` select as everything else) — a real vendor integration
+  should read it via the dashboard/DB directly for now, and rotating it is
+  a manual `update businesses set ingestion_key = gen_random_uuid()::text
+  where id = '...'`.
 - **Industrial sector tables** (`industrial_leads`, `industrial_assets`,
   `site_projects`, `site_checkins`, `safety_incidents`,
   `consumables_items`, `client_verification_packages`) use the same

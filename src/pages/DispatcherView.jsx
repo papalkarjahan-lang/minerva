@@ -51,7 +51,20 @@ export default function DispatcherView() {
   const [jobPhotos, setJobPhotos] = useState({}) // job_id -> checklist_photos rows, fetched lazily
   const [jobMaterials, setJobMaterials] = useState({}) // job_id -> job_materials rows, fetched lazily
   const [showSettingsModal, setShowSettingsModal] = useState(false)
-  const [queueTab, setQueueTab] = useState('jobs') // 'jobs' | 'leads' | 'assets' | 'invoices' | 'inventory' | 'marketing' | 'credentials' | 'weather' | 'agents'
+  const [queueTab, setQueueTab] = useState('jobs') // 'jobs' | 'leads' | 'assets' | 'invoices' | 'inventory' | 'marketing' | 'credentials' | 'weather' | 'payroll' | 'agents'
+  // Payroll v1 (Pro tier) — hours-worked CSV export only, computed on-demand
+  // for an owner-chosen date range (not pre-fetched, since technician_locations
+  // can be large). Same GPS-breadcrumb estimate logic as update-technician-workload's
+  // rolling_week_hours, just generalized to a custom range. Deliberately does NOT
+  // calculate PAYG/super/award rates or pay dollar amounts — see README/memory
+  // scope note: this is a raw-hours export for the owner's own accountant/payroll
+  // software, not an in-app payroll engine.
+  const today = new Date().toISOString().slice(0, 10)
+  const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  const [payrollStart, setPayrollStart] = useState(fourteenDaysAgo)
+  const [payrollEnd, setPayrollEnd] = useState(today)
+  const [payrollRows, setPayrollRows] = useState(null) // null = not yet generated for current range
+  const [payrollLoading, setPayrollLoading] = useState(false)
   // Agent Operating System dashboard (Phase 5) — platform-wide, read-only.
   // Lazy-loaded (see useEffect below) so these 3 queries only fire if/when
   // someone actually opens the tab, not on every DispatcherView mount.
@@ -283,6 +296,20 @@ export default function DispatcherView() {
       .maybeSingle()
     if (reportError) console.error('agent_council_reports fetch failed', reportError)
     setAgentCouncilReport(report || null)
+  }
+
+  // Flips agent_functions.enabled for one row (operator-only Agent Ops
+  // toggle, added 2026-09-02 — see KILL_SWITCH_GATED_FUNCTIONS above).
+  // Optimistic-ish: only updates local state after the write succeeds, so
+  // a failed update just silently leaves the toggle where it was rather
+  // than lying about the row's real state.
+  async function toggleAgentFunction(fn) {
+    const { error } = await supabase
+      .from('agent_functions')
+      .update({ enabled: !fn.enabled })
+      .eq('id', fn.id)
+    if (error) { console.error('agent_functions toggle failed', error); return }
+    setAgentFunctions(prev => prev.map(f => f.id === fn.id ? { ...f, enabled: !f.enabled } : f))
   }
 
   async function setMapCenter(city) {
@@ -576,6 +603,58 @@ export default function DispatcherView() {
     )
   }
 
+  // Payroll v1: fetches technician_locations for the chosen date range and
+  // buckets hours the same way update-technician-workload does (per
+  // calendar day, sum of max-min recorded_at), just per-technician for a
+  // custom range instead of a fixed rolling 7 days. Explicit "Generate"
+  // click rather than auto-loading on tab open, since a wide date range on
+  // a business with many technicians/months of history could be a large
+  // query — the owner picks a range and asks for it.
+  async function generatePayrollHours() {
+    if (!payrollStart || !payrollEnd) return
+    setPayrollLoading(true)
+    setPayrollRows(null)
+    const startIso = new Date(payrollStart + 'T00:00:00').toISOString()
+    const endIso = new Date(payrollEnd + 'T23:59:59.999').toISOString()
+
+    const { data: locations, error } = await supabase
+      .from('technician_locations')
+      .select('technician_id, recorded_at')
+      .eq('business_id', businessId)
+      .gte('recorded_at', startIso)
+      .lte('recorded_at', endIso)
+    if (error) { console.error('payroll locations fetch failed', error); setPayrollLoading(false); return }
+
+    const byTech = {}
+    for (const loc of locations || []) {
+      const day = loc.recorded_at.slice(0, 10)
+      const t = new Date(loc.recorded_at).getTime()
+      if (!byTech[loc.technician_id]) byTech[loc.technician_id] = {}
+      const days = byTech[loc.technician_id]
+      if (!days[day]) days[day] = { min: t, max: t }
+      else { days[day].min = Math.min(days[day].min, t); days[day].max = Math.max(days[day].max, t) }
+    }
+
+    const rows = technicians.map(tech => {
+      const days = byTech[tech.id] || {}
+      const dayKeys = Object.keys(days)
+      let totalHours = 0
+      for (const d of dayKeys) totalHours += (days[d].max - days[d].min) / (1000 * 60 * 60)
+      return { id: tech.id, name: tech.name, hours: Math.round(totalHours * 10) / 10, daysActive: dayKeys.length }
+    })
+    setPayrollRows(rows)
+    setPayrollLoading(false)
+  }
+
+  function exportPayrollCSV() {
+    if (!payrollRows) return
+    exportCSV(
+      ['Technician', 'Estimated Hours', 'Days With GPS Activity', 'Period Start', 'Period End'],
+      payrollRows.map(r => [r.name, r.hours, r.daysActive, payrollStart, payrollEnd]),
+      'minerva-payroll'
+    )
+  }
+
   // Deactivating removes a technician from active duty (they no longer show
   // on the map or count toward billing). Kept as a soft-delete (is_active =
   // false) rather than a hard delete, so job history stays intact.
@@ -595,6 +674,18 @@ export default function DispatcherView() {
   // state above (cheap — at most a few dozen rows).
   const AGENT_GROUPS = ['outreach', 'marketing', 'scheduling', 'finance', 'core', 'research', 'design']
   const NOT_YET_BUILT_AGENTS = ['research', 'design'] // per Phase 1 seed data — no rows exist for these yet
+  // The 11 truly autonomous cron-scheduled functions that check
+  // agent_functions.enabled at the top of every run (added 2026-09-02).
+  // auto-assign-technician (event-driven, no safe disable mid-dispatch),
+  // launch-ad-campaign / send-growth-message (human-click-triggered only),
+  // and test-agent-health (the health monitor itself) deliberately don't
+  // read the flag, so the toggle is hidden for those rows below.
+  const KILL_SWITCH_GATED_FUNCTIONS = [
+    'chase-unpaid-invoices', 'check-inventory-levels', 'check-weather-risk',
+    'detect-wasted-trips', 'generate-growth-drafts', 'nurture-stale-leads',
+    'retention-checkin', 'winback-lost-leads', 'agent-council-report',
+    'reconcile-billing', 'update-technician-workload',
+  ]
   const agentGroupCounts = AGENT_GROUPS.map(agent => ({
     agent,
     count: agentFunctions.filter(f => f.agent === agent).length,
@@ -716,6 +807,9 @@ export default function DispatcherView() {
                   </button>
                   <button style={styles.tabBtn(queueTab === 'marketing')} onClick={() => setQueueTab('marketing')}>
                     MARKETING ({marketingDrafts.filter(d => d.status === 'pending').length})
+                  </button>
+                  <button style={styles.tabBtn(queueTab === 'payroll')} onClick={() => setQueueTab('payroll')}>
+                    PAYROLL
                   </button>
                 </>
               )}
@@ -1010,6 +1104,51 @@ export default function DispatcherView() {
             </>
           )}
 
+          {queueTab === 'payroll' && (
+            <>
+              <p style={{ color: '#888', fontSize: 12, marginBottom: 10, lineHeight: 1.4 }}>
+                Estimated hours per technician, derived from GPS activity (same
+                signal as the "this wk" hours shown on each technician card) —
+                <strong> not a certified timesheet</strong>. Pick a period and
+                generate, then export to hand to your accountant or import
+                into your own payroll software. Minerva does not calculate
+                PAYG, superannuation, or award rates.
+              </p>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 12 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 11, color: '#666', marginBottom: 4 }}>Period start</label>
+                  <input type="date" value={payrollStart} max={payrollEnd}
+                    onChange={e => setPayrollStart(e.target.value)} style={{ ...styles.input, padding: '6px 8px' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 11, color: '#666', marginBottom: 4 }}>Period end</label>
+                  <input type="date" value={payrollEnd} min={payrollStart} max={today}
+                    onChange={e => setPayrollEnd(e.target.value)} style={{ ...styles.input, padding: '6px 8px' }} />
+                </div>
+                <button style={styles.addJobBtn} onClick={generatePayrollHours} disabled={payrollLoading}>
+                  {payrollLoading ? 'Calculating…' : 'Generate'}
+                </button>
+                {payrollRows && (
+                  <button style={{ ...styles.addJobBtn, background: 'transparent', border: '1px solid #1e293b', color: '#8fd0e8' }}
+                    onClick={exportPayrollCSV}>
+                    ⬇ Export CSV
+                  </button>
+                )}
+              </div>
+              {payrollRows && payrollRows.map(row => (
+                <div key={row.id} style={styles.jobRow}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <p style={styles.jobClient}>{row.name}</p>
+                    <span style={{ fontSize: 13, fontWeight: 'bold', color: '#8fd0e8' }}>{row.hours}h</span>
+                  </div>
+                  <p style={styles.jobAddr}>{row.daysActive} day{row.daysActive === 1 ? '' : 's'} with GPS activity in period</p>
+                </div>
+              ))}
+              {payrollRows && payrollRows.length === 0 && <p style={{ color: '#444', fontSize: 13 }}>No active technicians</p>}
+              {!payrollRows && !payrollLoading && <p style={{ color: '#444', fontSize: 13 }}>Choose a period and click Generate</p>}
+            </>
+          )}
+
           {queueTab === 'credentials' && (
             <>
               <p style={{ color: '#888', fontSize: 12, marginBottom: 10 }}>
@@ -1085,12 +1224,16 @@ export default function DispatcherView() {
 
           {/* Agent Operating System dashboard (Phase 5). Platform-wide data —
               see showAgentsTab / the "Agent Ops (operator only)" tab button
-              above for the gating decision and reasoning. Read-only: no
-              enable/disable control for agent_functions.enabled here — that
-              kill-switch column exists in the DB (Phase 1) but no edge
-              function reads it yet, so wiring a UI toggle to it now would be
-              misleading (a control that does nothing). Known follow-up for a
-              later phase, see README.md. */}
+              above for the gating decision and reasoning.
+              Enable/disable toggle added 2026-09-02: the 11 autonomous
+              cron-scheduled functions (Outreach/Finance/Marketing/
+              Scheduling reasoning agents — not the human-click-triggered
+              ones like launch-ad-campaign, and not auto-assign-technician
+              since disabling mid-dispatch has no safe fallback) now check
+              agent_functions.enabled at the top of every run and skip with
+              a 200 no-op if false. Event-driven and click-triggered
+              functions don't show a toggle here since disabling them isn't
+              meaningful the same way. */}
           {queueTab === 'agents' && (
             <>
               <p style={{ color: '#888', fontSize: 12, marginBottom: 10, lineHeight: 1.4 }}>
@@ -1130,6 +1273,13 @@ export default function DispatcherView() {
                     {' · last run '}{timeAgo(fn.last_run_at)}
                     {fn.error_count > 0 ? ` · ${fn.error_count} error${fn.error_count === 1 ? '' : 's'}` : ''}
                   </p>
+                  {KILL_SWITCH_GATED_FUNCTIONS.includes(fn.name) && (
+                    <button
+                      onClick={() => toggleAgentFunction(fn)}
+                      style={{ ...styles.leadActionSecondary, marginTop: 8, padding: '4px 10px', fontSize: 11, color: fn.enabled === false ? '#1D9E75' : '#8A2525' }}>
+                      {fn.enabled === false ? 'Enable' : 'Disable'}
+                    </button>
+                  )}
                 </div>
               ))}
               {agentFunctions.length === 0 && <p style={{ color: '#444', fontSize: 13 }}>No agent functions recorded yet</p>}

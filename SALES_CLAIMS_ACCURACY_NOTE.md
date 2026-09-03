@@ -50,6 +50,17 @@ underlying mechanism runs either way:
   no model training or memory between runs beyond what's stored in
   `agent_insights` as plain rows another function might read later.
 
+## Social proof — not safe to say until there's a real converted customer
+
+The Day-7 breakup emails in `OUTREACH_EMAILS.md` and
+`EXACT_OUTREACH_EMAIL_DRAFTS.md` (Clients 1, 4, 6) all include a line like
+"A few [trade type] businesses in [region] are already running Minerva."
+This is currently false — zero real businesses have signed up yet (checked
+live in the database 2026-09-02). Don't send any Email 3 containing this
+line until at least one real paying customer exists. Once one does, it's
+fine to say "a [trade type] business" (singular, true) rather than "a few"
+until there are genuinely several.
+
 ## On the Industrial sector specifically
 
 See the honesty note already written into

@@ -9,14 +9,21 @@
 // endpoint with { assetId, lat, lng, engineHours } and it will log the
 // ping, then run the same geofence/maintenance checks a real feed would
 // trigger.
-// Deploy with: supabase functions deploy monitor-asset-telemetry
+// Deploy with: supabase functions deploy monitor-asset-telemetry --no-verify-jwt
+//
+// Requires the `X-Ingestion-Key` header to match businesses.ingestion_key
+// for the asset's business (added 2026-09-02 — see SECURITY_NOTES.md). This
+// is deployed with --no-verify-jwt so an external source can call it
+// without a Supabase auth header, which otherwise means anyone who
+// discovers the URL could post fake telemetry for any assetId they guess
+// or already know; this per-business shared secret closes that gap.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' } })
+    return new Response('ok', { headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-ingestion-key' } })
   }
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'POST only — this is a real-time ingestion endpoint, not a cron sweep' }), {
@@ -34,9 +41,18 @@ serve(async (req: Request) => {
     if (!assetId) throw new Error('assetId is required')
 
     const { data: asset, error } = await supabase.from('industrial_assets')
-      .select('id, business_id, name, geofence_site_id, maintenance_interval_hours, last_maintenance_at_hours')
+      .select('id, business_id, name, geofence_site_id, maintenance_interval_hours, last_maintenance_at_hours, businesses(ingestion_key)')
       .eq('id', assetId).maybeSingle()
     if (error || !asset) throw new Error('asset not found')
+
+    const providedKey = req.headers.get('x-ingestion-key')
+    const expectedKey = (asset as any).businesses?.ingestion_key
+    if (!providedKey || providedKey !== expectedKey) {
+      return new Response(JSON.stringify({ error: 'missing or invalid X-Ingestion-Key header' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
 
     await supabase.from('industrial_assets').update({
       current_lat: lat ?? undefined,

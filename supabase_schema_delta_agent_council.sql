@@ -57,3 +57,9 @@ create policy "anon update agent_council_reports" on agent_council_reports
   for update using (true);
 create policy "anon delete agent_council_reports" on agent_council_reports
   for delete using (true);
+
+-- Table-level grant — RLS policy above is inert without this (see the
+-- 2026-09-02 outage note in supabase_schema.sql's ROW LEVEL SECURITY
+-- section for the full story of why this line can't be skipped).
+grant select, insert, update, delete on agent_council_reports
+to anon, authenticated, service_role;

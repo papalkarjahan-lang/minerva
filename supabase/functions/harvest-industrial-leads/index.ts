@@ -12,14 +12,21 @@
 // industrial-conductor to act on. Point a real vendor's webhook or a
 // scheduled CSV import job at this same endpoint later — the shape below is
 // what it expects.
-// Deploy with: supabase functions deploy harvest-industrial-leads
+// Deploy with: supabase functions deploy harvest-industrial-leads --no-verify-jwt
+//
+// Requires the `X-Ingestion-Key` header to match businesses.ingestion_key
+// for the given businessId (added 2026-09-02 — see SECURITY_NOTES.md). This
+// is deployed with --no-verify-jwt so an external source can call it
+// without a Supabase auth header, which otherwise means anyone who
+// discovers the URL could insert leads for any businessId they guess or
+// already know; this per-business shared secret closes that gap.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' } })
+    return new Response('ok', { headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-ingestion-key' } })
   }
 
   try {
@@ -32,6 +39,22 @@ serve(async (req: Request) => {
     if (!businessId || !Array.isArray(leads) || leads.length === 0) {
       return new Response(JSON.stringify({ error: 'businessId and a non-empty leads[] array are required' }), {
         status: 400,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+
+    const { data: business, error: bizErr } = await supabase
+      .from('businesses').select('ingestion_key').eq('id', businessId).maybeSingle()
+    if (bizErr || !business) {
+      return new Response(JSON.stringify({ error: 'business not found' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+    const providedKey = req.headers.get('x-ingestion-key')
+    if (!providedKey || providedKey !== business.ingestion_key) {
+      return new Response(JSON.stringify({ error: 'missing or invalid X-Ingestion-Key header' }), {
+        status: 401,
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
       })
     }

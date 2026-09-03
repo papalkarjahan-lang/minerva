@@ -1,5 +1,58 @@
 # Minerva — Pending Deployment Checklist (as of 2026-09-01)
 
+## CRITICAL — fixed live 2026-09-02, read this first
+
+**The entire production app was down for every real user** (not a checklist
+gap — an active outage). Root cause: `CREATE POLICY` statements were run for
+all 25 core tables (jobs, businesses, technicians, invoices, etc.) but the
+underlying `GRANT SELECT/INSERT/UPDATE/DELETE ... TO anon` was never issued.
+RLS policies are inert without the base table grant, so every anon-key read
+and write — dispatcher map, technician GPS, customer intake, everything —
+was failing with `permission denied for table X`. Likely broken since the
+tables were first created; caught now because no one had done a full
+end-to-end signup test yet (Day 7 testing was still pending).
+
+Also found and fixed: the 3 Agent Ops tables (`agent_functions`,
+`agent_insights`, `agent_council_reports`) had the same missing-grant bug,
+and 21 of 23 pg_cron jobs had a corrupted/masked `Authorization` header
+(literal bullet characters instead of the real anon JWT — looks like the key
+was copied from the Supabase dashboard's obscured display instead of the
+"reveal" view when the jobs were first scheduled), so every scheduled Agent
+OS run had been failing with 401 since it was first scheduled.
+
+Fixed via direct SQL grants + cron job recreation with the correct key.
+Verified live: `jobs`/`businesses`/`technicians` now return 200 via the
+anon key, `detect-wasted-trips` now runs and records `last_status: 'ok'` in
+`agent_functions`. No code changes needed, no redeploy needed — this was
+purely a database permissions issue.
+
+## NEW — code/schema ready, needs deploy (2026-09-02, later same day)
+
+This agent session had no cached `SUPABASE_ACCESS_TOKEN` (it's not stored in
+any repo file, by design — was supplied inline in an earlier chat session),
+so the two items below are code-complete and locally verified (syntax
+checked) but **not yet applied to the live project**. Not a platform outage
+this time, just no credential in this particular shell.
+
+1. **`agent_functions.enabled` kill-switch UI toggle** — `DispatcherView.jsx`
+   now has a live Enable/Disable button per gated function in the Agent Ops
+   tab (calls `supabase.from('agent_functions').update({enabled})` directly
+   from the frontend using the anon key, so no edge function redeploy is
+   needed for this one — just ship the frontend build).
+2. **Shared-secret auth on `harvest-industrial-leads` /
+   `monitor-asset-telemetry`** — needs, in order:
+   - Run the new `alter table businesses add column ingestion_key text
+     default gen_random_uuid()::text;` statement in
+     `supabase_schema_delta_industrial.sql` (safe to run anytime, additive).
+   - `supabase functions deploy harvest-industrial-leads --no-verify-jwt`
+   - `supabase functions deploy monitor-asset-telemetry --no-verify-jwt`
+   - Until deployed, these two endpoints are still open (no key check live).
+     No real vendor is wired to either yet, so no live traffic is affected
+     either way — but don't forget this step before pointing a real feed at
+     them. See `SECURITY_NOTES.md` for the full rationale.
+
+---
+
 Consolidated reference for everything still outstanding after the Track A/B
 ("Agent Expansion Pack" + Industrial sector) and "Agent Operating System"
 (5-phase) builds. Nothing below has been confirmed live yet except where

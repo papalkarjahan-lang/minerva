@@ -73,6 +73,11 @@ serve(async (req: Request) => {
   const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
   try {
+    const { data: fnState } = await supabase.from('agent_functions').select('enabled').eq('name', 'agent-council-report').maybeSingle()
+    if (fnState?.enabled === false) {
+      return new Response(JSON.stringify({ success: true, skipped: true, reason: 'disabled via agent_functions.enabled' }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
+
     const now = new Date()
     const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
     const weekAgoIso = weekAgo.toISOString()

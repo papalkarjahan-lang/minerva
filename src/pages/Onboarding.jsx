@@ -295,7 +295,7 @@ const styles = {
   techInputRow: { display: 'flex', gap: 8, marginBottom: 10, alignItems: 'center' },
   removeBtn: { background: 'none', border: '1px solid #ddd', borderRadius: 8, width: 32, height: 32, cursor: 'pointer', color: '#888', fontSize: 14 },
   addTechBtn: { background: 'none', border: '1px dashed #2D5FA8', color: '#2D5FA8', borderRadius: 10, padding: '10px 16px', fontSize: 14, cursor: 'pointer', width: '100%', marginBottom: 20 },
-  tierGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 20 },
+  tierGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: 8, marginBottom: 20 },
   tierCard: { border: '1px solid #ddd', borderRadius: 12, padding: '12px 10px', cursor: 'pointer', textAlign: 'left', transition: 'border-color 0.15s' },
   tierCardActive: { border: '2px solid #2D5FA8', background: '#f8f9ff', padding: '11px 9px' },
   tierName: { fontSize: 13, fontWeight: 'bold', color: '#1B2B4B', margin: '0 0 4px' },

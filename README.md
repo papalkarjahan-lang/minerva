@@ -250,6 +250,19 @@ above — purely additive, nothing below changes any existing behaviour):
   optionally be tagged **Emergency**/**Routine** on the Add Job form, and
   the AI intake widget's own urgency classification carries through
   automatically when a lead converts to a job.
+- **Payroll v1** (`DispatcherView.jsx` **Payroll** tab, Pro tier, added
+  2026-09-02) — no new edge function, purely client-side. Pick a date range
+  and click Generate: queries `technician_locations` for that range and
+  buckets hours the same way `update-technician-workload`'s rolling-week
+  signal does (per calendar day, sum of max−min `recorded_at`), just
+  per-technician for any custom period instead of a fixed rolling 7 days.
+  Export CSV (`Technician, Estimated Hours, Days With GPS Activity, Period
+  Start, Period End`) to hand to your accountant or import into payroll
+  software. Deliberately does **not** calculate PAYG, superannuation, award
+  rates, or a pay dollar amount — raw hours only, same scope decision as
+  the rest of Minerva's compliance-risk-averse feature set (see
+  SALES_CLAIMS_ACCURACY_NOTE.md-adjacent reasoning: an hours estimate is
+  safe to automate, a pay calculation is not).
 - **`send-weather-reschedule-sms`** / **Weather tab** — see above.
 - **`send-referral-code-sms`** — Paid-Invoice Referral Loop. The moment an
   invoice is marked paid (any tier), generates a short referral code for
@@ -473,7 +486,9 @@ supabase functions deploy verify-industrial-compliance
 (`harvest-industrial-leads` and `monitor-asset-telemetry` use
 `--no-verify-jwt` since they're meant to be called by an external
 ingestion source, not the Minerva frontend — same reasoning as
-`stripe-webhook`/`missed-call-webhook` above.)
+`stripe-webhook`/`missed-call-webhook` above. Both also require an
+`X-Ingestion-Key` header matching that business's `businesses.ingestion_key`
+column — see SECURITY_NOTES.md.)
 
 Both tracks' cron schedules (10 jobs total) are in
 `supabase_schema_delta_agent_cron.sql` — pre-filled with your real project

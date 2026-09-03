@@ -600,7 +600,30 @@ alter table technicians add column burnout_flag_sent_at timestamptz;
 -- Providers, disable "Allow new users to sign up". This closes off the
 -- authenticated-role attack surface entirely as a belt-and-suspenders
 -- measure, even though no policy below currently grants it any access.
+--
+-- CRITICAL: CREATE POLICY alone is not enough. RLS policies only filter
+-- ROWS on an operation that's already permitted at the table-grant level —
+-- without the matching GRANT below, every anon-key request fails outright
+-- with "permission denied for table X" regardless of policy content. This
+-- exact gap caused a full production outage on 2026-09-02 (every table was
+-- created with RLS + policies but no grant). Grants are issued together
+-- right after RLS is enabled below so this can't be split apart or skipped
+-- on a fresh install again.
 -- ============================================================
+-- Only the tables actually created above (in this file) are granted here.
+-- Track A (technician_incidents, custom_workflows, workflow_runs) and
+-- Track B (industrial_* / site_* / safety_incidents / consumables_items /
+-- client_verification_packages) tables get their own matching GRANT inside
+-- their respective delta files, right after their CREATE TABLE, for the
+-- same reason — see supabase_schema_delta_agent_expansion.sql and
+-- supabase_schema_delta_industrial.sql.
+grant select, insert, update, delete on
+  businesses, technicians, technician_locations, jobs, leads, assets,
+  invoices, checklist_templates, inventory_items, marketing_drafts,
+  checklist_photos, job_materials, technician_credentials,
+  weather_reschedule_drafts
+to anon, authenticated, service_role;
+
 alter table businesses enable row level security;
 alter table technicians enable row level security;
 alter table technician_locations enable row level security;

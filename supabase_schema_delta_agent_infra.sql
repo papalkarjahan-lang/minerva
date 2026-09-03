@@ -88,6 +88,12 @@ create policy "anon insert agent_insights" on agent_insights
   for insert with check (true);
 create policy "anon select agent_insights" on agent_insights
   for select using (true);
+
+-- Table-level grants — RLS policies above are inert without these (see the
+-- 2026-09-02 outage note in supabase_schema.sql's ROW LEVEL SECURITY
+-- section for the full story of why this line can't be skipped).
+grant select, insert, update on agent_functions, agent_insights
+to anon, authenticated, service_role;
 create policy "anon update agent_insights" on agent_insights
   for update using (true);
 create policy "anon delete agent_insights" on agent_insights

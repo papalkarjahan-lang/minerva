@@ -44,16 +44,22 @@ export default function DisputeView() {
     setBusiness(jobData.businesses)
 
     if (jobData.technician_id) {
-      const { data: techData } = await supabase
+      const { data: techData, error: techErr } = await supabase
         .from('technicians').select('id, name').eq('id', jobData.technician_id).single()
+      if (techErr) console.error('DisputeView: technician fetch failed', techErr)
       setTech(techData)
     }
 
-    const { data: locs } = await supabase
+    // Note: each of these four queries fails independently below (logged,
+    // not surfaced as a page-level error) rather than blocking the whole
+    // pack on one missing table — a dispute pack with, say, no photos but
+    // real GPS/invoice data is still useful to show.
+    const { data: locs, error: locsErr } = await supabase
       .from('technician_locations')
       .select('lat, lng, recorded_at')
       .eq('job_id', jobId)
       .order('recorded_at', { ascending: true })
+    if (locsErr) console.error('DisputeView: locations fetch failed', locsErr)
     setLocations(locs || [])
     if (locs && locs.length > 0) {
       setViewState(prev => ({ ...prev, latitude: locs[0].lat, longitude: locs[0].lng }))
@@ -61,16 +67,19 @@ export default function DisputeView() {
       setViewState(prev => ({ ...prev, latitude: jobData.client_lat, longitude: jobData.client_lng }))
     }
 
-    const { data: photoList } = await supabase
+    const { data: photoList, error: photosErr } = await supabase
       .from('checklist_photos').select('*').eq('job_id', jobId).order('created_at', { ascending: true })
+    if (photosErr) console.error('DisputeView: photos fetch failed', photosErr)
     setPhotos(photoList || [])
 
-    const { data: materialList } = await supabase
+    const { data: materialList, error: materialsErr } = await supabase
       .from('job_materials').select('*').eq('job_id', jobId).order('created_at', { ascending: true })
+    if (materialsErr) console.error('DisputeView: materials fetch failed', materialsErr)
     setMaterials(materialList || [])
 
-    const { data: invoiceData } = await supabase
+    const { data: invoiceData, error: invoiceErr } = await supabase
       .from('invoices').select('*').eq('job_id', jobId).order('created_at', { ascending: false }).limit(1).maybeSingle()
+    if (invoiceErr) console.error('DisputeView: invoice fetch failed', invoiceErr)
     setInvoice(invoiceData || null)
   }
 

@@ -39,6 +39,11 @@ serve(async (req: Request) => {
     const supabase = createClient(supabaseUrl, supabaseAnonKey)
     const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY')
 
+    const { data: fnState } = await supabase.from('agent_functions').select('enabled').eq('name', 'generate-growth-drafts').maybeSingle()
+    if (fnState?.enabled === false) {
+      return new Response(JSON.stringify({ success: true, skipped: true, reason: 'disabled via agent_functions.enabled' }), { status: 200, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } })
+    }
+
     const { data: businesses, error } = await supabase
       .from('businesses')
       .select('id, name, trade_type, city')
