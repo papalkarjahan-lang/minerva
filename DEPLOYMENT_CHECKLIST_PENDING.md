@@ -119,11 +119,56 @@ the bottom.
   the entire "free time" audit pass (both the original findings and the
   "do both" follow-up batch) is confirmed live end-to-end.
 
+- **2026-09-05 (industrial/B2B track + Agent Ops audit pass)**: systematic
+  audit of the 10 base industrial functions (`industrial-conductor`,
+  `harvest-industrial-leads`, `enrich-industrial-leads`,
+  `optimize-industrial-routes`, `track-consumables`,
+  `detect-safety-hazards`, `sequence-handoffs`,
+  `package-client-verification`, `verify-industrial-compliance`,
+  `monitor-asset-telemetry`) found they all already had `agent_functions`
+  rows live (`agent='core', enabled=true`, no SQL delta needed) but none of
+  the function code actually read/wrote that infra. Fixed:
+  - All 10 now call `record_agent_run()` on success and in the error catch,
+    matching the established pattern from `detect-idle-assets` /
+    `agent-council-report`.
+  - Kill-switch (`agent_functions.enabled` early-exit) added to the 5 that
+    are pure cron sweeps safe to disable mid-run: `optimize-industrial-routes`,
+    `track-consumables`, `detect-safety-hazards`, `sequence-handoffs`,
+    `verify-industrial-compliance`. The other 5 deliberately excluded,
+    matching the existing frontend `KILL_SWITCH_GATED_FUNCTIONS` design
+    distinction (event-driven/direct-invoke/webhook functions aren't
+    kill-switch-gated even when they get health tracking):
+    `industrial-conductor`, `harvest-industrial-leads` (webhook, `--no-verify-jwt`),
+    `enrich-industrial-leads` (direct-invoke), `package-client-verification`
+    (direct-invoke), `monitor-asset-telemetry` (webhook, `--no-verify-jwt`).
+  - `DispatcherView.jsx`'s `KILL_SWITCH_GATED_FUNCTIONS` array extended from
+    11 to 16 entries so the new toggles actually show up in the Agent Ops
+    dashboard.
+  - New `agent_insights` writes (`insight_type: 'low_stock'` /
+    `'safety_incident'`) added to `track-consumables` and
+    `detect-safety-hazards` — both already have check-before-flag
+    suppression so this won't spam the weekly `agent-council-report`.
+    Deliberately NOT added to `sequence-handoffs`, which has no such
+    suppression and re-nudges every 15-min cycle for the same open event.
+  - `IndustrialDispatcherView.jsx`: site check-in history (expandable panel,
+    lazy-loaded `site_checkins` query, mirrors the existing asset-events
+    pattern), "Mark restocked" button (clears
+    `consumables_items.reorder_requested_at`), and a manual "+ Report
+    incident" form (inserts into `safety_incidents` directly, severity
+    `warning`/`hazard` per the real schema).
+  - `README.md` corrected: `detect-idle-assets` / `predict-asset-maintenance`
+    noted as living under the `asset_intelligence` add-on rather than the
+    base industrial track; base industrial functions now documented as
+    kill-switch/health-tracked where applicable.
+  - `npm run build` verified clean. Committed locally — not yet redeployed
+    or pushed, needs fresh Supabase + GitHub PATs (see below).
+
 ## Not yet deployed live
 
-Nothing outstanding from the "free time" audit pass — see confirmation
-above. Future deltas will need a fresh Supabase PAT + GitHub PAT per the
-standing one-time-use convention.
+The 2026-09-05 industrial/B2B audit-pass batch above is committed locally
+only — the 10 industrial edge functions need redeploying and the commit
+needs pushing to `origin/main`, both blocked on fresh one-time PATs per the
+standing convention. Nothing else outstanding from earlier batches.
 
 ## Audit findings deliberately NOT built this session (2026-09-04)
 

@@ -481,6 +481,17 @@ technician auto-assign.
 | `package-client-verification` | on-demand only | The Closer — bundles checkins/telemetry/incidents into a sign-off package |
 | `verify-industrial-compliance` | hourly | Sentry — 24h+ backstop escalation for unacknowledged safety incidents |
 
+Two more industrial-relevant functions live under the `asset_intelligence`
+Minerva Max add-on rather than this base track — `detect-idle-assets`
+(daily) and `predict-asset-maintenance` (daily), both gated per-business
+by that add-on. See the Minerva Max section below.
+
+All 10 functions above now check `agent_functions.enabled` where
+applicable and call `record_agent_run()` for health tracking (added
+2026-09-05 — previously deployed/scheduled but invisible to
+`test-agent-health` and the operator kill-switch; see
+`DEPLOYMENT_CHECKLIST_PENDING.md`).
+
 Schema: `supabase_schema_delta_industrial.sql`. Deploy:
 ```bash
 supabase functions deploy industrial-conductor

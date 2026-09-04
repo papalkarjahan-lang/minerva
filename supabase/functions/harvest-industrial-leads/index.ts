@@ -79,12 +79,17 @@ serve(async (req: Request) => {
       body: JSON.stringify({ businessId, text: `📥 *Signal*: ${data?.length || 0} new industrial lead(s) imported.` }),
     }).catch(() => {})
 
+    supabase.rpc('record_agent_run', { fn_name: 'harvest-industrial-leads', status: 'ok' }).then(() => {}, () => {})
     return new Response(JSON.stringify({ success: true, inserted: data?.length || 0 }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     })
   } catch (err) {
     console.error('harvest-industrial-leads error:', err)
+    try {
+      const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!)
+      supabase.rpc('record_agent_run', { fn_name: 'harvest-industrial-leads', status: 'error', error_msg: err.message }).then(() => {}, () => {})
+    } catch (_) { /* best-effort only */ }
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },

@@ -23,9 +23,12 @@ export default function IndustrialDispatcherView() {
   const [showAddSite, setShowAddSite] = useState(false)
   const [showAddAsset, setShowAddAsset] = useState(false)
   const [showAddItem, setShowAddItem] = useState(false)
+  const [showAddIncident, setShowAddIncident] = useState(false)
   const [busyId, setBusyId] = useState(null)
   const [expandedAssetId, setExpandedAssetId] = useState(null)
   const [assetEvents, setAssetEvents] = useState({}) // asset_id -> asset_telemetry_events rows, fetched lazily
+  const [expandedSiteId, setExpandedSiteId] = useState(null)
+  const [siteCheckins, setSiteCheckins] = useState({}) // site_id -> site_checkins rows, fetched lazily
 
   useEffect(() => { loadAll() }, [businessId])
 
@@ -74,6 +77,27 @@ export default function IndustrialDispatcherView() {
         .limit(10)
       if (error) console.error('asset_telemetry_events fetch failed', error)
       setAssetEvents(prev => ({ ...prev, [assetId]: data || [] }))
+    }
+  }
+
+  // Lazy-loads a site's check-in log (arrival/departure/task_start/
+  // task_complete, from both human technicians and automated processes) —
+  // previously written by detect-safety-hazards/sequence-handoffs/
+  // package-client-verification but never actually shown anywhere in the
+  // console. Only fetched when the row is expanded, same pattern as
+  // toggleAssetDetails above.
+  async function toggleSiteDetails(siteId) {
+    if (expandedSiteId === siteId) { setExpandedSiteId(null); return }
+    setExpandedSiteId(siteId)
+    if (!siteCheckins[siteId]) {
+      const { data, error } = await supabase
+        .from('site_checkins')
+        .select('*')
+        .eq('site_id', siteId)
+        .order('created_at', { ascending: false })
+        .limit(20)
+      if (error) console.error('site_checkins fetch failed', error)
+      setSiteCheckins(prev => ({ ...prev, [siteId]: data || [] }))
     }
   }
 
@@ -153,6 +177,33 @@ export default function IndustrialDispatcherView() {
     loadAll()
   }
 
+  // Previously there was no way to clear reorder_requested_at from the UI
+  // at all — track-consumables sets it and the item just sits flagged
+  // "LOW STOCK" forever, even after someone actually restocks it, since
+  // clearing it is what re-arms the alert for next time (see
+  // track-consumables' header comment).
+  async function restockItem(id) {
+    await supabase.from('consumables_items').update({ reorder_requested_at: null }).eq('id', id)
+    loadAll()
+  }
+
+  // Previously the only way a safety_incidents row was ever created was
+  // via detect-safety-hazards' automated proximity check — a site manager
+  // calling in an observed hazard had no way to log it except a direct DB
+  // insert. This adds the missing manual-report path.
+  async function addIncident(e) {
+    e.preventDefault()
+    const f = new FormData(e.target)
+    await supabase.from('safety_incidents').insert({
+      business_id: businessId,
+      site_id: f.get('site_id') || null,
+      severity: f.get('severity') || 'warning',
+      description: f.get('description'),
+    })
+    setShowAddIncident(false)
+    loadAll()
+  }
+
   const openIncidents = incidents.filter(i => !i.acknowledged_at)
 
   return (
@@ -221,7 +272,28 @@ export default function IndustrialDispatcherView() {
                   <button style={styles.smallBtn} disabled={busyId === s.id} onClick={() => generatePackage(s.id)}>
                     {busyId === s.id ? 'Packaging...' : 'Generate verification package'}
                   </button>
+                  <button style={styles.smallBtn} onClick={() => toggleSiteDetails(s.id)}>
+                    {expandedSiteId === s.id ? 'Hide check-ins ▲' : 'View check-ins ▼'}
+                  </button>
                 </div>
+                {expandedSiteId === s.id && (
+                  <div style={{ marginTop: 10, borderTop: '1px solid #1e293b', paddingTop: 8 }}>
+                    {(siteCheckins[s.id] || []).length > 0 ? (
+                      siteCheckins[s.id].map(c => (
+                        <p key={c.id} style={styles.rowMeta}>
+                          <span style={styles.statusBadge(c.role === 'human_technician' ? 'available' : 'pending sign-off')}>
+                            {c.role === 'human_technician' ? 'HUMAN' : 'AUTOMATED'}
+                          </span>
+                          {' '}{c.person_name || 'unknown'} — {c.checkin_type.replace('_', ' ')}
+                          {c.detail ? ` (${c.detail})` : ''}
+                          <span style={{ color: '#444' }}> · {timeAgo(c.created_at)}</span>
+                        </p>
+                      ))
+                    ) : (
+                      <p style={styles.rowMeta}>No check-ins logged for this site yet.</p>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </>
@@ -281,7 +353,12 @@ export default function IndustrialDispatcherView() {
                   <p style={{ ...styles.rowMeta, color: low ? '#e07a7a' : '#666' }}>
                     {c.quantity_on_hand} {c.unit} on hand (reorder below {c.reorder_threshold}){low ? ' — LOW STOCK' : ''}
                   </p>
-                  {c.reorder_requested_at && <p style={styles.rowMeta}>Reorder flagged {timeAgo(c.reorder_requested_at)}</p>}
+                  {c.reorder_requested_at && (
+                    <div style={styles.rowActions}>
+                      <p style={styles.rowMeta}>Reorder flagged {timeAgo(c.reorder_requested_at)}</p>
+                      <button style={styles.smallBtn} onClick={() => restockItem(c.id)}>Mark restocked</button>
+                    </div>
+                  )}
                 </div>
               )
             })}
@@ -290,7 +367,10 @@ export default function IndustrialDispatcherView() {
 
         {tab === 'safety' && (
           <>
-            <p style={styles.sectionLabel}>Safety incidents</p>
+            <div style={styles.sectionHead}>
+              <p style={styles.sectionLabel}>Safety incidents</p>
+              <button style={styles.addBtn} onClick={() => setShowAddIncident(true)}>+ Report incident</button>
+            </div>
             {incidents.length === 0 && <p style={styles.emptyText}>No incidents recorded.</p>}
             {incidents.map(i => (
               <div key={i.id} style={styles.row}>
@@ -366,6 +446,27 @@ export default function IndustrialDispatcherView() {
             <div style={styles.modalActions}>
               <button type="button" style={styles.cancelBtn} onClick={() => setShowAddAsset(false)}>Cancel</button>
               <button type="submit" style={styles.submitBtn}>Add</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {showAddIncident && (
+        <div style={styles.modalOverlay} onClick={() => setShowAddIncident(false)}>
+          <form style={styles.modal} onClick={e => e.stopPropagation()} onSubmit={addIncident}>
+            <p style={styles.modalTitle}>Report safety incident</p>
+            <select name="site_id" style={styles.input}>
+              <option value="">No specific site</option>
+              {sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+            <select name="severity" style={styles.input} defaultValue="warning">
+              <option value="warning">Warning</option>
+              <option value="hazard">Hazard</option>
+            </select>
+            <input name="description" placeholder="What happened?" required style={styles.input} />
+            <div style={styles.modalActions}>
+              <button type="button" style={styles.cancelBtn} onClick={() => setShowAddIncident(false)}>Cancel</button>
+              <button type="submit" style={styles.submitBtn}>Report</button>
             </div>
           </form>
         </div>

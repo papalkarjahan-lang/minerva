@@ -21,6 +21,11 @@ serve(async (req: Request) => {
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
     const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
+    const { data: fnState } = await supabase.from('agent_functions').select('enabled').eq('name', 'optimize-industrial-routes').maybeSingle()
+    if (fnState?.enabled === false) {
+      return new Response(JSON.stringify({ success: true, skipped: true, reason: 'disabled via agent_functions.enabled' }), { status: 200, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } })
+    }
+
     const { data: sites, error } = await supabase.from('site_projects')
       .select('id, business_id, name, site_lat, site_lng')
       .eq('status', 'active')
@@ -56,12 +61,17 @@ serve(async (req: Request) => {
       suggested++
     }
 
+    supabase.rpc('record_agent_run', { fn_name: 'optimize-industrial-routes', status: 'ok' }).then(() => {}, () => {})
     return new Response(JSON.stringify({ success: true, sitesEvaluated: (sites || []).length, suggested }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     })
   } catch (err) {
     console.error('optimize-industrial-routes error:', err)
+    try {
+      const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!)
+      supabase.rpc('record_agent_run', { fn_name: 'optimize-industrial-routes', status: 'error', error_msg: err.message }).then(() => {}, () => {})
+    } catch (_) { /* best-effort only */ }
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },

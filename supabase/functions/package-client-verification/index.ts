@@ -63,12 +63,17 @@ serve(async (req: Request) => {
       body: JSON.stringify({ businessId: site.business_id, text: `📋 *Closer*: verification package assembled for *${site.name}* — ready to present for client sign-off.` }),
     }).catch(() => {})
 
+    supabase.rpc('record_agent_run', { fn_name: 'package-client-verification', status: 'ok' }).then(() => {}, () => {})
     return new Response(JSON.stringify({ success: true, packageId: pkg.id, summary }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     })
   } catch (err) {
     console.error('package-client-verification error:', err)
+    try {
+      const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!)
+      supabase.rpc('record_agent_run', { fn_name: 'package-client-verification', status: 'error', error_msg: err.message }).then(() => {}, () => {})
+    } catch (_) { /* best-effort only */ }
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },

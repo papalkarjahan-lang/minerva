@@ -21,6 +21,11 @@ serve(async (req: Request) => {
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
     const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
+    const { data: fnState } = await supabase.from('agent_functions').select('enabled').eq('name', 'verify-industrial-compliance').maybeSingle()
+    if (fnState?.enabled === false) {
+      return new Response(JSON.stringify({ success: true, skipped: true, reason: 'disabled via agent_functions.enabled' }), { status: 200, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } })
+    }
+
     const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
     const { data: stale, error } = await supabase.from('safety_incidents')
       .select('id, business_id, description, severity, created_at, site_projects(name)')
@@ -39,12 +44,17 @@ serve(async (req: Request) => {
       escalated++
     }
 
+    supabase.rpc('record_agent_run', { fn_name: 'verify-industrial-compliance', status: 'ok' }).then(() => {}, () => {})
     return new Response(JSON.stringify({ success: true, escalated }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     })
   } catch (err) {
     console.error('verify-industrial-compliance error:', err)
+    try {
+      const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!)
+      supabase.rpc('record_agent_run', { fn_name: 'verify-industrial-compliance', status: 'error', error_msg: err.message }).then(() => {}, () => {})
+    } catch (_) { /* best-effort only */ }
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },

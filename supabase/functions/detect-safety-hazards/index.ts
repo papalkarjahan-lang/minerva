@@ -21,6 +21,11 @@ serve(async (req: Request) => {
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
     const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
+    const { data: fnState } = await supabase.from('agent_functions').select('enabled').eq('name', 'detect-safety-hazards').maybeSingle()
+    if (fnState?.enabled === false) {
+      return new Response(JSON.stringify({ success: true, skipped: true, reason: 'disabled via agent_functions.enabled' }), { status: 200, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } })
+    }
+
     const { data: sites, error } = await supabase.from('site_projects').select('id, business_id, name').eq('status', 'active')
     if (error) throw error
 
@@ -54,6 +59,15 @@ serve(async (req: Request) => {
         site_id: site.id, business_id: site.business_id, severity: 'warning',
         description: `Human technician and automated process both active on site simultaneously.`,
       })
+      // Also written as an agent_insights row (not just Slack) so recurring
+      // proximity hazards at the same site show up as a pattern in the
+      // weekly agent-council-report, not just as one-off business Slack
+      // pings that never reach the platform-wide operator view.
+      await supabase.from('agent_insights').insert({
+        agent: 'core', insight_type: 'safety_incident',
+        summary: `Proximity hazard at "${site.name}": human technician and automated process both active on site simultaneously.`,
+        related_table: 'safety_incidents',
+      }).then(() => {}, () => {})
       await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseAnonKey}` },
@@ -62,12 +76,17 @@ serve(async (req: Request) => {
       flagged++
     }
 
+    supabase.rpc('record_agent_run', { fn_name: 'detect-safety-hazards', status: 'ok' }).then(() => {}, () => {})
     return new Response(JSON.stringify({ success: true, sitesEvaluated: (sites || []).length, flagged }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     })
   } catch (err) {
     console.error('detect-safety-hazards error:', err)
+    try {
+      const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!)
+      supabase.rpc('record_agent_run', { fn_name: 'detect-safety-hazards', status: 'error', error_msg: err.message }).then(() => {}, () => {})
+    } catch (_) { /* best-effort only */ }
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },

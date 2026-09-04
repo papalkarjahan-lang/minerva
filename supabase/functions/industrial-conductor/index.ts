@@ -65,12 +65,17 @@ serve(async (req: Request) => {
       suggested++
     }
 
+    supabase.rpc('record_agent_run', { fn_name: 'industrial-conductor', status: 'ok' }).then(() => {}, () => {})
     return new Response(JSON.stringify({ success: true, evaluated: leadIds.length, suggested }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     })
   } catch (err) {
     console.error('industrial-conductor error:', err)
+    try {
+      const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!)
+      supabase.rpc('record_agent_run', { fn_name: 'industrial-conductor', status: 'error', error_msg: err.message }).then(() => {}, () => {})
+    } catch (_) { /* best-effort only */ }
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },

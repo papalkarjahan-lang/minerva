@@ -1063,17 +1063,25 @@ export default function DispatcherView() {
   // state above (cheap — at most a few dozen rows).
   const AGENT_GROUPS = ['outreach', 'marketing', 'scheduling', 'finance', 'core', 'research', 'design']
   const NOT_YET_BUILT_AGENTS = ['research', 'design'] // per Phase 1 seed data — no rows exist for these yet
-  // The 11 truly autonomous cron-scheduled functions that check
-  // agent_functions.enabled at the top of every run (added 2026-09-02).
+  // The truly autonomous cron-scheduled functions that check
+  // agent_functions.enabled at the top of every run (added 2026-09-02;
+  // extended 2026-09-05 to the industrial sector's pure cron sweeps).
   // auto-assign-technician (event-driven, no safe disable mid-dispatch),
   // launch-ad-campaign / send-growth-message (human-click-triggered only),
-  // and test-agent-health (the health monitor itself) deliberately don't
-  // read the flag, so the toggle is hidden for those rows below.
+  // test-agent-health (the health monitor itself), industrial-conductor /
+  // enrich-industrial-leads (dual-mode — also directly invoked, same
+  // no-safe-mid-action caution as auto-assign-technician), and the two
+  // external-ingestion webhooks (harvest-industrial-leads,
+  // monitor-asset-telemetry — same category as missed-call-webhook)
+  // deliberately don't read the flag, so the toggle is hidden for those
+  // rows below.
   const KILL_SWITCH_GATED_FUNCTIONS = [
     'chase-unpaid-invoices', 'check-inventory-levels', 'check-weather-risk',
     'detect-wasted-trips', 'generate-growth-drafts', 'nurture-stale-leads',
     'retention-checkin', 'winback-lost-leads', 'agent-council-report',
     'reconcile-billing', 'update-technician-workload',
+    'optimize-industrial-routes', 'track-consumables', 'detect-safety-hazards',
+    'sequence-handoffs', 'verify-industrial-compliance',
   ]
   const agentGroupCounts = AGENT_GROUPS.map(agent => ({
     agent,
@@ -1923,11 +1931,14 @@ export default function DispatcherView() {
           {/* Agent Operating System dashboard (Phase 5). Platform-wide data —
               see showAgentsTab / the "Agent Ops (operator only)" tab button
               above for the gating decision and reasoning.
-              Enable/disable toggle added 2026-09-02: the 11 autonomous
+              Enable/disable toggle added 2026-09-02, extended 2026-09-05 to
+              the industrial sector's pure cron sweeps: these autonomous
               cron-scheduled functions (Outreach/Finance/Marketing/
-              Scheduling reasoning agents — not the human-click-triggered
-              ones like launch-ad-campaign, and not auto-assign-technician
-              since disabling mid-dispatch has no safe fallback) now check
+              Scheduling/Industrial reasoning agents — not the
+              human-click-triggered ones like launch-ad-campaign, and not
+              auto-assign-technician/industrial-conductor/
+              enrich-industrial-leads since those have a direct-invocation
+              mode with no safe mid-action fallback) now check
               agent_functions.enabled at the top of every run and skip with
               a 200 no-op if false. Event-driven and click-triggered
               functions don't show a toggle here since disabling them isn't

@@ -20,6 +20,11 @@ serve(async (req: Request) => {
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
     const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
+    const { data: fnState } = await supabase.from('agent_functions').select('enabled').eq('name', 'sequence-handoffs').maybeSingle()
+    if (fnState?.enabled === false) {
+      return new Response(JSON.stringify({ success: true, skipped: true, reason: 'disabled via agent_functions.enabled' }), { status: 200, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } })
+    }
+
     const hourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
     const { data: completions, error } = await supabase.from('site_checkins')
       .select('id, site_id, business_id, person_name, detail, created_at, site_projects(name)')
@@ -44,12 +49,17 @@ serve(async (req: Request) => {
       nudged++
     }
 
+    supabase.rpc('record_agent_run', { fn_name: 'sequence-handoffs', status: 'ok' }).then(() => {}, () => {})
     return new Response(JSON.stringify({ success: true, evaluated: (completions || []).length, nudged }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     })
   } catch (err) {
     console.error('sequence-handoffs error:', err)
+    try {
+      const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!)
+      supabase.rpc('record_agent_run', { fn_name: 'sequence-handoffs', status: 'error', error_msg: err.message }).then(() => {}, () => {})
+    } catch (_) { /* best-effort only */ }
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
