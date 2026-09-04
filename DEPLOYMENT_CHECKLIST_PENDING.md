@@ -69,45 +69,79 @@ the bottom.
   `test-agent-health` itself); 3 stale README claims corrected (CSV export
   and "+ Add" technician were documented as Pro-tier-only but have no tier
   gate in code; the edge-functions file listing was missing ~14 newer
-  functions). All code/SQL changes committed locally — **not yet deployed
-  live**, see below.
+  functions). Pushed to `origin/main` same day (`537fef3`) using a fresh
+  one-time GitHub PAT.
+- **2026-09-04 (continued, "do both" — deploy track + keep-building
+  track)**: pushed `537fef3`. Then, since no fresh Supabase PAT was
+  supplied this round, kept building the previously-deferred audit
+  findings instead of blocking on it:
+  - **Crew-splitting server-side enforcement** — turns out this app has no
+    Supabase Auth (`auth.uid()`) anywhere by design (see
+    `supabase_schema.sql`'s RLS header note), so a real RLS policy
+    wouldn't have added any actual enforcement. Used a Postgres
+    `BEFORE INSERT` trigger on `job_assignments` instead
+    (`enforce_crew_splitting_addon()`) — the one place that's enforced
+    regardless of which client performs the insert. `addCrewMember()` in
+    `DispatcherView.jsx` now surfaces the trigger's error if it fires.
+  - **Checklist-photo upload retry logic** — `uploadChecklistPhotos()` in
+    `TechnicianView.jsx` now retries each photo up to 3 times (0s/1s/3s
+    backoff) instead of a single silent attempt; a photo that still fails
+    surfaces a dismissible warning banner (`checklistPhotoWarning`) instead
+    of only a `console.error`.
+  - **No-show-to-technician SMS** — `detect-wasted-trips` now also texts
+    the technician (not just the client + Slack) so they know not to keep
+    waiting on-site or re-attempt a job that's already been logged as a
+    no-show and offered a reschedule.
+  - **Invoice void (soft-delete) audit trail** — new "Void" button next to
+    "Mark paid" in the Invoices tab, prompts for a reason, sets
+    `invoices.status = 'void'` + `voided_at`/`voided_reason`. Turns out
+    there was no delete RLS policy on `invoices` at all, so a hard delete
+    was never actually reachable via the anon key either way — this adds
+    the missing *correction* path rather than a delete capability.
+    `chase-unpaid-invoices` already only queries `status = 'unpaid'` so
+    voided invoices stop being chased for free; `daily-digest`'s revenue
+    totals now explicitly exclude voided invoices too.
+  - New delta additions (same file, not yet run live): the
+    `enforce_crew_splitting_addon` trigger, `invoices.voided_at`,
+    `invoices.voided_reason`.
+  - `npm run build` verified clean again. Committed locally — **not yet
+    pushed**, needs a fresh GitHub PAT + explicit push request next time.
 
 ## Not yet deployed live (needs a fresh Supabase PAT + GitHub PAT)
 
 - `supabase_schema_delta_operational_fixes.sql` — adds
-  `invoices.client_sms_failed` and the 6 missing `agent_functions` rows.
-  Needs to be run via the Supabase Management API (same pattern as prior
-  deltas) with a fresh PAT — both PATs supplied in the 2026-09-04 session
-  are spent (one-time-use convention).
+  `invoices.client_sms_failed`, `invoices.voided_at`, `invoices.voided_reason`,
+  the `enforce_crew_splitting_addon` trigger on `job_assignments`, and the
+  6 missing `agent_functions` rows. Needs to be run via the Supabase
+  Management API (same pattern as prior deltas) with a fresh PAT — all
+  PATs supplied in the 2026-09-04 session are spent (one-time-use
+  convention).
 - Redeploy needed for: `draft-quote`, `send-quote-sms`, `estimate-job-carbon`,
   `send-job-assignment-sms` (new function, never deployed), `auto-assign-technician`,
-  `predict-asset-maintenance`, `detect-idle-assets`, `check-credential-expiry`.
+  `predict-asset-maintenance`, `detect-idle-assets`, `check-credential-expiry`,
+  `detect-wasted-trips`, `daily-digest`.
   (`forecast-demand` only needs the SQL row above — its code already had
   `record_agent_run`, no redeploy needed.)
-- New local commit(s) from the 2026-09-04 "free time" session need a fresh
-  GitHub PAT + an explicit per-instance push request before `git push` —
-  standing hard rule, does not carry forward from any prior push approval.
+- Latest local commit (crew-enforcement/photo-retry/no-show-SMS/invoice-void
+  batch) needs a fresh GitHub PAT + an explicit per-instance push request
+  before `git push` — standing hard rule, does not carry forward from any
+  prior push approval.
 
 ## Audit findings deliberately NOT built this session (2026-09-04)
 
 Found by the same audit pass, judged lower-priority or higher-scope than
 what fit in the session, and intentionally left for a future pass rather
-than rushed:
+than rushed. (The other 4 originally listed here — crew-member
+enforcement, checklist-photo retry, no-show SMS, invoice void — were built
+in the follow-up "do both" round above.)
 
 - **PWA/offline mode for TechnicianView** — large scope (service worker,
   cache strategy, install prompt); the GPS-queue auto-flush fix covers the
   most common real-world case (phone reconnects before reopening the app)
-  without the full offline-app rebuild.
-- **Crew-member RLS server-side enforcement** — `crew_splitting` add-on
-  currently relies on frontend gating only for who can be added as crew;
-  proper fix needs new Postgres RLS policies, moderate scope.
-- **Checklist-photo upload retry logic** — `verify-checklist-photos` has no
-  retry if the initial photo upload fails partway; moderate scope.
-- **No-show-to-technician SMS** — `detect-wasted-trips` currently only
-  Slack-alerts the dispatcher; a technician-facing nudge was judged LOW
-  severity by the audit.
-- **Invoice soft-delete audit trail** — invoices can be deleted with no
-  record of who/when/why; flagged but not built.
+  without the full offline-app rebuild. The checklist-photo retry logic
+  also doesn't persist across a page reload for the same reason (File
+  objects can't be serialized to localStorage) — this is the same
+  underlying gap.
 - Hard-blocking a job/invoice when a technician's credential is already
   expired — this was a deliberate prior design decision
   (`check-credential-expiry`'s header comment: "never a client SMS... purely

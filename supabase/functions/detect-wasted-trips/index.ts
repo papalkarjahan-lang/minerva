@@ -90,6 +90,21 @@ serve(async (req: Request) => {
         if (smsOk) await supabase.from('jobs').update({ no_show_reschedule_sms_sent_at: detectedAt }).eq('id', job.id)
       }
 
+      // Technician-facing nudge: this agent only ever ran silently on the
+      // client + dispatcher side before — the technician who actually made
+      // the trip never found out their no-show got logged and the client
+      // already texted, and could easily still be sitting outside, or
+      // re-attempt the same job unaware it's already been rescheduled.
+      // Operational, not marketing — same category as send-job-assignment-sms.
+      if (job.technician_id) {
+        const { data: tech } = await supabase.from('technicians').select('phone, name').eq('id', job.technician_id).maybeSingle()
+        if (tech?.phone) {
+          await sendSms(twilio, tech.phone,
+            `Hi ${tech.name || ''}, we've logged your visit to ${job.client_name || 'this job'} as a no-show/never-started and texted the client to reschedule — no need to keep waiting on-site or follow up yourself.`.trim())
+            .catch(() => {})
+        }
+      }
+
       await notifySlack(supabaseUrl, supabaseAnonKey, job.business_id,
         `🚚 Wasted trip detected for job with *${job.client_name || 'unknown client'}* — technician GPS confirms on-site presence but the job never started. Reschedule SMS sent to the client. Geotagged proof: technician_locations, job_id ${job.id}.`)
     }

@@ -73,6 +73,11 @@ export default function TechnicianView() {
   // checklistTemplate.items/checklistChecks. Never required, so a tech
   // without a good photo opportunity can still submit the checklist.
   const [checklistPhotos, setChecklistPhotos] = useState([])
+  // Set if a checklist photo permanently fails to upload after retries —
+  // persists past the checklist card closing (same pattern as
+  // invoiceSmsWarning) so the technician still finds out, even though it
+  // never blocks job completion.
+  const [checklistPhotoWarning, setChecklistPhotoWarning] = useState(null)
   // Pro-tier materials-used: shown after the checklist (if any), lets the
   // technician optionally log parts/materials consumed on this job against
   // this business's inventory_items. Also optional — skips straight to
@@ -467,28 +472,49 @@ export default function TechnicianView() {
     setChecklistPhotos(prev => prev.map((f, i) => i === index ? file : f))
   }
 
-  // Uploads any attached checklist photos to the 'checklist-photos' bucket
-  // and inserts one checklist_photos row per successful upload. Fire-and-
-  // forget, same pattern as the technician_locations breadcrumb insert and
-  // the billing sync call above — a failed photo upload should never block
-  // job completion, just get logged.
-  function uploadChecklistPhotos() {
-    checklistTemplate.items.forEach((item, i) => {
+  // Retries a checklist photo upload up to 3 times with backoff (1s/3s) —
+  // job sites often have poor reception, and a single dropped request
+  // shouldn't mean the evidence photo is silently lost. Returns true/false
+  // for whether it eventually succeeded (upload + row insert both).
+  async function uploadOneChecklistPhoto(item, file, path) {
+    const delays = [0, 1000, 3000]
+    for (let attempt = 0; attempt < delays.length; attempt++) {
+      if (delays[attempt] > 0) await new Promise(r => setTimeout(r, delays[attempt]))
+      const { error: uploadError } = await supabase.storage.from('checklist-photos').upload(path, file)
+      if (uploadError) { console.error(`checklist photo upload failed (attempt ${attempt + 1})`, uploadError); continue }
+      const { error: insertError } = await supabase.from('checklist_photos').insert({
+        job_id: currentJob.id,
+        business_id: tech.business_id,
+        checklist_item: item,
+        storage_path: path,
+      })
+      if (insertError) { console.error(`checklist_photos insert failed (attempt ${attempt + 1})`, insertError); continue }
+      return true
+    }
+    return false
+  }
+
+  // Uploads any attached checklist photos to the 'checklist-photos' bucket,
+  // retrying transient failures (see above). Fire-and-forget from the
+  // caller's perspective, same as the technician_locations breadcrumb
+  // insert and the billing sync call — a failed photo upload should never
+  // block job completion — but unlike before, a photo that fails all 3
+  // attempts now surfaces a warning instead of just a console.error, since
+  // that photo is genuinely lost (no offline persistence for File objects
+  // across a page reload — see checklistPhotoWarning).
+  async function uploadChecklistPhotos() {
+    let failedCount = 0
+    await Promise.all(checklistTemplate.items.map(async (item, i) => {
       const file = checklistPhotos[i]
       if (!file) return
       const slug = item.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 40) || 'item'
       const path = `${currentJob.id}/${slug}-${Date.now()}.jpg`
-      supabase.storage.from('checklist-photos').upload(path, file)
-        .then(({ error: uploadError }) => {
-          if (uploadError) { console.error('checklist photo upload failed', uploadError); return }
-          supabase.from('checklist_photos').insert({
-            job_id: currentJob.id,
-            business_id: tech.business_id,
-            checklist_item: item,
-            storage_path: path
-          }).then(({ error }) => { if (error) console.error('checklist_photos insert failed', error) })
-        })
-    })
+      const ok = await uploadOneChecklistPhoto(item, file, path)
+      if (!ok) failedCount++
+    }))
+    if (failedCount > 0) {
+      setChecklistPhotoWarning(`${failedCount} checklist photo${failedCount === 1 ? '' : 's'} failed to upload after retrying — worth retaking if you're back near this job.`)
+    }
   }
 
   async function confirmChecklist() {
@@ -765,6 +791,16 @@ export default function TechnicianView() {
           <p style={styles.credentialBannerTitle}>⚠️ Invoice text failed</p>
           <p style={styles.credentialBannerLine}>{invoiceSmsWarning}</p>
           <button type="button" style={{ ...styles.btnGreySmall, marginTop: 8, padding: '4px 10px', fontSize: 12 }} onClick={() => setInvoiceSmsWarning(null)}>
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {checklistPhotoWarning && (
+        <div style={styles.credentialBanner}>
+          <p style={styles.credentialBannerTitle}>⚠️ Checklist photo upload failed</p>
+          <p style={styles.credentialBannerLine}>{checklistPhotoWarning}</p>
+          <button type="button" style={{ ...styles.btnGreySmall, marginTop: 8, padding: '4px 10px', fontSize: 12 }} onClick={() => setChecklistPhotoWarning(null)}>
             Dismiss
           </button>
         </div>

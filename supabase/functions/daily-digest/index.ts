@@ -70,11 +70,15 @@ serve(async (req: Request) => {
           .gte('reminder_count', 3).is('escalation_flagged_at', null),
       ])
 
+      // Exclude voided invoices from every total below — a voided invoice
+      // was created by mistake, so counting it toward "invoiced" or the
+      // average would overstate real revenue activity for the day.
+      const liveInvoices = (invoices || []).filter(i => i.status !== 'void')
       const jobsDone = completedJobs?.length || 0
       const leadsIn = newLeads?.length || 0
-      const invoiced = (invoices || []).reduce((sum, i) => sum + Number(i.total || 0), 0)
-      const unpaid = (invoices || []).filter(i => i.status === 'unpaid').reduce((sum, i) => sum + Number(i.total || 0), 0)
-      const avgInvoice = (invoices && invoices.length > 0) ? invoiced / invoices.length : 0
+      const invoiced = liveInvoices.reduce((sum, i) => sum + Number(i.total || 0), 0)
+      const unpaid = liveInvoices.filter(i => i.status === 'unpaid').reduce((sum, i) => sum + Number(i.total || 0), 0)
+      const avgInvoice = liveInvoices.length > 0 ? invoiced / liveInvoices.length : 0
 
       const suburbCounts: Record<string, number> = {}
       for (const j of completedJobs || []) {

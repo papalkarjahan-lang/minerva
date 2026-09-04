@@ -532,7 +532,15 @@ export default function DispatcherView() {
   // untouched so existing payroll/GPS/hours logic keeps working unchanged.
   async function addCrewMember(jobId, techId) {
     if (!techId) return
-    await supabase.from('job_assignments').insert({ job_id: jobId, business_id: businessId, technician_id: techId, role: 'crew' })
+    // Backend also enforces this (a before-insert trigger on job_assignments
+    // checks the crew_splitting addon) since this insert goes straight from
+    // the browser with no edge function in between — this UI check is a
+    // fast path, the trigger is the real gate.
+    const { error } = await supabase.from('job_assignments').insert({ job_id: jobId, business_id: businessId, technician_id: techId, role: 'crew' })
+    if (error) {
+      alert(error.message.includes('crew_splitting') ? error.message : 'Could not add crew member: ' + error.message)
+      return
+    }
     await supabase.from('technicians').update({ current_job_id: jobId }).eq('id', techId)
     await loadAll()
   }
@@ -674,6 +682,22 @@ export default function DispatcherView() {
     supabase.functions.invoke('run-custom-workflows', {
       body: { businessId: business?.id, event: 'invoice.paid', payload: { total: invoice?.total, client_name: invoice?.client_name } },
     }).catch(() => {})
+  }
+
+  // Void an invoice created by mistake. Deliberately NOT a real delete —
+  // there's no delete RLS policy on invoices at all (see supabase_schema.sql),
+  // so hard-deleting was never actually possible via the anon key. This adds
+  // the correction path that was genuinely missing (previously "Mark paid"
+  // was the only action available) as a soft delete with a required reason,
+  // so a voided invoice is always explainable later rather than silently
+  // gone. Voided invoices fall out of chase-unpaid-invoices automatically
+  // (it only queries status = 'unpaid').
+  async function voidInvoice(invoiceId) {
+    const reason = window.prompt('Why is this invoice being voided? (shown in the audit trail, e.g. "created by mistake" or "duplicate")')
+    if (reason === null) return // cancelled
+    const voidedAt = new Date().toISOString()
+    await supabase.from('invoices').update({ status: 'void', voided_at: voidedAt, voided_reason: reason || null }).eq('id', invoiceId)
+    setInvoices(prev => prev.map(i => i.id === invoiceId ? { ...i, status: 'void', voided_at: voidedAt, voided_reason: reason || null } : i))
   }
 
   function copyIntakeLink() {
@@ -1565,28 +1589,36 @@ export default function DispatcherView() {
                 </button>
               )}
               {invoices.map(inv => (
-                <div key={inv.id} style={styles.jobRow}>
+                <div key={inv.id} style={{ ...styles.jobRow, opacity: inv.status === 'void' ? 0.6 : 1 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <p style={styles.jobClient}>{inv.client_name || 'Client'}</p>
-                    <span style={styles.assetStatusBadge(inv.status === 'paid' ? 'available' : 'maintenance')}>
-                      {inv.status === 'paid' ? 'PAID' : 'UNPAID'}
+                    <p style={{ ...styles.jobClient, textDecoration: inv.status === 'void' ? 'line-through' : 'none' }}>{inv.client_name || 'Client'}</p>
+                    <span style={styles.assetStatusBadge(inv.status === 'paid' ? 'available' : inv.status === 'void' ? 'maintenance' : 'maintenance')}>
+                      {inv.status === 'paid' ? 'PAID' : inv.status === 'void' ? 'VOIDED' : 'UNPAID'}
                     </span>
                   </div>
                   <p style={styles.jobAddr}>${Number(inv.total).toFixed(2)} · {new Date(inv.created_at).toLocaleDateString('en-AU')}{inv.ai_verified ? ' · ✓ AI-verified' : ''}</p>
-                  {inv.status !== 'paid' && inv.reminder_count > 0 && (
+                  {inv.status === 'void' && (
+                    <p style={{ ...styles.jobAddr, color: '#888' }}>
+                      Voided {inv.voided_at ? new Date(inv.voided_at).toLocaleDateString('en-AU') : ''}{inv.voided_reason ? ` — "${inv.voided_reason}"` : ''}
+                    </p>
+                  )}
+                  {inv.status !== 'paid' && inv.status !== 'void' && inv.reminder_count > 0 && (
                     <p style={{ ...styles.jobAddr, color: inv.reminder_count >= 3 ? '#c47a3d' : '#888' }}>
                       {inv.reminder_count} reminder{inv.reminder_count === 1 ? '' : 's'} sent automatically
                     </p>
                   )}
-                  {inv.client_sms_failed && (
+                  {inv.client_sms_failed && inv.status !== 'void' && (
                     <p style={{ ...styles.jobAddr, color: '#8A2525' }}>
                       ⚠️ Client was never texted this invoice — the send failed. Consider resending manually.
                     </p>
                   )}
-                  {inv.status !== 'paid' && (
-                    <button style={styles.leadActionPrimary} onClick={() => markInvoicePaid(inv.id)}>Mark paid</button>
+                  {inv.status === 'unpaid' && (
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button style={styles.leadActionPrimary} onClick={() => markInvoicePaid(inv.id)}>Mark paid</button>
+                      <button style={styles.leadActionSecondary} onClick={() => voidInvoice(inv.id)}>Void</button>
+                    </div>
                   )}
-                  {hasAddon(business, 'xero_sync') && business?.xero_connected && (
+                  {inv.status !== 'void' && hasAddon(business, 'xero_sync') && business?.xero_connected && (
                     inv.xero_invoice_id
                       ? <p style={{ ...styles.jobAddr, color: '#1D9E75' }}>✓ Synced to Xero</p>
                       : <button style={styles.leadActionSecondary} onClick={() => syncInvoiceToXero(inv.id)}>Sync to Xero</button>
