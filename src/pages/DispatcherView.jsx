@@ -3,6 +3,7 @@ import { useParams, useSearchParams } from 'react-router-dom'
 import Map, { Marker, Popup, Source, Layer } from 'react-map-gl'
 import { supabase } from '../supabaseClient'
 import { timeAgo, geocodeAddress, generatePin } from '../utils'
+import { MAX_ADDONS, hasAddon, isTrialing, trialDaysLeft, hasUsedTrial, enableAddonPatch, disableAddonPatch, startTrialPatch } from '../maxAddons'
 import 'mapbox-gl/dist/mapbox-gl.css'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
@@ -52,6 +53,14 @@ export default function DispatcherView() {
   const [requestingReviewId, setRequestingReviewId] = useState(null)
   // Round-2 batch: seasonal demand forecasting — most recent business-scoped insight, or null.
   const [demandForecast, setDemandForecast] = useState(null)
+  // Minerva Max add-on tier (2026-09-04) — gates the Minerva Max batch +
+  // round-2 batch features behind per-addon enable/trial flags on
+  // `businesses`. dismissedNudges holds nudge_key's the dispatcher has
+  // already closed, so a usage-triggered upsell card doesn't reappear
+  // every session. addonBusy is the addon key currently mid-request, to
+  // disable that addon's buttons while the write is in flight.
+  const [dismissedNudges, setDismissedNudges] = useState([])
+  const [addonBusy, setAddonBusy] = useState(null)
   const [weatherTradesInput, setWeatherTradesInput] = useState('')
   const [metaAccessTokenInput, setMetaAccessTokenInput] = useState('')
   const [metaAdAccountIdInput, setMetaAdAccountIdInput] = useState('')
@@ -195,6 +204,13 @@ export default function DispatcherView() {
       .limit(1)
       .maybeSingle()
     setDemandForecast(forecastInsight || null)
+
+    // Minerva Max — nudge cards the dispatcher has already dismissed.
+    const { data: dismissedList } = await supabase
+      .from('upsell_nudge_dismissals')
+      .select('nudge_key')
+      .eq('business_id', businessId)
+    setDismissedNudges((dismissedList || []).map(d => d.nudge_key))
 
     // Asset tracking is a Pro-tier feature — skip the query entirely for
     // other tiers rather than fetching data the UI will never show.
@@ -818,6 +834,109 @@ export default function DispatcherView() {
     await loadAll()
   }
 
+  // Minerva Max add-on management — see src/maxAddons.js. Enabling/trialing
+  // just flips a jsonb flag on `businesses`; no real billing wired yet (see
+  // honest-scope note in supabase_schema_delta_minerva_max_tier.sql).
+  async function enableMaxAddon(key) {
+    setAddonBusy(key)
+    const { data } = await supabase.from('businesses').update(enableAddonPatch(business, key)).eq('id', businessId).select().single()
+    if (data) setBusiness(data)
+    setAddonBusy(null)
+  }
+
+  async function startMaxAddonTrial(key) {
+    setAddonBusy(key)
+    const { data } = await supabase.from('businesses').update(startTrialPatch(business, key)).eq('id', businessId).select().single()
+    if (data) setBusiness(data)
+    setAddonBusy(null)
+  }
+
+  async function disableMaxAddon(key) {
+    setAddonBusy(key)
+    const { data } = await supabase.from('businesses').update(disableAddonPatch(business, key)).eq('id', businessId).select().single()
+    if (data) setBusiness(data)
+    setAddonBusy(null)
+  }
+
+  async function dismissNudge(nudgeKey) {
+    setDismissedNudges(prev => [...prev, nudgeKey])
+    await supabase.from('upsell_nudge_dismissals').insert({ business_id: businessId, nudge_key: nudgeKey })
+  }
+
+  // Usage-triggered upsell nudges — computed from data this dispatcher
+  // already has, not a generic "upgrade now" pitch. Each nudge names a real
+  // number pulled from this business's own jobs/invoices/leads so the offer
+  // is concrete, not a hypothetical. See product discussion this session
+  // for why trigger-based, not cold-bundle, upsell is the realistic path.
+  function computeUpsellNudges() {
+    const nudges = []
+
+    if (!hasAddon(business, 'surge_pricing')) {
+      let missed = 0, count = 0
+      for (const job of completedJobs) {
+        if (job.urgency !== 'emergency') continue
+        const inv = invoices.find(i => i.job_id === job.id)
+        if (!inv) continue
+        const hasLine = (inv.line_items || []).some(li => li.description === 'Emergency callout premium')
+        if (hasLine) continue
+        const when = new Date(job.completed_at || job.scheduled_time || job.created_at)
+        const hour = when.getHours(), day = when.getDay()
+        missed += 75 + (hour < 7 || hour >= 18 ? 50 : 0) + (day === 0 || day === 6 ? 50 : 0)
+        count++
+      }
+      if (count > 0) {
+        nudges.push({ key: 'surge_pricing', text: `You've left an estimated $${missed} in after-hours/weekend premiums unclaimed across ${count} emergency job${count === 1 ? '' : 's'}.` })
+      }
+    }
+
+    if (!hasAddon(business, 'ai_quotes') && leads.length >= 3 && quotes.length === 0) {
+      nudges.push({ key: 'ai_quotes', text: `You have ${leads.length} open leads and haven't sent a single quote yet — AI Quote Drafting turns a description into a sendable quote in seconds.` })
+    }
+
+    if (!hasAddon(business, 'crew_splitting') && technicians.length >= 2 && Object.keys(jobCrew).length === 0) {
+      nudges.push({ key: 'crew_splitting', text: `You have ${technicians.length} technicians — splitting a job across crew lets you take on jobs a single tech can't handle alone.` })
+    }
+
+    const paidInvoices = invoices.filter(i => i.status === 'paid')
+    if (!hasAddon(business, 'review_loop') && paidInvoices.length >= 3) {
+      nudges.push({ key: 'review_loop', text: `You have ${paidInvoices.length} paid invoices and no review requests sent — that's reputation you're leaving on the table.` })
+    }
+
+    if (!hasAddon(business, 'xero_sync') && paidInvoices.length >= 5) {
+      nudges.push({ key: 'xero_sync', text: `You've got ${paidInvoices.length} paid invoices to reconcile by hand — Xero Sync pushes them across as drafts automatically.` })
+    }
+
+    if (!hasAddon(business, 'subcontractor_pool') && subcontractors.length === 0 &&
+      jobs.filter(j => j.status === 'scheduled' && !j.technician_id && !j.assigned_subcontractor_id).length >= 2) {
+      nudges.push({ key: 'subcontractor_pool', text: `You have unassigned jobs sitting in the queue — a subcontractor pool lets you cover overflow without hiring.` })
+    }
+
+    return nudges.filter(n => !dismissedNudges.includes(n.key))
+  }
+
+  // Shared "this is a Minerva Max add-on" lock card, shown in place of a
+  // gated feature's content/tab when its addon isn't enabled/trialing.
+  function addonLockCard(key) {
+    const meta = MAX_ADDONS.find(a => a.key === key)
+    if (!meta) return null
+    return (
+      <div style={{ ...styles.jobRow, textAlign: 'center', padding: 24 }}>
+        <p style={{ color: '#fff', fontSize: 14, fontWeight: 'bold', margin: '0 0 6px' }}>🔒 {meta.name} is a Minerva Max add-on</p>
+        <p style={{ color: '#888', fontSize: 13, margin: '0 0 14px' }}>{meta.description}</p>
+        <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
+          <button style={styles.leadActionPrimary} disabled={addonBusy === key} onClick={() => enableMaxAddon(key)}>
+            {addonBusy === key ? 'Working…' : `Enable — $${meta.price}/mo`}
+          </button>
+          {!hasUsedTrial(business, key) && (
+            <button style={styles.leadActionSecondary} disabled={addonBusy === key} onClick={() => startMaxAddonTrial(key)}>
+              Try free for 30 days
+            </button>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   function exportJobsCSV() {
     exportCSV(
       ['Created', 'Scheduled', 'Client Name', 'Client Phone', 'Client Address', 'Status', 'Started', 'Completed', 'Notes'],
@@ -1080,6 +1199,10 @@ export default function DispatcherView() {
               <button style={styles.tabBtn(queueTab === 'weather')} onClick={() => setQueueTab('weather')}>
                 WEATHER ({weatherDrafts.filter(d => d.status === 'pending').length})
               </button>
+              <span style={{ ...styles.deptLabel, marginLeft: 8 }}>Minerva Max</span>
+              <button style={styles.tabBtn(queueTab === 'max')} onClick={() => setQueueTab('max')}>
+                MAX{computeUpsellNudges().length > 0 ? ` (${computeUpsellNudges().length})` : ''}
+              </button>
               {/* Platform-wide, operator-only — gated behind ?agents=1, see
                   showAgentsTab definition above for the full reasoning. Not
                   shown to regular business owners by default. */}
@@ -1092,15 +1215,16 @@ export default function DispatcherView() {
                 </>
               )}
             </div>
-            {queueTab === 'quotes' && <button style={styles.addJobBtn} onClick={() => setShowAddQuote(true)}>+ New quote</button>}
+            {queueTab === 'quotes' && hasAddon(business, 'ai_quotes') && <button style={styles.addJobBtn} onClick={() => setShowAddQuote(true)}>+ New quote</button>}
             {queueTab === 'jobs' && <button style={styles.addJobBtn} onClick={() => setShowAddJob(true)}>+ Add</button>}
-            {queueTab === 'subcontractors' && <button style={styles.addJobBtn} onClick={() => setShowAddSubcontractor(true)}>+ Add</button>}
+            {queueTab === 'subcontractors' && hasAddon(business, 'subcontractor_pool') && <button style={styles.addJobBtn} onClick={() => setShowAddSubcontractor(true)}>+ Add</button>}
             {queueTab === 'assets' && <button style={styles.addJobBtn} onClick={() => setShowAddAsset(true)}>+ Add</button>}
             {queueTab === 'inventory' && <button style={styles.addJobBtn} onClick={() => setShowAddInventory(true)}>+ Add</button>}
             {queueTab === 'credentials' && <button style={styles.addJobBtn} onClick={() => setShowAddCredential(true)}>+ Add</button>}
           </div>
 
-          {queueTab === 'quotes' && (
+          {queueTab === 'quotes' && !hasAddon(business, 'ai_quotes') && addonLockCard('ai_quotes')}
+          {queueTab === 'quotes' && hasAddon(business, 'ai_quotes') && (
             <>
               <p style={{ color: '#888', fontSize: 12, marginBottom: 10 }}>
                 Drafted with AI where possible (falls back to a blank editable line item if AI is
@@ -1132,7 +1256,7 @@ export default function DispatcherView() {
 
           {queueTab === 'jobs' && (
             <>
-              {demandForecast && (
+              {hasAddon(business, 'demand_forecast') && demandForecast && (
                 <p style={{ color: '#5B8DEF', fontSize: 11, margin: '0 0 10px' }}>
                   📈 {demandForecast.summary}
                 </p>
@@ -1159,7 +1283,7 @@ export default function DispatcherView() {
                       ))}
                     </select>
                   )}
-                  {job.status === 'scheduled' && !job.technician_id && !job.assigned_subcontractor_id && subcontractors.length > 0 && (
+                  {hasAddon(business, 'subcontractor_pool') && job.status === 'scheduled' && !job.technician_id && !job.assigned_subcontractor_id && subcontractors.length > 0 && (
                     <select style={{ ...styles.assignSelect, marginTop: 4 }}
                       onChange={(e) => e.target.value && assignJobSubcontractor(job.id, e.target.value)}>
                       <option value="">Assign subcontractor...</option>
@@ -1175,25 +1299,34 @@ export default function DispatcherView() {
                       "lead" (jobs.technician_id, unchanged); crew members are extra
                       hands added via job_assignments, own current_job_id points at
                       this job too so TechnicianView shows it to them. */}
-                  {job.technician_id && (
+                  {job.technician_id && (jobCrew[job.id] || []).length > 0 && (
                     <div style={{ marginTop: 6 }}>
                       {(jobCrew[job.id] || []).map(a => (
                         <p key={a.id} style={{ ...styles.jobAddr, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           Crew: {a.technicians?.name || 'Unknown'}
-                          <button style={{ ...styles.leadActionSecondary, marginLeft: 8, padding: '2px 8px', fontSize: 11 }}
-                            onClick={() => removeCrewMember(a.id, a.technician_id)}>✕ Remove</button>
+                          {hasAddon(business, 'crew_splitting') && (
+                            <button style={{ ...styles.leadActionSecondary, marginLeft: 8, padding: '2px 8px', fontSize: 11 }}
+                              onClick={() => removeCrewMember(a.id, a.technician_id)}>✕ Remove</button>
+                          )}
                         </p>
                       ))}
-                      {technicians.filter(t => t.id !== job.technician_id && !(jobCrew[job.id] || []).some(a => a.technician_id === t.id)).length > 0 && (
-                        <select style={{ ...styles.assignSelect, marginTop: 4 }}
-                          onChange={(e) => { if (e.target.value) addCrewMember(job.id, e.target.value); e.target.value = '' }}>
-                          <option value="">+ Add crew member...</option>
-                          {technicians.filter(t => t.id !== job.technician_id && !(jobCrew[job.id] || []).some(a => a.technician_id === t.id)).map(t => (
-                            <option key={t.id} value={t.id}>{t.name}</option>
-                          ))}
-                        </select>
-                      )}
                     </div>
+                  )}
+                  {job.technician_id && !hasAddon(business, 'crew_splitting') && (
+                    <button style={{ ...styles.leadActionSecondary, marginTop: 6, fontSize: 11, padding: '3px 8px' }}
+                      onClick={() => setQueueTab('max')}>
+                      + Add crew (Minerva Max add-on)
+                    </button>
+                  )}
+                  {job.technician_id && hasAddon(business, 'crew_splitting') &&
+                    technicians.filter(t => t.id !== job.technician_id && !(jobCrew[job.id] || []).some(a => a.technician_id === t.id)).length > 0 && (
+                    <select style={{ ...styles.assignSelect, marginTop: 4 }}
+                      onChange={(e) => { if (e.target.value) addCrewMember(job.id, e.target.value); e.target.value = '' }}>
+                      <option value="">+ Add crew member...</option>
+                      {technicians.filter(t => t.id !== job.technician_id && !(jobCrew[job.id] || []).some(a => a.technician_id === t.id)).map(t => (
+                        <option key={t.id} value={t.id}>{t.name}</option>
+                      ))}
+                    </select>
                   )}
                 </div>
               ))}
@@ -1293,7 +1426,8 @@ export default function DispatcherView() {
             </>
           )}
 
-          {queueTab === 'subcontractors' && (
+          {queueTab === 'subcontractors' && !hasAddon(business, 'subcontractor_pool') && addonLockCard('subcontractor_pool')}
+          {queueTab === 'subcontractors' && hasAddon(business, 'subcontractor_pool') && (
             <>
               <p style={{ color: '#888', fontSize: 12, marginBottom: 10 }}>
                 External contractors dispatch can assign to a job alongside employed technicians —
@@ -1388,7 +1522,8 @@ export default function DispatcherView() {
             </>
           )}
 
-          {queueTab === 'carbon' && (
+          {queueTab === 'carbon' && !hasAddon(business, 'carbon_estimate') && addonLockCard('carbon_estimate')}
+          {queueTab === 'carbon' && hasAddon(business, 'carbon_estimate') && (
             <>
               <p style={{ color: '#888', fontSize: 12, marginBottom: 10 }}>
                 Estimate only — technician transit distance × a static reference vehicle-emissions
@@ -1441,12 +1576,12 @@ export default function DispatcherView() {
                   {inv.status !== 'paid' && (
                     <button style={styles.leadActionPrimary} onClick={() => markInvoicePaid(inv.id)}>Mark paid</button>
                   )}
-                  {business?.xero_connected && (
+                  {hasAddon(business, 'xero_sync') && business?.xero_connected && (
                     inv.xero_invoice_id
                       ? <p style={{ ...styles.jobAddr, color: '#1D9E75' }}>✓ Synced to Xero</p>
                       : <button style={styles.leadActionSecondary} onClick={() => syncInvoiceToXero(inv.id)}>Sync to Xero</button>
                   )}
-                  {inv.status === 'paid' && business?.google_review_link && !reviewRequests[inv.id] && (
+                  {hasAddon(business, 'review_loop') && inv.status === 'paid' && business?.google_review_link && !reviewRequests[inv.id] && (
                     <button style={styles.leadActionSecondary} disabled={requestingReviewId === inv.id} onClick={() => requestReview(inv.id)}>
                       {requestingReviewId === inv.id ? 'Sending...' : '⭐ Request review'}
                     </button>
@@ -1664,6 +1799,82 @@ export default function DispatcherView() {
                 </div>
               ))}
               {weatherDrafts.length === 0 && <p style={{ color: '#444', fontSize: 13 }}>No weather-risk jobs flagged — set weather-sensitive trade types in Settings to enable this</p>}
+            </>
+          )}
+
+          {/* Minerva Max add-on catalog + usage-triggered nudges. Every
+              feature listed here already exists elsewhere in the app —
+              this tab is the monetization surface, not new functionality.
+              See src/maxAddons.js for the addon catalog + gating helpers. */}
+          {queueTab === 'max' && (
+            <>
+              {computeUpsellNudges().length > 0 && (
+                <div style={{ marginBottom: 16 }}>
+                  <p style={{ color: '#888', fontSize: 11, letterSpacing: 1, marginBottom: 8 }}>BASED ON YOUR OWN ACTIVITY</p>
+                  {computeUpsellNudges().map(nudge => {
+                    const meta = MAX_ADDONS.find(a => a.key === nudge.key)
+                    return (
+                      <div key={nudge.key} style={{ ...styles.jobRow, background: '#1D2F4D22', border: '1px solid #2D5FA855' }}>
+                        <p style={{ color: '#fff', fontSize: 13, margin: '0 0 8px', lineHeight: 1.4 }}>💡 {nudge.text}</p>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          <button style={styles.leadActionPrimary} disabled={addonBusy === nudge.key}
+                            onClick={() => enableMaxAddon(nudge.key)}>
+                            {addonBusy === nudge.key ? 'Working…' : `Enable ${meta?.name} — $${meta?.price}/mo`}
+                          </button>
+                          {!hasUsedTrial(business, nudge.key) && (
+                            <button style={styles.leadActionSecondary} disabled={addonBusy === nudge.key}
+                              onClick={() => startMaxAddonTrial(nudge.key)}>
+                              Try free for 30 days
+                            </button>
+                          )}
+                          <button style={styles.leadActionSecondary} onClick={() => dismissNudge(nudge.key)}>Dismiss</button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              <p style={{ color: '#888', fontSize: 11, letterSpacing: 1, marginBottom: 8 }}>ALL ADD-ONS</p>
+              <p style={{ color: '#666', fontSize: 12, marginBottom: 10, lineHeight: 1.4 }}>
+                Enable individually as you need them, or trial any of them free for 30 days. Nothing here
+                is billed automatically yet — enabling just turns the feature on.
+              </p>
+              {MAX_ADDONS.map(addon => {
+                const enabled = business?.max_addons?.[addon.key] === true
+                const trialing = isTrialing(business, addon.key)
+                return (
+                  <div key={addon.key} style={styles.jobRow}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <p style={styles.jobClient}>{addon.name}</p>
+                      {enabled && !trialing && <span style={styles.assetStatusBadge('available')}>ENABLED</span>}
+                      {trialing && <span style={styles.assetStatusBadge('in_use')}>TRIAL — {trialDaysLeft(business, addon.key)}d left</span>}
+                    </div>
+                    <p style={styles.leadDesc}>{addon.tagline}</p>
+                    <p style={{ color: '#666', fontSize: 12, margin: '4px 0 8px' }}>{addon.description}</p>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      {!enabled && (
+                        <button style={styles.leadActionPrimary} disabled={addonBusy === addon.key}
+                          onClick={() => enableMaxAddon(addon.key)}>
+                          {addonBusy === addon.key ? 'Working…' : `Enable — $${addon.price}/mo`}
+                        </button>
+                      )}
+                      {!enabled && !hasUsedTrial(business, addon.key) && (
+                        <button style={styles.leadActionSecondary} disabled={addonBusy === addon.key}
+                          onClick={() => startMaxAddonTrial(addon.key)}>
+                          Try free for 30 days
+                        </button>
+                      )}
+                      {enabled && (
+                        <button style={styles.leadActionSecondary} disabled={addonBusy === addon.key}
+                          onClick={() => disableMaxAddon(addon.key)}>
+                          {addonBusy === addon.key ? 'Working…' : 'Disable'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
             </>
           )}
 
@@ -2528,7 +2739,11 @@ function SettingsModal({
 
           <div style={{ marginBottom: 14 }}>
             <label style={styles.inputLabel}>Xero</label>
-            {business?.xero_connected ? (
+            {!hasAddon(business, 'xero_sync') ? (
+              <p style={{ color: '#888', fontSize: 12, margin: '4px 0 0' }}>
+                🔒 Xero Sync is a Minerva Max add-on — enable it from the MAX tab first.
+              </p>
+            ) : business?.xero_connected ? (
               <p style={{ color: '#1D9E75', fontSize: 13, margin: '4px 0 0' }}>✓ Connected</p>
             ) : (
               <>

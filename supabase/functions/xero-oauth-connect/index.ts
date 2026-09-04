@@ -15,6 +15,7 @@
 // Deploy with: supabase functions deploy xero-oauth-connect --no-verify-jwt
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -23,6 +24,24 @@ serve(async (req: Request) => {
 
   const clientId = Deno.env.get('XERO_CLIENT_ID')
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+  const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
+
+  const urlParams = new URL(req.url).searchParams
+  const businessIdParam = urlParams.get('businessId')
+  if (businessIdParam) {
+    // Minerva Max: xero_sync is a paid add-on — defense in depth alongside
+    // the frontend gate (Settings only shows "Connect Xero" once enabled).
+    const supabase = createClient(supabaseUrl, supabaseAnonKey)
+    const { data: biz } = await supabase.from('businesses').select('max_addons, max_addon_trials').eq('id', businessIdParam).maybeSingle()
+    const addonActive = biz?.max_addons?.xero_sync === true ||
+      (biz?.max_addon_trials?.xero_sync?.ends_at && new Date(biz.max_addon_trials.xero_sync.ends_at).getTime() > Date.now())
+    if (!addonActive) {
+      return new Response(JSON.stringify({ error: 'Xero Sync is a Minerva Max add-on — enable it from the MAX tab first.' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+  }
 
   if (!clientId) {
     return new Response(JSON.stringify({

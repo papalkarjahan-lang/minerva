@@ -988,6 +988,45 @@ for `forecast-demand`'s weekly schedule.
 
 ---
 
+## Minerva Max add-on tier (2026-09-04)
+
+Monetization layer on top of the Minerva Max batch + Round-2 batch above —
+no new features, just per-business, per-addon gating so those features are
+individually salable rather than always-on freebies bundled into base
+pricing. Deploy `supabase_schema_delta_minerva_max_tier.sql`, then
+redeploy `forecast-demand`, `predict-asset-maintenance`,
+`detect-idle-assets`, `send-review-request-sms`, `xero-sync-invoice`, and
+`xero-oauth-connect` (all five now check the relevant addon flag).
+
+- **9 add-ons** (`src/maxAddons.js` is the single source of truth for the
+  catalog + prices): Emergency Surge Pricing, AI Quote Drafting, Multi-Tech
+  Job Splitting, Review Request Loop, Demand Trend Alerts, Subcontractor
+  Pool, Asset Intelligence (predictive maintenance + idle-asset detection),
+  Carbon/ESG Estimate, Xero Sync.
+- **Per-addon enable or 30-day free trial** — `businesses.max_addons` /
+  `businesses.max_addon_trials` (jsonb). No bundled "Minerva Max" on/off
+  switch by design — see product discussion this session on why a cold
+  $300-500/mo ask doesn't convert, vs. proving value addon-by-addon first.
+- **Usage-triggered upsell nudges** (new **MAX** tab in `DispatcherView`) —
+  computed from this business's own data, not a generic pitch: unclaimed
+  after-hours premium $ across real emergency jobs, open leads with zero
+  quotes sent, paid invoices with no review requests sent, unassigned jobs
+  with no subcontractor pool, etc. Each nudge is dismissible
+  (`upsell_nudge_dismissals` table) so it doesn't reappear every session.
+- **Gating is enforced on both ends**: the frontend hides/locks gated UI
+  (`hasAddon()` from `src/maxAddons.js`), and the corresponding edge
+  functions independently check the same flag server-side before doing any
+  work or sending anything — so a locked feature can't be triggered by
+  calling the function directly.
+- **Honest scope note**: this is feature-gating + trial-tracking
+  infrastructure only. It does NOT wire real Stripe billing for these
+  add-ons — enabling/trialing one here just flips a flag. Real recurring
+  per-addon billing needs its own explicit Stripe walkthrough (new Prices,
+  subscription-item add/remove), same boundary as the base-tier Stripe
+  setup.
+
+---
+
 ## Testing checklist (Day 7 — before first client call)
 
 Run through this on TWO real devices (your phone + your laptop):
@@ -1156,6 +1195,11 @@ Tier is chosen at signup (`Onboarding.jsx`) and drives which Stripe price is
 charged (`create-checkout-session`) and which features render in the
 dispatcher/technician views. Billed quantity auto-adjusts to the number of
 technicians actually connected — see `sync-technician-billing` above.
+
+- **Minerva Max add-ons**: $19-59/month each, layered on top of any tier —
+  see "Minerva Max add-on tier" above. Not real Stripe-billed yet (see that
+  section's honest-scope note); enabling one from the MAX tab just flips a
+  flag today.
 
 ---
 

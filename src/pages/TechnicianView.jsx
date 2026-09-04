@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 import { haversineKm } from '../utils'
+import { hasAddon } from '../maxAddons'
 
 // GPS update interval in milliseconds
 const GPS_INTERVAL_MS = 15000 // 15 seconds
@@ -919,7 +920,7 @@ export default function TechnicianView() {
             </div>
           ))}
           <button type="button" style={styles.invoiceAddBtn} onClick={addInvoiceItem}>+ Add line item</button>
-          {currentJob?.urgency === 'emergency' && !invoiceItems.some(i => i.description === 'Emergency callout premium') && (
+          {hasAddon(business, 'surge_pricing') && currentJob?.urgency === 'emergency' && !invoiceItems.some(i => i.description === 'Emergency callout premium') && (
             <button type="button" style={{ ...styles.invoiceAddBtn, marginLeft: 8 }} onClick={addEmergencyPremiumLine}>
               ⚡ Suggest emergency premium
             </button>

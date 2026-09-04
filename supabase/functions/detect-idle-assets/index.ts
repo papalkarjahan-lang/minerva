@@ -38,7 +38,18 @@ serve(async (req: Request) => {
       .eq('status', 'active')
       .lt('last_telemetry_at', idleSince)
 
-    const candidates = [...(neverPinged || []), ...(stalePinged || [])]
+    // Minerva Max: this is a paid add-on (asset_intelligence) — only flag
+    // assets belonging to a business that has it enabled or is trialing
+    // it. See src/maxAddons.js for the frontend equivalent.
+    const { data: businesses } = await supabase.from('businesses').select('id, max_addons, max_addon_trials')
+    const addonActive = (bizId: string, key: string) => {
+      const biz = (businesses || []).find((b: any) => b.id === bizId)
+      if (biz?.max_addons?.[key] === true) return true
+      const trial = biz?.max_addon_trials?.[key]
+      return !!trial?.ends_at && new Date(trial.ends_at).getTime() > Date.now()
+    }
+
+    const candidates = [...(neverPinged || []), ...(stalePinged || [])].filter(a => addonActive((a as any).business_id, 'asset_intelligence'))
 
     let flagged = 0
     for (const asset of candidates) {

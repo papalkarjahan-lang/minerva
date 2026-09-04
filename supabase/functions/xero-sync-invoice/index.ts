@@ -40,8 +40,21 @@ serve(async (req: Request) => {
     const { invoiceId } = await req.json()
     if (!invoiceId) throw new Error('invoiceId is required')
 
-    const { data: invoice, error: invErr } = await supabase.from('invoices').select('*').eq('id', invoiceId).maybeSingle()
+    const { data: invoice, error: invErr } = await supabase.from('invoices').select('*, businesses(max_addons, max_addon_trials)').eq('id', invoiceId).maybeSingle()
     if (invErr || !invoice) throw new Error('invoice not found')
+
+    // Minerva Max: xero_sync is a paid add-on — defense in depth alongside
+    // the frontend gate (see src/maxAddons.js / DispatcherView's Settings
+    // Xero panel + "Sync to Xero" button).
+    const bizAddons = (invoice as any).businesses
+    const addonActive = bizAddons?.max_addons?.xero_sync === true ||
+      (bizAddons?.max_addon_trials?.xero_sync?.ends_at && new Date(bizAddons.max_addon_trials.xero_sync.ends_at).getTime() > Date.now())
+    if (!addonActive) {
+      return new Response(JSON.stringify({ error: 'Xero Sync is a Minerva Max add-on — enable it from the MAX tab first.' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
 
     const { data: cred, error: credErr } = await supabase.from('integration_credentials')
       .select('*').eq('business_id', invoice.business_id).eq('provider', 'xero').maybeSingle()

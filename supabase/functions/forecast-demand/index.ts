@@ -40,12 +40,21 @@ serve(async (req: Request) => {
       return new Response(JSON.stringify({ success: true, skipped: true, reason: 'disabled via agent_functions.enabled' }), { status: 200, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } })
     }
 
-    const { data: businesses } = await supabase.from('businesses').select('id')
+    // Minerva Max: this is a paid add-on (demand_forecast) — only run the
+    // trend scan for businesses that have it enabled or are trialing it.
+    // See src/maxAddons.js for the frontend equivalent of this check.
+    const { data: businesses } = await supabase.from('businesses').select('id, max_addons, max_addon_trials')
+    const addonActive = (biz: any, key: string) => {
+      if (biz?.max_addons?.[key] === true) return true
+      const trial = biz?.max_addon_trials?.[key]
+      return !!trial?.ends_at && new Date(trial.ends_at).getTime() > Date.now()
+    }
 
     const cutoff = new Date(Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString()
     let flagged = 0
 
     for (const biz of businesses || []) {
+      if (!addonActive(biz, 'demand_forecast')) continue
       const { data: jobs } = await supabase
         .from('jobs')
         .select('client_address, created_at')

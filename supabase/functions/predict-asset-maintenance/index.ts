@@ -37,6 +37,17 @@ serve(async (req: Request) => {
       .eq('status', 'active')
     if (error) throw error
 
+    // Minerva Max: this is a paid add-on (asset_intelligence) — only
+    // evaluate assets belonging to a business that has it enabled or is
+    // trialing it. See src/maxAddons.js for the frontend equivalent.
+    const { data: businesses } = await supabase.from('businesses').select('id, max_addons, max_addon_trials')
+    const addonActive = (bizId: string, key: string) => {
+      const biz = (businesses || []).find((b: any) => b.id === bizId)
+      if (biz?.max_addons?.[key] === true) return true
+      const trial = biz?.max_addon_trials?.[key]
+      return !!trial?.ends_at && new Date(trial.ends_at).getTime() > Date.now()
+    }
+
     const lookbackSince = new Date(Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString()
     const suppressSince = new Date(Date.now() - RENOTIFY_SUPPRESS_DAYS * 24 * 60 * 60 * 1000).toISOString()
 
@@ -44,6 +55,7 @@ serve(async (req: Request) => {
     let predicted = 0
 
     for (const asset of assets || []) {
+      if (!addonActive(asset.business_id, 'asset_intelligence')) continue
       evaluated++
 
       const { data: pings } = await supabase.from('asset_telemetry_events')

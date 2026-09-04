@@ -30,6 +30,17 @@ serve(async (req: Request) => {
     if (!invoice.client_phone) throw new Error('This invoice has no client phone number on file')
 
     const business = (invoice as any).businesses
+    // Minerva Max: review_loop is a paid add-on — defense in depth
+    // alongside the frontend gate (see src/maxAddons.js / DispatcherView's
+    // "Request Review" button), in case this is ever called directly.
+    const addonActive = business?.max_addons?.review_loop === true ||
+      (business?.max_addon_trials?.review_loop?.ends_at && new Date(business.max_addon_trials.review_loop.ends_at).getTime() > Date.now())
+    if (!addonActive) {
+      return new Response(JSON.stringify({ error: 'Review Request Loop is a Minerva Max add-on — enable it from the MAX tab first.' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
     if (!business?.google_review_link) {
       return new Response(JSON.stringify({ error: 'No Google review link configured — set one in Settings first.' }), {
         status: 400,
