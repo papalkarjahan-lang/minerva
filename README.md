@@ -311,10 +311,10 @@ business's scheduled jobs. Treat the link like a secret (see
 schedule.
 
 ### Accounting export (Xero / QuickBooks)
-Pro-tier businesses can export their invoices, jobs, and leads as a CSV
-from the **Invoices**, **Jobs**, and **Leads** tabs (**⬇ Export CSV**) and
-import into Xero, QuickBooks, or Excel — the zero-setup option, works today
-for either provider.
+Any business, on any tier, can export their invoices, jobs, and leads as a
+CSV from the **Invoices**, **Jobs**, and **Leads** tabs (**⬇ Export CSV**)
+and import into Xero, QuickBooks, or Excel — the zero-setup option, works
+today for either provider, with no tier gate in the code.
 
 There's also a real, working Xero OAuth integration (`xero-oauth-connect`,
 `xero-oauth-callback`, `xero-sync-invoice` — added 2026-09-04, see "Minerva
@@ -1052,8 +1052,11 @@ Run through this on TWO real devices (your phone + your laptop):
 - [ ] Call the business's Twilio number and let it go unanswered → caller
       receives the "missed you" auto-reply SMS
 
-**Pro tier only** (sign up with the Pro plan to test these):
+**All tiers** (no tier gate in code — works on Starter too):
 - [ ] Dispatcher → "+ Add" a technician from the sidebar → they receive a setup SMS
+- [ ] Jobs tab / Leads tab → Export CSV → files download with correct data
+
+**Pro tier only** (sign up with the Pro plan to test these):
 - [ ] Dispatcher → set up a completion checklist → add 2-3 items → save
 - [ ] Technician → complete a job → checklist appears → "Continue" is disabled
       until every item is ticked
@@ -1072,7 +1075,6 @@ Run through this on TWO real devices (your phone + your laptop):
       NOT show the checklist again
 - [ ] Dispatcher → Inventory tab → add an item with a reorder threshold
       above its starting quantity → confirm it's flagged "LOW STOCK"
-- [ ] Jobs tab / Leads tab → Export CSV → files download with correct data
 
 **Autonomous layer** (only if you ran the pg_cron setup block):
 - [ ] Dispatcher → Settings → paste a Slack webhook URL → save → capture a
@@ -1140,6 +1142,7 @@ minerva/
 │       ├── send-setup-sms/        # Fires technician setup SMS on onboarding
 │       ├── send-completion-sms/   # Fires the "job complete" client SMS
 │       ├── send-invoice-sms/      # Fires the invoice link SMS (Pro tier)
+│       ├── send-job-assignment-sms/ # Fires assignment/reassignment SMS to the technician (2026-09-04)
 │       ├── missed-call-webhook/   # Twilio Voice webhook: TwiML + missed-call SMS auto-reply
 │       ├── create-checkout-session/ # Creates Stripe checkout (tier + quantity aware)
 │       ├── sync-technician-billing/ # Syncs Stripe subscription quantity to connected technicians
@@ -1158,6 +1161,8 @@ minerva/
 │       ├── launch-ad-campaign/    # Click-only: launches an approved ad_campaign draft via Meta API
 │       ├── send-growth-message/   # Click-only: sends an approved outreach_sms draft via Twilio
 │       ├── check-credential-expiry/ # Agent: licence/ticket expiry Slack alerts (daily), Pro tier
+│       ├── send-review-request-sms/ # Fire-and-forget: review-request SMS + trackable link
+│       ├── track-review-click/    # Public redirect: logs a review-link click, then forwards to the real review URL
 │       ├── detect-wasted-trips/   # Agent: GPS-confirmed no-show detection (every 15 min)
 │       ├── check-weather-risk/    # Agent: forecast-risk drafts for weather-sensitive jobs (daily) — WRITES ONLY
 │       ├── send-weather-reschedule-sms/ # Click-only: sends an approved weather reschedule draft via Twilio
@@ -1166,6 +1171,17 @@ minerva/
 │       ├── verify-checklist-photos/ # Track A: Watchtower — AI photo verification (every 15 min)
 │       ├── run-custom-workflows/  # Track A: general-purpose trigger→condition→action workflow agent
 │       ├── winback-lost-leads/    # Track A: re-engagement SMS for leads marked lost (daily)
+│       ├── draft-quote/           # Minerva Max (ai_quotes): AI-drafted quote text — WRITES ONLY
+│       ├── send-quote-sms/        # Minerva Max (ai_quotes): sends an approved quote link via Twilio
+│       ├── forecast-demand/       # Minerva Max (demand_forecast): weekly booking-volume projection (weekly)
+│       ├── estimate-job-carbon/   # Minerva Max (carbon_estimate): daily transit CO2-e estimate per technician
+│       ├── predict-asset-maintenance/ # Minerva Max (asset_intelligence): linear-projection maintenance forecast (daily)
+│       ├── detect-idle-assets/    # Minerva Max (asset_intelligence): "ghost asset" no-telemetry detector (daily)
+│       ├── xero-oauth-connect/    # Minerva Max: starts the Xero OAuth flow for a business
+│       ├── xero-oauth-callback/   # Minerva Max: completes Xero OAuth, stores tokens
+│       ├── xero-sync-invoice/     # Minerva Max: pushes a paid invoice to the business's connected Xero org
+│       ├── agent-council-report/  # System: cross-agent digest of recent agent_insights (on-demand)
+│       ├── test-agent-health/     # System: pings agent_functions rows vs. actual recorded runs (on-demand)
 │       ├── industrial-conductor/  # Track B: Central Conductor — asset suggestion for new leads
 │       ├── harvest-industrial-leads/ # Track B: bulk industrial lead ingestion webhook
 │       ├── enrich-industrial-leads/  # Track B: Signal & Enrich — missing-contact-data nudge (daily)

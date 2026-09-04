@@ -44,6 +44,75 @@ the bottom.
   (`agent_functions.enabled`) is fully wired — all 11 gated functions
   actually check it and skip early when disabled. `SECURITY_NOTES.md`
   updated to reflect this (previously said "not yet read by any function").
+- **2026-09-04**: Minerva Max add-on tier (7 add-ons, upsell nudges, trials)
+  deployed live end-to-end — SQL delta run, 6 edge functions redeployed,
+  committed and pushed (`7a9506c`).
+- **2026-09-04 ("free time" audit pass)**: systematic 3-pronged audit
+  (technician-phone flows, cross-agent/cross-system links, docs-vs-code
+  accuracy) found and fixed a real defense-in-depth gap — `draft-quote`,
+  `send-quote-sms`, and `estimate-job-carbon` were missing server-side
+  Minerva Max addon checks despite being frontend-gated. Also built:
+  SMS to technician on job assignment/reassignment (new
+  `send-job-assignment-sms` function, wired into `assignJob()` in
+  `DispatcherView.jsx` and into `auto-assign-technician`); technician-facing
+  burnout/workload banner (mirrors the existing 55-hour dispatcher-side
+  threshold); invoice client-SMS-failure visibility (new
+  `invoices.client_sms_failed` column, dispatcher + technician badges,
+  replaces a previously-silent failure); GPS offline-queue auto-flush on
+  app load (previously only flushed on the `online` event or next GPS
+  tick); a "Show recent run log" panel for Custom Workflows in
+  `DispatcherView.jsx` (surfaces the previously-write-only `workflow_runs`
+  table); `agent_functions` registry rows + `record_agent_run()` calls
+  added for 6 functions that were deployed/scheduled but invisible to
+  `test-agent-health` (`predict-asset-maintenance`, `detect-idle-assets`,
+  `estimate-job-carbon`, `forecast-demand`, `agent-council-report`,
+  `test-agent-health` itself); 3 stale README claims corrected (CSV export
+  and "+ Add" technician were documented as Pro-tier-only but have no tier
+  gate in code; the edge-functions file listing was missing ~14 newer
+  functions). All code/SQL changes committed locally — **not yet deployed
+  live**, see below.
+
+## Not yet deployed live (needs a fresh Supabase PAT + GitHub PAT)
+
+- `supabase_schema_delta_operational_fixes.sql` — adds
+  `invoices.client_sms_failed` and the 6 missing `agent_functions` rows.
+  Needs to be run via the Supabase Management API (same pattern as prior
+  deltas) with a fresh PAT — both PATs supplied in the 2026-09-04 session
+  are spent (one-time-use convention).
+- Redeploy needed for: `draft-quote`, `send-quote-sms`, `estimate-job-carbon`,
+  `send-job-assignment-sms` (new function, never deployed), `auto-assign-technician`,
+  `predict-asset-maintenance`, `detect-idle-assets`, `check-credential-expiry`.
+  (`forecast-demand` only needs the SQL row above — its code already had
+  `record_agent_run`, no redeploy needed.)
+- New local commit(s) from the 2026-09-04 "free time" session need a fresh
+  GitHub PAT + an explicit per-instance push request before `git push` —
+  standing hard rule, does not carry forward from any prior push approval.
+
+## Audit findings deliberately NOT built this session (2026-09-04)
+
+Found by the same audit pass, judged lower-priority or higher-scope than
+what fit in the session, and intentionally left for a future pass rather
+than rushed:
+
+- **PWA/offline mode for TechnicianView** — large scope (service worker,
+  cache strategy, install prompt); the GPS-queue auto-flush fix covers the
+  most common real-world case (phone reconnects before reopening the app)
+  without the full offline-app rebuild.
+- **Crew-member RLS server-side enforcement** — `crew_splitting` add-on
+  currently relies on frontend gating only for who can be added as crew;
+  proper fix needs new Postgres RLS policies, moderate scope.
+- **Checklist-photo upload retry logic** — `verify-checklist-photos` has no
+  retry if the initial photo upload fails partway; moderate scope.
+- **No-show-to-technician SMS** — `detect-wasted-trips` currently only
+  Slack-alerts the dispatcher; a technician-facing nudge was judged LOW
+  severity by the audit.
+- **Invoice soft-delete audit trail** — invoices can be deleted with no
+  record of who/when/why; flagged but not built.
+- Hard-blocking a job/invoice when a technician's credential is already
+  expired — this was a deliberate prior design decision
+  (`check-credential-expiry`'s header comment: "never a client SMS... purely
+  an internal compliance nudge") and was correctly left alone rather than
+  unilaterally reversed.
 
 ## Still outstanding (non-code, needs the user or a bank account)
 
@@ -59,3 +128,14 @@ the bottom.
   real Stripe test-mode checkout, and real SMS receipt, so this has to be
   run by the user directly rather than by an agent (falls outside the
   standing "no real customer messages / no real paid signups" boundary).
+- Xero developer app registration (`developer.xero.com`) — the account
+  holder has to create their own free app and hand over the resulting
+  `XERO_CLIENT_ID`/`XERO_CLIENT_SECRET`; not something that can be done on
+  the user's behalf. Until then "Connect Xero" in Settings just shows a
+  setup message — the OAuth code (`xero-oauth-connect`,
+  `xero-oauth-callback`, `xero-sync-invoice`) is built and deployed, only
+  the credentials are missing.
+- Real Stripe per-add-on billing wiring for the Minerva Max tier — the
+  add-on enable/trial flags and gating are live, but actually charging for
+  each add-on through Stripe still needs to be wired up and walked through
+  with the user (per the standing boundary on Stripe account changes).

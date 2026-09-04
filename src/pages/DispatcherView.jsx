@@ -511,8 +511,13 @@ export default function DispatcherView() {
 
   // Assign job to technician
   async function assignJob(jobId, techId) {
+    const previousTechId = jobs.find(j => j.id === jobId)?.technician_id || null
     await supabase.from('jobs').update({ technician_id: techId }).eq('id', jobId)
     await supabase.from('technicians').update({ current_job_id: jobId }).eq('id', techId)
+    // Fire-and-forget — never blocks the assignment itself on SMS delivery.
+    supabase.functions.invoke('send-job-assignment-sms', {
+      body: { jobId, technicianId: techId, previousTechnicianId: previousTechId && previousTechId !== techId ? previousTechId : undefined },
+    }).catch(() => {})
     await loadAll()
   }
 
@@ -1571,6 +1576,11 @@ export default function DispatcherView() {
                   {inv.status !== 'paid' && inv.reminder_count > 0 && (
                     <p style={{ ...styles.jobAddr, color: inv.reminder_count >= 3 ? '#c47a3d' : '#888' }}>
                       {inv.reminder_count} reminder{inv.reminder_count === 1 ? '' : 's'} sent automatically
+                    </p>
+                  )}
+                  {inv.client_sms_failed && (
+                    <p style={{ ...styles.jobAddr, color: '#8A2525' }}>
+                      ⚠️ Client was never texted this invoice — the send failed. Consider resending manually.
                     </p>
                   )}
                   {inv.status !== 'paid' && (
@@ -2870,11 +2880,28 @@ function CustomWorkflowsPanel({ businessId }) {
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
   const [draft, setDraft] = useState({ name: '', trigger_event: 'lead.created', condition_field: '', condition_op: '', condition_value: '', action_type: 'slack', action_target: '' })
+  // Audit log for run-custom-workflows — previously written to workflow_runs
+  // by that function but never surfaced anywhere, so a failed webhook/Slack
+  // action was invisible. Loaded lazily (only when expanded) since most
+  // businesses will have few/no workflows to debug.
+  const [showRunLog, setShowRunLog] = useState(false)
+  const [runLog, setRunLog] = useState([])
+  const [runLogLoading, setRunLogLoading] = useState(false)
 
   useEffect(() => {
     supabase.from('custom_workflows').select('*').eq('business_id', businessId).order('created_at', { ascending: false })
       .then(({ data }) => { setWorkflows(data || []); setLoading(false) })
   }, [businessId])
+
+  function toggleRunLog() {
+    const next = !showRunLog
+    setShowRunLog(next)
+    if (next && runLog.length === 0) {
+      setRunLogLoading(true)
+      supabase.from('workflow_runs').select('*').eq('business_id', businessId).order('created_at', { ascending: false }).limit(20)
+        .then(({ data }) => { setRunLog(data || []); setRunLogLoading(false) })
+    }
+  }
 
   async function addWorkflow(e) {
     e.preventDefault()
@@ -2940,6 +2967,28 @@ function CustomWorkflowsPanel({ businessId }) {
           </div>
         </div>
       ))}
+
+      {workflows.length > 0 && (
+        <div style={{ marginTop: 14 }}>
+          <button type="button" onClick={toggleRunLog} style={{ ...styles.cancelBtn, padding: '4px 10px', fontSize: 11 }}>
+            {showRunLog ? 'Hide run log' : 'Show recent run log'}
+          </button>
+          {showRunLog && (
+            <div style={{ marginTop: 8 }}>
+              {runLogLoading && <p style={{ color: '#aaa', fontSize: 12 }}>Loading...</p>}
+              {!runLogLoading && runLog.length === 0 && <p style={{ color: '#aaa', fontSize: 12 }}>No runs recorded yet.</p>}
+              {!runLogLoading && runLog.map(run => (
+                <div key={run.id} style={{ padding: '5px 0', borderBottom: '1px solid #f0f0f0' }}>
+                  <p style={{ margin: 0, fontSize: 11, color: run.status === 'error' ? '#8A2525' : '#1D9E75' }}>
+                    {run.status === 'error' ? '✗' : '✓'} {run.trigger_event} → {run.action_type} · {new Date(run.created_at).toLocaleString('en-AU')}
+                  </p>
+                  {run.error_message && <p style={{ margin: 0, fontSize: 11, color: '#999' }}>{run.error_message}</p>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

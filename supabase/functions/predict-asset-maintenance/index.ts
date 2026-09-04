@@ -107,12 +107,17 @@ serve(async (req: Request) => {
       predicted++
     }
 
+    supabase.rpc('record_agent_run', { fn_name: 'predict-asset-maintenance', status: 'ok' }).then(() => {}, () => {})
     return new Response(JSON.stringify({ success: true, evaluated, predicted }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     })
   } catch (err) {
     console.error('predict-asset-maintenance error:', err)
+    try {
+      const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!)
+      supabase.rpc('record_agent_run', { fn_name: 'predict-asset-maintenance', status: 'error', error_msg: err.message }).then(() => {}, () => {})
+    } catch (_) { /* best-effort only */ }
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },

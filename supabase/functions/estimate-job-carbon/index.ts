@@ -45,8 +45,20 @@ serve(async (req: Request) => {
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
     const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
+    // Minerva Max: carbon_estimate is a paid add-on — defense in depth
+    // alongside the frontend gate (DispatcherView's Carbon Est. tab).
+    // Resolve the set of businesses with the addon active/trialing first,
+    // so the cron never computes/writes estimates for non-paying businesses.
+    const { data: allBiz } = await supabase.from('businesses').select('id, max_addons, max_addon_trials')
+    const activeBizIds = new Set(
+      (allBiz || []).filter((b: any) =>
+        b.max_addons?.carbon_estimate === true ||
+        (b.max_addon_trials?.carbon_estimate?.ends_at && new Date(b.max_addon_trials.carbon_estimate.ends_at).getTime() > Date.now())
+      ).map((b: any) => b.id)
+    )
+
     const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-    const { data: completedJobs, error } = await supabase.from('jobs')
+    const { data: rawCompletedJobs, error } = await supabase.from('jobs')
       .select('id, business_id, technician_id, client_lat, client_lng, completed_at')
       .eq('status', 'completed')
       .gte('completed_at', dayAgo)
@@ -55,6 +67,7 @@ serve(async (req: Request) => {
       .not('client_lng', 'is', null)
       .order('completed_at', { ascending: true })
     if (error) throw error
+    const completedJobs = (rawCompletedJobs || []).filter((j: any) => activeBizIds.has(j.business_id))
 
     // Group by technician
     const byTech = new Map<string, typeof completedJobs>()
@@ -91,12 +104,17 @@ serve(async (req: Request) => {
       estimatesCreated++
     }
 
+    supabase.rpc('record_agent_run', { fn_name: 'estimate-job-carbon', status: 'ok' }).then(() => {}, () => {})
     return new Response(JSON.stringify({ success: true, techniciansEvaluated: byTech.size, estimatesCreated }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     })
   } catch (err) {
     console.error('estimate-job-carbon error:', err)
+    try {
+      const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!)
+      supabase.rpc('record_agent_run', { fn_name: 'estimate-job-carbon', status: 'error', error_msg: err.message }).then(() => {}, () => {})
+    } catch (_) { /* best-effort only */ }
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },

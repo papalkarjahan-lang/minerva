@@ -23,9 +23,21 @@ serve(async (req: Request) => {
     const { quoteId } = await req.json()
     if (!quoteId) throw new Error('quoteId is required')
 
-    const { data: quote, error } = await supabase.from('quotes').select('*, businesses(name)').eq('id', quoteId).maybeSingle()
+    const { data: quote, error } = await supabase.from('quotes').select('*, businesses(name, max_addons, max_addon_trials)').eq('id', quoteId).maybeSingle()
     if (error || !quote) throw new Error('quote not found')
     if (!quote.client_phone) throw new Error('This quote has no client phone number on file')
+
+    // Minerva Max: ai_quotes is a paid add-on — defense in depth alongside
+    // the frontend gate (DispatcherView's Quotes tab "Send to Client" button).
+    const biz = (quote as any).businesses
+    const addonActive = biz?.max_addons?.ai_quotes === true ||
+      (biz?.max_addon_trials?.ai_quotes?.ends_at && new Date(biz.max_addon_trials.ai_quotes.ends_at).getTime() > Date.now())
+    if (!addonActive) {
+      return new Response(JSON.stringify({ error: 'AI Quote Drafting is a Minerva Max add-on — enable it from the MAX tab first.' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
 
     const TWILIO_SID = Deno.env.get('TWILIO_ACCOUNT_SID')
     const TWILIO_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN')

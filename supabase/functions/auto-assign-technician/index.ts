@@ -169,6 +169,12 @@ serve(async (req: Request) => {
     await supabase.from('jobs').update({ technician_id: nearest.id }).eq('id', job.id)
     await supabase.from('technicians').update({ current_job_id: job.id }).eq('id', nearest.id)
 
+    await fetch(`${supabaseUrl}/functions/v1/send-job-assignment-sms`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseAnonKey}` },
+      body: JSON.stringify({ jobId: job.id, technicianId: nearest.id }),
+    }).catch(() => {})
+
     await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseAnonKey}` },

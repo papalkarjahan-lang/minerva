@@ -59,6 +59,9 @@ export default function TechnicianView() {
   const [invoiceItems, setInvoiceItems] = useState([{ description: '', amount: '' }])
   const [invoiceSubmitting, setInvoiceSubmitting] = useState(false)
   const [invoiceError, setInvoiceError] = useState(null)
+  // Persists past the invoice builder closing (unlike invoiceError, which
+  // only renders inside that card) — see submitInvoice()'s smsFailed path.
+  const [invoiceSmsWarning, setInvoiceSmsWarning] = useState(null)
   // Pro-tier compliance checklist: shown before invoicing, once per job, if
   // the business has a template set up. Technician must tick every item
   // before they can continue.
@@ -109,6 +112,15 @@ export default function TechnicianView() {
   useEffect(() => {
     if (queueRef.current.length > 0) setPendingCount(queueRef.current.length)
   }, [])
+
+  // Auto-flush any backlog the moment tech loads — covers the case where
+  // the phone was offline/dead with queued points, then reopened already
+  // online (no 'online' browser event fires in that case, since the
+  // connection didn't transition while the page was loaded — it would
+  // otherwise sit queued until the next GPS tick after tracking resumes).
+  useEffect(() => {
+    if (tech && isOnline && queueRef.current.length > 0) flushQueue()
+  }, [tech])
 
   // Track browser connectivity so the badge can show "Offline" vs
   // "Reconnecting..." and so we can flush the queue the moment the browser
@@ -647,9 +659,15 @@ export default function TechnicianView() {
       }).select().single()
       if (insertError) throw insertError
 
+      // SMS failure here must never block invoice creation or job
+      // completion — the invoice already exists in the DB either way. But a
+      // silently-failed send means the client never gets their payment
+      // link, so track it (client_sms_failed) so the dispatcher can spot
+      // and manually resend/follow up, rather than it being invisible.
+      let smsFailed = false
       if (currentJob.client_phone) {
         const invoiceUrl = `${import.meta.env.VITE_APP_URL}/invoice/${data.id}`
-        await supabase.functions.invoke('send-invoice-sms', {
+        const { error: smsError } = await supabase.functions.invoke('send-invoice-sms', {
           body: {
             clientPhone: currentJob.client_phone,
             clientName: currentJob.client_name,
@@ -658,10 +676,18 @@ export default function TechnicianView() {
             total
           }
         })
+        if (smsError) {
+          console.error('send-invoice-sms failed:', smsError)
+          smsFailed = true
+          await supabase.from('invoices').update({ client_sms_failed: true }).eq('id', data.id)
+        }
       }
 
       setShowInvoiceBuilder(false)
       setInvoiceItems([{ description: '', amount: '' }])
+      if (smsFailed) {
+        setInvoiceSmsWarning('Invoice created, but the text to the client failed to send — let your dispatcher know so they can resend it.')
+      }
       await finishTheJob()
     } catch (err) {
       setInvoiceError(`Failed to send invoice: ${err.message}`)
@@ -734,6 +760,16 @@ export default function TechnicianView() {
         )}
       </div>
 
+      {invoiceSmsWarning && (
+        <div style={styles.credentialBanner}>
+          <p style={styles.credentialBannerTitle}>⚠️ Invoice text failed</p>
+          <p style={styles.credentialBannerLine}>{invoiceSmsWarning}</p>
+          <button type="button" style={{ ...styles.btnGreySmall, marginTop: 8, padding: '4px 10px', fontSize: 12 }} onClick={() => setInvoiceSmsWarning(null)}>
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {/* Read-only Licence/Ticket Expiry Guardian banner — see state comment */}
       {expiringCredentials.length > 0 && (
         <div style={styles.credentialBanner}>
@@ -747,6 +783,24 @@ export default function TechnicianView() {
               </p>
             )
           })}
+        </div>
+      )}
+
+      {/* Read-only workload banner — tech.rolling_week_hours/rolling_emergency_job_count
+          are computed daily by update-technician-workload, previously only shown to
+          the dispatcher in DispatcherView. Never blocks any action, same pattern as
+          the credentials banner above. 55h/week mirrors that function's own burnout
+          threshold, so what the tech sees always matches what triggers the alert. */}
+      {tech?.rolling_week_hours > 0 && (
+        <div style={tech.rolling_week_hours >= 55 ? styles.burnoutBannerWarn : styles.burnoutBanner}>
+          <p style={tech.rolling_week_hours >= 55 ? styles.credentialBannerTitle : styles.workloadBannerTitle}>
+            {tech.rolling_week_hours >= 55 ? '⚠️ Heavy week' : '📊 This week'}
+          </p>
+          <p style={styles.credentialBannerLine}>
+            ~{Math.round(tech.rolling_week_hours)}h logged this week
+            {tech.rolling_emergency_job_count > 0 ? `, ${tech.rolling_emergency_job_count} emergency callout${tech.rolling_emergency_job_count === 1 ? '' : 's'}` : ''}
+            {tech.rolling_week_hours >= 55 ? ' — talk to your manager if you need a lighter load.' : ''}
+          </p>
         </div>
       )}
 
@@ -1019,5 +1073,8 @@ const styles = {
   materialSelect: { flex: 2, background: '#050811', border: '1px solid #1e293b', borderRadius: 8, padding: '10px 12px', color: '#fff', fontSize: 13 },
   credentialBanner: { background: '#2A1F0844', border: '1px solid #A87C16', borderRadius: 12, padding: '12px 16px', width: '100%', maxWidth: 360, marginBottom: 20 },
   credentialBannerTitle: { color: '#A87C16', fontSize: 13, fontWeight: 'bold', margin: '0 0 6px' },
-  credentialBannerLine: { color: '#ccc', fontSize: 12, margin: '2px 0' }
+  credentialBannerLine: { color: '#ccc', fontSize: 12, margin: '2px 0' },
+  burnoutBanner: { background: '#1A1F2A44', border: '1px solid #3A4A6B', borderRadius: 12, padding: '12px 16px', width: '100%', maxWidth: 360, marginBottom: 20 },
+  burnoutBannerWarn: { background: '#2A1F0844', border: '1px solid #A87C16', borderRadius: 12, padding: '12px 16px', width: '100%', maxWidth: 360, marginBottom: 20 },
+  workloadBannerTitle: { color: '#7C9CD6', fontSize: 13, fontWeight: 'bold', margin: '0 0 6px' }
 }

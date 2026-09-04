@@ -32,6 +32,19 @@ serve(async (req: Request) => {
     const { businessId, description, clientName, clientPhone, leadId } = await req.json()
     if (!businessId || !description) throw new Error('businessId and description are required')
 
+    // Minerva Max: ai_quotes is a paid add-on — defense in depth alongside
+    // the frontend gate (DispatcherView's Quotes tab), in case this is ever
+    // called directly. Mirrors src/maxAddons.js's hasAddon() logic.
+    const { data: biz } = await supabase.from('businesses').select('max_addons, max_addon_trials').eq('id', businessId).maybeSingle()
+    const addonActive = biz?.max_addons?.ai_quotes === true ||
+      (biz?.max_addon_trials?.ai_quotes?.ends_at && new Date(biz.max_addon_trials.ai_quotes.ends_at).getTime() > Date.now())
+    if (!addonActive) {
+      return new Response(JSON.stringify({ error: 'AI Quote Drafting is a Minerva Max add-on — enable it from the MAX tab first.' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+
     // This business's own recent pricing, for the AI to anchor against —
     // never another business's data.
     const { data: pastInvoices } = await supabase
