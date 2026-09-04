@@ -6,6 +6,8 @@ import IndustrialDispatcherView from './pages/IndustrialDispatcherView'
 import TechnicianView from './pages/TechnicianView'
 import TrackingView from './pages/TrackingView'
 import InvoiceView from './pages/InvoiceView'
+import QuoteView from './pages/QuoteView'
+import ClientHistoryView from './pages/ClientHistoryView'
 import SuccessPage from './pages/SuccessPage'
 import IntakeAssistant from './pages/IntakeAssistant'
 import DisputeView from './pages/DisputeView'
@@ -31,6 +33,14 @@ export default function App() {
         {/* Client invoice route (Pro tier) - accessed via SMS link */}
         {/* URL: /invoice/:invoiceId */}
         <Route path="/invoice/:invoiceId" element={<InvoiceView />} />
+
+        {/* Client quote route (round-2 batch) - accessed via SMS link */}
+        {/* URL: /quote/:quoteId */}
+        <Route path="/quote/:quoteId" element={<QuoteView />} />
+
+        {/* Client service-history portal (round-2 batch) - opaque token link,
+            generated from TrackingView's job-complete screen. URL: /client/:token */}
+        <Route path="/client/:token" element={<ClientHistoryView />} />
 
         {/* Dispatcher dashboard - accessed after login */}
         {/* URL: /dispatch/:businessId */}

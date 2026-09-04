@@ -37,6 +37,21 @@ export default function DispatcherView() {
   const [weatherDrafts, setWeatherDrafts] = useState([]) // Weather-Risk Reschedule Agent — all tiers
   const [weatherActionId, setWeatherActionId] = useState(null)
   const [wastedTripsCount, setWastedTripsCount] = useState(0) // Wasted-Trip / No-Show Proof Agent stat
+  // Round-2 batch (2026-09-04): quote-to-job AI estimator — all tiers.
+  const [quotes, setQuotes] = useState([])
+  const [showAddQuote, setShowAddQuote] = useState(false)
+  const [quoteDraft, setQuoteDraft] = useState({ client_name: '', client_phone: '', description: '' })
+  const [draftingQuote, setDraftingQuote] = useState(false)
+  const [sendingQuoteId, setSendingQuoteId] = useState(null)
+  // Round-2 batch: multi-technician job splitting — jobId -> array of
+  // job_assignments rows (each with joined technicians(name)).
+  const [jobCrew, setJobCrew] = useState({})
+  // Round-2 batch: customer review/reputation loop — invoiceId -> review_requests row.
+  const [reviewRequests, setReviewRequests] = useState({})
+  const [googleReviewLinkInput, setGoogleReviewLinkInput] = useState('')
+  const [requestingReviewId, setRequestingReviewId] = useState(null)
+  // Round-2 batch: seasonal demand forecasting — most recent business-scoped insight, or null.
+  const [demandForecast, setDemandForecast] = useState(null)
   const [weatherTradesInput, setWeatherTradesInput] = useState('')
   const [metaAccessTokenInput, setMetaAccessTokenInput] = useState('')
   const [metaAdAccountIdInput, setMetaAdAccountIdInput] = useState('')
@@ -111,6 +126,7 @@ export default function DispatcherView() {
       .single()
     setBusiness(biz)
     setSlackWebhookInput(biz?.slack_webhook_url || '')
+    setGoogleReviewLinkInput(biz?.google_review_link || '')
     setMetaAccessTokenInput(biz?.meta_access_token || '')
     setMetaAdAccountIdInput(biz?.meta_ad_account_id || '')
     setMetaPageIdInput(biz?.meta_page_id || '')
@@ -147,6 +163,39 @@ export default function DispatcherView() {
       .eq('is_active', true)
     setSubcontractors(subList || [])
 
+    // Quote-to-job AI estimator — all tiers, front-desk feature.
+    const { data: quoteList } = await supabase
+      .from('quotes')
+      .select('*')
+      .eq('business_id', businessId)
+      .order('created_at', { ascending: false })
+      .limit(50)
+    setQuotes(quoteList || [])
+
+    // Multi-technician job splitting — crew assignments for the currently
+    // active/scheduled jobs, grouped by job_id.
+    const { data: crewList } = await supabase
+      .from('job_assignments')
+      .select('*, technicians(name)')
+      .eq('business_id', businessId)
+    const crewByJob = {}
+    for (const row of crewList || []) {
+      if (!crewByJob[row.job_id]) crewByJob[row.job_id] = []
+      crewByJob[row.job_id].push(row)
+    }
+    setJobCrew(crewByJob)
+
+    // Seasonal demand forecasting — most recent business-scoped insight, if any.
+    const { data: forecastInsight } = await supabase
+      .from('agent_insights')
+      .select('*')
+      .eq('business_id', businessId)
+      .eq('insight_type', 'demand_forecast')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    setDemandForecast(forecastInsight || null)
+
     // Asset tracking is a Pro-tier feature — skip the query entirely for
     // other tiers rather than fetching data the UI will never show.
     if (biz?.subscription_tier === 'pro') {
@@ -163,6 +212,19 @@ export default function DispatcherView() {
         .eq('business_id', businessId)
         .order('created_at', { ascending: false })
       setInvoices(invoiceList || [])
+
+      // Customer review/reputation loop — review_requests keyed by invoice_id
+      // so the Invoices tab can show "Request Review" only where it hasn't
+      // been sent yet.
+      const { data: reviewReqList } = await supabase
+        .from('review_requests')
+        .select('*')
+        .eq('business_id', businessId)
+      const reviewByInvoice = {}
+      for (const row of reviewReqList || []) {
+        if (row.invoice_id) reviewByInvoice[row.invoice_id] = row
+      }
+      setReviewRequests(reviewByInvoice)
 
       const { data: carbonList } = await supabase
         .from('carbon_estimates')
@@ -443,6 +505,82 @@ export default function DispatcherView() {
     await loadAll()
   }
 
+  // Multi-technician job splitting — crew members get their own
+  // current_job_id pointed at the shared job (that's what drives what
+  // TechnicianView shows them), but jobs.technician_id (the "lead") is left
+  // untouched so existing payroll/GPS/hours logic keeps working unchanged.
+  async function addCrewMember(jobId, techId) {
+    if (!techId) return
+    await supabase.from('job_assignments').insert({ job_id: jobId, business_id: businessId, technician_id: techId, role: 'crew' })
+    await supabase.from('technicians').update({ current_job_id: jobId }).eq('id', techId)
+    await loadAll()
+  }
+
+  async function removeCrewMember(assignmentId, techId) {
+    await supabase.from('job_assignments').delete().eq('id', assignmentId)
+    // Only clear current_job_id if it's still pointing at the job they're
+    // being removed from — avoids clobbering a tech who's since moved on.
+    const tech = technicians.find(t => t.id === techId)
+    const job = Object.values(jobCrew).flat().find(a => a.id === assignmentId)
+    if (tech && job && tech.current_job_id === job.job_id) {
+      await supabase.from('technicians').update({ current_job_id: null }).eq('id', techId)
+    }
+    await loadAll()
+  }
+
+  // Quote-to-job AI estimator — calls draft-quote (Claude-drafted line items
+  // with an honest deterministic fallback), then refreshes the list.
+  async function createQuote() {
+    if (!quoteDraft.description.trim()) return
+    setDraftingQuote(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('draft-quote', {
+        body: {
+          businessId,
+          description: quoteDraft.description.trim(),
+          clientName: quoteDraft.client_name.trim() || null,
+          clientPhone: quoteDraft.client_phone.trim() || null,
+        },
+      })
+      if (error || data?.error) throw new Error(data?.error || error.message)
+      setQuoteDraft({ client_name: '', client_phone: '', description: '' })
+      setShowAddQuote(false)
+      await loadAll()
+    } catch (err) {
+      alert(`Couldn't draft quote: ${err.message}`)
+    } finally {
+      setDraftingQuote(false)
+    }
+  }
+
+  async function sendQuoteToClient(quoteId) {
+    setSendingQuoteId(quoteId)
+    try {
+      const { data, error } = await supabase.functions.invoke('send-quote-sms', { body: { quoteId } })
+      if (error || data?.error) throw new Error(data?.error || error.message)
+      await loadAll()
+    } catch (err) {
+      alert(`Couldn't send quote: ${err.message}`)
+    } finally {
+      setSendingQuoteId(null)
+    }
+  }
+
+  // Customer review/reputation loop — human-approval-per-send, same as every
+  // other Sales & Marketing message: only fires on this explicit click.
+  async function requestReview(invoiceId) {
+    setRequestingReviewId(invoiceId)
+    try {
+      const { data, error } = await supabase.functions.invoke('send-review-request-sms', { body: { invoiceId } })
+      if (error || data?.error) throw new Error(data?.error || error.message)
+      await loadAll()
+    } catch (err) {
+      alert(`Couldn't send review request: ${err.message}`)
+    } finally {
+      setRequestingReviewId(null)
+    }
+  }
+
   // Lead pipeline actions
   async function markLeadStatus(leadId, status) {
     await supabase.from('leads').update({ status }).eq('id', leadId)
@@ -530,7 +668,7 @@ export default function DispatcherView() {
     setTimeout(() => setCalendarLinkCopied(false), 2000)
   }
 
-  async function saveSettings({ slackWebhookUrl, autoDispatchEnabled, metaAccessToken, metaAdAccountId, metaPageId, weatherSensitiveTradeTypes }) {
+  async function saveSettings({ slackWebhookUrl, autoDispatchEnabled, metaAccessToken, metaAdAccountId, metaPageId, weatherSensitiveTradeTypes, googleReviewLink }) {
     setSavingSettings(true)
     const { data } = await supabase
       .from('businesses')
@@ -541,6 +679,7 @@ export default function DispatcherView() {
         meta_ad_account_id: metaAdAccountId || null,
         meta_page_id: metaPageId || null,
         weather_sensitive_trade_types: weatherSensitiveTradeTypes && weatherSensitiveTradeTypes.length ? weatherSensitiveTradeTypes : null,
+        google_review_link: googleReviewLink || null,
       })
       .eq('id', businessId)
       .select()
@@ -893,6 +1032,9 @@ export default function DispatcherView() {
               <button style={styles.tabBtn(queueTab === 'leads')} onClick={() => setQueueTab('leads')}>
                 LEADS ({leads.length})
               </button>
+              <button style={styles.tabBtn(queueTab === 'quotes')} onClick={() => setQueueTab('quotes')}>
+                QUOTES ({quotes.length})
+              </button>
               <span style={{ ...styles.deptLabel, marginLeft: 8 }}>Dispatch & Crew</span>
               <button style={styles.tabBtn(queueTab === 'jobs')} onClick={() => setQueueTab('jobs')}>
                 JOBS ({jobs.length})
@@ -950,6 +1092,7 @@ export default function DispatcherView() {
                 </>
               )}
             </div>
+            {queueTab === 'quotes' && <button style={styles.addJobBtn} onClick={() => setShowAddQuote(true)}>+ New quote</button>}
             {queueTab === 'jobs' && <button style={styles.addJobBtn} onClick={() => setShowAddJob(true)}>+ Add</button>}
             {queueTab === 'subcontractors' && <button style={styles.addJobBtn} onClick={() => setShowAddSubcontractor(true)}>+ Add</button>}
             {queueTab === 'assets' && <button style={styles.addJobBtn} onClick={() => setShowAddAsset(true)}>+ Add</button>}
@@ -957,8 +1100,43 @@ export default function DispatcherView() {
             {queueTab === 'credentials' && <button style={styles.addJobBtn} onClick={() => setShowAddCredential(true)}>+ Add</button>}
           </div>
 
+          {queueTab === 'quotes' && (
+            <>
+              <p style={{ color: '#888', fontSize: 12, marginBottom: 10 }}>
+                Drafted with AI where possible (falls back to a blank editable line item if AI is
+                unavailable) — nothing is sent to the client until you click Send.
+              </p>
+              {quotes.map(q => (
+                <div key={q.id} style={styles.jobRow}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <p style={styles.jobClient}>{q.client_name || 'Client'}</p>
+                    <span style={styles.assetStatusBadge(q.status === 'accepted' ? 'available' : q.status === 'declined' ? 'maintenance' : 'in_use')}>
+                      {q.status.toUpperCase()}
+                    </span>
+                  </div>
+                  <p style={styles.jobAddr}>{q.description}</p>
+                  <p style={styles.jobAddr}>${Number(q.total || 0).toFixed(2)} inc. GST{q.ai_drafted ? ' · AI-drafted' : ''}</p>
+                  {q.status === 'draft' && q.client_phone && (
+                    <button style={styles.leadActionPrimary} disabled={sendingQuoteId === q.id} onClick={() => sendQuoteToClient(q.id)}>
+                      {sendingQuoteId === q.id ? 'Sending...' : 'Send to client'}
+                    </button>
+                  )}
+                  {q.status === 'draft' && !q.client_phone && (
+                    <p style={{ ...styles.jobAddr, color: '#c47a3d' }}>No client phone on file — add one to send</p>
+                  )}
+                </div>
+              ))}
+              {quotes.length === 0 && <p style={{ color: '#444', fontSize: 13 }}>No quotes yet</p>}
+            </>
+          )}
+
           {queueTab === 'jobs' && (
             <>
+              {demandForecast && (
+                <p style={{ color: '#5B8DEF', fontSize: 11, margin: '0 0 10px' }}>
+                  📈 {demandForecast.summary}
+                </p>
+              )}
               {wastedTripsCount > 0 && (
                 <p style={{ color: '#A87C16', fontSize: 11, margin: '0 0 10px' }}>
                   🚚 Wasted trips this month: {wastedTripsCount} — GPS-confirmed on-site, job never started
@@ -992,6 +1170,30 @@ export default function DispatcherView() {
                   )}
                   {job.assigned_subcontractor_id && (
                     <p style={styles.jobAddr}>Subcontractor: {subcontractors.find(s => s.id === job.assigned_subcontractor_id)?.name || 'Unknown'}</p>
+                  )}
+                  {/* Multi-technician job splitting — the assigned tech above stays the
+                      "lead" (jobs.technician_id, unchanged); crew members are extra
+                      hands added via job_assignments, own current_job_id points at
+                      this job too so TechnicianView shows it to them. */}
+                  {job.technician_id && (
+                    <div style={{ marginTop: 6 }}>
+                      {(jobCrew[job.id] || []).map(a => (
+                        <p key={a.id} style={{ ...styles.jobAddr, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          Crew: {a.technicians?.name || 'Unknown'}
+                          <button style={{ ...styles.leadActionSecondary, marginLeft: 8, padding: '2px 8px', fontSize: 11 }}
+                            onClick={() => removeCrewMember(a.id, a.technician_id)}>✕ Remove</button>
+                        </p>
+                      ))}
+                      {technicians.filter(t => t.id !== job.technician_id && !(jobCrew[job.id] || []).some(a => a.technician_id === t.id)).length > 0 && (
+                        <select style={{ ...styles.assignSelect, marginTop: 4 }}
+                          onChange={(e) => { if (e.target.value) addCrewMember(job.id, e.target.value); e.target.value = '' }}>
+                          <option value="">+ Add crew member...</option>
+                          {technicians.filter(t => t.id !== job.technician_id && !(jobCrew[job.id] || []).some(a => a.technician_id === t.id)).map(t => (
+                            <option key={t.id} value={t.id}>{t.name}</option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
                   )}
                 </div>
               ))}
@@ -1243,6 +1445,17 @@ export default function DispatcherView() {
                     inv.xero_invoice_id
                       ? <p style={{ ...styles.jobAddr, color: '#1D9E75' }}>✓ Synced to Xero</p>
                       : <button style={styles.leadActionSecondary} onClick={() => syncInvoiceToXero(inv.id)}>Sync to Xero</button>
+                  )}
+                  {inv.status === 'paid' && business?.google_review_link && !reviewRequests[inv.id] && (
+                    <button style={styles.leadActionSecondary} disabled={requestingReviewId === inv.id} onClick={() => requestReview(inv.id)}>
+                      {requestingReviewId === inv.id ? 'Sending...' : '⭐ Request review'}
+                    </button>
+                  )}
+                  {reviewRequests[inv.id]?.clicked_at && (
+                    <p style={{ ...styles.jobAddr, color: '#1D9E75' }}>✓ Review link clicked</p>
+                  )}
+                  {reviewRequests[inv.id] && !reviewRequests[inv.id].clicked_at && (
+                    <p style={{ ...styles.jobAddr, color: '#888' }}>Review request sent</p>
                   )}
                 </div>
               ))}
@@ -1685,6 +1898,43 @@ export default function DispatcherView() {
         </Map>
       </div>
 
+      {/* New Quote Modal — quote-to-job AI estimator */}
+      {showAddQuote && (
+        <div style={styles.modalOverlay}>
+          <div style={styles.modal}>
+            <h3 style={{ margin: '0 0 20px', color: '#1B2B4B', fontSize: 20 }}>New Quote</h3>
+            <div style={{ marginBottom: 14 }}>
+              <label style={styles.inputLabel}>Client name</label>
+              <input type="text" style={styles.input} value={quoteDraft.client_name}
+                onChange={e => setQuoteDraft(prev => ({ ...prev, client_name: e.target.value }))} />
+            </div>
+            <div style={{ marginBottom: 14 }}>
+              <label style={styles.inputLabel}>Client phone</label>
+              <input type="text" style={styles.input} value={quoteDraft.client_phone}
+                onChange={e => setQuoteDraft(prev => ({ ...prev, client_phone: e.target.value }))}
+                placeholder="Needed to send the quote by SMS" />
+            </div>
+            <div style={{ marginBottom: 14 }}>
+              <label style={styles.inputLabel}>Job description</label>
+              <textarea style={{ ...styles.input, minHeight: 80 }} value={quoteDraft.description}
+                onChange={e => setQuoteDraft(prev => ({ ...prev, description: e.target.value }))}
+                placeholder="e.g. Replace hot water system, 250L electric, single storey" />
+              <p style={{ color: '#888', fontSize: 12, margin: '6px 0 0' }}>
+                Line items are AI-drafted from this description and your recent invoice history
+                where possible (falls back to one editable blank line if AI is unavailable) — you
+                review and edit everything before it's ever sent to the client.
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+              <button type="button" style={{ ...styles.leadActionSecondary, flex: 1, padding: '10px 0' }} onClick={() => setShowAddQuote(false)} disabled={draftingQuote}>Cancel</button>
+              <button type="button" style={{ ...styles.leadActionPrimary, flex: 2, padding: '10px 0' }} onClick={createQuote} disabled={draftingQuote || !quoteDraft.description.trim()}>
+                {draftingQuote ? 'Drafting...' : 'Draft quote'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Add Job Modal */}
       {showAddJob && (
         <AddJobModal
@@ -1753,6 +2003,8 @@ export default function DispatcherView() {
           business={business}
           slackWebhookInput={slackWebhookInput}
           setSlackWebhookInput={setSlackWebhookInput}
+          googleReviewLinkInput={googleReviewLinkInput}
+          setGoogleReviewLinkInput={setGoogleReviewLinkInput}
           metaAccessTokenInput={metaAccessTokenInput}
           setMetaAccessTokenInput={setMetaAccessTokenInput}
           metaAdAccountIdInput={metaAdAccountIdInput}
@@ -2218,6 +2470,7 @@ function ChecklistModal({ businessId, template, type = 'completion', onClose }) 
 // own, never a shared Minerva ad account.
 function SettingsModal({
   business, slackWebhookInput, setSlackWebhookInput,
+  googleReviewLinkInput, setGoogleReviewLinkInput,
   metaAccessTokenInput, setMetaAccessTokenInput,
   metaAdAccountIdInput, setMetaAdAccountIdInput,
   metaPageIdInput, setMetaPageIdInput,
@@ -2235,6 +2488,7 @@ function SettingsModal({
       metaAdAccountId: metaAdAccountIdInput.trim(),
       metaPageId: metaPageIdInput.trim(),
       weatherSensitiveTradeTypes: weatherTradesInput.split(',').map(t => t.trim()).filter(Boolean),
+      googleReviewLink: googleReviewLinkInput.trim(),
     })
     onClose()
   }
@@ -2298,6 +2552,21 @@ function SettingsModal({
             <button type="button" onClick={onCopyCalendarLink} style={{ ...styles.copyLinkBtn, padding: '8px 10px' }}>
               {calendarLinkCopied ? 'Copied!' : '🔗 Copy calendar subscription link'}
             </button>
+          </div>
+
+          <div style={{ marginBottom: 14 }}>
+            <label style={styles.inputLabel}>Google review link (optional)</label>
+            <input
+              type="text"
+              value={googleReviewLinkInput}
+              onChange={e => setGoogleReviewLinkInput(e.target.value)}
+              style={styles.input}
+              placeholder="https://g.page/r/.../review"
+            />
+            <p style={{ color: '#888', fontSize: 12, margin: '6px 0 0' }}>
+              Set this to enable "Request review" on paid invoices — texts the client a link that
+              tracks the click, then redirects straight to this page.
+            </p>
           </div>
 
           <div style={{ marginBottom: 14 }}>

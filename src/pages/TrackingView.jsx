@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import Map, { Marker, Source, Layer } from 'react-map-gl'
 import { supabase } from '../supabaseClient'
 import { timeAgo } from '../utils'
@@ -9,6 +9,10 @@ const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
 
 export default function TrackingView() {
   const { jobId } = useParams()
+  const navigate = useNavigate()
+  // Client portal (round-2 batch, 2026-09-04) — one opaque-token link per
+  // (business, client_phone), upserted so a repeat visit reuses the same link.
+  const [historyLoading, setHistoryLoading] = useState(false)
   const [job, setJob] = useState(null)
   const [tech, setTech] = useState(null)
   const [business, setBusiness] = useState(null)
@@ -41,6 +45,22 @@ export default function TrackingView() {
     })
     setRebookSubmitting(false)
     setRebookDone(true)
+  }
+
+  async function viewHistory() {
+    if (!job?.client_phone) return
+    setHistoryLoading(true)
+    const { data, error: upsertErr } = await supabase
+      .from('client_portal_links')
+      .upsert(
+        { business_id: job.business_id, client_phone: job.client_phone },
+        { onConflict: 'business_id,client_phone', ignoreDuplicates: false }
+      )
+      .select()
+      .single()
+    setHistoryLoading(false)
+    if (upsertErr || !data) return
+    navigate(`/client/${data.token}`)
   }
 
   useEffect(() => { loadJob() }, [jobId])
@@ -133,6 +153,12 @@ export default function TrackingView() {
         ) : (
           <button type="button" style={styles.rebookBtn} onClick={() => setShowRebook(true)}>
             Need this again? Request another booking
+          </button>
+        )}
+
+        {job.client_phone && (
+          <button type="button" style={{ ...styles.rebookCancelBtn, width: '100%', marginTop: 10 }} onClick={viewHistory} disabled={historyLoading}>
+            {historyLoading ? 'Loading...' : 'View your service history'}
           </button>
         )}
       </div>

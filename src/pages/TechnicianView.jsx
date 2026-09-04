@@ -88,6 +88,12 @@ export default function TechnicianView() {
   // anything, it just mirrors what check-credential-expiry is watching so
   // the technician isn't caught out mid-job. Never blocks any action here.
   const [expiringCredentials, setExpiringCredentials] = useState([])
+  // Round-2 batch (2026-09-04): multi-technician job splitting. A crew
+  // member's technicians.current_job_id points at the same job as the lead
+  // (jobs.technician_id) — that's what makes currentJob load for them at
+  // all — but only the lead may drive status-changing actions below.
+  const isCrew = !!(currentJob && tech && currentJob.technician_id && currentJob.technician_id !== tech.id)
+  const [leavingJob, setLeavingJob] = useState(false)
 
   const intervalRef = useRef(null)
   // In-memory queue of GPS points that failed to reach Supabase. Mirrored to
@@ -394,8 +400,18 @@ export default function TechnicianView() {
     setCurrentJob(prev => ({ ...prev, notes: updatedNotes }))
   }
 
+  // Crew members get a reduced, track-only view — see "Leave job" below.
+  async function leaveJob() {
+    if (!currentJob || !tech) return
+    setLeavingJob(true)
+    await supabase.from('job_assignments').delete().eq('job_id', currentJob.id).eq('technician_id', tech.id)
+    await supabase.from('technicians').update({ current_job_id: null }).eq('id', tech.id)
+    setCurrentJob(null)
+    setLeavingJob(false)
+  }
+
   async function handleStartJob() {
-    if (!currentJob) return
+    if (!currentJob || isCrew) return
     await supabase.from('jobs').update({
       status: 'active',
       started_at: new Date().toISOString()
@@ -406,6 +422,7 @@ export default function TechnicianView() {
   }
 
   async function handleCompleteJob() {
+    if (isCrew) return
     // Pro-tier businesses may require a compliance checklist before the job
     // can be finalised, then an optional materials-used log, then the option
     // to build an invoice. Everyone else (or once every step is done/
@@ -542,6 +559,14 @@ export default function TechnicianView() {
     await supabase.from('technicians').update({
       current_job_id: null
     }).eq('id', tech.id)
+    // Release any crew members too — only the lead's finishTheJob() call
+    // reaches here, so this is the one place that needs to clean up
+    // job_assignments for everyone who was helping on this job.
+    const { data: crew } = await supabase.from('job_assignments').select('technician_id').eq('job_id', currentJob.id)
+    if (crew && crew.length > 0) {
+      await supabase.from('technicians').update({ current_job_id: null }).in('id', crew.map(c => c.technician_id))
+      await supabase.from('job_assignments').delete().eq('job_id', currentJob.id)
+    }
     await triggerCompletionSMS()
     // Custom Workflows: fire the 'job.completed' trigger for this business, if any are configured.
     supabase.functions.invoke('run-custom-workflows', {
@@ -552,6 +577,25 @@ export default function TechnicianView() {
 
   function addInvoiceItem() {
     setInvoiceItems(prev => [...prev, { description: '', amount: '' }])
+  }
+
+  // Emergency callout surge-pricing suggestion — a deterministic premium
+  // based on time-of-day/day-of-week (not a real-time demand model), added
+  // as a normal editable/removable invoice line item. The technician can
+  // edit the amount or remove it entirely before sending — this only ever
+  // pre-fills a suggestion, never changes what actually gets charged.
+  function addEmergencyPremiumLine() {
+    const now = new Date()
+    const hour = now.getHours()
+    const isWeekend = now.getDay() === 0 || now.getDay() === 6
+    const isAfterHours = hour < 7 || hour >= 18
+    let premium = 75 // base emergency-callout fee
+    if (isAfterHours) premium += 50
+    if (isWeekend) premium += 50
+    setInvoiceItems(prev => {
+      const withoutBlank = prev.filter(i => i.description.trim() || Number(i.amount) > 0)
+      return [...withoutBlank, { description: 'Emergency callout premium', amount: String(premium) }]
+    })
   }
 
   function removeInvoiceItem(index) {
@@ -708,9 +752,14 @@ export default function TechnicianView() {
       {/* Current job card */}
       {currentJob && (
         <div style={styles.jobCard}>
-          <p style={styles.jobLabel}>CURRENT JOB</p>
+          <p style={styles.jobLabel}>CURRENT JOB{isCrew ? ' (CREW)' : ''}</p>
           <p style={styles.clientName}>{currentJob.client_name}</p>
           <p style={styles.clientAddr}>{currentJob.client_address}</p>
+          {isCrew && (
+            <p style={{ color: '#888', fontSize: 12, margin: '4px 0 0' }}>
+              You're helping on this job — the lead technician handles Start/Complete and invoicing.
+            </p>
+          )}
           {currentJob.sms_sent && (
             <p style={styles.smsSent}>✓ Client notified (ETA SMS sent)</p>
           )}
@@ -870,6 +919,11 @@ export default function TechnicianView() {
             </div>
           ))}
           <button type="button" style={styles.invoiceAddBtn} onClick={addInvoiceItem}>+ Add line item</button>
+          {currentJob?.urgency === 'emergency' && !invoiceItems.some(i => i.description === 'Emergency callout premium') && (
+            <button type="button" style={{ ...styles.invoiceAddBtn, marginLeft: 8 }} onClick={addEmergencyPremiumLine}>
+              ⚡ Suggest emergency premium
+            </button>
+          )}
           {invoiceError && <p style={{ color: '#8A2525', fontSize: 13, margin: '10px 0 0' }}>{invoiceError}</p>}
           <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
             <button type="button" style={styles.btnGreySmall} onClick={skipInvoice} disabled={invoiceSubmitting}>
@@ -889,12 +943,17 @@ export default function TechnicianView() {
             Start Tracking
           </button>
         )}
-        {status === 'tracking' && currentJob && currentJob.status === 'scheduled' && (
+        {isCrew && currentJob && (
+          <button style={styles.btnGreySmall} onClick={leaveJob} disabled={leavingJob}>
+            {leavingJob ? 'Leaving...' : 'Leave job'}
+          </button>
+        )}
+        {!isCrew && status === 'tracking' && currentJob && currentJob.status === 'scheduled' && (
           <button style={styles.btnBlue} onClick={handleStartJob}>
             Start Job
           </button>
         )}
-        {status === 'job_active' && !showInvoiceBuilder && !showChecklist && !showMaterials && (
+        {!isCrew && status === 'job_active' && !showInvoiceBuilder && !showChecklist && !showMaterials && (
           <button style={styles.btnOrange} onClick={handleCompleteJob}>
             Complete Job
           </button>
