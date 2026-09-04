@@ -593,7 +593,12 @@ export default function TechnicianView() {
         subtotal,
         gst,
         total,
-        status: 'unpaid'
+        status: 'unpaid',
+        // Snapshot at invoice-creation time — Watchtower runs on a 15-min
+        // cron, so this is usually still false for a same-visit invoice.
+        // If it verifies later, the badge won't retroactively appear here;
+        // see verify-checklist-photos/index.ts header for why that's fine.
+        ai_verified: !!currentJob.ai_verified_at
       }).select().single()
       if (insertError) throw insertError
 

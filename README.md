@@ -313,12 +313,19 @@ schedule.
 ### Accounting export (Xero / QuickBooks)
 Pro-tier businesses can export their invoices, jobs, and leads as a CSV
 from the **Invoices**, **Jobs**, and **Leads** tabs (**⬇ Export CSV**) and
-import into Xero, QuickBooks, or Excel. Minerva does not offer native,
-automatic Xero/QuickBooks sync — that requires the business owner to
-register and get approved for their own developer app on Xero's or
-Intuit's platform (an account-holder-only step I can't complete on your
-behalf). CSV export is the practical, zero-setup alternative until/unless
-that's worth building out.
+import into Xero, QuickBooks, or Excel — the zero-setup option, works today
+for either provider.
+
+There's also a real, working Xero OAuth integration (`xero-oauth-connect`,
+`xero-oauth-callback`, `xero-sync-invoice` — added 2026-09-04, see "Minerva
+Max batch" below), but it needs the business owner to register their own
+free app at developer.xero.com first (Xero, like Intuit for QuickBooks,
+requires the account holder to do this — not something that can be
+completed on your behalf). Until that's done and the resulting
+`XERO_CLIENT_ID`/`XERO_CLIENT_SECRET` secrets are set, the "Connect Xero"
+button in Settings shows a setup message instead of connecting. No
+QuickBooks/Intuit equivalent is built yet — CSV export remains the only
+QuickBooks path.
 
 ### Compliance document templates
 `COMPLIANCE_TEMPLATES.md` has generic starting-point templates (terms of
@@ -849,13 +856,85 @@ Phase 1–5 loop — health tracking → insight writing → weekly synthesis �
 human-readable dashboard — is complete and viewable in one place for the
 first time.
 
-**Known follow-up, deliberately not built this phase**: this is a
-**read-only** dashboard. `agent_functions.enabled` (the Phase 1 kill-switch
-column) is still not read by any edge function — wiring an actual
-enable/disable toggle into this tab now would give the operator a button
-that does nothing, which is worse than no button. Adding that control (and,
-more importantly, the function-side checks it requires) is a future-phase
-item, not part of Phase 5.
+**Known follow-up, deliberately not built this phase**: at the time Phase 5
+shipped, this was a **read-only** dashboard — `agent_functions.enabled` (the
+Phase 1 kill-switch column) wasn't read by any edge function yet, so an
+enable/disable toggle would have done nothing. **This has since been built**
+(2026-09-02/03, separate from Phase 5): the Agents tab now has a working
+enable/disable toggle per function, and all 11 gated edge functions check
+`agent_functions.enabled` at the top of every run and skip early when
+disabled. See `SECURITY_NOTES.md` for the one caveat that comes with
+this — `agent_functions` rows aren't `business_id`-scoped, so anyone who
+knows to add `?agents=1` can disable another business's agents, not just
+their own.
+
+---
+
+## Minerva Max batch (2026-09-04)
+
+Six additions built from data Minerva already collects, or from self-serve
+integrations with no partnership/licence gate — explicitly NOT the
+escrow/invoice-financing, SOC 2 certification claim, or covert
+BLE/UWB-tracking ideas discussed and declined (those require an Australian
+Credit Licence, an actual third-party audit, and raise Privacy Act 1988 /
+surveillance-device-law concerns respectively — see chat history, not
+built). Deploy after running `supabase_schema_delta_minerva_max.sql`, then
+`supabase functions deploy <name>` for each, then
+`supabase_schema_delta_minerva_max_cron.sql` for the 3 cron ones.
+
+- **Predictive maintenance** (`predict-asset-maintenance`, daily cron) —
+  upgrades `monitor-asset-telemetry`'s reactive threshold check into a real
+  trend projection: computes each asset's actual engine-hours-per-day
+  usage rate from its last 14 days of telemetry pings, and flags any asset
+  projected to cross its maintenance threshold within 7 days. Simple linear
+  math on this business's own real data — not a cross-client failure model
+  (not enough data volume for that to mean anything yet, and this build
+  never shares one business's data with another's).
+- **AI-verified → ready-to-invoice signal** (`verify-checklist-photos`
+  extended, `jobs.ai_verified_at` / `invoices.ai_verified`) — once every
+  checklist photo on a job has been AI-reviewed (Watchtower) and none are
+  flagged, the job is marked AI-verified and the badge carries through to
+  the invoice, shown to both the dispatcher and the client on
+  `InvoiceView.jsx`. This is the same photo-plausibility check Watchtower
+  already does, rolled up to job level — not blueprint/BIM
+  cross-referencing (no BIM data source exists in this build).
+- **Carbon/ESG estimate** (`estimate-job-carbon`, daily cron, new
+  **Carbon Est.** tab) — chains a technician's completed-job locations for
+  the day and estimates transit CO2-e using a static reference vehicle
+  emissions factor. Explicitly labelled as an estimate everywhere it's
+  shown: straight-line distance (not road routing), transit-only (no
+  materials/embodied-carbon component, since there's no live supplier API
+  to source an Environmental Product Declaration from), and the CSV export
+  includes a "Factor Basis" column so the constant can be checked against
+  the current published NGA Factors workbook before it's attached to a
+  real tender.
+- **Ghost/idle-asset detection** (`detect-idle-assets`, daily cron) —
+  flags active industrial assets with no telemetry ping in 14+ days.
+- **Subcontractor pool** (new **Subcontractors** tab, `subcontractors`
+  table) — dispatch can assign a job to an external subcontractor
+  alongside employed technicians (`jobs.assigned_subcontractor_id`,
+  separate from `technician_id` so payroll/hours logic stays
+  employee-only). `auto-assign-technician` now falls back to the nearest
+  active subcontractor when no employed technician is free, instead of
+  leaving the job unassigned.
+- **Xero OAuth integration** (`xero-oauth-connect`, `xero-oauth-callback`,
+  `xero-sync-invoice`, "Connect Xero" in Settings) — a real OAuth 2.0 flow
+  against Xero's actual API, not a mock. Needs the business owner to
+  register a free app at developer.xero.com and the operator to set
+  `XERO_CLIENT_ID`/`XERO_CLIENT_SECRET`/`SUPABASE_SERVICE_ROLE_KEY`
+  secrets — until then, "Connect Xero" returns a 501 with setup
+  instructions instead of pretending to connect. Tokens are stored in
+  `integration_credentials`, a table deliberately NOT covered by this
+  app's usual anon-all RLS policy — only `service_role` can read/write it,
+  since these are real third-party credentials, unlike the rest of this
+  build's demo-style data. Synced invoices land in Xero as **DRAFT**, not
+  auto-sent, since Minerva has no way to know the business's preferred
+  chart-of-accounts mapping beyond a best-effort default.
+
+**On "Minerva Max" as a $500/technician/month tier**: not priced or
+positioned yet. The ROI case for a premium tier should be built from real
+pilot-customer before/after numbers once one of the six items above is in
+front of an actual mid-market business, not from a hypothetical model.
 
 ---
 

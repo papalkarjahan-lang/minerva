@@ -8,6 +8,14 @@
 // technician's own workflow — a technician's checklist submission is never
 // blocked or altered by this function, it only annotates the photo record
 // afterwards.
+//
+// Also sets jobs.ai_verified_at once every checklist photo on a job has
+// been reviewed and none came back 'flagged' — this is what DispatcherView
+// and InvoiceView read to show the "AI-Verified" badge. HONESTY NOTE: this
+// is NOT blueprint/BIM cross-referencing (no BIM data source exists in this
+// build) — it's the same plausibility check described above, just rolled
+// up to job level. It shortens "did someone even look at this" review, not
+// a compliance certification.
 // Deploy with: supabase functions deploy verify-checklist-photos
 //
 // Required secret: ANTHROPIC_API_KEY. If not set, every pending photo is
@@ -39,8 +47,11 @@ serve(async (req: Request) => {
 
     let reviewed = 0
     let flagged = 0
+    const touchedJobIds = new Set<string>()
 
     for (const photo of pending || []) {
+      if (photo.job_id) touchedJobIds.add(photo.job_id)
+
       if (!anthropicKey) {
         await supabase.from('checklist_photos').update({
           verification_status: 'unavailable',
@@ -63,7 +74,28 @@ serve(async (req: Request) => {
       if (result.status === 'flagged') flagged++
     }
 
-    return new Response(JSON.stringify({ success: true, reviewed, flagged, scanned: (pending || []).length }), {
+    // Roll up to job level: a job becomes "AI-verified" once every photo
+    // attached to it has been reviewed and none are 'flagged'. Only checked
+    // for jobs touched this run — cheap, and a job's photo set only grows
+    // right up until completion so this doesn't need a full-table sweep.
+    let jobsVerified = 0
+    for (const jobId of touchedJobIds) {
+      const { data: jobPhotos } = await supabase.from('checklist_photos')
+        .select('verification_status')
+        .eq('job_id', jobId)
+      if (!jobPhotos || jobPhotos.length === 0) continue
+      const stillPending = jobPhotos.some(p => p.verification_status === 'pending')
+      const anyFlagged = jobPhotos.some(p => p.verification_status === 'flagged')
+      if (stillPending || anyFlagged) continue
+
+      const { data: job } = await supabase.from('jobs').select('id, ai_verified_at').eq('id', jobId).maybeSingle()
+      if (!job || job.ai_verified_at) continue
+
+      await supabase.from('jobs').update({ ai_verified_at: new Date().toISOString() }).eq('id', jobId)
+      jobsVerified++
+    }
+
+    return new Response(JSON.stringify({ success: true, reviewed, flagged, scanned: (pending || []).length, jobsVerified }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     })

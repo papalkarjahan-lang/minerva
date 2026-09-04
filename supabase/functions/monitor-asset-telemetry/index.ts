@@ -58,6 +58,7 @@ serve(async (req: Request) => {
       current_lat: lat ?? undefined,
       current_lng: lng ?? undefined,
       engine_hours: engineHours ?? undefined,
+      last_telemetry_at: new Date().toISOString(),
     }).eq('id', assetId)
 
     await supabase.from('asset_telemetry_events').insert({

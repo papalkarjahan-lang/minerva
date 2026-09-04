@@ -25,6 +25,10 @@ export default function DispatcherView() {
   const [leads, setLeads] = useState([])
   const [assets, setAssets] = useState([]) // Pro tier only
   const [invoices, setInvoices] = useState([]) // Pro tier only
+  const [carbonEstimates, setCarbonEstimates] = useState([]) // Pro tier only — see estimate-job-carbon
+  const [subcontractors, setSubcontractors] = useState([])
+  const [showAddSubcontractor, setShowAddSubcontractor] = useState(false)
+  const [newSubcontractor, setNewSubcontractor] = useState({ name: '', phone: '', skills: '', hourly_rate: '' })
   const [inventory, setInventory] = useState([]) // Pro tier only
   const [marketingDrafts, setMarketingDrafts] = useState([]) // Pro tier only — Growth pillar
   const [marketingActionId, setMarketingActionId] = useState(null) // draft id currently being approved/rejected
@@ -136,6 +140,13 @@ export default function DispatcherView() {
       .order('score', { ascending: false, nullsFirst: false })
     setLeads(leadList || [])
 
+    const { data: subList } = await supabase
+      .from('subcontractors')
+      .select('*')
+      .eq('business_id', businessId)
+      .eq('is_active', true)
+    setSubcontractors(subList || [])
+
     // Asset tracking is a Pro-tier feature — skip the query entirely for
     // other tiers rather than fetching data the UI will never show.
     if (biz?.subscription_tier === 'pro') {
@@ -152,6 +163,14 @@ export default function DispatcherView() {
         .eq('business_id', businessId)
         .order('created_at', { ascending: false })
       setInvoices(invoiceList || [])
+
+      const { data: carbonList } = await supabase
+        .from('carbon_estimates')
+        .select('*')
+        .eq('business_id', businessId)
+        .order('created_at', { ascending: false })
+        .limit(90) // roughly a quarter's worth of daily technician-day rows
+      setCarbonEstimates(carbonList || [])
 
       const { data: template } = await supabase
         .from('checklist_templates')
@@ -419,6 +438,11 @@ export default function DispatcherView() {
     await loadAll()
   }
 
+  async function assignJobSubcontractor(jobId, subcontractorId) {
+    await supabase.from('jobs').update({ assigned_subcontractor_id: subcontractorId }).eq('id', jobId)
+    await loadAll()
+  }
+
   // Lead pipeline actions
   async function markLeadStatus(leadId, status) {
     await supabase.from('leads').update({ status }).eq('id', leadId)
@@ -609,6 +633,50 @@ export default function DispatcherView() {
       ]),
       'minerva-invoices'
     )
+  }
+
+  // Estimate only — see estimate-job-carbon/index.ts header for exactly
+  // what this is and isn't (transit-only, straight-line distance, static
+  // reference factor). Not a certified emissions audit.
+  function exportCarbonCSV() {
+    exportCSV(
+      ['Date', 'Distance (km, straight-line estimate)', 'Vehicle Type', 'Estimated kg CO2-e', 'Factor Basis'],
+      carbonEstimates.map(c => [
+        new Date(c.created_at).toLocaleDateString('en-AU'),
+        c.distance_km, c.vehicle_type, c.estimated_kg_co2e, c.factor_basis
+      ]),
+      'minerva-carbon-estimate'
+    )
+  }
+
+  async function addSubcontractor() {
+    const name = newSubcontractor.name.trim()
+    if (!name) return
+    const { data, error } = await supabase.from('subcontractors').insert({
+      business_id: businessId,
+      name,
+      phone: newSubcontractor.phone.trim() || null,
+      skills: newSubcontractor.skills.split(',').map(s => s.trim()).filter(Boolean),
+      hourly_rate: newSubcontractor.hourly_rate ? Number(newSubcontractor.hourly_rate) : null,
+    }).select().single()
+    if (error) { console.error('addSubcontractor failed', error); return }
+    setSubcontractors(prev => [...prev, data])
+    setNewSubcontractor({ name: '', phone: '', skills: '', hourly_rate: '' })
+    setShowAddSubcontractor(false)
+  }
+
+  async function removeSubcontractor(id) {
+    await supabase.from('subcontractors').update({ is_active: false }).eq('id', id)
+    setSubcontractors(prev => prev.filter(s => s.id !== id))
+  }
+
+  async function syncInvoiceToXero(invoiceId) {
+    const { data, error } = await supabase.functions.invoke('xero-sync-invoice', { body: { invoiceId } })
+    if (error || data?.error) {
+      alert(`Xero sync failed: ${data?.error || error.message}`)
+      return
+    }
+    await loadAll()
   }
 
   function exportJobsCSV() {
@@ -829,6 +897,9 @@ export default function DispatcherView() {
               <button style={styles.tabBtn(queueTab === 'jobs')} onClick={() => setQueueTab('jobs')}>
                 JOBS ({jobs.length})
               </button>
+              <button style={styles.tabBtn(queueTab === 'subcontractors')} onClick={() => setQueueTab('subcontractors')}>
+                SUBCONTRACTORS ({subcontractors.length})
+              </button>
             </div>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, marginTop: 6 }}>
@@ -844,6 +915,9 @@ export default function DispatcherView() {
                   </button>
                   <button style={styles.tabBtn(queueTab === 'payroll')} onClick={() => setQueueTab('payroll')}>
                     PAYROLL
+                  </button>
+                  <button style={styles.tabBtn(queueTab === 'carbon')} onClick={() => setQueueTab('carbon')}>
+                    CARBON EST.
                   </button>
                 </>
               )}
@@ -877,6 +951,7 @@ export default function DispatcherView() {
               )}
             </div>
             {queueTab === 'jobs' && <button style={styles.addJobBtn} onClick={() => setShowAddJob(true)}>+ Add</button>}
+            {queueTab === 'subcontractors' && <button style={styles.addJobBtn} onClick={() => setShowAddSubcontractor(true)}>+ Add</button>}
             {queueTab === 'assets' && <button style={styles.addJobBtn} onClick={() => setShowAddAsset(true)}>+ Add</button>}
             {queueTab === 'inventory' && <button style={styles.addJobBtn} onClick={() => setShowAddInventory(true)}>+ Add</button>}
             {queueTab === 'credentials' && <button style={styles.addJobBtn} onClick={() => setShowAddCredential(true)}>+ Add</button>}
@@ -897,7 +972,7 @@ export default function DispatcherView() {
                   <p style={styles.jobClient}>{job.client_name}</p>
                   <p style={styles.jobAddr}>{job.client_address}</p>
                   <p style={styles.jobStatus(job.status)}>{job.status.toUpperCase()}</p>
-                  {job.status === 'scheduled' && !job.technician_id && (
+                  {job.status === 'scheduled' && !job.technician_id && !job.assigned_subcontractor_id && (
                     <select style={styles.assignSelect}
                       onChange={(e) => e.target.value && assignJob(job.id, e.target.value)}>
                       <option value="">Assign tech...</option>
@@ -905,6 +980,18 @@ export default function DispatcherView() {
                         <option key={t.id} value={t.id}>{t.name}</option>
                       ))}
                     </select>
+                  )}
+                  {job.status === 'scheduled' && !job.technician_id && !job.assigned_subcontractor_id && subcontractors.length > 0 && (
+                    <select style={{ ...styles.assignSelect, marginTop: 4 }}
+                      onChange={(e) => e.target.value && assignJobSubcontractor(job.id, e.target.value)}>
+                      <option value="">Assign subcontractor...</option>
+                      {subcontractors.map(s => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                  )}
+                  {job.assigned_subcontractor_id && (
+                    <p style={styles.jobAddr}>Subcontractor: {subcontractors.find(s => s.id === job.assigned_subcontractor_id)?.name || 'Unknown'}</p>
                   )}
                 </div>
               ))}
@@ -1004,6 +1091,38 @@ export default function DispatcherView() {
             </>
           )}
 
+          {queueTab === 'subcontractors' && (
+            <>
+              <p style={{ color: '#888', fontSize: 12, marginBottom: 10 }}>
+                External contractors dispatch can assign to a job alongside employed technicians —
+                useful for overflow or specialised work. Doesn't affect employee payroll/FBT
+                calculations, which stay employee-only.
+              </p>
+              {showAddSubcontractor && (
+                <div style={{ ...styles.jobRow, marginBottom: 10 }}>
+                  <input style={styles.input} placeholder="Name" value={newSubcontractor.name}
+                    onChange={(e) => setNewSubcontractor(prev => ({ ...prev, name: e.target.value }))} />
+                  <input style={{ ...styles.input, marginTop: 6 }} placeholder="Phone" value={newSubcontractor.phone}
+                    onChange={(e) => setNewSubcontractor(prev => ({ ...prev, phone: e.target.value }))} />
+                  <input style={{ ...styles.input, marginTop: 6 }} placeholder="Skills (comma-separated)" value={newSubcontractor.skills}
+                    onChange={(e) => setNewSubcontractor(prev => ({ ...prev, skills: e.target.value }))} />
+                  <input style={{ ...styles.input, marginTop: 6 }} type="number" placeholder="Hourly rate ($)" value={newSubcontractor.hourly_rate}
+                    onChange={(e) => setNewSubcontractor(prev => ({ ...prev, hourly_rate: e.target.value }))} />
+                  <button style={{ ...styles.leadActionPrimary, marginTop: 8 }} onClick={addSubcontractor}>Save</button>
+                </div>
+              )}
+              {subcontractors.map(sub => (
+                <div key={sub.id} style={styles.jobRow}>
+                  <p style={styles.jobClient}>{sub.name}</p>
+                  <p style={styles.jobAddr}>{sub.phone || 'No phone'}{sub.hourly_rate ? ` · $${sub.hourly_rate}/hr` : ''}</p>
+                  {sub.skills?.length > 0 && <p style={styles.jobAddr}>{sub.skills.join(', ')}</p>}
+                  <button style={styles.leadActionSecondary} onClick={() => removeSubcontractor(sub.id)}>Remove</button>
+                </div>
+              ))}
+              {subcontractors.length === 0 && <p style={{ color: '#444', fontSize: 13 }}>No subcontractors added yet</p>}
+            </>
+          )}
+
           {queueTab === 'leads' && (
             <>
               {leads.length > 0 && (
@@ -1067,6 +1186,35 @@ export default function DispatcherView() {
             </>
           )}
 
+          {queueTab === 'carbon' && (
+            <>
+              <p style={{ color: '#888', fontSize: 12, marginBottom: 10 }}>
+                Estimate only — technician transit distance × a static reference vehicle-emissions
+                factor. Straight-line distance, not real road routing, and no materials/embodied-carbon
+                component. Confirm the factor is current before attaching this to a tender — see the
+                CSV's "Factor Basis" column.
+              </p>
+              {carbonEstimates.length > 0 && (
+                <button style={{ ...styles.addJobBtn, marginBottom: 10 }} onClick={exportCarbonCSV}>
+                  ⬇ Export CSV
+                </button>
+              )}
+              {carbonEstimates.length > 0 && (
+                <p style={{ color: '#ccc', fontSize: 13, marginBottom: 10 }}>
+                  Total estimated: {carbonEstimates.reduce((s, c) => s + Number(c.estimated_kg_co2e || 0), 0).toFixed(1)} kg CO2-e
+                  {' '}across {carbonEstimates.reduce((s, c) => s + Number(c.distance_km || 0), 0).toFixed(0)} km (last {carbonEstimates.length} technician-day{carbonEstimates.length === 1 ? '' : 's'})
+                </p>
+              )}
+              {carbonEstimates.map(c => (
+                <div key={c.id} style={styles.jobRow}>
+                  <p style={styles.jobClient}>{Number(c.estimated_kg_co2e).toFixed(1)} kg CO2-e</p>
+                  <p style={styles.jobAddr}>{c.distance_km} km · {c.vehicle_type} · {new Date(c.created_at).toLocaleDateString('en-AU')}</p>
+                </div>
+              ))}
+              {carbonEstimates.length === 0 && <p style={{ color: '#444', fontSize: 13 }}>No carbon estimates yet — generated daily once technicians have completed 2+ jobs in a day.</p>}
+            </>
+          )}
+
           {queueTab === 'invoices' && (
             <>
               {invoices.length > 0 && (
@@ -1082,7 +1230,7 @@ export default function DispatcherView() {
                       {inv.status === 'paid' ? 'PAID' : 'UNPAID'}
                     </span>
                   </div>
-                  <p style={styles.jobAddr}>${Number(inv.total).toFixed(2)} · {new Date(inv.created_at).toLocaleDateString('en-AU')}</p>
+                  <p style={styles.jobAddr}>${Number(inv.total).toFixed(2)} · {new Date(inv.created_at).toLocaleDateString('en-AU')}{inv.ai_verified ? ' · ✓ AI-verified' : ''}</p>
                   {inv.status !== 'paid' && inv.reminder_count > 0 && (
                     <p style={{ ...styles.jobAddr, color: inv.reminder_count >= 3 ? '#c47a3d' : '#888' }}>
                       {inv.reminder_count} reminder{inv.reminder_count === 1 ? '' : 's'} sent automatically
@@ -1090,6 +1238,11 @@ export default function DispatcherView() {
                   )}
                   {inv.status !== 'paid' && (
                     <button style={styles.leadActionPrimary} onClick={() => markInvoicePaid(inv.id)}>Mark paid</button>
+                  )}
+                  {business?.xero_connected && (
+                    inv.xero_invoice_id
+                      ? <p style={{ ...styles.jobAddr, color: '#1D9E75' }}>✓ Synced to Xero</p>
+                      : <button style={styles.leadActionSecondary} onClick={() => syncInvoiceToXero(inv.id)}>Sync to Xero</button>
                   )}
                 </div>
               ))}
@@ -2117,6 +2270,27 @@ function SettingsModal({
             <label htmlFor="autoDispatch" style={{ ...styles.inputLabel, margin: 0 }}>
               Auto-dispatch new jobs to the nearest available technician
             </label>
+          </div>
+
+          <div style={{ marginBottom: 14 }}>
+            <label style={styles.inputLabel}>Xero</label>
+            {business?.xero_connected ? (
+              <p style={{ color: '#1D9E75', fontSize: 13, margin: '4px 0 0' }}>✓ Connected</p>
+            ) : (
+              <>
+                <a
+                  href={`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/xero-oauth-connect?businessId=${business?.id}`}
+                  style={{ ...styles.copyLinkBtn, padding: '8px 10px', display: 'inline-block', textDecoration: 'none' }}
+                >
+                  Connect Xero
+                </a>
+                <p style={{ color: '#888', fontSize: 12, margin: '6px 0 0' }}>
+                  Requires the operator to have registered a free Xero developer app and set the
+                  XERO_CLIENT_ID/XERO_CLIENT_SECRET secrets — until then this shows a setup message
+                  instead of connecting. See xero-oauth-connect/index.ts for the two-step setup.
+                </p>
+              </>
+            )}
           </div>
 
           <div style={{ marginBottom: 14 }}>

@@ -51,6 +51,10 @@ export default function InvoiceView() {
           <span style={styles.statusBadge(invoice.status)}>{invoice.status === 'paid' ? 'PAID' : 'UNPAID'}</span>
         </div>
 
+        {invoice.ai_verified && (
+          <p style={styles.verifiedNote}>✓ AI-verified: completion photos were checked against the job checklist</p>
+        )}
+
         <p style={styles.clientLine}>Billed to: <strong>{invoice.client_name || 'Client'}</strong></p>
         <p style={styles.dateLine}>{new Date(invoice.created_at).toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
 
@@ -95,6 +99,7 @@ const styles = {
   bizName: { color: '#555', fontSize: 12, letterSpacing: 2, textTransform: 'uppercase', margin: '0 0 4px' },
   title: { color: '#fff', fontSize: 24, fontWeight: 'bold', margin: 0 },
   statusBadge: (status) => ({ fontSize: 11, fontWeight: 'bold', letterSpacing: 1, padding: '4px 12px', borderRadius: 20, color: status === 'paid' ? '#1D9E75' : '#A87C16', background: status === 'paid' ? '#1D9E7522' : '#A87C1622', border: `1px solid ${status === 'paid' ? '#1D9E75' : '#A87C16'}` }),
+  verifiedNote: { color: '#1D9E75', fontSize: 12, margin: '0 0 10px' },
   clientLine: { color: '#ccc', fontSize: 14, margin: '0 0 2px' },
   dateLine: { color: '#666', fontSize: 12, margin: '0 0 16px' },
   divider: { height: 1, background: '#1e293b', margin: '14px 0' },

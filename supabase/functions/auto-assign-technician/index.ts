@@ -25,6 +25,15 @@
 // technicians the one who's been getting fewer emergency callouts lately
 // is preferred. This never changes who's eligible (still "free,
 // active, known position"), only who's picked among them.
+//
+// Hybrid workforce fallback (added 2026-09-04): if no employed technician
+// is free, falls back to the nearest active subcontractor (subcontractors
+// table) with a known position, same haversine-nearest logic, no emergency
+// tiebreak (rolling_emergency_job_count doesn't apply to non-employees).
+// Assigns via jobs.assigned_subcontractor_id, a separate column from
+// technician_id, so nothing about existing technician-only logic elsewhere
+// in the app (payroll, FBT-style hours tracking, etc.) is touched by a
+// subcontractor assignment.
 // Deploy with: supabase functions deploy auto-assign-technician
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
@@ -104,8 +113,44 @@ serve(async (req: Request) => {
 
     const free = (techs || []).filter(t => t.current_lat != null && t.current_lng != null)
     if (free.length === 0) {
+      // No employed technician free — fall back to the subcontractor pool
+      // before giving up entirely.
+      const { data: subs } = await supabase
+        .from('subcontractors')
+        .select('id, name, current_lat, current_lng')
+        .eq('business_id', job.business_id)
+        .eq('is_active', true)
+        .not('current_lat', 'is', null)
+        .not('current_lng', 'is', null)
+
+      if (!subs || subs.length === 0) {
+        supabase.rpc('record_agent_run', { fn_name: 'auto-assign-technician', status: 'ok' }).then(() => {}, () => {})
+        return new Response(JSON.stringify({ success: true, skipped: 'no_technician_available' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        })
+      }
+
+      let nearestSub = subs[0]
+      if (job.client_lat != null && job.client_lng != null) {
+        let bestDist = Infinity
+        for (const s of subs) {
+          const d = haversineKm(job.client_lat, job.client_lng, s.current_lat, s.current_lng)
+          if (d < bestDist) { bestDist = d; nearestSub = s }
+        }
+      }
+
+      await supabase.from('jobs').update({ assigned_subcontractor_id: nearestSub.id }).eq('id', job.id)
+      await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseAnonKey}` },
+        body: JSON.stringify({
+          businessId: job.business_id,
+          text: `🚚 No technician was free — auto-dispatched subcontractor *${nearestSub.name}* to job for *${job.client_name || 'client'}*.`,
+        }),
+      }).catch(() => {})
       supabase.rpc('record_agent_run', { fn_name: 'auto-assign-technician', status: 'ok' }).then(() => {}, () => {})
-      return new Response(JSON.stringify({ success: true, skipped: 'no_technician_available' }), {
+      return new Response(JSON.stringify({ success: true, assigned_subcontractor_to: nearestSub.id }), {
         status: 200,
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
       })
