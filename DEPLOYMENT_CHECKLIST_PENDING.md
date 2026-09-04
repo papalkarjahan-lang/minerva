@@ -101,31 +101,29 @@ the bottom.
     `chase-unpaid-invoices` already only queries `status = 'unpaid'` so
     voided invoices stop being chased for free; `daily-digest`'s revenue
     totals now explicitly exclude voided invoices too.
-  - New delta additions (same file, not yet run live): the
-    `enforce_crew_splitting_addon` trigger, `invoices.voided_at`,
-    `invoices.voided_reason`.
-  - `npm run build` verified clean again. Committed locally — **not yet
-    pushed**, needs a fresh GitHub PAT + explicit push request next time.
+  - New delta additions (same file): the `enforce_crew_splitting_addon`
+    trigger, `invoices.voided_at`, `invoices.voided_reason`.
+  - `npm run build` verified clean. Committed locally as `edf5aa2`.
+- **2026-09-05**: `edf5aa2` pushed to `origin/main` using a fresh one-time
+  GitHub PAT. `supabase_schema_delta_operational_fixes.sql` run live via the
+  Supabase Management API using a fresh one-time PAT and verified: all 3
+  new `invoices` columns (`client_sms_failed`, `voided_at`, `voided_reason`)
+  exist, all 6 new `agent_functions` rows exist, and
+  `trg_enforce_crew_splitting_addon` exists on `job_assignments`. All 10
+  touched/new edge functions redeployed and confirmed `ACTIVE` via
+  `supabase functions list`: `draft-quote`, `send-quote-sms`,
+  `estimate-job-carbon`, `send-job-assignment-sms` (brand new — first
+  deploy), `auto-assign-technician`, `predict-asset-maintenance`,
+  `detect-idle-assets`, `check-credential-expiry`, `detect-wasted-trips`,
+  `daily-digest`. Code and live DB/functions are now fully back in sync —
+  the entire "free time" audit pass (both the original findings and the
+  "do both" follow-up batch) is confirmed live end-to-end.
 
-## Not yet deployed live (needs a fresh Supabase PAT + GitHub PAT)
+## Not yet deployed live
 
-- `supabase_schema_delta_operational_fixes.sql` — adds
-  `invoices.client_sms_failed`, `invoices.voided_at`, `invoices.voided_reason`,
-  the `enforce_crew_splitting_addon` trigger on `job_assignments`, and the
-  6 missing `agent_functions` rows. Needs to be run via the Supabase
-  Management API (same pattern as prior deltas) with a fresh PAT — all
-  PATs supplied in the 2026-09-04 session are spent (one-time-use
-  convention).
-- Redeploy needed for: `draft-quote`, `send-quote-sms`, `estimate-job-carbon`,
-  `send-job-assignment-sms` (new function, never deployed), `auto-assign-technician`,
-  `predict-asset-maintenance`, `detect-idle-assets`, `check-credential-expiry`,
-  `detect-wasted-trips`, `daily-digest`.
-  (`forecast-demand` only needs the SQL row above — its code already had
-  `record_agent_run`, no redeploy needed.)
-- Latest local commit (crew-enforcement/photo-retry/no-show-SMS/invoice-void
-  batch) needs a fresh GitHub PAT + an explicit per-instance push request
-  before `git push` — standing hard rule, does not carry forward from any
-  prior push approval.
+Nothing outstanding from the "free time" audit pass — see confirmation
+above. Future deltas will need a fresh Supabase PAT + GitHub PAT per the
+standing one-time-use convention.
 
 ## Audit findings deliberately NOT built this session (2026-09-04)
 
