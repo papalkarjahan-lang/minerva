@@ -178,13 +178,16 @@ the bottom.
   the app shell itself load with none. `npm run build` verified the
   manifest/sw/icon land in `dist/`. Committed locally, not yet pushed.
 
+- **2026-09-05 (confirmed live)**: fresh Supabase + GitHub PATs supplied.
+  All 10 industrial functions redeployed and confirmed `ACTIVE` via
+  `supabase functions list`. `ee8f1e6` and `e11d729` pushed to
+  `origin/main`. Both the industrial/B2B audit-pass batch and the PWA batch
+  are now fully live end-to-end.
+
 ## Not yet deployed live
 
-The 2026-09-05 industrial/B2B audit-pass batch and the PWA/offline-mode
-batch above are committed locally only — the 10 industrial edge functions
-need redeploying and the commits need pushing to `origin/main`, both
-blocked on fresh one-time PATs per the standing convention. Nothing else
-outstanding from earlier batches.
+Nothing outstanding — see confirmation above. Future deltas will need
+fresh Supabase + GitHub PATs per the standing one-time-use convention.
 
 ## Audit findings deliberately NOT built this session (2026-09-04)
 
