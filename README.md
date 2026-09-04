@@ -938,6 +938,56 @@ front of an actual mid-market business, not from a hypothetical model.
 
 ---
 
+## Round-2 batch (2026-09-04)
+
+Six more additions, built end-to-end (schema + edge functions + UI). Deploy
+after running `supabase_schema_delta_minerva_round2.sql`, then
+`supabase functions deploy <name>` for each (`track-review-click` needs
+`--no-verify-jwt`), then `supabase_schema_delta_minerva_round2_cron.sql`
+for `forecast-demand`'s weekly schedule.
+
+- **Quote-to-job AI estimator** (`draft-quote`, `send-quote-sms`, new
+  **Quotes** tab, `QuoteView.jsx`) — a dispatcher describes a job in plain
+  text, Claude drafts line items from the business's last 30 invoices
+  (falls back to one blank editable line if AI is unavailable — same
+  honest-fallback pattern as `chase-unpaid-invoices`), the dispatcher edits
+  and sends. The client can Accept/Decline directly on their own quote —
+  that's a status update on their own row, not an outbound message, so it
+  doesn't need the Sales & Marketing human-approval gate that sending does.
+- **Multi-technician job splitting** (`job_assignments` table, crew UI in
+  the Jobs tab, lead/crew gating in `TechnicianView.jsx`) — a job keeps one
+  "lead" (`jobs.technician_id`, unchanged, still drives payroll/GPS/hours),
+  and dispatch can add extra "crew" technicians who get the same job pushed
+  to their `current_job_id` (that's what makes `TechnicianView` show it to
+  them at all) but only see a reduced track-only view — starting, completing,
+  checklist, materials, and invoicing all stay lead-only. Crew members get a
+  self-service "Leave job" button.
+- **Customer review/reputation loop** (`send-review-request-sms`,
+  `track-review-click` — public, `--no-verify-jwt`, records first click then
+  redirects — Settings "Google review link" field, "Request review" button
+  on paid invoices) — same per-message human-approval-gate discipline as
+  every other Sales & Marketing send.
+- **Seasonal demand forecasting** (`forecast-demand`, weekly cron, Jobs tab
+  banner) — buckets each business's own job history by `client_address`
+  into the last 4 weekly buckets and flags addresses where the last 2
+  weeks are trending up vs the 2 weeks before. This is trend arithmetic on
+  a noisy proxy for suburb (jobs has no dedicated suburb column), not a
+  trained forecasting model — labelled as such in the insight text itself.
+- **Emergency callout surge-pricing suggestion** (invoice builder in
+  `TechnicianView.jsx`) — for jobs flagged `urgency: 'emergency'`, one tap
+  adds a deterministic time-of-day/day-of-week premium as a normal
+  editable/removable invoice line item. Never auto-applied, never a live
+  demand model — just a starting-point suggestion the technician can edit
+  or delete before sending.
+- **Client portal job-history page** (`client_portal_links` table,
+  `ClientHistoryView.jsx`, "View your service history" button on
+  `TrackingView.jsx`'s job-complete screen) — a read-only list of a client's
+  own past jobs and invoices for one business, reached via an opaque
+  random-token URL (not the client's phone number) upserted once per
+  business/client-phone pair so repeat visits reuse the same link.
+
+---
+
 ## Testing checklist (Day 7 — before first client call)
 
 Run through this on TWO real devices (your phone + your laptop):
