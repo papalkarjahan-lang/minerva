@@ -1,0 +1,15 @@
+{
+  "name": "Minerva Technician",
+  "short_name": "Minerva",
+  "description": "Live GPS tracking and job workflow for Minerva field technicians.",
+  "start_url": "/tech",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#050811",
+  "theme_color": "#050811",
+  "orientation": "portrait",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "192x192", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon.svg", "sizes": "512x512", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

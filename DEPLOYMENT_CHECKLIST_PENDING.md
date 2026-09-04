@@ -162,29 +162,39 @@ the bottom.
     kill-switch/health-tracked where applicable.
   - `npm run build` verified clean. Committed locally — not yet redeployed
     or pushed, needs fresh Supabase + GitHub PATs (see below).
+- **2026-09-05 (PWA/offline mode for TechnicianView)**: the item previously
+  listed below as deliberately deferred — built this round as part of the
+  same "all" instruction. `public/manifest.json` (installable at
+  `/tech`, standalone display, SVG icon), `public/sw.js` (network-first
+  navigation with cached-shell fallback for `/tech`, cache-first with
+  background refresh for static assets, Supabase/Mapbox requests untouched
+  so API calls always hit the network), registered from `main.jsx` in
+  production builds only. `index.html` links the manifest/icon/theme-color.
+  `TechnicianView.jsx` gained an install banner (`beforeinstallprompt`
+  capture + custom button, dismissible via localStorage; simply never
+  appears on browsers that don't fire the event, e.g. iOS Safari). This is
+  additive to the existing GPS-queue/localStorage offline handling, not a
+  replacement — real data still requires a live connection, this just lets
+  the app shell itself load with none. `npm run build` verified the
+  manifest/sw/icon land in `dist/`. Committed locally, not yet pushed.
 
 ## Not yet deployed live
 
-The 2026-09-05 industrial/B2B audit-pass batch above is committed locally
-only — the 10 industrial edge functions need redeploying and the commit
-needs pushing to `origin/main`, both blocked on fresh one-time PATs per the
-standing convention. Nothing else outstanding from earlier batches.
+The 2026-09-05 industrial/B2B audit-pass batch and the PWA/offline-mode
+batch above are committed locally only — the 10 industrial edge functions
+need redeploying and the commits need pushing to `origin/main`, both
+blocked on fresh one-time PATs per the standing convention. Nothing else
+outstanding from earlier batches.
 
 ## Audit findings deliberately NOT built this session (2026-09-04)
 
 Found by the same audit pass, judged lower-priority or higher-scope than
 what fit in the session, and intentionally left for a future pass rather
-than rushed. (The other 4 originally listed here — crew-member
-enforcement, checklist-photo retry, no-show SMS, invoice void — were built
-in the follow-up "do both" round above.)
+than rushed. (The other 5 originally listed here — crew-member
+enforcement, checklist-photo retry, no-show SMS, invoice void, and
+PWA/offline mode — were all built in later rounds; see the 2026-09-04
+"do both" entry and the 2026-09-05 PWA entry above.)
 
-- **PWA/offline mode for TechnicianView** — large scope (service worker,
-  cache strategy, install prompt); the GPS-queue auto-flush fix covers the
-  most common real-world case (phone reconnects before reopening the app)
-  without the full offline-app rebuild. The checklist-photo retry logic
-  also doesn't persist across a page reload for the same reason (File
-  objects can't be serialized to localStorage) — this is the same
-  underlying gap.
 - Hard-blocking a job/invoice when a technician's credential is already
   expired — this was a deliberate prior design decision
   (`check-credential-expiry`'s header comment: "never a client SMS... purely

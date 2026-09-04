@@ -5,6 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Minerva — Know where every technician is, right now.</title>
     <meta name="description" content="Live map tracking and automated client SMS for trade businesses. Works on every phone. Set up in 20 minutes." />
+    <!-- PWA: lets a technician install /tech to their home screen and still
+         open the app shell with no signal (see public/sw.js). Doesn't
+         affect the rest of the site, which isn't installable. -->
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/icon.svg" />
+    <meta name="theme-color" content="#050811" />
     <!-- Mapbox CSS required for map to render correctly -->
     <link href="https://api.mapbox.com/mapbox-gl-js/v3.4.0/mapbox-gl.css" rel="stylesheet" />
     <style>

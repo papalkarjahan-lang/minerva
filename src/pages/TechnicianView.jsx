@@ -103,6 +103,16 @@ export default function TechnicianView() {
   // all — but only the lead may drive status-changing actions below.
   const isCrew = !!(currentJob && tech && currentJob.technician_id && currentJob.technician_id !== tech.id)
   const [leavingJob, setLeavingJob] = useState(false)
+  // PWA install prompt (2026-09-05): captured from the browser's
+  // 'beforeinstallprompt' event so we can trigger it from our own button
+  // instead of relying on the browser's native mini-infobar. Not every
+  // browser fires this event (iOS Safari never does — installs there are
+  // manual via the share-sheet "Add to Home Screen"), so the banner simply
+  // never appears rather than showing a broken button.
+  const [installPrompt, setInstallPrompt] = useState(null)
+  const [installDismissed, setInstallDismissed] = useState(
+    typeof localStorage !== 'undefined' && localStorage.getItem('minerva_pwa_install_dismissed') === '1'
+  )
 
   const intervalRef = useRef(null)
   // In-memory queue of GPS points that failed to reach Supabase. Mirrored to
@@ -140,6 +150,36 @@ export default function TechnicianView() {
       window.removeEventListener('offline', handleOffline)
     }
   }, [tech])
+
+  // Capture the browser's install prompt (see installPrompt state comment
+  // above) instead of letting it fire the native mini-infobar unprompted.
+  useEffect(() => {
+    function handleBeforeInstall(e) {
+      e.preventDefault()
+      setInstallPrompt(e)
+    }
+    function handleInstalled() {
+      setInstallPrompt(null)
+    }
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall)
+    window.addEventListener('appinstalled', handleInstalled)
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstall)
+      window.removeEventListener('appinstalled', handleInstalled)
+    }
+  }, [])
+
+  async function handleInstallClick() {
+    if (!installPrompt) return
+    installPrompt.prompt()
+    await installPrompt.userChoice
+    setInstallPrompt(null)
+  }
+
+  function dismissInstallBanner() {
+    setInstallDismissed(true)
+    try { localStorage.setItem('minerva_pwa_install_dismissed', '1') } catch (_) {}
+  }
 
   // Load technician by PIN on mount
   useEffect(() => {
@@ -786,6 +826,16 @@ export default function TechnicianView() {
         )}
       </div>
 
+      {installPrompt && !installDismissed && (
+        <div style={styles.installBanner}>
+          <p style={styles.installBannerText}>Install Minerva for one-tap access &amp; offline reliability</p>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" style={styles.btnGreySmall} onClick={dismissInstallBanner}>Not now</button>
+            <button type="button" style={styles.btnGreenSmall} onClick={handleInstallClick}>Install</button>
+          </div>
+        </div>
+      )}
+
       {invoiceSmsWarning && (
         <div style={styles.credentialBanner}>
           <p style={styles.credentialBannerTitle}>⚠️ Invoice text failed</p>
@@ -1110,6 +1160,8 @@ const styles = {
   credentialBanner: { background: '#2A1F0844', border: '1px solid #A87C16', borderRadius: 12, padding: '12px 16px', width: '100%', maxWidth: 360, marginBottom: 20 },
   credentialBannerTitle: { color: '#A87C16', fontSize: 13, fontWeight: 'bold', margin: '0 0 6px' },
   credentialBannerLine: { color: '#ccc', fontSize: 12, margin: '2px 0' },
+  installBanner: { background: '#10233A', border: '1px solid #2D5FA8', borderRadius: 12, padding: '12px 16px', width: '100%', maxWidth: 360, marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 10 },
+  installBannerText: { color: '#cfe0f7', fontSize: 13, margin: 0 },
   burnoutBanner: { background: '#1A1F2A44', border: '1px solid #3A4A6B', borderRadius: 12, padding: '12px 16px', width: '100%', maxWidth: 360, marginBottom: 20 },
   burnoutBannerWarn: { background: '#2A1F0844', border: '1px solid #A87C16', borderRadius: 12, padding: '12px 16px', width: '100%', maxWidth: 360, marginBottom: 20 },
   workloadBannerTitle: { color: '#7C9CD6', fontSize: 13, fontWeight: 'bold', margin: '0 0 6px' }
