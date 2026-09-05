@@ -1126,10 +1126,17 @@ minerva/
 │   ├── main.jsx                   # React entry point
 │   ├── index.css                  # Global styles
 │   ├── supabaseClient.js          # Supabase singleton
-│   ├── utils.js                   # Haversine, geocoding, PIN generator
+│   ├── sentry.js                  # Optional error monitoring init, gated on VITE_SENTRY_DSN
+│   ├── utils.js                   # Haversine, geocoding, PIN generator (+ PIN-retry helper), utils.test.js
+│   ├── components/
+│   │   ├── ErrorBoundary.jsx      # App-wide crash guard, wraps <App /> in main.jsx
+│   │   ├── RequireBusinessAuth.jsx # Auth gate for /dispatch/:id and /industrial/:id (2026-09-05)
+│   │   └── ContactSupportModal.jsx # Shared "Contact support" form (Dispatcher + Technician views)
 │   └── pages/
 │       ├── LandingPage.jsx        # Public marketing page
 │       ├── Onboarding.jsx         # Business + technician signup, tier selection
+│       ├── Login.jsx              # Business owner magic-link login (2026-09-05)
+│       ├── AdminConsole.jsx       # Internal Minerva staff console — /admin (2026-09-05)
 │       ├── SuccessPage.jsx        # Post-Stripe confirmation
 │       ├── DispatcherView.jsx     # Live map dashboard (owner) — jobs, leads,
 │       │                          #   Pro tier: assets, invoices, checklist mgmt
@@ -1147,6 +1154,14 @@ minerva/
 ├── supabase_schema_delta_agent_expansion.sql # Track A: workflows, incidents, photo verification, lost-lead winback
 ├── supabase_schema_delta_industrial.sql      # Track B: industrial sector tables
 ├── supabase_schema_delta_agent_cron.sql      # Cron schedules for both tracks' new functions
+├── supabase_schema_delta_owner_auth.sql      # businesses.owner_user_id — auth gate (2026-09-05)
+├── supabase_schema_delta_pin_unique.sql      # technicians.pin unique constraint (2026-09-05)
+├── supabase_schema_delta_support_requests.sql # support_requests table for AdminConsole (2026-09-05)
+├── supabase_schema_delta_abandoned_signups.sql # businesses.abandoned_flagged_at (2026-09-05)
+├── supabase_schema_delta_abandoned_signups_cron.sql # cron for flag-abandoned-signups (2026-09-05)
+├── .github/workflows/ci.yml       # lint + test + build on every push/PR (2026-09-05)
+├── vitest.config.js               # Test runner config (2026-09-05)
+├── .eslintrc.cjs                  # Lint baseline (2026-09-05)
 ├── supabase/
 │   └── functions/
 │       ├── send-eta-sms/          # Fires the 15-min client SMS
@@ -1157,7 +1172,9 @@ minerva/
 │       ├── missed-call-webhook/   # Twilio Voice webhook: TwiML + missed-call SMS auto-reply
 │       ├── create-checkout-session/ # Creates Stripe checkout (tier + quantity aware)
 │       ├── sync-technician-billing/ # Syncs Stripe subscription quantity to connected technicians
-│       ├── stripe-webhook/        # Handles checkout.session.completed / subscription.deleted
+│       ├── stripe-webhook/        # Handles checkout.session.completed / subscription.deleted, sends welcome email
+│       ├── send-email/            # Generic transactional email (Resend), gated on optional RESEND_API_KEY (2026-09-05)
+│       ├── flag-abandoned-signups/ # Agent: flags (never deletes) 48h+ abandoned pre-checkout signups (daily, 2026-09-05)
 │       ├── ai-intake-chat/        # AI lead-triage chat backend (Claude)
 │       ├── notify-slack/          # Generic Slack alert poster (internal helper)
 │       ├── calendar-feed/         # Public ICS feed of scheduled jobs
@@ -1227,6 +1244,38 @@ technicians actually connected — see `sync-technician-billing` above.
   see "Minerva Max add-on tier" above. Not real Stripe-billed yet (see that
   section's honest-scope note); enabling one from the MAX tab just flips a
   flag today.
+
+---
+
+## Internal admin console + business owner login (2026-09-05)
+
+- **`/login`** — Supabase Auth magic-link login for business owners. No
+  password to manage; Supabase's own built-in auth email delivery sends
+  the link, so this needs no new external account. Existing pilot
+  businesses auto-claim to whichever authenticated user's email matches
+  `businesses.contact_email` on first login.
+- **`/dispatch/:businessId`** and **`/industrial/:businessId`** now require
+  that login and ownership match (`RequireBusinessAuth.jsx`) — an
+  additive, app-layer gate only. RLS is unchanged (still `using (true)` on
+  every table, see `SECURITY_NOTES.md`); scoping RLS itself to `auth.uid()`
+  is necessary follow-up work, not done in this pass.
+- **`/admin`** — internal Minerva staff console (`AdminConsole.jsx`):
+  cross-business list (tier, Stripe status, tech count, last activity),
+  manual tier override, and a support inbox (`support_requests` table,
+  fed by a new "Contact support" form in both DispatcherView and
+  TechnicianView). Set `VITE_ADMIN_EMAILS` (comma-separated staff emails)
+  in your env before this is usable — it's a client-side allowlist, same
+  security model as the rest of this app, not a hard boundary.
+
+## Testing, linting, CI (2026-09-05)
+
+- `npm test` — Vitest, currently covers `utils.js`'s pure functions.
+- `npm run lint` — ESLint baseline (`.eslintrc.cjs`), catches real bugs
+  without imposing a stylistic rewrite on existing code.
+- `.github/workflows/ci.yml` — runs lint + test + build on every push/PR
+  to `main`.
+- Optional Sentry error monitoring (`src/sentry.js`, `ErrorBoundary.jsx`)
+  — no-op until `VITE_SENTRY_DSN` is set.
 
 ---
 
