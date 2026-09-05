@@ -289,10 +289,12 @@ the bottom.
 
 ## Not yet deployed live
 
-**2026-09-05 — subcontractor_pool addon-gating gap** (built, tested,
-committed locally — needs a fresh Supabase PAT to run the SQL delta and
-redeploy `auto-assign-technician`): an audit of the auth/RLS layer led to
-checking every Minerva Max add-on for the same class of gap
+Nothing currently pending on the code/DB side.
+
+## Confirmed live (2026-09-06)
+
+**subcontractor_pool addon-gating gap**: an audit of the auth/RLS layer led
+to checking every Minerva Max add-on for the same class of gap
 `crew_splitting` had before its 2026-09-04 fix (frontend-only gating, no
 server enforcement). Found `subcontractor_pool` had the identical gap —
 `DispatcherView.jsx` only shows the "+ Add" button/Subcontractors tab when
@@ -307,8 +309,10 @@ as `crew_splitting`: a `BEFORE INSERT` trigger on `subcontractors`
 outlive a lapsed trial/subscription — the insert trigger alone wouldn't
 catch that). `addSubcontractor()`'s error handling updated to surface the
 trigger's message, matching `addCrewMember()`'s existing pattern.
-Needs: run `supabase_schema_delta_subcontractor_pool_addon.sql`, redeploy
-`auto-assign-technician`.
+Trigger run live and confirmed active via `pg_trigger`; `auto-assign-
+technician` redeployed and confirmed.
+
+## Confirmed live (2026-09-05, this session)
 
 **2026-09-05 — client-facing link data-exposure fix** (built, tested,
 committed locally — no new SQL, just a code fix, so nothing to run live,
