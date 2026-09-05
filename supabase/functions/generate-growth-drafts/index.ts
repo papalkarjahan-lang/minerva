@@ -51,6 +51,7 @@ serve(async (req: Request) => {
     if (error) throw error
 
     let drafted = 0
+    let skippedNoKey = 0
 
     for (const biz of businesses || []) {
       // Skip if this business already has an unreviewed draft of either type
@@ -121,7 +122,7 @@ serve(async (req: Request) => {
         .limit(20)
 
       if (!topSuburb && (!coldLeads || coldLeads.length === 0)) continue // nothing worth drafting this week
-      if (!ANTHROPIC_API_KEY) continue // can't write copy without Claude — skip silently, logged below
+      if (!ANTHROPIC_API_KEY) { skippedNoKey++; continue } // can't write copy without Claude — surfaced below via agent_insights
 
       // Draft 1: ad campaign, only if we have a clear top suburb.
       if (topSuburb) {
@@ -176,9 +177,22 @@ serve(async (req: Request) => {
       }
     }
 
+    // Surface a missing ANTHROPIC_API_KEY instead of failing silently — this
+    // cron runs weekly, so one insight row per run carries no spam risk, and
+    // otherwise a missing key would show up only as a quietly-low `drafted`
+    // count with no indication why.
+    if (skippedNoKey > 0) {
+      await supabase.from('agent_insights').insert({
+        agent: 'marketing',
+        insight_type: 'anomaly',
+        summary: `generate-growth-drafts skipped ${skippedNoKey} business(es) with draftable ad/SMS opportunities this week because ANTHROPIC_API_KEY is not configured — no marketing copy can be written until it's set.`,
+        related_table: 'businesses',
+      }).then(() => {}, (insErr) => console.error('generate-growth-drafts: missing-key insight failed', insErr))
+    }
+
     supabase.rpc('record_agent_run', { fn_name: 'generate-growth-drafts', status: 'ok' }).then(() => {}, () => {})
 
-    return new Response(JSON.stringify({ success: true, businessesChecked: (businesses || []).length, drafted }), {
+    return new Response(JSON.stringify({ success: true, businessesChecked: (businesses || []).length, drafted, skippedNoKey }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     })

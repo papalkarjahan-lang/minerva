@@ -826,6 +826,16 @@ export default function TechnicianView() {
         )}
       </div>
 
+      {business?.subscription_tier === 'cancelled' && (
+        <div style={styles.credentialBanner}>
+          <p style={styles.credentialBannerTitle}>⚠️ Subscription ended</p>
+          <p style={styles.credentialBannerLine}>
+            This business's Minerva subscription was cancelled — some features may be
+            unavailable. Contact your dispatcher/owner if this seems wrong.
+          </p>
+        </div>
+      )}
+
       {installPrompt && !installDismissed && (
         <div style={styles.installBanner}>
           <p style={styles.installBannerText}>Install Minerva for one-tap access &amp; offline reliability</p>

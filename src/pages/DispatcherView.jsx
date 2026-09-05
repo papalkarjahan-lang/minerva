@@ -1116,6 +1116,16 @@ export default function DispatcherView() {
         <div style={styles.sidebarHeader}>
           <p style={styles.bizLabel}>{business?.name || 'Loading...'}</p>
           <h2 style={styles.sidebarTitle}>Dispatch</h2>
+          {business?.subscription_tier === 'cancelled' && (
+            <div style={styles.subscriptionCancelledBanner}>
+              <p style={styles.subscriptionCancelledTitle}>⚠️ Subscription ended</p>
+              <p style={styles.subscriptionCancelledLine}>
+                Your Stripe subscription was cancelled — Pro features (invoicing, checklists,
+                Watchtower, Marketing) are no longer available. Resubscribe from your Stripe
+                customer portal link, or contact us to reactivate.
+              </p>
+            </div>
+          )}
           {businessId && (
             <button style={styles.copyLinkBtn} onClick={copyIntakeLink}>
               {linkCopied ? 'Copied!' : '🔗 Copy intake chat link'}
@@ -3042,6 +3052,9 @@ const styles = {
   bizLabel: { color: '#555', fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', margin: '0 0 4px' },
   sidebarTitle: { color: '#fff', fontSize: 22, margin: '0 0 10px', fontWeight: 'bold' },
   copyLinkBtn: { background: 'transparent', border: '1px solid #1e293b', color: '#8fd0e8', borderRadius: 8, padding: '5px 10px', fontSize: 11, cursor: 'pointer', width: '100%', textAlign: 'left' },
+  subscriptionCancelledBanner: { background: '#2A0F0F', border: '1px solid #8A2525', borderRadius: 8, padding: '8px 10px', margin: '0 0 10px' },
+  subscriptionCancelledTitle: { color: '#e05555', fontSize: 12, fontWeight: 'bold', margin: '0 0 4px' },
+  subscriptionCancelledLine: { color: '#ccc', fontSize: 11, lineHeight: 1.4, margin: 0 },
   section: { padding: '12px 16px', borderBottom: '1px solid #1e293b', overflowY: 'auto', maxHeight: '50vh' },
   sectionLabel: { color: '#555', fontSize: 10, letterSpacing: 2, textTransform: 'uppercase', margin: '0 0 10px' },
   billingNote: { color: '#666', fontSize: 11, margin: '-4px 0 10px', cursor: 'default' },

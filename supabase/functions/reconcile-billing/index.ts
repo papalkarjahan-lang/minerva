@@ -45,6 +45,32 @@ serve(async (req: Request) => {
       return new Response(JSON.stringify({ success: true, skipped: true, reason: 'disabled via agent_functions.enabled' }), { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
+    // Self-heal businesses stuck with stripe_sub_id set but stripe_sub_item_id
+    // still null — happens if stripe-webhook's one-shot fetch of the
+    // subscription item id failed at checkout time (Stripe API hiccup).
+    // Without this, such a business is silently excluded from the main
+    // reconciliation query below forever (it filters on stripe_sub_item_id
+    // NOT NULL) and never gets billed for technician seats at all.
+    const { data: missingItemId } = await supabaseAdmin
+      .from('businesses')
+      .select('id, name, stripe_sub_id')
+      .is('stripe_sub_item_id', null)
+      .not('stripe_sub_id', 'is', null)
+      .neq('subscription_tier', 'cancelled')
+    let backfilled = 0
+    for (const biz of missingItemId || []) {
+      try {
+        const sub = await stripe.subscriptions.retrieve(biz.stripe_sub_id)
+        const itemId = sub.items.data[0]?.id
+        if (itemId) {
+          await supabaseAdmin.from('businesses').update({ stripe_sub_item_id: itemId }).eq('id', biz.id)
+          backfilled++
+        }
+      } catch (err) {
+        console.error(`reconcile-billing: backfill failed for ${biz.id}`, err)
+      }
+    }
+
     const { data: businesses, error } = await supabaseAdmin
       .from('businesses')
       .select('id, name, stripe_sub_item_id, subscription_tier')
@@ -107,7 +133,7 @@ serve(async (req: Request) => {
 
     supabaseAdmin.rpc('record_agent_run', { fn_name: 'reconcile-billing', status: 'ok' }).then(() => {}, () => {})
 
-    return new Response(JSON.stringify({ success: true, checked, mismatches }), {
+    return new Response(JSON.stringify({ success: true, checked, mismatches, backfilled }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', ...corsHeaders },
     })

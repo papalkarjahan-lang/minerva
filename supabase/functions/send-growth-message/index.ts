@@ -40,36 +40,59 @@ serve(async (req: Request) => {
     if (draft.status !== 'pending') throw new Error(`Draft already ${draft.status} — refusing to send twice`)
     if (!draft.body_text) throw new Error('Draft has no message body')
 
+    // Atomically claim the draft before sending any real SMS — the check
+    // above alone is a time-of-check/time-of-use race (two rapid clicks, or
+    // a retried request, could both pass it before either writes a new
+    // status). This conditional update only succeeds for whichever request
+    // gets there first; a second concurrent request sees 0 rows affected
+    // and bails out before ever messaging a single recipient.
+    const { data: claimed, error: claimErr } = await supabase
+      .from('marketing_drafts')
+      .update({ status: 'sending' })
+      .eq('id', draftId)
+      .eq('status', 'pending')
+      .select('id')
+    if (claimErr) throw claimErr
+    if (!claimed || claimed.length === 0) throw new Error('Draft already being sent — refusing to send twice')
+
     const recipients: { name?: string; phone?: string }[] = draft.recipients || []
     let sent = 0
     let failed = 0
 
-    if (TWILIO_SID && TWILIO_TOKEN && TWILIO_FROM) {
-      for (const r of recipients) {
-        if (!r.phone) { failed++; continue }
-        let phone = r.phone.replace(/\s/g, '')
-        if (phone.startsWith('0')) phone = '+61' + phone.slice(1)
-        if (!phone.startsWith('+')) phone = '+61' + phone
+    try {
+      if (TWILIO_SID && TWILIO_TOKEN && TWILIO_FROM) {
+        for (const r of recipients) {
+          if (!r.phone) { failed++; continue }
+          let phone = r.phone.replace(/\s/g, '')
+          if (phone.startsWith('0')) phone = '+61' + phone.slice(1)
+          if (!phone.startsWith('+')) phone = '+61' + phone
 
-        const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json`, {
-          method: 'POST',
-          headers: {
-            'Authorization': 'Basic ' + btoa(`${TWILIO_SID}:${TWILIO_TOKEN}`),
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          body: new URLSearchParams({ To: phone, From: TWILIO_FROM, Body: draft.body_text }).toString(),
-        }).catch(err => { console.error('send-growth-message: SMS failed', err); return null })
+          const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json`, {
+            method: 'POST',
+            headers: {
+              'Authorization': 'Basic ' + btoa(`${TWILIO_SID}:${TWILIO_TOKEN}`),
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: new URLSearchParams({ To: phone, From: TWILIO_FROM, Body: draft.body_text }).toString(),
+          }).catch(err => { console.error('send-growth-message: SMS failed', err); return null })
 
-        if (res) {
-          const result = await res.json().catch(() => ({}))
-          if (!result.error_code) sent++
-          else failed++
-        } else {
-          failed++
+          if (res) {
+            const result = await res.json().catch(() => ({}))
+            if (!result.error_code) sent++
+            else failed++
+          } else {
+            failed++
+          }
         }
+      } else {
+        throw new Error('Twilio secrets not configured')
       }
-    } else {
-      throw new Error('Twilio secrets not configured')
+    } catch (sendErr) {
+      // Claimed the draft ('sending') but never finished — revert to
+      // 'failed' rather than stranding it in 'sending' forever with no
+      // retry path (the pending-status check above would block a retry).
+      await supabase.from('marketing_drafts').update({ status: 'failed', error: sendErr.message, reviewed_at: new Date().toISOString() }).eq('id', draftId)
+      throw sendErr
     }
 
     await supabase.from('marketing_drafts').update({

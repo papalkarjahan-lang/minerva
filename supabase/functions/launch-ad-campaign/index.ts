@@ -45,6 +45,21 @@ serve(async (req: Request) => {
     if (draft.type !== 'ad_campaign') throw new Error('This draft is not an ad campaign')
     if (draft.status !== 'pending') throw new Error(`Draft already ${draft.status} — refusing to launch twice`)
 
+    // Atomically claim the draft before spending any real ad budget — the
+    // check above alone is a time-of-check/time-of-use race (two rapid
+    // clicks, or a retried request, could both pass it before either writes
+    // a new status). This conditional update only succeeds for whichever
+    // request gets there first; a second concurrent request sees 0 rows
+    // affected and bails out before ever calling the Meta API.
+    const { data: claimed, error: claimErr } = await supabase
+      .from('marketing_drafts')
+      .update({ status: 'launching' })
+      .eq('id', draftId)
+      .eq('status', 'pending')
+      .select('id')
+    if (claimErr) throw claimErr
+    if (!claimed || claimed.length === 0) throw new Error('Draft already being launched — refusing to launch twice')
+
     const biz = (draft as any).businesses
     const { meta_access_token: token, meta_ad_account_id: adAccountId, meta_page_id: pageId } = biz || {}
     if (!token || !adAccountId || !pageId) {

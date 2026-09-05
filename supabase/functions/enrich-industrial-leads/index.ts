@@ -12,7 +12,9 @@
 //  2. Cron sweep (no body, daily) — finds industrial_leads still sitting at
 //     status='new' with no decision-maker contact, and nudges Slack so a
 //     human knows enrichment is the blocking step, rather than the lead
-//     silently going nowhere.
+//     silently going nowhere. Each lead is only nudged once
+//     (enrichment_nudge_sent_at, see supabase_schema_delta_enrichment_nudge.sql)
+//     so a lead stuck at 'new' doesn't get re-Slacked every day forever.
 // Deploy with: supabase functions deploy enrich-industrial-leads
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
@@ -59,11 +61,16 @@ serve(async (req: Request) => {
 
     let nudged = 0
     for (const biz of businesses || []) {
+      // Only nudge leads that haven't already been nudged once — without
+      // this filter, a lead stuck at status='new' gets re-Slacked every
+      // single day forever. Once nudged, it's silent until a human either
+      // enriches it (status changes away from 'new') or looks into it.
       const { data: unenriched } = await supabase.from('industrial_leads')
         .select('id, company_name')
         .eq('business_id', biz.id)
         .eq('status', 'new')
         .is('decision_maker_contact', null)
+        .is('enrichment_nudge_sent_at', null)
         .lt('created_at', dayAgo)
 
       if (!unenriched || unenriched.length === 0) continue
@@ -73,6 +80,9 @@ serve(async (req: Request) => {
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseAnonKey}` },
         body: JSON.stringify({ businessId: biz.id, text: `📇 *Enrich*: ${unenriched.length} lead(s) still missing a decision-maker contact — ${names}${unenriched.length > 3 ? ', ...' : ''}.` }),
       }).catch(() => {})
+      await supabase.from('industrial_leads')
+        .update({ enrichment_nudge_sent_at: new Date().toISOString() })
+        .in('id', unenriched.map((l: any) => l.id))
       nudged++
     }
 
