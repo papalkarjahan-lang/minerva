@@ -9,8 +9,15 @@ import { supabase } from '../supabaseClient'
 // app-layer gate only (consistent with the rest of this codebase's
 // security model, see SECURITY_NOTES.md) — the allowlist ships in the
 // client bundle, so treat it as "hides the button from everyone else",
-// not as a hard security boundary. A real admin-role check enforced at
-// the database/RLS layer is future work once RLS is scoped generally.
+// not as a hard security boundary.
+//
+// The Support tab is the one exception: support_requests SELECT is now
+// enforced at the RLS layer too (supabase_schema_delta_rls_scoping_v1.sql),
+// requiring the logged-in user's auth.uid() to appear in the `admin_users`
+// table — NOT just be on this client-side email list. If someone is on
+// VITE_ADMIN_EMAILS but the Support tab stays empty, it's because no one
+// has added their auth.users row to admin_users yet (see that delta's
+// header comment for the one-line SQL to do it).
 const ADMIN_EMAILS = (import.meta.env.VITE_ADMIN_EMAILS || '')
   .split(',').map(e => e.trim().toLowerCase()).filter(Boolean)
 

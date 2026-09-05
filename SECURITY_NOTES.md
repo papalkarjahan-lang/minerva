@@ -147,6 +147,29 @@ appropriate to scale indefinitely without revisiting.
   surface — it's been removed entirely rather than scoped.
 - Technician PINs upgraded from 6-digit numeric (900,000 combinations, no
   rate limiting) to 8-character alphanumeric (~1e12 combinations).
+- Business owner login (`/login`, magic-link email via Supabase Auth) +
+  `businesses.owner_user_id`, gating `/dispatch/:businessId` and
+  `/industrial/:businessId` behind an actual authenticated session for the
+  first time (`supabase_schema_delta_owner_auth.sql`, `RequireBusinessAuth.jsx`).
+- **RLS read-scoping, pass 1** (`supabase_schema_delta_rls_scoping_v1.sql`,
+  2026-09-05): audited every `.from(...)` call in the codebase to find
+  tables read *exclusively* by the now-auth-gated DispatcherView, with no
+  anonymous technician/public/background-agent reader to break. Found
+  four: `assets`, `subcontractors`, `technician_incidents`,
+  `upsell_nudge_dismissals` — SELECT on these now requires
+  `auth.uid() = businesses.owner_user_id` for that row's business, closing
+  the "anyone with the dispatch link can also just query the table
+  directly" gap for these specific tables. Also added a staff-only
+  `admin_users` table and scoped `support_requests` SELECT to it (was
+  previously anon-select-all, meaning any anon-key holder could read every
+  business's support tickets and contact details — now admin-only).
+  INSERT/UPDATE/DELETE on all five tables are untouched (still open) —
+  this pass is SELECT-only, deliberately. See that SQL file's header
+  comment for the full reasoning on why most other tables in this schema
+  can't be scoped the same way yet (technician PIN sessions and ~45
+  background agent edge functions run on the anon key with no
+  `auth.uid()`, and legitimately need cross-business or unauthenticated
+  reads to work).
 
 ## Day-1 setup step (do this once, in Supabase Dashboard)
 
@@ -213,10 +236,28 @@ full reasoning.
 
 ## Phase 2 priority: before scaling past ~10-15 trusted pilot clients
 
-Add real per-owner authentication (Supabase Auth magic-link email login for
-business owners only — technicians and clients can keep their current
-PIN/link flow, which is lower-stakes and fine to leave as-is). This lets RLS
-policies scope by `auth.uid()` instead of "knows the URL," closing the
-"link leaked = full access" exposure. Budget this before pursuing any
-enterprise client, any client with sensitive commercial data, or before
-client count makes "treat every link as a secret" operationally unrealistic.
+Real per-owner authentication now exists (`/login`, see "What's already
+fixed" above) and RLS read-scoping pass 1 has landed on the handful of
+tables where it was safe to do without breaking anything. What's still
+open, and still the right thing to budget before any enterprise client or
+any client with sensitive commercial data:
+
+- **The big one**: most tables (`jobs`, `technicians`, `leads`, `invoices`,
+  `technician_locations`, `checklist_templates`, `inventory_items`,
+  `technician_credentials`, `marketing_drafts`, all `industrial_*` tables,
+  etc.) still can't be scoped to `auth.uid()` because technicians
+  authenticate via PIN (no Supabase auth session at all) and ~45
+  background agent edge functions run on the `anon` key and need
+  cross-business reads by design. Closing this gap means either giving
+  technicians a real auth session tied to their PIN, or moving background
+  agents to `service_role` + scoping their queries in application code
+  instead of relying on RLS — a genuine project, not a SQL delta.
+- `businesses` itself is still anon-select-all (any anon-key holder can
+  list every business's name/contact/tier) — same reason: too many
+  legitimate anonymous readers (public intake widget, post-checkout
+  success page, onboarding, background agents) to scope without breaking
+  them.
+- Supabase Realtime (the live GPS map) still checks subscribers against
+  the SELECT policy on `technician_locations`, which is why that table in
+  particular can't be tightened without also solving the technician-auth
+  problem above — see the original note this replaced, still accurate.

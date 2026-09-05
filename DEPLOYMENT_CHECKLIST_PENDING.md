@@ -292,6 +292,15 @@ the bottom.
 The 2026-09-05 "do all you can" batch above — needs fresh Supabase +
 GitHub PATs per the standing one-time-use convention.
 
+**2026-09-05 — RLS read-scoping pass 1** (`supabase_schema_delta_
+rls_scoping_v1.sql`): new `admin_users` table + tightened SELECT on
+`assets`, `subcontractors`, `technician_incidents`,
+`upsell_nudge_dismissals` (owner-only now) and `support_requests`
+(admin-only now). Needs a fresh Supabase PAT to run live. Once run,
+add yourself to `admin_users` (one-line SQL in the file's header
+comment) after you've logged in once via `/login`, or the Support
+tab in `/admin` will look empty even though it's working correctly.
+
 ## Audit findings deliberately NOT built this session (2026-09-04)
 
 Found by the same audit pass, judged lower-priority or higher-scope than
