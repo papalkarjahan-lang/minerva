@@ -289,7 +289,24 @@ the bottom.
 
 ## Not yet deployed live
 
-Nothing currently pending on the code/DB side.
+- **`verify-checklist-photos` false-'pass' bug (built 2026-09-06, code only —
+  needs a Supabase PAT to redeploy the function)**: a further audit of Track
+  A's Watchtower AI photo verification found `reviewPhoto()` returned
+  `status: 'pass'` when the Anthropic API call itself failed (non-2xx
+  response, or a thrown network exception) — inconsistent with the
+  already-correct `'unavailable'` handling used when `ANTHROPIC_API_KEY` is
+  simply unset. A genuine API failure (rate limit, outage, transient network
+  error) was therefore recorded and shown as a "✓ AI verified" badge in
+  `DispatcherView.jsx`/`InvoiceView.jsx`, and could count toward a job's
+  `ai_verified_at` rollup and dispute evidence in `DisputeView.jsx`, even
+  though the photo was never actually reviewed. Fixed by changing both
+  failure paths (`!res.ok` and the catch block) to return `'unavailable'`
+  instead of `'pass'`, matching the missing-key convention exactly — an
+  unavailable photo is also correctly excluded from re-querying (filter is
+  `.eq('verification_status', 'pending')`) so this doesn't cause endless
+  retries, same permanent-non-retry behavior as the missing-key case.
+  Committed locally; not yet redeployed (`supabase functions deploy
+  verify-checklist-photos`) or pushed.
 
 ## Confirmed live (2026-09-06)
 

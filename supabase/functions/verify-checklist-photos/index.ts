@@ -112,7 +112,7 @@ async function reviewPhoto(
   apiKey: string,
   imageUrl: string,
   checklistItem: string
-): Promise<{ status: 'pass' | 'flagged'; notes: string }> {
+): Promise<{ status: 'pass' | 'flagged' | 'unavailable'; notes: string }> {
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -137,7 +137,11 @@ async function reviewPhoto(
       }),
     })
 
-    if (!res.ok) return { status: 'pass', notes: `AI review unavailable (HTTP ${res.status}) — not treated as a failure.` }
+    // Non-2xx from the API itself (rate limit, outage, bad key, etc.) is not
+    // a verification result — same "never looks like a failed inspection"
+    // rule as the missing-API-key case above, so this must NOT come back as
+    // 'pass' (that would silently mark unreviewed photos as AI-verified).
+    if (!res.ok) return { status: 'unavailable', notes: `AI review unavailable (HTTP ${res.status}) — photo not AI-reviewed.` }
     const data = await res.json()
     const text: string = data?.content?.[0]?.text || ''
     const statusMatch = text.match(/STATUS:\s*(pass|flagged)/i)
@@ -146,7 +150,9 @@ async function reviewPhoto(
     const notes = notesMatch ? notesMatch[1].trim() : text.trim().slice(0, 200)
     return { status, notes }
   } catch (err) {
+    // Network error / thrown exception — same reasoning as the !res.ok
+    // branch: this is not a verification result, so it must not be 'pass'.
     console.error('verify-checklist-photos: review failed', err)
-    return { status: 'pass', notes: 'AI review errored — not treated as a failure.' }
+    return { status: 'unavailable', notes: 'AI review errored — photo not AI-reviewed.' }
   }
 }
