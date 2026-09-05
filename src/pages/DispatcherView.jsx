@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import Map, { Marker, Popup, Source, Layer } from 'react-map-gl'
 import { supabase } from '../supabaseClient'
-import { timeAgo, geocodeAddress, generatePin } from '../utils'
+import { timeAgo, geocodeAddress, insertTechniciansWithPinRetry } from '../utils'
+import ContactSupportModal from '../components/ContactSupportModal'
 import { MAX_ADDONS, hasAddon, isTrialing, trialDaysLeft, hasUsedTrial, enableAddonPatch, disableAddonPatch, startTrialPatch } from '../maxAddons'
 import 'mapbox-gl/dist/mapbox-gl.css'
 
@@ -81,6 +82,7 @@ export default function DispatcherView() {
   const [jobIncidents, setJobIncidents] = useState({}) // job_id -> technician_incidents rows, fetched lazily
   const [incidentDraft, setIncidentDraft] = useState({ category: 'note', description: '' })
   const [showSettingsModal, setShowSettingsModal] = useState(false)
+  const [showSupportModal, setShowSupportModal] = useState(false)
   const [queueTab, setQueueTab] = useState('jobs') // 'jobs' | 'leads' | 'assets' | 'invoices' | 'inventory' | 'marketing' | 'credentials' | 'weather' | 'payroll' | 'agents'
   // Payroll v1 (Pro tier) — hours-worked CSV export only, computed on-demand
   // for an owner-chosen date range (not pre-fetched, since technician_locations
@@ -1143,6 +1145,9 @@ export default function DispatcherView() {
           )}
           <button style={{ ...styles.copyLinkBtn, marginTop: 6 }} onClick={() => setShowSettingsModal(true)}>
             ⚙️ Settings
+          </button>
+          <button style={{ ...styles.copyLinkBtn, marginTop: 6 }} onClick={() => setShowSupportModal(true)}>
+            💬 Contact support
           </button>
         </div>
 
@@ -2294,6 +2299,14 @@ export default function DispatcherView() {
           onClose={() => setShowSettingsModal(false)}
         />
       )}
+
+      {showSupportModal && (
+        <ContactSupportModal
+          businessId={business?.id}
+          defaultContact={business?.contact_email}
+          onClose={() => setShowSupportModal(false)}
+        />
+      )}
     </div>
   )
 }
@@ -2315,15 +2328,14 @@ function AddTechnicianModal({ businessId, businessName, onClose }) {
     setLoading(true)
     setError(null)
     try {
-      const pin = generatePin()
-      const { error: insertErr } = await supabase.from('technicians').insert({
-        business_id: businessId, name: name.trim(), phone: phone.trim(), pin
-      })
+      const { data: inserted, error: insertErr } = await insertTechniciansWithPinRetry(supabase, [
+        { business_id: businessId, name: name.trim(), phone: phone.trim() }
+      ])
       if (insertErr) throw new Error(insertErr.message)
 
       const appUrl = import.meta.env.VITE_APP_URL
       await supabase.functions.invoke('send-setup-sms', {
-        body: { phone: phone.trim(), name: name.trim(), businessName, techUrl: `${appUrl}/tech?pin=${pin}` }
+        body: { phone: phone.trim(), name: name.trim(), businessName, techUrl: `${appUrl}/tech?pin=${inserted[0].pin}` }
       })
       onClose()
     } catch (err) {

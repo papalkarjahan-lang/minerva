@@ -230,10 +230,67 @@ the bottom.
   sync — the perf + Stripe/billing/growth audit batch is now live
   end-to-end.
 
+- **2026-09-05**: "do all you can" multi-tenant-readiness batch — built,
+  tested, and committed locally (not yet deployed live, needs fresh PATs):
+  1. **Onboarding honesty + orphaned-signup cleanup**: `SuccessPage.jsx`'s
+     false "you'll receive an email before any charge" claim corrected
+     (no email infra existed to back it). New `send-email` function
+     (Resend-based, gated on optional `RESEND_API_KEY`, no-ops cleanly if
+     unset) wired into `stripe-webhook`'s `checkout.session.completed` for
+     a real welcome email once configured. New `flag-abandoned-signups`
+     daily cron flags (via new `agent_insights` rows + new
+     `businesses.abandoned_flagged_at` column) — but deliberately does
+     NOT delete — businesses stuck 48+ hours with no completed Stripe
+     checkout, for human review.
+  2. **Technician PIN collision fix**: new DB-level `unique` constraint on
+     `technicians.pin` (`supabase_schema_delta_pin_unique.sql`) plus a new
+     shared `insertTechniciansWithPinRetry()` helper (retries on Postgres
+     23505) used by both `Onboarding.jsx` and `DispatcherView.jsx`'s Add
+     Technician modal.
+  3. **Business owner login** (additive, app-layer gate only — RLS
+     unchanged, still `using (true)` everywhere, deliberately, see
+     `supabase_schema_delta_owner_auth.sql`'s header for why a full RLS
+     rewrite was judged too risky to bundle in blind): new
+     `businesses.owner_user_id` column, new `/login` page (Supabase Auth
+     magic link, no password/new external service needed), new
+     `RequireBusinessAuth.jsx` wrapping `/dispatch/:businessId` and
+     `/industrial/:businessId`, with auto-claim for existing pilot
+     businesses on first login matching `contact_email`.
+  4. **Internal admin console**: new `/admin` route (`AdminConsole.jsx`),
+     gated by a `VITE_ADMIN_EMAILS` allowlist checked against the same
+     Supabase Auth session. Cross-business list (tier/Stripe status/tech
+     count/last activity), manual tier override, and a support inbox
+     backed by new `support_requests` table + a new "Contact support" form
+     (`ContactSupportModal.jsx`) wired into both `DispatcherView.jsx` and
+     `TechnicianView.jsx`.
+  5. **Testing/lint/CI baseline**: Vitest (13 tests covering `utils.js`'s
+     pure functions + the new PIN-retry helper), ESLint 8 baseline config,
+     GitHub Actions workflow (`.github/workflows/ci.yml`) running
+     lint+test+build on every push/PR to `main`. All verified green
+     locally before commit.
+  6. **Sentry scaffold**: `src/sentry.js`, gated on optional
+     `VITE_SENTRY_DSN` — no-op until the user creates a free Sentry
+     project and sets the DSN.
+
+  New SQL deltas to run (in any order, each is independent/additive):
+  `supabase_schema_delta_enrichment_nudge.sql` (already run, see above),
+  `supabase_schema_delta_abandoned_signups.sql`,
+  `supabase_schema_delta_pin_unique.sql` (⚠️ run its pre-check query first
+  — see the file's own header — before applying, in case a PIN collision
+  has already happened live), `supabase_schema_delta_owner_auth.sql`,
+  `supabase_schema_delta_support_requests.sql`. Then
+  `supabase_schema_delta_abandoned_signups_cron.sql` (after both the DDL
+  delta above AND deploying `flag-abandoned-signups` are done).
+  New edge functions to deploy: `send-email`, `flag-abandoned-signups`.
+  Existing function to redeploy: `stripe-webhook` (welcome-email wiring).
+  Manual, non-code step still needed: set `VITE_ADMIN_EMAILS` in the
+  frontend's env (comma-separated list of staff emails) before `/admin` is
+  usable by anyone.
+
 ## Not yet deployed live
 
-Nothing outstanding — see confirmation above. Future deltas will need
-fresh Supabase + GitHub PATs per the standing one-time-use convention.
+The 2026-09-05 "do all you can" batch above — needs fresh Supabase +
+GitHub PATs per the standing one-time-use convention.
 
 ## Audit findings deliberately NOT built this session (2026-09-04)
 

@@ -1,0 +1,25 @@
+-- ============================================================
+-- MINERVA - Delta: technician PIN uniqueness (2026-09-05)
+-- Adds 1 constraint only. Nothing else in your live DB is touched, so this
+-- won't hit an "already exists" error (see supabase_schema_missing.sql for
+-- why that matters — a failed statement rolls back the whole paste).
+-- Run this entire block once in the Supabase SQL Editor.
+--
+-- What this fixes: TechnicianView.jsx looks up a technician by
+-- `.eq('pin', pin)` with NO business_id filter (the /tech?pin=X URL has no
+-- businessId to filter on). generatePin() draws from a large enough space
+-- that a collision is unlikely per-call, but with zero uniqueness
+-- enforcement, an eventual collision would let one technician silently see
+-- (or be confused with) a technician from a completely different business.
+-- This constraint makes that impossible at the DB level, and the app-layer
+-- retry-on-collision logic (Onboarding.jsx, DispatcherView.jsx's
+-- AddTechnicianModal) handles the rare insert failure this causes instead
+-- of surfacing a raw constraint-violation error to the user.
+--
+-- NOTE: if this statement fails with a duplicate-key error, it means a
+-- collision has already happened live — check `select pin, count(*) from
+-- technicians group by pin having count(*) > 1` before re-running, and
+-- manually re-assign one of the colliding PINs first.
+-- ============================================================
+
+alter table technicians add constraint technicians_pin_unique unique (pin);

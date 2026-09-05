@@ -6,9 +6,12 @@ export default function LandingPage() {
       {/* Nav */}
       <nav style={{ padding: '20px 40px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #1e293b' }}>
         <span style={{ fontSize: 22, fontWeight: 'bold', color: '#fff', letterSpacing: 3 }}>MINERVA</span>
-        <Link to="/start" style={{ background: '#2D5FA8', color: '#fff', textDecoration: 'none', padding: '10px 22px', borderRadius: 10, fontSize: 14, fontWeight: 'bold' }}>
-          Start free trial
-        </Link>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+          <Link to="/login" style={{ color: '#aaa', textDecoration: 'none', fontSize: 14 }}>Log in</Link>
+          <Link to="/start" style={{ background: '#2D5FA8', color: '#fff', textDecoration: 'none', padding: '10px 22px', borderRadius: 10, fontSize: 14, fontWeight: 'bold' }}>
+            Start free trial
+          </Link>
+        </div>
       </nav>
 
       {/* Hero */}

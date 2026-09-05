@@ -1,5 +1,6 @@
 import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import RequireBusinessAuth from './components/RequireBusinessAuth'
 import './index.css'
 
 // Route-based code-splitting (2026-09-05): these were all static imports,
@@ -22,6 +23,8 @@ const ClientHistoryView = lazy(() => import('./pages/ClientHistoryView'))
 const SuccessPage = lazy(() => import('./pages/SuccessPage'))
 const IntakeAssistant = lazy(() => import('./pages/IntakeAssistant'))
 const DisputeView = lazy(() => import('./pages/DisputeView'))
+const Login = lazy(() => import('./pages/Login'))
+const AdminConsole = lazy(() => import('./pages/AdminConsole'))
 
 function RouteLoadingFallback() {
   return (
@@ -40,6 +43,12 @@ export default function App() {
         <Route path="/" element={<LandingPage />} />
         <Route path="/start" element={<Onboarding />} />
         <Route path="/success" element={<SuccessPage />} />
+        <Route path="/login" element={<Login />} />
+
+        {/* Internal Minerva staff admin console — gated by an
+            admin-email allowlist checked against the Supabase Auth
+            session, see AdminConsole.jsx. Not tied to any one business. */}
+        <Route path="/admin" element={<AdminConsole />} />
 
         {/* Technician route - accessed via SMS link */}
         {/* URL: /tech?pin=123456 */}
@@ -63,11 +72,11 @@ export default function App() {
 
         {/* Dispatcher dashboard - accessed after login */}
         {/* URL: /dispatch/:businessId */}
-        <Route path="/dispatch/:businessId" element={<DispatcherView />} />
+        <Route path="/dispatch/:businessId" element={<RequireBusinessAuth><DispatcherView /></RequireBusinessAuth>} />
 
         {/* Industrial sector console (Track B) — parallel to /dispatch,
             used when a business's `sector` is 'industrial'. URL: /industrial/:businessId */}
-        <Route path="/industrial/:businessId" element={<IndustrialDispatcherView />} />
+        <Route path="/industrial/:businessId" element={<RequireBusinessAuth><IndustrialDispatcherView /></RequireBusinessAuth>} />
 
         {/* AI Intake Assistant - embedded/linked from the business's own
             website to triage inbound leads. URL: /intake/:businessId */}

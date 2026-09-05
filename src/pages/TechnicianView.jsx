@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 import { haversineKm } from '../utils'
 import { hasAddon } from '../maxAddons'
+import ContactSupportModal from '../components/ContactSupportModal'
 
 // GPS update interval in milliseconds
 const GPS_INTERVAL_MS = 15000 // 15 seconds
@@ -47,6 +48,7 @@ export default function TechnicianView() {
   const [business, setBusiness] = useState(null)
   const [tracking, setTracking] = useState(false)
   const [status, setStatus] = useState('idle') // idle | tracking | job_active | job_done
+  const [showSupportModal, setShowSupportModal] = useState(false)
   const [error, setError] = useState(null)
   const [lastUpdate, setLastUpdate] = useState(null)
   const [pendingCount, setPendingCount] = useState(0)
@@ -1129,6 +1131,19 @@ export default function TechnicianView() {
       <p style={styles.gpsNote}>
         {tracking ? `GPS updates every 15 seconds` : `Tap "Start Tracking" to go live`}
       </p>
+
+      <button onClick={() => setShowSupportModal(true)} style={{ background: 'none', border: 'none', color: '#888', fontSize: 13, textDecoration: 'underline', cursor: 'pointer', marginTop: 12 }}>
+        Contact support
+      </button>
+
+      {showSupportModal && (
+        <ContactSupportModal
+          businessId={tech.business_id}
+          defaultName={tech.name}
+          defaultContact={tech.phone}
+          onClose={() => setShowSupportModal(false)}
+        />
+      )}
     </div>
   )
 }

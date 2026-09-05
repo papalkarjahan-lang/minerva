@@ -79,6 +79,23 @@ serve(async (req: Request) => {
             })
             .eq('id', businessId)
           if (error) console.error('Failed to save Stripe IDs:', error.message)
+
+          // Best-effort welcome email — send-email no-ops cleanly if
+          // RESEND_API_KEY isn't configured, so this never blocks the
+          // webhook's real job (saving the Stripe IDs above).
+          const contactEmail = session.customer_details?.email
+          if (contactEmail) {
+            const { data: biz } = await supabaseAdmin.from('businesses').select('name').eq('id', businessId).maybeSingle()
+            fetch(`${Deno.env.get('SUPABASE_URL')!}/functions/v1/send-email`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!}` },
+              body: JSON.stringify({
+                to: contactEmail,
+                subject: `You're live on Minerva`,
+                html: `<p>Hi${biz?.name ? ' ' + biz.name : ''},</p><p>Your Minerva trial has started. Your 7-day free trial runs from today, and your card will be billed automatically when it ends unless you cancel first from your billing settings.</p><p>— The Minerva team</p>`,
+              }),
+            }).catch(err => console.error('stripe-webhook: welcome email failed', err))
+          }
         }
         break
       }

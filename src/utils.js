@@ -66,6 +66,32 @@ export function generatePin() {
 // combination space. Same CSPRNG approach and no-ambiguous-character
 // alphabet as generatePin() for consistency.
 // ============================================================
+// ============================================================
+// INSERT TECHNICIANS WITH PIN RETRY
+// technicians.pin has a DB-level unique constraint (see
+// supabase_schema_delta_pin_unique.sql) so that TechnicianView.jsx's
+// global `.eq('pin', pin)` lookup (no business_id filter — the /tech?pin=X
+// URL has no businessId to filter on) can never resolve to the wrong
+// technician. generatePin()'s ~1e12 combination space makes a collision
+// astronomically unlikely per call, but not impossible, so inserts retry
+// with fresh PINs instead of surfacing a raw constraint-violation error.
+// `rowsWithoutPin` is an array of technician fields (business_id, name,
+// phone, etc.) with `pin` NOT yet set — this helper assigns it.
+// ============================================================
+export async function insertTechniciansWithPinRetry(supabase, rowsWithoutPin, maxAttempts = 5) {
+  let lastError = null
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const rows = rowsWithoutPin.map(r => ({ ...r, pin: generatePin() }))
+    const { data, error } = await supabase.from('technicians').insert(rows).select()
+    if (!error) return { data, error: null }
+    lastError = error
+    // 23505 = Postgres unique_violation. Anything else is a real error —
+    // don't retry (and don't burn attempts) on e.g. a bad business_id.
+    if (error.code !== '23505') break
+  }
+  return { data: null, error: lastError }
+}
+
 export function generateReferralCode() {
   const randomValues = new Uint32Array(6)
   crypto.getRandomValues(randomValues)

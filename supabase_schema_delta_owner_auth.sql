@@ -1,0 +1,38 @@
+-- ============================================================
+-- MINERVA - Delta: business owner auth gate (2026-09-05)
+-- Adds 1 new column + 1 index only. Nothing else in your live DB is
+-- touched, so this won't hit an "already exists" error (see
+-- supabase_schema_missing.sql for why that matters — a failed statement
+-- rolls back the whole paste).
+-- Run this entire block once in the Supabase SQL Editor.
+--
+-- What this adds: today, /dispatch/:businessId and /industrial/:businessId
+-- are "unguessable link" security only — anyone with the URL (or who
+-- guesses/enumerates a uuid) gets full read/write access to that business's
+-- data, since every RLS policy in this schema is `using (true)` (see
+-- SECURITY_NOTES.md). This column is step one of an additive, non-breaking
+-- auth gate: a Supabase Auth session now maps to a specific business via
+-- owner_user_id, checked at the APP layer (src/components/RequireBusinessAuth.jsx)
+-- before rendering the dispatcher/industrial console.
+--
+-- IMPORTANT — this delta does NOT touch RLS. The existing `using (true)`
+-- policies are left exactly as they are, so nothing that already works
+-- breaks. That means the underlying tables are still, today, reachable by
+-- anyone with the anon key regardless of this column — this is an
+-- app-layer UI gate (stops casual URL-guessing / makes "who owns this
+-- business" a real, checkable fact), not a full security boundary. Scoping
+-- RLS policies to auth.uid() so the database itself enforces isolation is
+-- necessary future work, deliberately NOT attempted in this pass — that is
+-- a much larger, higher-risk change (30+ tables) that deserves its own
+-- careful pass with real tests once the testing baseline lands, not a
+-- blind rewrite bundled into an unrelated batch.
+--
+-- Nullable + no uniqueness constraint on purpose: existing pilot businesses
+-- have no owner_user_id yet (auto-claimed on first login when the
+-- authenticated email matches businesses.contact_email — see
+-- RequireBusinessAuth.jsx), and in principle one person could end up
+-- owning more than one business.
+-- ============================================================
+
+alter table businesses add column owner_user_id uuid references auth.users(id);
+create index idx_businesses_owner_user_id on businesses(owner_user_id);

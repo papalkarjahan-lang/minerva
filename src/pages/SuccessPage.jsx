@@ -54,7 +54,7 @@ export default function SuccessPage() {
           </div>
         )}
         <p style={{ color: '#555', fontSize: 13, margin: 0 }}>
-          Your free trial runs for 7 days. You'll receive an email before any charge.
+          Your free trial runs for 7 days. Stripe will bill your card automatically when it ends — cancel anytime before then from your billing settings.
         </p>
       </div>
     </div>

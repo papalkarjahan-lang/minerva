@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../supabaseClient'
-import { generatePin } from '../utils'
+import { insertTechniciansWithPinRetry } from '../utils'
 
 const TRADE_TYPES = ['Plumber','Electrician','HVAC / Refrigeration','Locksmith','Pest Control','Commercial Cleaning','Pool Service','Courier / Delivery','Security Patrol','Automotive Mobile Service','Mobile Veterinary','Other']
 const CITIES = ['Sydney','Melbourne','Brisbane','Perth','Adelaide','Canberra','Newcastle','Wollongong','Geelong','Townsville','Toowoomba','Other']
@@ -68,12 +68,8 @@ export default function Onboarding() {
         business_id: bizData.id,
         name: t.name.trim(),
         phone: t.phone.trim(),
-        pin: generatePin()
       }))
-      const { data: techData, error: techErr } = await supabase
-        .from('technicians')
-        .insert(techRows)
-        .select()
+      const { data: techData, error: techErr } = await insertTechniciansWithPinRetry(supabase, techRows)
       if (techErr) throw new Error(techErr.message)
 
       // 3. Send each technician their setup SMS

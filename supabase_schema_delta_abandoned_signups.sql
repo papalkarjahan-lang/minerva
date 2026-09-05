@@ -1,0 +1,22 @@
+-- ============================================================
+-- MINERVA - Delta: abandoned signup flagging (2026-09-05)
+-- Adds 1 new column only. Nothing else in your live DB is touched, so this
+-- won't hit an "already exists" error (see supabase_schema_missing.sql for
+-- why that matters — a failed statement rolls back the whole paste).
+-- Run this entire block once in the Supabase SQL Editor.
+--
+-- What this fixes: Onboarding.jsx creates the businesses row (and its
+-- technicians rows, and sends each technician a real setup SMS) BEFORE the
+-- Stripe checkout redirect even happens. If the owner abandons checkout or
+-- it fails, that business+technicians data is permanently stranded in the
+-- DB with stripe_sub_id still null and no way to know it's dead weight.
+--
+-- This column lets a cron sweep (flag-abandoned-signups) flag each such
+-- business once, 48+ hours after signup, and surface it via agent_insights
+-- for a human to review and delete manually — this delta deliberately does
+-- NOT auto-delete anything. Hard-deleting business records autonomously,
+-- with no automated tests guarding the query, is a real-money-adjacent
+-- irreversible action, so the cleanup step here stays human-in-the-loop.
+-- ============================================================
+
+alter table businesses add column abandoned_flagged_at timestamptz;
