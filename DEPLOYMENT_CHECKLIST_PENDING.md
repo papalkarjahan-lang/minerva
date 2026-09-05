@@ -289,8 +289,11 @@ the bottom.
 
 ## Not yet deployed live
 
-- **`verify-checklist-photos` false-'pass' bug (built 2026-09-06, code only —
-  needs a Supabase PAT to redeploy the function)**: a further audit of Track
+Nothing currently pending on the code/DB side.
+
+## Confirmed live (2026-09-06, continued)
+
+- **`verify-checklist-photos` false-'pass' bug**: a further audit of Track
   A's Watchtower AI photo verification found `reviewPhoto()` returned
   `status: 'pass'` when the Anthropic API call itself failed (non-2xx
   response, or a thrown network exception) — inconsistent with the
@@ -305,8 +308,12 @@ the bottom.
   unavailable photo is also correctly excluded from re-querying (filter is
   `.eq('verification_status', 'pending')`) so this doesn't cause endless
   retries, same permanent-non-retry behavior as the missing-key case.
-  Committed locally; not yet redeployed (`supabase functions deploy
-  verify-checklist-photos`) or pushed.
+  Redeployed live and pushed (`d484da4`).
+- **`review_requests.invoice_id` unique index**
+  (`supabase_schema_delta_review_requests_unique.sql`, closes the
+  `send-review-request-sms` double-send gap fixed 2026-09-05): pre-check for
+  existing duplicate `invoice_id` rows returned none, index created and
+  confirmed live via `pg_indexes`.
 
 ## Confirmed live (2026-09-06)
 
