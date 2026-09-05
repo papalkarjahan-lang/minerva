@@ -289,16 +289,22 @@ the bottom.
 
 ## Not yet deployed live
 
-The 2026-09-05 "do all you can" batch above — needs fresh Supabase +
-GitHub PATs per the standing one-time-use convention.
+**2026-09-05 — geofencing/self-healing/offline batch**
+(`supabase_schema_delta_auto_dispatch_radius.sql`,
+`supabase_schema_delta_reconcile_technician_state_cron.sql`, new
+`reconcile-technician-state` edge function, `auto-assign-technician`
+redeploy). Needs a fresh Supabase PAT to run the SQL delta, deploy the new
+function, and run the new cron delta (in that order — the cron delta
+calls the function, so it must be deployed first).
 
-**2026-09-05 — RLS read-scoping pass 1** (`supabase_schema_delta_
-rls_scoping_v1.sql`): new `admin_users` table + tightened SELECT on
-`assets`, `subcontractors`, `technician_incidents`,
-`upsell_nudge_dismissals` (owner-only now) and `support_requests`
-(admin-only now). Needs a fresh Supabase PAT to run live. Once run,
-add yourself to `admin_users` (one-line SQL in the file's header
-comment) after you've logged in once via `/login`, or the Support
+## Confirmed live (2026-09-05, this session)
+
+**RLS read-scoping pass 1** (`supabase_schema_delta_rls_scoping_v1.sql`):
+new `admin_users` table + tightened SELECT on `assets`, `subcontractors`,
+`technician_incidents`, `upsell_nudge_dismissals` (owner-only now) and
+`support_requests` (admin-only now). Run live and verified via query.
+Still needed: add yourself to `admin_users` (one-line SQL in the file's
+header comment) after you've logged in once via `/login`, or the Support
 tab in `/admin` will look empty even though it's working correctly.
 
 ## Audit findings deliberately NOT built this session (2026-09-04)
@@ -315,6 +321,46 @@ PWA/offline mode — were all built in later rounds; see the 2026-09-04
   (`check-credential-expiry`'s header comment: "never a client SMS... purely
   an internal compliance nudge") and was correctly left alone rather than
   unilaterally reversed.
+
+## Architecture roadmap items NOT built (2026-09-05)
+
+User pasted a generic 4-component roadmap table (Employee Phones / Agent
+Networks / Core Systems / Data Pipelines, each with "immediate refinement"
+and "future expansion" columns) and asked for everything on it. Audited
+each row against the real codebase before building anything blind:
+
+- **Built** (genuine matches): geofenced auto-dispatch radius
+  (`auto_dispatch_max_km`, "Employee Phones"/"Agent Networks" —
+  proximity-based assignment already existed via `auto-assign-technician`,
+  this adds the missing distance cap); offline job-detail caching in
+  `TechnicianView.jsx` (real gap — only GPS writes were offline-protected
+  before, not job reads); `reconcile-technician-state` cron ("Core
+  Systems" self-healing — fixes a real, verified drift bug where a
+  technician's `current_job_id` can get stuck pointing at an already-
+  finished job if their two completion writes don't both land).
+- **Not built, no real analog in this codebase**: "autonomous cross-agent
+  negotiation" (there's no message bus or agent-to-agent protocol for
+  ~50 independent edge functions to negotiate over — inventing one with
+  no concrete use case would be complexity for its own sake) and
+  "predictive load balancing" / "dynamic payload optimization" (no
+  request-routing layer exists to optimize; the closest real lever,
+  trimming ~24 `select('*')` calls in `DispatcherView.jsx`'s initial load,
+  was deliberately skipped too — see below).
+- **Not built, deliberately, as a scale/risk call**: trimming
+  `DispatcherView.jsx`'s `select('*')` queries to named columns. No
+  evidence of an actual latency problem at this business's current scale
+  (sole trader, pre-revenue), and 24 call sites is a lot of surface area
+  to introduce a subtle "forgot to select a field some render path needs"
+  bug into a live app for a speculative gain. Worth doing once there's a
+  real user/data-volume reason to.
+- **Explicitly declined**: "event-driven micro-webhooks to replace
+  scheduled polling entirely" (Core Systems). This is a full backend
+  rearchitecture — ~15 independent `pg_cron` schedules would all need to
+  be replaced with DB triggers or push-based integrations from external
+  services, on a system with real customer data and no comprehensive test
+  suite yet. Consistent with the standing boundary against large blind
+  rearchitectures — this needs to be its own scoped, reviewed project if
+  wanted, not something to "just do" alongside smaller fixes.
 
 ## Still outstanding (non-code, needs the user or a bank account)
 

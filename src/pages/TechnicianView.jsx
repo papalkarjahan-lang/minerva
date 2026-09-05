@@ -12,6 +12,12 @@ const SMS_TRIGGER_KM = 2.0
 // localStorage key for GPS points that failed to reach Supabase (offline/
 // network error) so they survive a page reload until they can be flushed.
 const GPS_QUEUE_KEY = 'minerva_gps_queue'
+// localStorage key for the last successfully loaded job — lets a technician
+// who loses signal mid-job still see the address/client/checklist instead
+// of a blank/error screen (the GPS queue above already protects writes;
+// this protects the one read that matters most). Never used to make a
+// decision, purely a fallback render source — see loadJob() below.
+const JOB_CACHE_KEY = 'minerva_last_job_cache'
 // Feature-detect the Web Speech API once. Most non-Chrome-based mobile
 // browsers don't implement it — the voice note button is hidden entirely
 // when unsupported rather than throwing at click time.
@@ -36,6 +42,30 @@ function saveQueuedPoints(points) {
   } catch (_) {
     // localStorage unavailable (private browsing etc) — the in-memory
     // queue still works for the current session, just won't survive reload.
+  }
+}
+
+// ── OFFLINE JOB CACHE HELPERS ──────────────────────────────────
+// Keyed by job id so switching jobs (or a stale cache from a previous job)
+// never shows the wrong job's details — only ever read back for the same
+// jobId that's currently being requested.
+function loadCachedJob(jobId) {
+  try {
+    const raw = localStorage.getItem(JOB_CACHE_KEY)
+    if (!raw) return null
+    const cached = JSON.parse(raw)
+    return cached && cached.id === jobId ? cached : null
+  } catch (_) {
+    return null
+  }
+}
+
+function saveCachedJob(job) {
+  try {
+    localStorage.setItem(JOB_CACHE_KEY, JSON.stringify(job))
+  } catch (_) {
+    // localStorage unavailable — no offline fallback this session, but the
+    // live fetch path is completely unaffected.
   }
 }
 
@@ -247,12 +277,24 @@ export default function TechnicianView() {
   }
 
   async function loadJob(jobId) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('jobs')
       .select('*')
       .eq('id', jobId)
       .single()
-    if (data) setCurrentJob(data)
+    if (data) {
+      setCurrentJob(data)
+      saveCachedJob(data)
+    } else if (error) {
+      // Network/offline failure (not "job doesn't exist" — that would come
+      // back as no error + no data) — fall back to whatever was last
+      // successfully loaded for this exact job, so the technician still
+      // sees the address/checklist instead of a blank screen. Writes (job
+      // status, GPS, notes) still queue/retry via the existing offline
+      // logic elsewhere in this file — this only covers the read.
+      const cached = loadCachedJob(jobId)
+      if (cached) setCurrentJob(cached)
+    }
   }
 
   // Listen for the dispatcher assigning a new job (or clearing one) without

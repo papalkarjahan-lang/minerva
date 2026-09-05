@@ -715,13 +715,14 @@ export default function DispatcherView() {
     setTimeout(() => setCalendarLinkCopied(false), 2000)
   }
 
-  async function saveSettings({ slackWebhookUrl, autoDispatchEnabled, metaAccessToken, metaAdAccountId, metaPageId, weatherSensitiveTradeTypes, googleReviewLink }) {
+  async function saveSettings({ slackWebhookUrl, autoDispatchEnabled, autoDispatchMaxKm, metaAccessToken, metaAdAccountId, metaPageId, weatherSensitiveTradeTypes, googleReviewLink }) {
     setSavingSettings(true)
     const { data } = await supabase
       .from('businesses')
       .update({
         slack_webhook_url: slackWebhookUrl || null,
         auto_dispatch_enabled: autoDispatchEnabled,
+        auto_dispatch_max_km: autoDispatchMaxKm,
         meta_access_token: metaAccessToken || null,
         meta_ad_account_id: metaAdAccountId || null,
         meta_page_id: metaPageId || null,
@@ -2764,12 +2765,14 @@ function SettingsModal({
   saving, onSave, calendarLinkCopied, onCopyCalendarLink, onClose,
 }) {
   const [autoDispatch, setAutoDispatch] = useState(business?.auto_dispatch_enabled || false)
+  const [autoDispatchMaxKm, setAutoDispatchMaxKm] = useState(business?.auto_dispatch_max_km ?? '')
 
   async function handleSave(e) {
     e.preventDefault()
     await onSave({
       slackWebhookUrl: slackWebhookInput.trim(),
       autoDispatchEnabled: autoDispatch,
+      autoDispatchMaxKm: autoDispatchMaxKm === '' ? null : Number(autoDispatchMaxKm),
       metaAccessToken: metaAccessTokenInput.trim(),
       metaAdAccountId: metaAdAccountIdInput.trim(),
       metaPageId: metaPageIdInput.trim(),
@@ -2811,6 +2814,25 @@ function SettingsModal({
               Auto-dispatch new jobs to the nearest available technician
             </label>
           </div>
+
+          {autoDispatch && (
+            <div style={{ marginBottom: 14 }}>
+              <label style={styles.inputLabel}>Max auto-dispatch distance (km, optional)</label>
+              <input
+                type="number"
+                min="1"
+                style={styles.input}
+                value={autoDispatchMaxKm}
+                onChange={e => setAutoDispatchMaxKm(e.target.value)}
+                placeholder="No limit"
+              />
+              <p style={{ color: '#888', fontSize: 12, margin: '6px 0 0' }}>
+                If the nearest available technician (or subcontractor) is further than this,
+                the job is left unassigned for you to route manually instead of auto-dispatching
+                someone a long way away. Leave blank for no limit.
+              </p>
+            </div>
+          )}
 
           <div style={{ marginBottom: 14 }}>
             <label style={styles.inputLabel}>Xero</label>

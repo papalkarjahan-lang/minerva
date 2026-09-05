@@ -34,6 +34,15 @@
 // technician_id, so nothing about existing technician-only logic elsewhere
 // in the app (payroll, FBT-style hours tracking, etc.) is touched by a
 // subcontractor assignment.
+//
+// Geofenced radius cap (added 2026-09-05, supabase_schema_delta_
+// auto_dispatch_radius.sql): businesses.auto_dispatch_max_km, null by
+// default (= unlimited, unchanged behaviour). If set, the nearest
+// candidate (technician or subcontractor) is only auto-assigned when
+// within that radius of the job's client_lat/client_lng — otherwise the
+// job is left unassigned for a human to route, same as "nobody free"
+// today. Prevents auto-dispatching someone absurdly far away just because
+// everyone closer happened to be busy.
 // Deploy with: supabase functions deploy auto-assign-technician
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
@@ -92,9 +101,10 @@ serve(async (req: Request) => {
 
     const { data: business } = await supabase
       .from('businesses')
-      .select('auto_dispatch_enabled, name')
+      .select('auto_dispatch_enabled, auto_dispatch_max_km, name')
       .eq('id', job.business_id)
       .single()
+    const maxKm = business?.auto_dispatch_max_km
 
     if (!business?.auto_dispatch_enabled) {
       supabase.rpc('record_agent_run', { fn_name: 'auto-assign-technician', status: 'ok' }).then(() => {}, () => {})
@@ -132,12 +142,22 @@ serve(async (req: Request) => {
       }
 
       let nearestSub = subs[0]
+      let nearestSubDist = null
       if (job.client_lat != null && job.client_lng != null) {
         let bestDist = Infinity
         for (const s of subs) {
           const d = haversineKm(job.client_lat, job.client_lng, s.current_lat, s.current_lng)
           if (d < bestDist) { bestDist = d; nearestSub = s }
         }
+        nearestSubDist = bestDist
+      }
+
+      if (maxKm != null && nearestSubDist != null && nearestSubDist > maxKm) {
+        supabase.rpc('record_agent_run', { fn_name: 'auto-assign-technician', status: 'ok' }).then(() => {}, () => {})
+        return new Response(JSON.stringify({ success: true, skipped: 'nearest_beyond_max_km' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        })
       }
 
       await supabase.from('jobs').update({ assigned_subcontractor_id: nearestSub.id }).eq('id', job.id)
@@ -157,13 +177,22 @@ serve(async (req: Request) => {
     }
 
     let nearest = free[0]
+    let nearestDist = null
     if (job.client_lat != null && job.client_lng != null) {
       let bestScore = Infinity
       for (const t of free) {
         const d = haversineKm(job.client_lat, job.client_lng, t.current_lat, t.current_lng)
         const score = d + (t.rolling_emergency_job_count || 0) * EMERGENCY_TIEBREAK_KM
-        if (score < bestScore) { bestScore = score; nearest = t }
+        if (score < bestScore) { bestScore = score; nearest = t; nearestDist = d }
       }
+    }
+
+    if (maxKm != null && nearestDist != null && nearestDist > maxKm) {
+      supabase.rpc('record_agent_run', { fn_name: 'auto-assign-technician', status: 'ok' }).then(() => {}, () => {})
+      return new Response(JSON.stringify({ success: true, skipped: 'nearest_beyond_max_km' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
     }
 
     await supabase.from('jobs').update({ technician_id: nearest.id }).eq('id', job.id)

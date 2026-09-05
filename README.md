@@ -137,6 +137,7 @@ supabase functions deploy check-weather-risk
 supabase functions deploy send-weather-reschedule-sms
 supabase functions deploy send-referral-code-sms
 supabase functions deploy update-technician-workload
+supabase functions deploy reconcile-technician-state
 ```
 (`sync-technician-billing` is called automatically by the app — from a
 technician's phone on their first GPS push, and from the dispatcher when
@@ -928,6 +929,30 @@ built). Deploy after running `supabase_schema_delta_minerva_max.sql`, then
   employee-only). `auto-assign-technician` now falls back to the nearest
   active subcontractor when no employed technician is free, instead of
   leaving the job unassigned.
+- **Geofenced auto-dispatch radius** (`businesses.auto_dispatch_max_km`,
+  Settings — "Max auto-dispatch distance (km, optional)", 2026-09-05) — caps
+  how far `auto-assign-technician` will auto-dispatch a technician or
+  subcontractor. Null (default) is unlimited, exact same behaviour as
+  before. If set, and the nearest free candidate is further than that from
+  the job's location, the job is left unassigned for a human to route
+  instead of auto-dispatching someone a long way out just because everyone
+  closer happened to be busy.
+- **`reconcile-technician-state`** (daily cron, 2026-09-05) — self-healing
+  drift fix. `technicians.current_job_id` is supposed to clear back to
+  null when a job finishes, but the clearing write and the job-completion
+  write aren't transactional, so a dropped connection between them could
+  leave a technician's pointer stuck on an already-completed job forever —
+  silently excluding them from all future auto-dispatch with no error
+  anywhere. This agent finds any technician pointing at a job that's
+  `complete` (or gone) and clears it, logging what it fixed to
+  `agent_insights`. Safe to auto-correct (not just flag) since it only
+  repairs an internal consistency pointer, not customer or financial data.
+- **Offline job-detail cache** (`TechnicianView.jsx`, `localStorage`
+  key `minerva_last_job_cache`, 2026-09-05) — a technician who loses signal
+  mid-job now still sees the last successfully loaded job's address,
+  checklist, and client details instead of a blank/error screen. Read-only:
+  writes (GPS pings, checklist updates) still rely on the pre-existing
+  offline queue/retry logic, unchanged.
 - **Xero OAuth integration** (`xero-oauth-connect`, `xero-oauth-callback`,
   `xero-sync-invoice`, "Connect Xero" in Settings) — a real OAuth 2.0 flow
   against Xero's actual API, not a mock. Needs the business owner to
@@ -1160,6 +1185,8 @@ minerva/
 ├── supabase_schema_delta_abandoned_signups.sql # businesses.abandoned_flagged_at (2026-09-05)
 ├── supabase_schema_delta_abandoned_signups_cron.sql # cron for flag-abandoned-signups (2026-09-05)
 ├── supabase_schema_delta_rls_scoping_v1.sql   # admin_users table + owner/admin-scoped SELECT on 5 tables (2026-09-05)
+├── supabase_schema_delta_auto_dispatch_radius.sql # businesses.auto_dispatch_max_km (2026-09-05)
+├── supabase_schema_delta_reconcile_technician_state_cron.sql # cron for reconcile-technician-state (2026-09-05)
 ├── .github/workflows/ci.yml       # lint + test + build on every push/PR (2026-09-05)
 ├── vitest.config.js               # Test runner config (2026-09-05)
 ├── .eslintrc.cjs                  # Lint baseline (2026-09-05)
@@ -1197,6 +1224,7 @@ minerva/
 │       ├── send-weather-reschedule-sms/ # Click-only: sends an approved weather reschedule draft via Twilio
 │       ├── send-referral-code-sms/ # Fire-and-forget: referral code + SMS on invoice paid
 │       ├── update-technician-workload/ # Agent: burnout-hours + emergency-count roster signals (daily)
+│       ├── reconcile-technician-state/ # Agent: self-healing fix for technicians stuck on a finished job (daily, 2026-09-05)
 │       ├── verify-checklist-photos/ # Track A: Watchtower — AI photo verification (every 15 min)
 │       ├── run-custom-workflows/  # Track A: general-purpose trigger→condition→action workflow agent
 │       ├── winback-lost-leads/    # Track A: re-engagement SMS for leads marked lost (daily)
