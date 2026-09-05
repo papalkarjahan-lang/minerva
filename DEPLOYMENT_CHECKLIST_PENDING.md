@@ -289,15 +289,50 @@ the bottom.
 
 ## Not yet deployed live
 
-**2026-09-05 — geofencing/self-healing/offline batch**
-(`supabase_schema_delta_auto_dispatch_radius.sql`,
-`supabase_schema_delta_reconcile_technician_state_cron.sql`, new
-`reconcile-technician-state` edge function, `auto-assign-technician`
-redeploy). Needs a fresh Supabase PAT to run the SQL delta, deploy the new
-function, and run the new cron delta (in that order — the cron delta
-calls the function, so it must be deployed first).
+**2026-09-05 — double-send race-condition audit pass** (built, tested,
+committed locally — not yet deployed live, needs a fresh Supabase PAT):
+a fresh Explore-subagent audit of AI/agent-facing edge functions (the area
+not covered by the perf/Stripe/billing pass earlier the same day) found two
+genuine double-send gaps, same TOCTOU pattern already fixed in
+`send-growth-message`/`launch-ad-campaign` but missed on two other
+SMS-sending functions:
+- `send-quote-sms` — added an atomic conditional-update claim
+  (`UPDATE quotes SET status='sending' WHERE status='draft'`) before
+  sending, reverting to `'draft'` on send failure so a legitimate retry
+  still works.
+- `send-review-request-sms` — no per-invoice status field to key an atomic
+  update off, so instead added a unique index on
+  `review_requests.invoice_id` (`supabase_schema_delta_review_requests_
+  unique.sql`) — the insert itself is now the atomic claim; a second
+  concurrent request gets a 23505 unique-violation instead of sending a
+  second SMS. The claim row is deleted on send failure so the unique index
+  doesn't block a legitimate retry.
+- Audited but found no gap: all other SMS-sending functions
+  (`send-eta-sms`, `send-setup-sms`, `send-completion-sms`,
+  `send-invoice-sms`, `send-job-assignment-sms`,
+  `send-weather-reschedule-sms`, `retention-checkin`,
+  `nurture-stale-leads`, `chase-unpaid-invoices`, `send-referral-code-sms`)
+  already have an idempotency guard or are single-shot with no retry path.
+  `ai-intake-chat`'s no-fallback-on-Anthropic-error behaviour was flagged
+  as a possible gray area but left alone — it's documented existing
+  behaviour, not a newly-introduced bug, and changing lead-capture behaviour
+  on AI failure is a product decision, not something to change unilaterally
+  in an audit pass.
+Needs: run `supabase_schema_delta_review_requests_unique.sql`, redeploy
+`send-quote-sms` and `send-review-request-sms`.
+
+(Local commit `09aa680`, the geofencing/self-healing/offline batch below,
+is built and confirmed live in the DB/functions but the commit itself is
+not yet pushed to `origin/main` — needs a fresh GitHub PAT + explicit push
+permission, per standing rule.)
 
 ## Confirmed live (2026-09-05, this session)
+
+**Geofencing/self-healing/offline batch** (local commit `09aa680`):
+`businesses.auto_dispatch_max_km` column added and verified;
+`reconcile-technician-state` deployed and confirmed; `auto-assign-technician`
+redeployed with the radius-cap logic; `reconcile-technician-state-daily`
+cron scheduled (`30 5 * * *`, jobid 50) and confirmed active.
 
 **RLS read-scoping pass 1** (`supabase_schema_delta_rls_scoping_v1.sql`):
 new `admin_users` table + tightened SELECT on `assets`, `subcontractors`,

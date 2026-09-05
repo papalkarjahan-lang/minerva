@@ -1187,6 +1187,7 @@ minerva/
 ├── supabase_schema_delta_rls_scoping_v1.sql   # admin_users table + owner/admin-scoped SELECT on 5 tables (2026-09-05)
 ├── supabase_schema_delta_auto_dispatch_radius.sql # businesses.auto_dispatch_max_km (2026-09-05)
 ├── supabase_schema_delta_reconcile_technician_state_cron.sql # cron for reconcile-technician-state (2026-09-05)
+├── supabase_schema_delta_review_requests_unique.sql # unique index, dedupes send-review-request-sms (2026-09-05)
 ├── .github/workflows/ci.yml       # lint + test + build on every push/PR (2026-09-05)
 ├── vitest.config.js               # Test runner config (2026-09-05)
 ├── .eslintrc.cjs                  # Lint baseline (2026-09-05)

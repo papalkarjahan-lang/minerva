@@ -55,12 +55,20 @@ serve(async (req: Request) => {
       throw new Error('Twilio credentials not configured in Supabase secrets')
     }
 
+    // The insert itself is the atomic claim (see supabase_schema_delta_
+    // review_requests_unique.sql's unique index on invoice_id) — a
+    // double-click on "Request Review", or a retried request, will have its
+    // second insert rejected with a 23505 unique-violation before either
+    // request gets anywhere near sending a second real SMS.
     const { data: reviewReq, error: reqErr } = await supabase.from('review_requests').insert({
       business_id: invoice.business_id,
       invoice_id: invoiceId,
       client_phone: invoice.client_phone,
     }).select().single()
-    if (reqErr) throw reqErr
+    if (reqErr) {
+      if (reqErr.code === '23505') throw new Error('A review request was already sent for this invoice — refusing to send twice')
+      throw reqErr
+    }
 
     let phone = invoice.client_phone.replace(/\s/g, '')
     if (phone.startsWith('0')) phone = '+61' + phone.slice(1)
@@ -69,16 +77,24 @@ serve(async (req: Request) => {
     const trackingLink = `${supabaseUrl}/functions/v1/track-review-click?id=${reviewReq.id}`
     const message = `Hi ${invoice.client_name || ''}, thanks for choosing ${business.name}! If you have a moment, we'd really appreciate a quick review: ${trackingLink}`.trim()
 
-    const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json`, {
-      method: 'POST',
-      headers: {
-        'Authorization': 'Basic ' + btoa(`${TWILIO_SID}:${TWILIO_TOKEN}`),
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({ To: phone, From: TWILIO_FROM, Body: message }).toString(),
-    })
-    const result = await res.json().catch(() => ({}))
-    if (result.error_code) throw new Error(`Twilio rejected the send: ${result.error_message || result.error_code}`)
+    try {
+      const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json`, {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Basic ' + btoa(`${TWILIO_SID}:${TWILIO_TOKEN}`),
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({ To: phone, From: TWILIO_FROM, Body: message }).toString(),
+      })
+      const result = await res.json().catch(() => ({}))
+      if (result.error_code) throw new Error(`Twilio rejected the send: ${result.error_message || result.error_code}`)
+    } catch (sendErr) {
+      // Claimed the invoice (inserted the row) but the send itself failed —
+      // delete the claim rather than leaving the unique index permanently
+      // blocking a legitimate retry for this invoice.
+      await supabase.from('review_requests').delete().eq('id', reviewReq.id)
+      throw sendErr
+    }
 
     await supabase.from('review_requests').update({ sent_at: new Date().toISOString() }).eq('id', reviewReq.id)
 

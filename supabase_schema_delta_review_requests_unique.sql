@@ -1,0 +1,22 @@
+-- ============================================================
+-- MINERVA — Delta: unique constraint on review_requests.invoice_id
+-- (2026-09-05, agent/AI-function audit pass).
+--
+-- What this fixes: send-review-request-sms had no idempotency guard — a
+-- double-click on "Request Review", or a retried request, could insert two
+-- separate review_requests rows for the same invoice and text the client
+-- twice. This unique index makes the insert itself the atomic claim: only
+-- one concurrent request can successfully insert a row for a given
+-- invoice_id, the other gets a 23505 unique-violation it can handle
+-- gracefully (see send-review-request-sms/index.ts) instead of racing
+-- through to a second real SMS.
+--
+-- ⚠️ Same pre-check discipline as supabase_schema_delta_pin_unique.sql: if
+-- any invoice already has more than one review_requests row today (unlikely,
+-- but check first), decide what to do with the duplicates before running
+-- this, since the index creation will fail if duplicates already exist.
+-- Pre-check query:
+--   select invoice_id, count(*) from review_requests group by invoice_id having count(*) > 1;
+-- ============================================================
+
+create unique index if not exists review_requests_invoice_id_unique on review_requests(invoice_id);
