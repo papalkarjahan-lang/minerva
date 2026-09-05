@@ -219,13 +219,21 @@ the bottom.
   - `npm run build` verified clean. Committed locally (`ce65d5d`) — not yet
     pushed or deployed, needs fresh Supabase + GitHub PATs (see below).
 
+- **2026-09-05 (confirmed live)**: fresh Supabase + GitHub PATs supplied.
+  `ce65d5d` and `b324d65` pushed to `origin/main`.
+  `supabase_schema_delta_enrichment_nudge.sql` run live via the Supabase
+  Management API and verified: `industrial_leads.enrichment_nudge_sent_at`
+  exists. All 5 touched edge functions redeployed and confirmed `ACTIVE`
+  via `supabase functions list`: `reconcile-billing`, `launch-ad-campaign`,
+  `send-growth-message`, `generate-growth-drafts`,
+  `enrich-industrial-leads`. Code, live DB, and live functions fully in
+  sync — the perf + Stripe/billing/growth audit batch is now live
+  end-to-end.
+
 ## Not yet deployed live
 
-- `ce65d5d` (perf + Stripe/billing/growth audit batch, 2026-09-05) — needs
-  a fresh GitHub PAT to push, and a fresh Supabase PAT to run
-  `supabase_schema_delta_enrichment_nudge.sql` live and redeploy
-  `reconcile-billing`, `launch-ad-campaign`, `send-growth-message`,
-  `generate-growth-drafts`, `enrich-industrial-leads`.
+Nothing outstanding — see confirmation above. Future deltas will need
+fresh Supabase + GitHub PATs per the standing one-time-use convention.
 
 ## Audit findings deliberately NOT built this session (2026-09-04)
 
