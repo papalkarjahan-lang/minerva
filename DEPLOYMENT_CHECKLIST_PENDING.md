@@ -184,10 +184,48 @@ the bottom.
   `origin/main`. Both the industrial/B2B audit-pass batch and the PWA batch
   are now fully live end-to-end.
 
+- **2026-09-05 (perf + Stripe/billing/growth audit pass)**: route-based
+  `React.lazy()` code-splitting in `App.jsx` — every page is now its own
+  chunk instead of one shared bundle (586KB → 168KB main chunk;
+  `TechnicianView` down to a standalone ~25KB chunk, notable since it's
+  opened from an SMS link, often on mobile). Then a fresh Explore-subagent
+  audit of Stripe/billing + AI intake/lead-gen, self-verified against
+  source before building, found and fixed:
+  - `launch-ad-campaign` / `send-growth-message`: added an atomic
+    conditional-update claim (`UPDATE ... WHERE status='pending'`) before
+    spending real ad budget / sending real SMS — closes a TOCTOU race where
+    two rapid clicks or a retried request could both pass the earlier plain
+    status check. `send-growth-message` also now reverts to `'failed'`
+    (instead of stranding at a new transient `'sending'` status) if the
+    send itself throws.
+  - `reconcile-billing`: self-heals businesses stuck with `stripe_sub_id`
+    set but `stripe_sub_item_id` still null (a failed one-shot fetch inside
+    `stripe-webhook` at checkout time) — previously such a business was
+    silently excluded from reconciliation forever.
+  - `DispatcherView.jsx` / `TechnicianView.jsx`: new cancelled-subscription
+    banner once `stripe-webhook` sets `subscription_tier='cancelled'` —
+    previously no UI ever surfaced this state to the owner or technicians.
+  - `generate-growth-drafts`: now writes an `agent_insights` row when a
+    weekly run skips businesses because `ANTHROPIC_API_KEY` is missing,
+    instead of silently reporting `drafted: 0` with no explanation.
+  - `enrich-industrial-leads`: new `enrichment_nudge_sent_at` column
+    (`supabase_schema_delta_enrichment_nudge.sql`) so the daily cron sweep
+    nudges Slack once per unenriched lead instead of re-nudging the same
+    lead every single day forever.
+  - Findings deliberately not built: per-add-on Stripe billing wiring (out
+    of scope, a separate integration project — already tracked below),
+    a theoretical duplicate-draft edge case (self-correcting via human
+    review), and a sales-transparency question (not an engineering bug).
+  - `npm run build` verified clean. Committed locally (`ce65d5d`) — not yet
+    pushed or deployed, needs fresh Supabase + GitHub PATs (see below).
+
 ## Not yet deployed live
 
-Nothing outstanding — see confirmation above. Future deltas will need
-fresh Supabase + GitHub PATs per the standing one-time-use convention.
+- `ce65d5d` (perf + Stripe/billing/growth audit batch, 2026-09-05) — needs
+  a fresh GitHub PAT to push, and a fresh Supabase PAT to run
+  `supabase_schema_delta_enrichment_nudge.sql` live and redeploy
+  `reconcile-billing`, `launch-ad-campaign`, `send-growth-message`,
+  `generate-growth-drafts`, `enrich-industrial-leads`.
 
 ## Audit findings deliberately NOT built this session (2026-09-04)
 
