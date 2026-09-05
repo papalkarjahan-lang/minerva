@@ -289,7 +289,29 @@ the bottom.
 
 ## Not yet deployed live
 
-Nothing currently pending on the code/DB side.
+- **Pro-tier feature server-side enforcement (built 2026-09-06, first
+  frontend-layer audit pass — needs a Supabase PAT to run
+  `supabase_schema_delta_pro_tier_gating.sql`)**: `Onboarding.jsx`'s own
+  pricing copy defines "Pro" ($119/tech/mo) as "Everything in Standard +
+  on-site invoicing, asset tracking, compliance checklists" — a real paid
+  subscription-tier differentiator, not a cosmetic label. But all three
+  features were gated frontend-only: `TechnicianView.jsx`'s invoice
+  builder/materials/checklist flow and `DispatcherView.jsx`'s Assets/
+  Inventory tabs only render when `business.subscription_tier === 'pro'`,
+  while the underlying `supabase.from('invoices'/'assets'/'inventory_items')
+  .insert(...)` calls had no tier check at all — and all three tables have
+  anon-writable RLS (`with check (true)`). Any Starter ($49) or Standard
+  ($79) business could call supabase-js directly (browser console, curl)
+  and get Pro features for free, bypassing the UI entirely — a direct
+  subscription-revenue bypass. Fixed with the same `BEFORE INSERT` trigger
+  pattern as `crew_splitting`/`subcontractor_pool`
+  (`supabase_schema_delta_pro_tier_gating.sql`, one trigger per table,
+  checking `businesses.subscription_tier = 'pro'`). No frontend changes
+  needed — all three call sites already surface `insertErr.message`/
+  `err.message` directly to the UI, so the trigger's error text reaches the
+  user automatically. Confirmed only one insert path exists per table
+  (no edge function bypasses these tables), so no legitimate flow is
+  affected. Committed locally; not yet run live or pushed.
 
 ## Confirmed live (2026-09-06, continued)
 
