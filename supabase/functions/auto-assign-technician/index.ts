@@ -101,10 +101,17 @@ serve(async (req: Request) => {
 
     const { data: business } = await supabase
       .from('businesses')
-      .select('auto_dispatch_enabled, auto_dispatch_max_km, name')
+      .select('auto_dispatch_enabled, auto_dispatch_max_km, name, max_addons, max_addon_trials')
       .eq('id', job.business_id)
       .single()
     const maxKm = business?.auto_dispatch_max_km
+    // subcontractor_pool is a paid Minerva Max add-on — the insert-time
+    // trigger (supabase_schema_delta_subcontractor_pool_addon.sql) stops new
+    // subcontractor rows being created without it, but a business that let
+    // an active trial/subscription lapse could still have old subcontractor
+    // rows sitting in the table, so this fallback needs its own check too.
+    const subcontractorPoolActive = business?.max_addons?.subcontractor_pool === true ||
+      (business?.max_addon_trials?.subcontractor_pool?.ends_at && new Date(business.max_addon_trials.subcontractor_pool.ends_at).getTime() > Date.now())
 
     if (!business?.auto_dispatch_enabled) {
       supabase.rpc('record_agent_run', { fn_name: 'auto-assign-technician', status: 'ok' }).then(() => {}, () => {})
@@ -124,14 +131,15 @@ serve(async (req: Request) => {
     const free = (techs || []).filter(t => t.current_lat != null && t.current_lng != null)
     if (free.length === 0) {
       // No employed technician free — fall back to the subcontractor pool
-      // before giving up entirely.
-      const { data: subs } = await supabase
+      // before giving up entirely (only if the business's add-on is
+      // actually active — see comment above).
+      const { data: subs } = subcontractorPoolActive ? await supabase
         .from('subcontractors')
         .select('id, name, current_lat, current_lng')
         .eq('business_id', job.business_id)
         .eq('is_active', true)
         .not('current_lat', 'is', null)
-        .not('current_lng', 'is', null)
+        .not('current_lng', 'is', null) : { data: null }
 
       if (!subs || subs.length === 0) {
         supabase.rpc('record_agent_run', { fn_name: 'auto-assign-technician', status: 'ok' }).then(() => {}, () => {})

@@ -839,6 +839,11 @@ export default function DispatcherView() {
   async function addSubcontractor() {
     const name = newSubcontractor.name.trim()
     if (!name) return
+    // Backend also enforces this (a before-insert trigger on subcontractors
+    // checks the subcontractor_pool addon) since this insert goes straight
+    // from the browser with no edge function in between — this UI check
+    // (the tab/button only render when hasAddon() is true) is a fast path,
+    // the trigger is the real gate.
     const { data, error } = await supabase.from('subcontractors').insert({
       business_id: businessId,
       name,
@@ -846,7 +851,10 @@ export default function DispatcherView() {
       skills: newSubcontractor.skills.split(',').map(s => s.trim()).filter(Boolean),
       hourly_rate: newSubcontractor.hourly_rate ? Number(newSubcontractor.hourly_rate) : null,
     }).select().single()
-    if (error) { console.error('addSubcontractor failed', error); return }
+    if (error) {
+      alert(error.message.includes('subcontractor_pool') ? error.message : 'Could not add subcontractor: ' + error.message)
+      return
+    }
     setSubcontractors(prev => [...prev, data])
     setNewSubcontractor({ name: '', phone: '', skills: '', hourly_rate: '' })
     setShowAddSubcontractor(false)

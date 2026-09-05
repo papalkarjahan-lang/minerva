@@ -289,6 +289,27 @@ the bottom.
 
 ## Not yet deployed live
 
+**2026-09-05 — subcontractor_pool addon-gating gap** (built, tested,
+committed locally — needs a fresh Supabase PAT to run the SQL delta and
+redeploy `auto-assign-technician`): an audit of the auth/RLS layer led to
+checking every Minerva Max add-on for the same class of gap
+`crew_splitting` had before its 2026-09-04 fix (frontend-only gating, no
+server enforcement). Found `subcontractor_pool` had the identical gap —
+`DispatcherView.jsx` only shows the "+ Add" button/Subcontractors tab when
+the add-on is active, but nothing stopped a direct insert into the
+anon-writable `subcontractors` table regardless of add-on status, and
+`auto-assign-technician`'s subcontractor-fallback branch never checked the
+add-on at all before auto-dispatching to one. Fixed with the same pattern
+as `crew_splitting`: a `BEFORE INSERT` trigger on `subcontractors`
+(`supabase_schema_delta_subcontractor_pool_addon.sql`,
+`enforce_subcontractor_pool_addon()`) plus a check in
+`auto-assign-technician` itself (since old subcontractor rows could
+outlive a lapsed trial/subscription — the insert trigger alone wouldn't
+catch that). `addSubcontractor()`'s error handling updated to surface the
+trigger's message, matching `addCrewMember()`'s existing pattern.
+Needs: run `supabase_schema_delta_subcontractor_pool_addon.sql`, redeploy
+`auto-assign-technician`.
+
 **2026-09-05 — client-facing link data-exposure fix** (built, tested,
 committed locally — no new SQL, just a code fix, so nothing to run live,
 only a redeploy of the frontend needed): a fresh audit of the no-login,
