@@ -37,6 +37,15 @@ entirely by possession of an unguessable URL or PIN:
   dispatch link (same anon-select-all RLS policy) and pre-fills the
   Settings modal input when reopened — so it inherits the dispatch link's
   trust boundary rather than adding a new one.
+  - **Fixed 2026-09-05**: this field (and `meta_access_token`) was
+    previously *also* reachable through the four client-facing, no-login
+    pages — `TrackingView.jsx`, `InvoiceView.jsx`, `DisputeView.jsx`, and
+    `QuoteView.jsx` all fetched the full `businesses(*)` row (only ever
+    displaying `.name`) alongside the job/invoice/quote data those pages
+    exist to show. That widened the trust boundary from "anyone with the
+    *dispatch* link" (staff) to "anyone with a *client* tracking/invoice/
+    quote/dispute link" (any external customer), which was never the
+    intent. All four now select `businesses(name)` only.
 
 - **Inventory items / checklist templates (incl. onboarding)** — same rule
   again: `inventory_items` (stock levels, supplier names) and

@@ -38,7 +38,7 @@ export default function DisputeView() {
 
   async function loadAll() {
     const { data: jobData, error: jobErr } = await supabase
-      .from('jobs').select('*, businesses(*)').eq('id', jobId).single()
+      .from('jobs').select('*, businesses(name)').eq('id', jobId).single()
     if (jobErr || !jobData) { setError('This dispute pack link is invalid.'); return }
     setJob(jobData)
     setBusiness(jobData.businesses)

@@ -18,7 +18,7 @@ export default function InvoiceView() {
 
   async function loadInvoice() {
     const { data, error: err } = await supabase
-      .from('invoices').select('*, businesses(*)').eq('id', invoiceId).single()
+      .from('invoices').select('*, businesses(name)').eq('id', invoiceId).single()
     if (err || !data) { setError('This invoice link is invalid or has expired.'); return }
     setInvoice(data)
     setBusiness(data.businesses)

@@ -75,7 +75,7 @@ export default function TrackingView() {
     }
     if (jobData.technician_id) {
       const { data: techData } = await supabase
-        .from('technicians').select('*, businesses(*)').eq('id', jobData.technician_id).single()
+        .from('technicians').select('*, businesses(name)').eq('id', jobData.technician_id).single()
       setTech(techData)
       setBusiness(techData?.businesses)
       if (techData?.current_lat) {

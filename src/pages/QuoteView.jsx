@@ -19,7 +19,7 @@ export default function QuoteView() {
 
   async function loadQuote() {
     const { data, error: err } = await supabase
-      .from('quotes').select('*, businesses(*)').eq('id', quoteId).single()
+      .from('quotes').select('*, businesses(name)').eq('id', quoteId).single()
     if (err || !data) { setError('This quote link is invalid or has expired.'); return }
     setQuote(data)
     setBusiness(data.businesses)

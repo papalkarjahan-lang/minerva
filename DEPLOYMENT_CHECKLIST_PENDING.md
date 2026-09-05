@@ -289,6 +289,23 @@ the bottom.
 
 ## Not yet deployed live
 
+**2026-09-05 — client-facing link data-exposure fix** (built, tested,
+committed locally — no new SQL, just a code fix, so nothing to run live,
+only a redeploy of the frontend needed): a fresh audit of the no-login,
+link-based client-facing pages (`TrackingView.jsx`, `InvoiceView.jsx`,
+`DisputeView.jsx`, `QuoteView.jsx`, `ClientHistoryView.jsx`,
+`calendar-feed`, `track-review-click`) found that four of them
+(`TrackingView`, `InvoiceView`, `DisputeView`, `QuoteView`) fetched the
+full `businesses(*)` row — including `slack_webhook_url` and
+`meta_access_token`, both explicitly documented in `SECURITY_NOTES.md` as
+secrets scoped to "anyone with the *dispatch* link" — while only ever
+displaying `.name`. That meant any external client holding a job-tracking,
+invoice, quote, or dispute-pack link (not staff, an actual customer) could
+read those secrets straight out of the network response. Fixed by trimming
+all four queries to `businesses(name)`. `ClientHistoryView`, `calendar-feed`,
+and `track-review-click` were audited too and found already correctly
+scoped (no fix needed). See `SECURITY_NOTES.md` for the updated note.
+
 **2026-09-05 — double-send race-condition audit pass** (built, tested,
 committed locally — not yet deployed live, needs a fresh Supabase PAT):
 a fresh Explore-subagent audit of AI/agent-facing edge functions (the area
