@@ -289,17 +289,20 @@ the bottom.
 
 ## Not yet deployed live
 
-- **Missing UPDATE RLS policy on `checklist_photos` (built 2026-09-06,
-  follow-up to the `businesses` finding — needs a Supabase PAT to run
-  `supabase_schema_delta_checklist_photos_update_policy.sql`)**: after
-  finding `businesses` was missing its UPDATE policy, ran a systematic
-  check of every table's RLS policy set (via `pg_policies`) against every
+Nothing currently pending on the code/DB side.
+
+## Confirmed live (2026-09-06, continued)
+
+- **Missing UPDATE RLS policy on `checklist_photos`**: after finding
+  `businesses` was missing its UPDATE policy, ran a systematic check of
+  every table's RLS policy set (via `pg_policies`) against every
   INSERT/UPDATE/DELETE call actually made against it across the frontend
   and edge functions. Found the exact same bug on `checklist_photos` —
   RLS enabled with only INSERT and SELECT policies, no UPDATE, ever since
-  the table was created. Empirically confirmed live: inserted a disposable
-  test row via the anon key, then a PATCH to it returned HTTP 200 with an
-  empty array (0 rows updated), then deleted the test row directly via the
+  the table was created. Empirically confirmed live (before and after the
+  fix): inserted a disposable test row via the anon key, a PATCH to it
+  returned HTTP 200 with an empty array (0 rows updated) pre-fix and the
+  actual updated row post-fix, then deleted the test row directly via the
   Management API. Impact: this is the table `verify-checklist-photos`
   writes to (using the anon key, not service role) to record each photo's
   AI verification result — meaning the entire Watchtower AI photo-
@@ -309,13 +312,13 @@ the bottom.
   Verified" badge in DispatcherView/InvoiceView/DisputeView can never
   appear. This also means the false-`'pass'`-on-API-failure fix made
   earlier today never actually took effect in production either way,
-  since no update to this table has ever persisted — it's still correct
+  since no update to this table had ever persisted — it was still correct
   to have fixed the *logic*, but this RLS fix is what actually makes any
   of it take effect for the first time. Checked every other UPDATE/DELETE
   call site against the full table-policy map; no further gaps found
   (`integration_credentials`'s writes correctly use the service-role key,
-  bypassing RLS; every other table already has the needed policy).
-  Committed locally; not yet run live or pushed.
+  bypassing RLS; every other table already has the needed policy). Policy
+  run live and confirmed via `pg_policies` plus a full round-trip test.
 
 ## Confirmed live (2026-09-06, continued)
 
