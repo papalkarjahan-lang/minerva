@@ -708,6 +708,17 @@ export default function DispatcherView() {
     setTimeout(() => setLinkCopied(false), 2000)
   }
 
+  const [billingPortalLoading, setBillingPortalLoading] = useState(false)
+  const [billingPortalError, setBillingPortalError] = useState(null)
+  async function openBillingPortal() {
+    setBillingPortalLoading(true)
+    setBillingPortalError(null)
+    const { data, error } = await supabase.functions.invoke('create-billing-portal-session', { body: { businessId } })
+    setBillingPortalLoading(false)
+    if (error || !data?.portalUrl) { setBillingPortalError(data?.error || error?.message || 'Could not open billing portal.'); return }
+    window.location.href = data.portalUrl
+  }
+
   function copyCalendarLink() {
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
     navigator.clipboard.writeText(`${supabaseUrl}/functions/v1/calendar-feed?businessId=${businessId}`)
@@ -1132,8 +1143,8 @@ export default function DispatcherView() {
               <p style={styles.subscriptionCancelledTitle}>⚠️ Subscription ended</p>
               <p style={styles.subscriptionCancelledLine}>
                 Your Stripe subscription was cancelled — Pro features (invoicing, checklists,
-                Watchtower, Marketing) are no longer available. Resubscribe from your Stripe
-                customer portal link, or contact us to reactivate.
+                Watchtower, Marketing) are no longer available. Reopen billing below to
+                resubscribe, or contact us to reactivate.
               </p>
             </div>
           )}
@@ -1155,6 +1166,10 @@ export default function DispatcherView() {
           <button style={{ ...styles.copyLinkBtn, marginTop: 6 }} onClick={() => setShowSettingsModal(true)}>
             ⚙️ Settings
           </button>
+          <button style={{ ...styles.copyLinkBtn, marginTop: 6 }} disabled={billingPortalLoading} onClick={openBillingPortal}>
+            💳 {billingPortalLoading ? 'Opening billing...' : 'Manage billing / Cancel'}
+          </button>
+          {billingPortalError && <p style={{ color: '#e07a7a', fontSize: 11, margin: '4px 0 0' }}>{billingPortalError}</p>}
           <button style={{ ...styles.copyLinkBtn, marginTop: 6 }} onClick={() => setShowSupportModal(true)}>
             💬 Contact support
           </button>

@@ -80,7 +80,11 @@ export default function AdminConsole() {
       .from('support_requests')
       .select('*')
       .order('created_at', { ascending: false })
-    setRequests(data || [])
+    // Urgent-open first, then routine-open, then resolved — see
+    // SUPPORT_PLAYBOOK.md for the SLA targets this triage order is meant
+    // to support (2hr urgent / 1 business day routine).
+    const rank = r => r.status === 'resolved' ? 2 : (r.priority === 'urgent' ? 0 : 1)
+    setRequests((data || []).sort((a, b) => rank(a) - rank(b) || new Date(b.created_at) - new Date(a.created_at)))
   }
 
   async function overrideTier(businessId, newTier) {
@@ -130,7 +134,9 @@ export default function AdminConsole() {
         <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
           <button onClick={() => setTab('businesses')} style={tabStyle(tab === 'businesses')}>Businesses ({businesses.length})</button>
           <button onClick={() => setTab('support')} style={tabStyle(tab === 'support')}>
-            Support ({requests.filter(r => r.status === 'open').length} open)
+            Support ({requests.filter(r => r.status === 'open').length} open
+            {requests.some(r => r.status === 'open' && r.priority === 'urgent') &&
+              `, ${requests.filter(r => r.status === 'open' && r.priority === 'urgent').length} urgent`})
           </button>
         </div>
 
@@ -176,17 +182,28 @@ export default function AdminConsole() {
           <div>
             {requests.length === 0 && <p style={{ color: '#888' }}>No support requests.</p>}
             {requests.map(r => (
-              <div key={r.id} style={{ ...cardStyle, maxWidth: 'none', textAlign: 'left', marginBottom: 12, opacity: r.status === 'resolved' ? 0.5 : 1 }}>
+              <div key={r.id} style={{ ...cardStyle, maxWidth: 'none', textAlign: 'left', marginBottom: 12, opacity: r.status === 'resolved' ? 0.5 : 1, border: r.status !== 'resolved' && r.priority === 'urgent' ? '1px solid #8A2525' : cardStyle.border }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <strong style={{ color: '#fff' }}>{r.from_name || 'Unknown'} {r.from_contact ? `(${r.from_contact})` : ''}</strong>
+                  <strong style={{ color: '#fff' }}>
+                    {r.priority === 'urgent' && r.status !== 'resolved' && <span style={{ color: '#e05555', marginRight: 6 }}>⚠ URGENT</span>}
+                    {r.from_name || 'Unknown'} {r.from_contact ? `(${r.from_contact})` : ''}
+                  </strong>
                   <span style={{ color: '#666', fontSize: 12 }}>{new Date(r.created_at).toLocaleString()}</span>
                 </div>
                 <p style={{ color: '#ccc', margin: '10px 0' }}>{r.message}</p>
-                {r.status !== 'resolved' && (
-                  <button onClick={() => resolveRequest(r.id)} style={{ background: '#1D9E75', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13 }}>
-                    Mark resolved
-                  </button>
-                )}
+                <div style={{ display: 'flex', gap: 10 }}>
+                  {r.status !== 'resolved' && (
+                    <button onClick={() => resolveRequest(r.id)} style={{ background: '#1D9E75', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13 }}>
+                      Mark resolved
+                    </button>
+                  )}
+                  {r.from_contact?.includes('@') && (
+                    <a href={`mailto:${r.from_contact}?subject=${encodeURIComponent('Re: your Minerva support request')}`}
+                      style={{ color: '#8fd0e8', fontSize: 13, alignSelf: 'center', textDecoration: 'none' }}>
+                      Reply by email →
+                    </a>
+                  )}
+                </div>
               </div>
             ))}
           </div>

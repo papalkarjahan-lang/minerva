@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 import { insertTechniciansWithPinRetry } from '../utils'
 
@@ -36,6 +37,7 @@ export default function Onboarding() {
   const [tier, setTier] = useState('standard')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [agreedToTerms, setAgreedToTerms] = useState(false)
 
   function selectTier(id) {
     setTier(id)
@@ -250,10 +252,18 @@ export default function Onboarding() {
               </p>
               <p style={styles.trialNote}>✓ 7-day free trial — no charge today</p>
             </div>
+            <label style={styles.agreeRow}>
+              <input type="checkbox" checked={agreedToTerms} onChange={e => setAgreedToTerms(e.target.checked)} style={{ marginTop: 2 }} />
+              <span>
+                I agree to Minerva's <Link to="/terms" target="_blank" style={styles.agreeLink}>Terms of Service</Link>,{' '}
+                <Link to="/privacy" target="_blank" style={styles.agreeLink}>Privacy Policy</Link>, and{' '}
+                <Link to="/refund-policy" target="_blank" style={styles.agreeLink}>Refund Policy</Link>.
+              </span>
+            </label>
             {error && <p style={styles.errorText}>{error}</p>}
             <div style={{ display: 'flex', gap: 10 }}>
               <button style={styles.backBtn} onClick={() => setStep(2)}>← Back</button>
-              <button style={styles.submitBtn} disabled={loading} onClick={handleSubmit}>
+              <button style={styles.submitBtn} disabled={loading || !agreedToTerms} onClick={handleSubmit}>
                 {loading ? 'Setting up your account...' : 'Start free trial'}
               </button>
             </div>
@@ -287,6 +297,8 @@ const styles = {
   nextBtn: { width: '100%', background: '#2D5FA8', color: '#fff', border: 'none', borderRadius: 12, padding: '14px 0', fontSize: 16, fontWeight: 'bold', cursor: 'pointer', marginTop: 8 },
   backBtn: { flex: '0 0 80px', background: '#f5f5f5', color: '#555', border: 'none', borderRadius: 12, padding: '14px 0', fontSize: 14, cursor: 'pointer' },
   submitBtn: { flex: 1, background: '#1D9E75', color: '#fff', border: 'none', borderRadius: 12, padding: '14px 0', fontSize: 16, fontWeight: 'bold', cursor: 'pointer' },
+  agreeRow: { display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12, color: '#666', lineHeight: 1.5, margin: '14px 0' },
+  agreeLink: { color: '#2D5FA8', textDecoration: 'none' },
   helpText: { color: '#666', fontSize: 13, margin: '0 0 16px', lineHeight: 1.5 },
   techInputRow: { display: 'flex', gap: 8, marginBottom: 10, alignItems: 'center' },
   removeBtn: { background: 'none', border: '1px solid #ddd', borderRadius: 8, width: 32, height: 32, cursor: 'pointer', color: '#888', fontSize: 14 },

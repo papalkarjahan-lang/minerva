@@ -25,6 +25,9 @@ const IntakeAssistant = lazy(() => import('./pages/IntakeAssistant'))
 const DisputeView = lazy(() => import('./pages/DisputeView'))
 const Login = lazy(() => import('./pages/Login'))
 const AdminConsole = lazy(() => import('./pages/AdminConsole'))
+const TermsOfService = lazy(() => import('./pages/TermsOfService'))
+const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'))
+const RefundPolicy = lazy(() => import('./pages/RefundPolicy'))
 
 function RouteLoadingFallback() {
   return (
@@ -44,6 +47,9 @@ export default function App() {
         <Route path="/start" element={<Onboarding />} />
         <Route path="/success" element={<SuccessPage />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/terms" element={<TermsOfService />} />
+        <Route path="/privacy" element={<PrivacyPolicy />} />
+        <Route path="/refund-policy" element={<RefundPolicy />} />
 
         {/* Internal Minerva staff admin console — gated by an
             admin-email allowlist checked against the Supabase Auth

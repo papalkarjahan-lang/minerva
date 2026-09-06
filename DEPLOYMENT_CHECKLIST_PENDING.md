@@ -289,7 +289,61 @@ the bottom.
 
 ## Not yet deployed live
 
-Nothing currently pending on the code/DB side.
+- **2026-09-06 ("make Minerva a fully functioning business" pass)**: built,
+  tested, and committed locally — needs fresh Supabase + GitHub PATs to go
+  live:
+  1. **Legal/compliance pages**: `/terms`, `/privacy`, `/refund-policy`
+     (`TermsOfService.jsx`, `PrivacyPolicy.jsx`, `RefundPolicy.jsx`), drafted
+     from the actual data flows and billing mechanics in this codebase (not
+     generic boilerplate) — but explicitly **not lawyer-reviewed**, flagged
+     as such in each file's own header comment. Linked from `LandingPage.jsx`'s
+     footer and gated behind a required checkbox in `Onboarding.jsx`'s final
+     step before "Start free trial" is clickable.
+  2. **Self-serve billing cancellation (real gap closed)**: `stripe-webhook`'s
+     own header comment said this was "promised on the pricing page" via
+     `stripe_customer_id`, but no function or button ever actually opened
+     the Stripe Customer Portal — "Cancel anytime" was marketing copy with
+     no working mechanism behind it; a business could only cancel by asking
+     support to do it manually. New `create-billing-portal-session` edge
+     function + "💳 Manage billing / Cancel" button in `DispatcherView.jsx`'s
+     sidebar, redirecting to the real Stripe-hosted portal for that
+     business's `stripe_customer_id`. Cancelled-subscription banner copy
+     updated to match. Uses the already-configured `STRIPE_SECRET_KEY` and
+     `APP_URL` secrets, no new secrets needed.
+  3. **Verified copy-accuracy fix**: `LandingPage.jsx`'s "Automatic text...
+     when your tech is 15 minutes away" corrected — the actual trigger is
+     `SMS_TRIGGER_KM = 2.0` (2km), not a time estimate; the "15 minutes" was
+     only a hardcoded phrase inside the SMS text itself, not the real
+     trigger condition. Found via a full customer-facing-copy audit pass
+     (LandingPage/Onboarding/SuccessPage/TrackingView/InvoiceView/QuoteView/
+     DisputeView/ClientHistoryView + README) — no other genuine overclaims
+     found (everything else checked was accurate, including maxAddons.js's
+     deliberately honest-scope wording).
+  4. **Support process**: new `support_requests.priority` column
+     (`supabase_schema_delta_support_priority.sql`), classified client-side
+     in `ContactSupportModal.jsx` via a keyword list (same
+     "template-classification, no AI needed" pattern as `ai-intake-chat`'s
+     `EMERGENCY_KEYWORDS`) — urgent keywords: down/broken/can't log in/
+     charged twice/refund/cancel/emergency/etc. `AdminConsole.jsx` now
+     sorts urgent-open requests first, badges them, shows an urgent count
+     in the tab label, and adds a "Reply by email" mailto link when
+     `from_contact` looks like an email. New `SUPPORT_PLAYBOOK.md` documents
+     SLA targets (2hr urgent / 1 business day routine, self-imposed not
+     published externally) and canned responses for the actual sole-
+     operator support process.
+  5. **Non-code strategy docs** (no deploy needed, informational):
+     `CUSTOMER_ACQUISITION_PLAN.md` (confirms the in-app Growth pillar —
+     `generate-growth-drafts`/`launch-ad-campaign`/`send-growth-message` —
+     is code-complete and safe, then lays out a concrete zero-ad-budget
+     direct-outreach plan for Minerva's own first customers, explicit about
+     what crosses into real-world account-creation/spend that only the user
+     can execute) and `TAX_GST_NOTES.md` (general, non-personalised AU
+     GST/income-tax education — $75k GST registration threshold, record-
+     keeping, PAYG — plus the exact remaining Xero connection steps; flagged
+     throughout as not a substitute for a registered tax agent).
+  New SQL delta to run: `supabase_schema_delta_support_priority.sql`.
+  New edge function to deploy: `create-billing-portal-session`.
+  `npm run lint`/`npm test`/`npm run build` all verified clean.
 
 ## Confirmed live (2026-09-06, continued)
 

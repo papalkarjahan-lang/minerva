@@ -42,7 +42,7 @@ export default function LandingPage() {
       <div style={{ maxWidth: 800, margin: '0 auto 80px', padding: '0 24px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 24 }}>
         {[
           ['📍', 'Live map', 'See every technician in real time without making a single call.'],
-          ['📱', 'Client SMS', 'Automatic text with a live tracking link when your tech is 15 minutes away.'],
+          ['📱', 'Client SMS', 'Automatic text with a live tracking link once your tech is close by (within ~2km).'],
           ['💬', 'Automatic lead intake', 'A chat widget for your website that triages enquiries and texts you qualified leads, scored by urgency.'],
         ].map(([icon, title, desc]) => (
           <div key={title} style={{ background: '#0a0f1d', borderRadius: 16, padding: 24, border: '1px solid #1e293b' }}>
@@ -78,7 +78,12 @@ export default function LandingPage() {
 
       {/* Footer */}
       <footer style={{ borderTop: '1px solid #1e293b', padding: '24px 40px', textAlign: 'center', color: '#444', fontSize: 13 }}>
-        <p style={{ margin: 0 }}>Minerva | An Antikythera / Krios AI product | ABN [your ABN] | [your email] | [your phone]</p>
+        <p style={{ margin: '0 0 10px' }}>Minerva | An Antikythera / Krios AI product | ABN [your ABN] | [your email] | [your phone]</p>
+        <p style={{ margin: 0 }}>
+          <Link to="/terms" style={{ color: '#666', textDecoration: 'none', margin: '0 10px' }}>Terms of Service</Link>
+          <Link to="/privacy" style={{ color: '#666', textDecoration: 'none', margin: '0 10px' }}>Privacy Policy</Link>
+          <Link to="/refund-policy" style={{ color: '#666', textDecoration: 'none', margin: '0 10px' }}>Refund Policy</Link>
+        </p>
       </footer>
     </div>
   )
