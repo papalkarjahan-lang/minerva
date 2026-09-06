@@ -786,7 +786,7 @@ each row against the real codebase before building anything blind:
   rearchitectures — this needs to be its own scoped, reviewed project if
   wanted, not something to "just do" alongside smaller fixes.
 
-## Built, tested, committed locally — needs a fresh GitHub PAT to push (2026-09-06, frontend error-handling + orphaned-feature audit pass)
+## Confirmed live (2026-09-06, frontend error-handling + orphaned-feature audit pass)
 
 Follow-up to the "make Minerva a fully functioning business" mandate: a
 3-way parallel audit (edge functions / frontend / schema+docs) was run to
@@ -855,8 +855,8 @@ only a `git push`.
 - `npm run lint` / `npm test -- --run` (16/16) / `npm run build` all
   verified clean after every change above.
 
-Needs a fresh one-time GitHub PAT to push — none supplied for this batch,
-so it's committed locally only as of this writing.
+Pushed to `origin/main` (`1dbb639`) using a fresh one-time GitHub PAT.
+Vercel's auto-deploy-on-push handles the rest — no manual action needed.
 
 ## Still outstanding (non-code, needs the user or a bank account)
 
