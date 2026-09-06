@@ -1,0 +1,32 @@
+-- ============================================================
+-- MINERVA — Delta: missing UPDATE RLS policy on `checklist_photos`
+-- (2026-09-06, follow-up to the same finding on `businesses`).
+--
+-- Same bug class, found by systematically comparing every table's RLS
+-- policy set (via pg_policies) against every INSERT/UPDATE/DELETE call
+-- actually made against it in the frontend and edge functions.
+--
+-- `checklist_photos` had RLS enabled with only INSERT and SELECT policies
+-- (supabase_schema.sql lines 347-350) — no UPDATE policy was ever added.
+-- Empirically confirmed live: an anon-key PATCH to checklist_photos
+-- returns HTTP 200 with an empty array (0 rows matched/updated).
+--
+-- Impact: this is the table verify-checklist-photos/index.ts writes to
+-- (using the anon key, not service role) to record each photo's AI
+-- verification result. Every one of its `update({ verification_status:
+-- ..., verification_notes: ... })` calls has always silently affected 0
+-- rows — meaning the entire Watchtower AI photo-verification feature has
+-- never actually worked: every checklist photo stays 'pending' forever,
+-- jobs.ai_verified_at can never be set (the rollup requires zero 'pending'
+-- photos on the job), and the "AI Verified" badge in DispatcherView/
+-- InvoiceView/DisputeView can never appear. This also means the false-
+-- 'pass'-on-API-failure fix made earlier today never actually took
+-- effect in production either way, since no update to this table has
+-- ever persisted.
+--
+-- Fixed by adding the same standard permissive policy already used for
+-- every other anon-write table in this schema.
+-- ============================================================
+
+create policy "anon update checklist_photos" on checklist_photos
+  for update using (true);
