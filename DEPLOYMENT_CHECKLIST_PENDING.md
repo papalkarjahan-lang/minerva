@@ -289,9 +289,11 @@ the bottom.
 
 ## Not yet deployed live
 
-- **Pro-tier feature server-side enforcement (built 2026-09-06, first
-  frontend-layer audit pass — needs a Supabase PAT to run
-  `supabase_schema_delta_pro_tier_gating.sql`)**: `Onboarding.jsx`'s own
+Nothing currently pending on the code/DB side.
+
+## Confirmed live (2026-09-06, continued)
+
+- **Pro-tier feature server-side enforcement**: `Onboarding.jsx`'s own
   pricing copy defines "Pro" ($119/tech/mo) as "Everything in Standard +
   on-site invoicing, asset tracking, compliance checklists" — a real paid
   subscription-tier differentiator, not a cosmetic label. But all three
@@ -308,10 +310,10 @@ the bottom.
   (`supabase_schema_delta_pro_tier_gating.sql`, one trigger per table,
   checking `businesses.subscription_tier = 'pro'`). No frontend changes
   needed — all three call sites already surface `insertErr.message`/
-  `err.message` directly to the UI, so the trigger's error text reaches the
-  user automatically. Confirmed only one insert path exists per table
-  (no edge function bypasses these tables), so no legitimate flow is
-  affected. Committed locally; not yet run live or pushed.
+  `err.message` directly to the UI. Pre-check confirmed the only live
+  business is already on `pro`, so nothing was retroactively broken.
+  Triggers run live and confirmed active via `pg_trigger` on all three
+  tables (`assets`, `invoices`, `inventory_items`).
 
 ## Confirmed live (2026-09-06, continued)
 
