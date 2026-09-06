@@ -289,6 +289,32 @@ the bottom.
 
 ## Not yet deployed live
 
+Nothing currently pending on the code/DB side.
+
+## Confirmed live (2026-09-06, "make Minerva a fully functioning business" pass)
+
+- Pushed `ef0224e` to `origin/main` using a fresh one-time GitHub PAT.
+- `supabase_schema_delta_support_priority.sql` run live via the Supabase
+  Management API and verified: `support_requests.priority` column exists
+  (`text`, default `'normal'`).
+- `create-billing-portal-session` deployed and confirmed `ACTIVE` via
+  `supabase functions list`. All required secrets (`STRIPE_SECRET_KEY`,
+  `APP_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_URL`) already existed — no new
+  secrets needed, so the "Manage billing / Cancel" button in
+  `DispatcherView.jsx` is fully live end-to-end: a business owner can now
+  actually self-serve-cancel via the real Stripe Customer Portal for the
+  first time since this app was built.
+- The legal pages (`/terms`, `/privacy`, `/refund-policy`), the Onboarding
+  agreement checkbox, the landing-page copy fix, and the AdminConsole
+  support-triage UI are all plain frontend code with no separate deploy
+  step — live the moment the Vercel build picks up `ef0224e` from
+  `origin/main` (no manual action needed if Vercel's auto-deploy-on-push is
+  configured, which prior session notes confirm it is).
+
+Below is the original build-time entry, kept for the detailed record of
+what each piece does and why (see the "Confirmed live" heading above for
+deployment status):
+
 - **2026-09-06 ("make Minerva a fully functioning business" pass)**: built,
   tested, and committed locally — needs fresh Supabase + GitHub PATs to go
   live:
