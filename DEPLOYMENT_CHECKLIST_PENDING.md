@@ -976,6 +976,41 @@ note). Real, live functional bug, not a false positive:
   alongside the pre-existing owner-scoped policy). Policy-only change, no
   code/edge-function redeploy needed.
 
+## Built, tested, committed locally — needs a fresh Supabase PAT to deploy (2026-09-07, reconcile-technician-state kill-switch gap)
+
+Continued "what else can be done?" sweep. Two systematic cross-checks run
+against static analysis of every `.sql` file + every `.jsx`/`.ts` call
+site (no live DB query needed, so no token spent to find this):
+
+- **Re-ran the table/policy audit** that found the `subcontractors`
+  regression, this time across every table in the schema (not just the 5
+  the 2026-09-05 pass touched): compiled every `create policy` across all
+  38 SQL files into a per-table map of which operations (select/insert/
+  update/delete) have a policy, then diffed that against every actual
+  `.insert()`/`.update()`/`.delete()` call in `src/` and
+  `supabase/functions/`. Only flagged `integration_credentials` (writes
+  via `service_role`, which bypasses RLS entirely by design — not a gap).
+  No new regressions found.
+- **Cross-checked every cron-scheduled edge function** (30 total, read off
+  every `pg_cron.schedule` URL across the SQL deltas) against the
+  `agent_functions.enabled` kill-switch check documented in `README.md`
+  ("every autonomous/cron-driven edge function... checks
+  `agent_functions.enabled` at the top of every run"). Found one real
+  gap: **`reconcile-technician-state`** (the daily self-healing job that
+  un-sticks technicians pointing at already-completed jobs) calls
+  `record_agent_run` for health tracking but never actually checked
+  `agent_functions.enabled` — meaning the operator kill-switch could not
+  actually stop this one function, unlike the other 29. Fixed by adding
+  the same standard `agent_functions` check used everywhere else. No SQL
+  needed: `record_agent_run`'s existing self-seeding upsert already
+  creates the `agent_functions` row for this function name (defaulting
+  `enabled = true`) the first time it runs, so this is a pure edge-
+  function code change.
+- Needs a fresh Supabase PAT to redeploy just this one function
+  (`supabase functions deploy reconcile-technician-state` via the
+  multipart `/functions/deploy` API, per the established deploy method —
+  no CLI installed, never PATCH+JSON body).
+
 ## Still outstanding (non-code, needs the user or a bank account)
 
 - Twilio Voice webhook for `missed-call-webhook` — blocked, trial accounts
