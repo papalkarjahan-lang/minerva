@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { haversineKm, generatePin, generateReferralCode, timeAgo, insertTechniciansWithPinRetry } from './utils'
+import { haversineKm, generatePin, generateReferralCode, timeAgo, insertTechniciansWithPinRetry, classifyPriority } from './utils'
 
 describe('haversineKm', () => {
   it('returns 0 for identical points', () => {
@@ -104,5 +104,23 @@ describe('insertTechniciansWithPinRetry', () => {
     expect(data).toBeNull()
     expect(error.code).toBe('23503')
     expect(attempts).toBe(1)
+  })
+})
+
+describe('classifyPriority', () => {
+  it('returns "urgent" for messages containing an urgent keyword', () => {
+    expect(classifyPriority("it's down and nobody can log in")).toBe('urgent')
+    expect(classifyPriority('I was charged twice this month')).toBe('urgent')
+    expect(classifyPriority('please cancel my subscription')).toBe('urgent')
+  })
+
+  it('returns "normal" for messages without an urgent keyword', () => {
+    expect(classifyPriority('How do I add a new technician?')).toBe('normal')
+    expect(classifyPriority('Loving the app so far, quick question about invoices')).toBe('normal')
+  })
+
+  it('is case-insensitive', () => {
+    expect(classifyPriority('THIS IS AN EMERGENCY')).toBe('urgent')
+    expect(classifyPriority('Can I get a REFUND please')).toBe('urgent')
   })
 })

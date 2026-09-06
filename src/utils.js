@@ -114,3 +114,23 @@ export function timeAgo(timestamptz) {
   if (seconds < 3600) return `${Math.floor(seconds / 60)} mins ago`
   return `${Math.floor(seconds / 3600)} hrs ago`
 }
+
+// ============================================================
+// CLASSIFY SUPPORT REQUEST PRIORITY
+// Used by ContactSupportModal.jsx to triage support_requests
+// client-side with a simple keyword check (same "template
+// classification, no AI needed" pattern as ai-intake-chat's
+// EMERGENCY_KEYWORDS) so AdminConsole can surface urgent messages (a
+// business that's down, can't get paid, or wants to cancel) ahead of
+// routine ones — see supabase_schema_delta_support_priority.sql.
+// ============================================================
+export const URGENT_KEYWORDS = [
+  'urgent', 'asap', 'down', "can't log in", 'cannot log in', "can't access",
+  'cannot access', 'broken', 'not working', 'lost data', 'data missing',
+  'charged twice', 'double charged', 'refund', 'cancel my', 'cancel the',
+  'emergency', 'production', 'client is', 'losing money',
+]
+export function classifyPriority(message) {
+  const lower = message.toLowerCase()
+  return URGENT_KEYWORDS.some(kw => lower.includes(kw)) ? 'urgent' : 'normal'
+}

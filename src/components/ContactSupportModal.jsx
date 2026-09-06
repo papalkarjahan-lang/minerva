@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../supabaseClient'
+import { classifyPriority } from '../utils'
 
 // Shared "Contact support" form — writes to support_requests
 // (supabase_schema_delta_support_requests.sql), read by the internal
@@ -7,21 +8,11 @@ import { supabase } from '../supabaseClient'
 // (business owner) and TechnicianView (crew member) with a different
 // defaultName/businessId.
 //
-// Priority is classified client-side with a simple keyword check (same
-// "template classification, no AI needed" pattern as ai-intake-chat's
+// Priority is classified client-side via classifyPriority() in utils.js
+// (same "template classification, no AI needed" pattern as ai-intake-chat's
 // EMERGENCY_KEYWORDS) so AdminConsole can triage urgent messages (a
 // business that's down, can't get paid, or wants to cancel) ahead of
 // routine ones — see supabase_schema_delta_support_priority.sql.
-const URGENT_KEYWORDS = [
-  'urgent', 'asap', 'down', "can't log in", 'cannot log in', "can't access",
-  'cannot access', 'broken', 'not working', 'lost data', 'data missing',
-  'charged twice', 'double charged', 'refund', 'cancel my', 'cancel the',
-  'emergency', 'production', 'client is', 'losing money',
-]
-function classifyPriority(message) {
-  const lower = message.toLowerCase()
-  return URGENT_KEYWORDS.some(kw => lower.includes(kw)) ? 'urgent' : 'normal'
-}
 
 export default function ContactSupportModal({ businessId, defaultName = '', defaultContact = '', onClose }) {
   const [name, setName] = useState(defaultName)
