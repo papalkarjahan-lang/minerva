@@ -289,8 +289,13 @@ the bottom.
 
 ## Not yet deployed live
 
-- **Agent-OS health-tracking/kill-switch rollout completion** (committed
-  locally, not yet pushed — no fresh GitHub PAT available at the time).
+- **Agent-OS health-tracking/kill-switch rollout — code pushed, edge
+  functions not yet redeployed to Supabase.** Pushed `15dd193` to
+  `origin/main` using a fresh one-time GitHub PAT (`8a90183..15dd193`,
+  includes `429c500` + `15dd193`). Still needs `supabase functions deploy
+  <name>` run for each of the 14 functions below once a fresh Supabase
+  token/CLI session is available — the code is in the repo but not live on
+  Supabase's edge runtime yet.
   In response to "make [the agents] the best possible... as possible",
   audited all 56 edge functions for `record_agent_run` + `agent_functions.enabled`
   coverage and closed every remaining gap on genuinely autonomous/cron
@@ -310,10 +315,7 @@ the bottom.
     and `ai-intake-chat` (human-triggered/real-time, not cron agents).
   - Lint clean, 16/16 frontend tests pass, build clean. All 14 edited Deno
     files brace/paren-balance-checked (no local TypeScript compiler in this
-    project's toolchain — see README for why). Needs `supabase functions
-    deploy <name>` for each of the 14 functions once a fresh Supabase
-    token/CLI session is available, and a `git push` once a fresh GitHub PAT
-    is supplied.
+    project's toolchain — see README for why).
 
 ## Confirmed live (2026-09-06, continued — technician incident reporting)
 
