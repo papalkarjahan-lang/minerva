@@ -942,7 +942,7 @@ a result:
 
 Committed locally — not yet pushed, needs a fresh one-time GitHub PAT.
 
-## Not yet deployed live — needs a fresh Supabase PAT (2026-09-07, subcontractors RLS regression fix)
+## Confirmed live (2026-09-07, subcontractors RLS regression fix)
 
 Found while double-checking the 2026-09-05 RLS read-scoping pass against
 every actual reader of the tables it touched (rather than trusting that
@@ -950,7 +950,7 @@ pass's own "confirmed read-only from DispatcherView" claims at face
 value — same discipline as verifying live state before trusting any past
 note). Real, live functional bug, not a false positive:
 
-- **`subcontractors` SELECT has been silently broken for
+- **`subcontractors` SELECT had been silently broken for
   `auto-assign-technician` since 2026-09-05.** The RLS pass locked
   `subcontractors` SELECT to `auth.uid() = owner_user_id` based on an
   audit that found it read only by the (now auth-gated)
@@ -958,11 +958,11 @@ note). Real, live functional bug, not a false positive:
   subcontractor-fallback dispatch code was added in a *later* commit
   (`09aa680`) and also reads this table, running on the plain anon key
   with no login session (same as every other background agent function).
-  With no anon SELECT policy left on the table, RLS default-denies those
+  With no anon SELECT policy left on the table, RLS default-denied those
   reads — zero rows, no error. Net effect: any business with the
-  `subcontractor_pool` add-on active has had subcontractor-fallback
-  dispatch silently never fire, even when a real subcontractor is free
-  and available, since 2026-09-05.
+  `subcontractor_pool` add-on active had subcontractor-fallback dispatch
+  silently never fire, even when a real subcontractor was free and
+  available, since 2026-09-05.
 - **Fix**: `supabase_schema_delta_subcontractors_select_fix.sql` — restores
   an open anon SELECT policy on `subcontractors`. Doesn't reduce security
   below what already existed: INSERT/UPDATE/DELETE on this table have
@@ -970,9 +970,11 @@ note). Real, live functional bug, not a false positive:
   could already read data back via a write's return value regardless of
   the SELECT policy.
 - Full writeup in `SECURITY_NOTES.md` under the RLS pass 1 entry.
-- Not deployed yet — needs a fresh one-time Supabase PAT to run this one
-  SQL statement via the Management API's `/database/query` endpoint. Only
-  a policy change, no code/edge-function redeploy needed.
+- Applied 2026-09-07 via the Management API's `/database/query` endpoint
+  with a fresh one-time Supabase PAT — verified live by querying
+  `pg_policy` directly (`anon select subcontractors`, cmd `r`, now present
+  alongside the pre-existing owner-scoped policy). Policy-only change, no
+  code/edge-function redeploy needed.
 
 ## Still outstanding (non-code, needs the user or a bank account)
 
