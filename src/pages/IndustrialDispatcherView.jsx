@@ -173,7 +173,8 @@ export default function IndustrialDispatcherView() {
   }
 
   async function acknowledgeIncident(id) {
-    await supabase.from('safety_incidents').update({ acknowledged_at: new Date().toISOString() }).eq('id', id)
+    const { error } = await supabase.from('safety_incidents').update({ acknowledged_at: new Date().toISOString() }).eq('id', id)
+    if (error) { alert(`Couldn't acknowledge incident: ${error.message}`); return }
     loadAll()
   }
 
@@ -183,7 +184,8 @@ export default function IndustrialDispatcherView() {
   // clearing it is what re-arms the alert for next time (see
   // track-consumables' header comment).
   async function restockItem(id) {
-    await supabase.from('consumables_items').update({ reorder_requested_at: null }).eq('id', id)
+    const { error } = await supabase.from('consumables_items').update({ reorder_requested_at: null }).eq('id', id)
+    if (error) { alert(`Couldn't mark item restocked: ${error.message}`); return }
     loadAll()
   }
 
@@ -245,6 +247,11 @@ export default function IndustrialDispatcherView() {
                 <p style={styles.rowMeta}>
                   {l.decision_maker_name ? `Contact: ${l.decision_maker_name}${l.decision_maker_title ? ` (${l.decision_maker_title})` : ''}` : 'Not yet enriched with a decision-maker contact'}
                 </p>
+                {!l.decision_maker_name && l.enrichment_nudge_sent_at && (
+                  <p style={{ ...styles.rowMeta, color: '#e07a7a' }}>
+                    ⚠ Stuck at 'new' — Slack nudge sent {timeAgo(l.enrichment_nudge_sent_at)}
+                  </p>
+                )}
                 <div style={styles.rowActions}>
                   <span style={styles.statusBadge(l.status)}>{l.status}</span>
                   <button style={styles.smallBtn} disabled={busyId === l.id} onClick={() => runConductor(l.id)}>
@@ -311,6 +318,9 @@ export default function IndustrialDispatcherView() {
                 <div style={{ cursor: 'pointer' }} onClick={() => toggleAssetDetails(a.id)}>
                   <p style={styles.rowTitle}>{a.name}</p>
                   <p style={styles.rowMeta}>{a.asset_type} · {a.tag_id ? `tag ${a.tag_id}` : 'no tag id'} · {a.engine_hours || 0} engine hrs</p>
+                  <p style={{ ...styles.rowMeta, color: a.last_telemetry_at ? '#666' : '#e07a7a' }}>
+                    {a.last_telemetry_at ? `Last seen ${timeAgo(a.last_telemetry_at)}` : 'No telemetry received yet'}
+                  </p>
                   <span style={styles.statusBadge(a.status)}>{a.status}</span>
                   <span style={{ ...styles.rowMeta, marginLeft: 8 }}>
                     {expandedAssetId === a.id ? 'Hide event history ▲' : 'View event history ▼'}

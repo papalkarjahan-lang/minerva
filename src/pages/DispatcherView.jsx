@@ -25,6 +25,7 @@ export default function DispatcherView() {
   const [technicians, setTechnicians] = useState([])
   const [jobs, setJobs] = useState([])
   const [leads, setLeads] = useState([])
+  const [lostLeads, setLostLeads] = useState([])
   const [assets, setAssets] = useState([]) // Pro tier only
   const [invoices, setInvoices] = useState([]) // Pro tier only
   const [carbonEstimates, setCarbonEstimates] = useState([]) // Pro tier only — see estimate-job-carbon
@@ -166,6 +167,18 @@ export default function DispatcherView() {
       .in('status', ['new', 'contacted', 'quoted'])
       .order('score', { ascending: false, nullsFirst: false })
     setLeads(leadList || [])
+
+    // Recently lost leads, so a dispatcher can see whether winback-lost-leads
+    // has already sent its one-touch re-engagement SMS (previously that flag
+    // was set but never displayed anywhere).
+    const { data: lostLeadList } = await supabase
+      .from('leads')
+      .select('*')
+      .eq('business_id', businessId)
+      .eq('status', 'lost')
+      .order('created_at', { ascending: false })
+      .limit(20)
+    setLostLeads(lostLeadList || [])
 
     const { data: subList } = await supabase
       .from('subcontractors')
@@ -514,8 +527,10 @@ export default function DispatcherView() {
   // Assign job to technician
   async function assignJob(jobId, techId) {
     const previousTechId = jobs.find(j => j.id === jobId)?.technician_id || null
-    await supabase.from('jobs').update({ technician_id: techId }).eq('id', jobId)
-    await supabase.from('technicians').update({ current_job_id: jobId }).eq('id', techId)
+    const { error: jobErr } = await supabase.from('jobs').update({ technician_id: techId }).eq('id', jobId)
+    if (jobErr) { alert(`Couldn't assign job: ${jobErr.message}`); return }
+    const { error: techErr } = await supabase.from('technicians').update({ current_job_id: jobId }).eq('id', techId)
+    if (techErr) { alert(`Job assigned, but couldn't update technician state: ${techErr.message}`); await loadAll(); return }
     // Fire-and-forget — never blocks the assignment itself on SMS delivery.
     supabase.functions.invoke('send-job-assignment-sms', {
       body: { jobId, technicianId: techId, previousTechnicianId: previousTechId && previousTechId !== techId ? previousTechId : undefined },
@@ -524,7 +539,8 @@ export default function DispatcherView() {
   }
 
   async function assignJobSubcontractor(jobId, subcontractorId) {
-    await supabase.from('jobs').update({ assigned_subcontractor_id: subcontractorId }).eq('id', jobId)
+    const { error } = await supabase.from('jobs').update({ assigned_subcontractor_id: subcontractorId }).eq('id', jobId)
+    if (error) { alert(`Couldn't assign subcontractor: ${error.message}`); return }
     await loadAll()
   }
 
@@ -548,13 +564,15 @@ export default function DispatcherView() {
   }
 
   async function removeCrewMember(assignmentId, techId) {
-    await supabase.from('job_assignments').delete().eq('id', assignmentId)
+    const { error } = await supabase.from('job_assignments').delete().eq('id', assignmentId)
+    if (error) { alert(`Couldn't remove crew member: ${error.message}`); return }
     // Only clear current_job_id if it's still pointing at the job they're
     // being removed from — avoids clobbering a tech who's since moved on.
     const tech = technicians.find(t => t.id === techId)
     const job = Object.values(jobCrew).flat().find(a => a.id === assignmentId)
     if (tech && job && tech.current_job_id === job.job_id) {
-      await supabase.from('technicians').update({ current_job_id: null }).eq('id', techId)
+      const { error: techErr } = await supabase.from('technicians').update({ current_job_id: null }).eq('id', techId)
+      if (techErr) console.error('removeCrewMember: failed to clear current_job_id', techErr)
     }
     await loadAll()
   }
@@ -614,7 +632,8 @@ export default function DispatcherView() {
 
   // Lead pipeline actions
   async function markLeadStatus(leadId, status) {
-    await supabase.from('leads').update({ status }).eq('id', leadId)
+    const { error } = await supabase.from('leads').update({ status }).eq('id', leadId)
+    if (error) { alert(`Couldn't update lead: ${error.message}`); return }
     setLeads(prev => prev.filter(l => l.id !== leadId)) // leaves the active pipeline view
   }
 
@@ -646,12 +665,14 @@ export default function DispatcherView() {
   }
 
   async function assignAsset(assetId, techId) {
-    await supabase.from('assets').update({ assigned_technician_id: techId || null, status: techId ? 'in_use' : 'available' }).eq('id', assetId)
+    const { error } = await supabase.from('assets').update({ assigned_technician_id: techId || null, status: techId ? 'in_use' : 'available' }).eq('id', assetId)
+    if (error) { alert(`Couldn't assign asset: ${error.message}`); return }
     setAssets(prev => prev.map(a => a.id === assetId ? { ...a, assigned_technician_id: techId || null, status: techId ? 'in_use' : 'available' } : a))
   }
 
   async function setAssetStatus(assetId, status) {
-    await supabase.from('assets').update({ status }).eq('id', assetId)
+    const { error } = await supabase.from('assets').update({ status }).eq('id', assetId)
+    if (error) { alert(`Couldn't update asset status: ${error.message}`); return }
     setAssets(prev => prev.map(a => a.id === assetId ? { ...a, status } : a))
   }
 
@@ -663,7 +684,8 @@ export default function DispatcherView() {
     const item = inventory.find(i => i.id === itemId)
     const clearAlert = item && qty > (item.reorder_threshold ?? 0)
     const update = clearAlert ? { quantity: qty, low_stock_alert_sent_at: null } : { quantity: qty }
-    await supabase.from('inventory_items').update(update).eq('id', itemId)
+    const { error } = await supabase.from('inventory_items').update(update).eq('id', itemId)
+    if (error) { alert(`Couldn't update quantity: ${error.message}`); return }
     setInventory(prev => prev.map(i => i.id === itemId ? { ...i, ...update } : i))
   }
 
@@ -872,7 +894,8 @@ export default function DispatcherView() {
   }
 
   async function removeSubcontractor(id) {
-    await supabase.from('subcontractors').update({ is_active: false }).eq('id', id)
+    const { error } = await supabase.from('subcontractors').update({ is_active: false }).eq('id', id)
+    if (error) { alert(`Couldn't remove subcontractor: ${error.message}`); return }
     setSubcontractors(prev => prev.filter(s => s.id !== id))
   }
 
@@ -1071,7 +1094,8 @@ export default function DispatcherView() {
   // false) rather than a hard delete, so job history stays intact.
   async function deactivateTech(techId) {
     if (!confirm('Remove this technician? They will stop appearing on the map and you will no longer be billed for them.')) return
-    await supabase.from('technicians').update({ is_active: false }).eq('id', techId)
+    const { error } = await supabase.from('technicians').update({ is_active: false }).eq('id', techId)
+    if (error) { alert(`Couldn't remove technician: ${error.message}`); return }
     setTechnicians(prev => prev.filter(t => t.id !== techId))
     // Recompute billed quantity now that the roster shrank. Fire-and-forget,
     // same as the technician-side sync call — never blocks the UI.
@@ -1422,6 +1446,11 @@ export default function DispatcherView() {
                           Completed {job.completed_at ? new Date(job.completed_at).toLocaleDateString('en-AU') : ''}
                           {' · '}{expandedJobId === job.id ? 'Hide details ▲' : 'View details ▼'}
                         </p>
+                        {job.retention_sent_at && (
+                          <p style={{ ...styles.jobAddr, color: '#6b7280', fontSize: 11 }}>
+                            ✓ Retention check-in sent {new Date(job.retention_sent_at).toLocaleDateString('en-AU')}
+                          </p>
+                        )}
                       </div>
                       <a href={`/dispute/${job.id}`} target="_blank" rel="noreferrer"
                         style={{ ...styles.leadActionSecondary, display: 'inline-block', textDecoration: 'none', marginTop: 4, fontSize: 11 }}
@@ -1566,6 +1595,23 @@ export default function DispatcherView() {
                 </div>
               ))}
               {leads.length === 0 && <p style={{ color: '#444', fontSize: 13 }}>No open leads</p>}
+
+              {lostLeads.length > 0 && (
+                <div style={{ marginTop: 16 }}>
+                  <p style={styles.sectionLabel}>LOST LEADS</p>
+                  {lostLeads.map(lead => (
+                    <div key={lead.id} style={styles.leadRow}>
+                      <p style={styles.jobClient}>{lead.client_name || 'Unnamed'}</p>
+                      <p style={styles.jobAddr}>{lead.suburb} · {lead.client_phone}</p>
+                      <p style={{ ...styles.jobAddr, color: lead.lost_winback_sent_at ? '#6b7280' : '#B45309', fontSize: 11 }}>
+                        {lead.lost_winback_sent_at
+                          ? `✓ Win-back SMS sent ${new Date(lead.lost_winback_sent_at).toLocaleDateString('en-AU')}`
+                          : 'Win-back SMS not sent yet'}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </>
           )}
 
@@ -3045,12 +3091,14 @@ function CustomWorkflowsPanel({ businessId }) {
   }
 
   async function toggleActive(wf) {
-    await supabase.from('custom_workflows').update({ active: !wf.active }).eq('id', wf.id)
+    const { error } = await supabase.from('custom_workflows').update({ active: !wf.active }).eq('id', wf.id)
+    if (error) { alert(`Couldn't update workflow: ${error.message}`); return }
     setWorkflows(prev => prev.map(w => w.id === wf.id ? { ...w, active: !w.active } : w))
   }
 
   async function removeWorkflow(id) {
-    await supabase.from('custom_workflows').delete().eq('id', id)
+    const { error } = await supabase.from('custom_workflows').delete().eq('id', id)
+    if (error) { alert(`Couldn't remove workflow: ${error.message}`); return }
     setWorkflows(prev => prev.filter(w => w.id !== id))
   }
 

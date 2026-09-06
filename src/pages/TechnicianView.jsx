@@ -116,6 +116,11 @@ export default function TechnicianView() {
   // invoiceSmsWarning) so the technician still finds out, even though it
   // never blocks job completion.
   const [checklistPhotoWarning, setChecklistPhotoWarning] = useState(null)
+  // Set if a critical state-sync write (job status, technician current_job_id,
+  // crew release) fails during start/finish/leave-job — same "never block
+  // the flow the technician is already mid-action on, but never let a
+  // failure be invisible" pattern as invoiceSmsWarning/checklistPhotoWarning.
+  const [syncWarning, setSyncWarning] = useState(null)
   // Pro-tier materials-used: shown after the checklist (if any), lets the
   // technician optionally log parts/materials consumed on this job against
   // this business's inventory_items. Also optional — skips straight to
@@ -537,18 +542,24 @@ export default function TechnicianView() {
   async function leaveJob() {
     if (!currentJob || !tech) return
     setLeavingJob(true)
-    await supabase.from('job_assignments').delete().eq('job_id', currentJob.id).eq('technician_id', tech.id)
-    await supabase.from('technicians').update({ current_job_id: null }).eq('id', tech.id)
+    const { error: assignError } = await supabase.from('job_assignments').delete().eq('job_id', currentJob.id).eq('technician_id', tech.id)
+    const { error: techError } = await supabase.from('technicians').update({ current_job_id: null }).eq('id', tech.id)
+    if (assignError || techError) {
+      setSyncWarning("Couldn't fully sync leaving this job — if it still shows as your active job later, contact your office.")
+    }
     setCurrentJob(null)
     setLeavingJob(false)
   }
 
   async function handleStartJob() {
     if (!currentJob || isCrew) return
-    await supabase.from('jobs').update({
+    const { error } = await supabase.from('jobs').update({
       status: 'active',
       started_at: new Date().toISOString()
     }).eq('id', currentJob.id)
+    if (error) {
+      setSyncWarning("Couldn't confirm job start with the office — you can keep working, but let your office know if this doesn't update.")
+    }
     setCurrentJob(prev => ({ ...prev, status: 'active', started_at: new Date().toISOString() }))
     setTracking(true)
     setStatus('job_active')
@@ -634,7 +645,10 @@ export default function TechnicianView() {
 
   async function confirmChecklist() {
     const results = checklistTemplate.items.map((item, i) => ({ item, checked: checklistChecks[i] }))
-    await supabase.from('jobs').update({ checklist_results: results }).eq('id', currentJob.id)
+    const { error } = await supabase.from('jobs').update({ checklist_results: results }).eq('id', currentJob.id)
+    if (error) {
+      setSyncWarning("Couldn't save the checklist to the office — your answers are kept for this session, but let your office know if this keeps happening.")
+    }
     setCurrentJob(prev => ({ ...prev, checklist_results: results }))
     uploadChecklistPhotos()
     setChecklistDone(true)
@@ -706,20 +720,28 @@ export default function TechnicianView() {
   async function finishTheJob() {
     clearInterval(intervalRef.current)
     setTracking(false)
-    await supabase.from('jobs').update({
+    const syncErrors = []
+    const { error: jobError } = await supabase.from('jobs').update({
       status: 'complete',
       completed_at: new Date().toISOString()
     }).eq('id', currentJob.id)
-    await supabase.from('technicians').update({
+    if (jobError) syncErrors.push(jobError)
+    const { error: techError } = await supabase.from('technicians').update({
       current_job_id: null
     }).eq('id', tech.id)
+    if (techError) syncErrors.push(techError)
     // Release any crew members too — only the lead's finishTheJob() call
     // reaches here, so this is the one place that needs to clean up
     // job_assignments for everyone who was helping on this job.
     const { data: crew } = await supabase.from('job_assignments').select('technician_id').eq('job_id', currentJob.id)
     if (crew && crew.length > 0) {
-      await supabase.from('technicians').update({ current_job_id: null }).in('id', crew.map(c => c.technician_id))
-      await supabase.from('job_assignments').delete().eq('job_id', currentJob.id)
+      const { error: crewTechError } = await supabase.from('technicians').update({ current_job_id: null }).in('id', crew.map(c => c.technician_id))
+      if (crewTechError) syncErrors.push(crewTechError)
+      const { error: crewAssignError } = await supabase.from('job_assignments').delete().eq('job_id', currentJob.id)
+      if (crewAssignError) syncErrors.push(crewAssignError)
+    }
+    if (syncErrors.length > 0) {
+      setSyncWarning("The job finished, but part of the sync with the office failed — if this job or your crew's status looks wrong later, contact your office.")
     }
     await triggerCompletionSMS()
     // Custom Workflows: fire the 'job.completed' trigger for this business, if any are configured.
@@ -936,6 +958,16 @@ export default function TechnicianView() {
           <p style={styles.credentialBannerTitle}>⚠️ Checklist photo upload failed</p>
           <p style={styles.credentialBannerLine}>{checklistPhotoWarning}</p>
           <button type="button" style={{ ...styles.btnGreySmall, marginTop: 8, padding: '4px 10px', fontSize: 12 }} onClick={() => setChecklistPhotoWarning(null)}>
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {syncWarning && (
+        <div style={styles.credentialBanner}>
+          <p style={styles.credentialBannerTitle}>⚠️ Sync issue</p>
+          <p style={styles.credentialBannerLine}>{syncWarning}</p>
+          <button type="button" style={{ ...styles.btnGreySmall, marginTop: 8, padding: '4px 10px', fontSize: 12 }} onClick={() => setSyncWarning(null)}>
             Dismiss
           </button>
         </div>

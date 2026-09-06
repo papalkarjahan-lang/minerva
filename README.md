@@ -539,12 +539,15 @@ independently of Track A/B.
 `finance` / `design` / `core`), `enabled`, and run-health data
 (`last_run_at`, `last_status`, `last_error`, cumulative `error_count`).
 
-**Kill-switch — partially implemented.** Setting a row's `enabled = false`
-is meant to let you disable a single misbehaving agent without a code
-deploy. **Honesty note**: as of Phase 1, no edge function actually checks
-its own `agent_functions.enabled` flag yet — flipping it currently does
-nothing at runtime. Wiring each function to check this flag before doing
-real work is a known follow-up for a later phase, not yet built.
+**Kill-switch — partially implemented at the time this phase shipped.**
+Setting a row's `enabled = false` is meant to let you disable a single
+misbehaving agent without a code deploy. **Honesty note**: as of Phase 1,
+no edge function actually checked its own `agent_functions.enabled` flag
+yet — flipping it did nothing at runtime. **This has since been built**
+(2026-09-02/03 through the ongoing audit pass, separate from Phase 1): every
+autonomous/cron-driven edge function now checks `agent_functions.enabled`
+at the top of its run and skips early when disabled — see Phase 5's
+"Known follow-up" note below for the caveat that comes with it.
 
 **`agent_insights`** — a shared scratchpad any agent (or the health-check
 sweep) can write an observation to (`insight_type`: `anomaly` / `pattern` /
@@ -569,9 +572,11 @@ re-alerts once the function has actually run again since the last alert.
 feeds `agent_functions`. Wired in as a proof-of-pattern into 3 functions
 this phase (`check-inventory-levels`, `chase-unpaid-invoices`,
 `reconcile-billing`) — fire-and-forget on both their success and error
-paths. The other 20+ autonomous functions are **not yet wired in** —
-rolling that out everywhere is a follow-up, done deliberately narrow here
-to avoid touching working production functions without individual review.
+paths — done deliberately narrow here at first to avoid touching working
+production functions without individual review. **Since rolled out
+everywhere**: every autonomous/cron-driven edge function in the codebase
+(56 total) now calls `record_agent_run` on both its success and error
+paths, not just these original 3.
 
 Schema: `supabase_schema_delta_agent_infra.sql`. Deploy/run order:
 ```bash
@@ -635,8 +640,14 @@ All four also get `record_agent_run` wired in (success + error paths,
 
 This is the **first phase where any function actually writes to
 `agent_insights`** — Phase 1 only had the health-check sweep writing to it;
-`agent_insights` is not yet read back by anything, so these rows are purely
-for later phases/humans to review directly in the table for now.
+at the time this phase shipped, `agent_insights` was not yet read back by
+anything, so these rows were purely for later phases/humans to review
+directly in the table. **This has since changed**: `agent-council-report`
+reads every insight from the last 7 days into its weekly digest (Phase 4),
+and `generate-growth-drafts` reads the latest `demand_forecast` insight
+written by `forecast-demand` to surface a forecast-linked marketing
+suggestion — the first real agent-to-agent (not just agent-to-human) use
+of the table.
 
 **No shared code across function folders.** Since every edge function
 folder deploys independently via `supabase functions deploy <name>` with no
@@ -873,9 +884,10 @@ shipped, this was a **read-only** dashboard — `agent_functions.enabled` (the
 Phase 1 kill-switch column) wasn't read by any edge function yet, so an
 enable/disable toggle would have done nothing. **This has since been built**
 (2026-09-02/03, separate from Phase 5): the Agents tab now has a working
-enable/disable toggle per function, and all 11 gated edge functions check
-`agent_functions.enabled` at the top of every run and skip early when
-disabled. See `SECURITY_NOTES.md` for the one caveat that comes with
+enable/disable toggle per function, and every autonomous/cron-driven edge
+function (56 total, up from the original 11 gated at the time this was
+built) checks `agent_functions.enabled` at the top of every run and skips
+early when disabled. See `SECURITY_NOTES.md` for the one caveat that comes with
 this — `agent_functions` rows aren't `business_id`-scoped, so anyone who
 knows to add `?agents=1` can disable another business's agents, not just
 their own.

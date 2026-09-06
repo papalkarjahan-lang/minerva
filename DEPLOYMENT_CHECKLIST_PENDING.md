@@ -786,6 +786,78 @@ each row against the real codebase before building anything blind:
   rearchitectures — this needs to be its own scoped, reviewed project if
   wanted, not something to "just do" alongside smaller fixes.
 
+## Built, tested, committed locally — needs a fresh GitHub PAT to push (2026-09-06, frontend error-handling + orphaned-feature audit pass)
+
+Follow-up to the "make Minerva a fully functioning business" mandate: a
+3-way parallel audit (edge functions / frontend / schema+docs) was run to
+find remaining real gaps. The edge-function and most of the schema
+findings were false positives on inspection (discarded, not fixed —
+`agent_functions`/`record_agent_run` wiring and RLS/grants are already
+consistently correct across all 56 functions). The following real gaps
+were confirmed and fixed. Pure frontend (`.jsx`) + one documentation file —
+no schema or edge function changes, so nothing needs a Supabase redeploy,
+only a `git push`.
+
+- **15 unhandled async DB write operations** — several dispatcher/
+  technician actions fired a Supabase write and moved on without checking
+  `{ error }`, so a failed write (RLS denial, network drop, bad FK) was
+  silently invisible to both the person clicking the button and anyone
+  debugging later. Fixed per-file, matching each file's own existing
+  convention rather than forcing one pattern everywhere:
+  - `DispatcherView.jsx` (11 spots — `assignJob`, `assignJobSubcontractor`,
+    `removeCrewMember`, `markLeadStatus`, `assignAsset`, `setAssetStatus`,
+    `updateInventoryQty`, `removeSubcontractor`, `deactivateTech`,
+    `toggleActive`/`removeWorkflow` for custom workflows): now check
+    `{ error }` and `alert()` + `return` on failure, matching the file's
+    pre-existing `convertLeadToJob`/`createQuote` pattern.
+  - `TechnicianView.jsx` (4 spots — `leaveJob`, `handleStartJob`,
+    `confirmChecklist`, `finishTheJob`): a technician mid-job should never
+    have their flow blocked by a sync failure (no transaction/rollback
+    exists, so halting halfway could leave a worse partial state), so
+    these use a new non-blocking `syncWarning` state + dismissible banner
+    instead of `alert()`, matching the file's existing
+    `invoiceSmsWarning`/`checklistPhotoWarning` pattern exactly.
+  - `IndustrialDispatcherView.jsx` (2 spots — `acknowledgeIncident`,
+    `restockItem`): this file had no prior error-surfacing convention at
+    all (only silent `console.error` on background fetches), so it now
+    follows `DispatcherView.jsx`'s `alert()` + `return` pattern, since the
+    header comment states it deliberately "mirrors DispatcherView's
+    structure."
+- **4 orphaned backend features** (a column written by an autonomous edge
+  function but never displayed anywhere in the UI — same class of gap
+  fixed repeatedly in past audits) surfaced in the frontend:
+  1. `jobs.retention_sent_at` (written by `retention-checkin`) — small
+     "✓ Retention check-in sent" line added under each row in
+     `DispatcherView.jsx`'s "Recently completed" jobs list.
+  2. `leads.lost_winback_sent_at` (written by `winback-lost-leads`) — leads
+     marked `'lost'` previously vanished from the UI entirely once
+     dispatched (the leads query only fetches `new`/`contacted`/`quoted`).
+     Added a new "Lost leads" section (new `lostLeads` state + query,
+     `status = 'lost'`, limit 20) to `DispatcherView.jsx` showing whether
+     the one-touch win-back SMS has gone out yet.
+  3. `industrial_assets.last_telemetry_at` (written by
+     `monitor-asset-telemetry`) — "Last seen X ago" / "No telemetry
+     received yet" line added to each asset row in
+     `IndustrialDispatcherView.jsx`.
+  4. `industrial_leads.enrichment_nudge_sent_at` (written by
+     `enrich-industrial-leads`) — a warning line ("Stuck at 'new' — Slack
+     nudge sent X ago") added to leads still missing a decision-maker
+     contact in `IndustrialDispatcherView.jsx`.
+- **3 stale documentation claims** in `README.md`'s Phase 1/2/5 "Agent
+  Operating System" sections, left over from when those phases originally
+  shipped and never updated once later work closed the gaps they
+  described: the Phase 1 "kill-switch does nothing at runtime yet" note,
+  the Phase 1 "`record_agent_run` only wired into 3 functions" note, the
+  Phase 2 "`agent_insights` not yet read back by anything" note, and the
+  Phase 5 "11 gated edge functions" count — all updated in place with
+  "this has since changed" clarifications reflecting the current, actually
+  fully-wired state (all 56 functions) rather than rewriting history.
+- `npm run lint` / `npm test -- --run` (16/16) / `npm run build` all
+  verified clean after every change above.
+
+Needs a fresh one-time GitHub PAT to push — none supplied for this batch,
+so it's committed locally only as of this writing.
+
 ## Still outstanding (non-code, needs the user or a bank account)
 
 - Twilio Voice webhook for `missed-call-webhook` — blocked, trial accounts
