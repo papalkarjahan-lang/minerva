@@ -2242,6 +2242,7 @@ export default function DispatcherView() {
       {showAddJob && (
         <AddJobModal
           businessId={businessId}
+          technicianCredentials={technicianCredentials}
           onClose={() => { setShowAddJob(false); loadAll() }}
         />
       )}
@@ -2398,12 +2399,18 @@ function AddTechnicianModal({ businessId, businessName, onClose }) {
 }
 
 // ── ADD JOB MODAL ──────────────────────────────────────────
-function AddJobModal({ businessId, onClose }) {
+function AddJobModal({ businessId, technicianCredentials, onClose }) {
   const [form, setForm] = useState({
-    client_name: '', client_phone: '', client_address: '', scheduled_time: '', notes: '', urgency: ''
+    client_name: '', client_phone: '', client_address: '', scheduled_time: '', notes: '', urgency: '', required_credential_name: ''
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+
+  // Distinct credential names already tracked for this business (Licence/
+  // Ticket Expiry Guardian, Pro tier) — reused here so a dispatcher picks
+  // from real credentials instead of free-typing a name that won't match
+  // anything in auto-assign-technician's exact-match filter.
+  const credentialNames = [...new Set((technicianCredentials || []).map(c => c.credential_name).filter(Boolean))].sort()
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -2421,6 +2428,7 @@ function AddJobModal({ businessId, onClose }) {
         scheduled_time: form.scheduled_time || null,
         notes: form.notes || null,
         urgency: form.urgency || null,
+        required_credential_name: form.required_credential_name || null,
         status: 'scheduled'
       })
       onClose()
@@ -2464,6 +2472,19 @@ function AddJobModal({ businessId, onClose }) {
               blocks assignment, it just helps spread frequent emergency callouts more evenly.
             </p>
           </div>
+          {credentialNames.length > 0 && (
+            <div style={{ marginBottom: 14 }}>
+              <label style={styles.inputLabel}>Required credential (optional)</label>
+              <select value={form.required_credential_name} onChange={f('required_credential_name')} style={styles.input}>
+                <option value="">None</option>
+                {credentialNames.map(name => <option key={name} value={name}>{name}</option>)}
+              </select>
+              <p style={{ color: '#888', fontSize: 12, margin: '6px 0 0' }}>
+                If set, auto-dispatch will only assign a technician who currently holds this
+                credential (unexpired) — unlike urgency, this DOES block assignment.
+              </p>
+            </div>
+          )}
           {error && <p style={{ color: '#8A2525', fontSize: 13 }}>{error}</p>}
           <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
             <button type="submit" disabled={loading} style={styles.submitBtn}>

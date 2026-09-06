@@ -20,6 +20,14 @@
 //    nurture-stale-leads and retention-checkin, just a different segment
 //    (near-miss quotes rather than brand-new leads or past clients).
 //
+// Cross-agent data sharing (added 2026-09-06, supabase_schema_delta_
+// growth_forecast_sharing.sql): also reads the business's most recent
+// forecast-demand insight (agent_insights.trend_address) and, if present
+// and not already covered by a recent ad_campaign draft or a prior
+// forecast-linked suggestion, writes a second informational agent_insights
+// row surfacing it — mirrors the audience-opportunity pattern below exactly
+// (never a real draft/ad spend, just a human-facing nudge).
+//
 // Deploy with: supabase functions deploy generate-growth-drafts
 // Required secrets: ANTHROPIC_API_KEY (same as ai-intake-chat)
 
@@ -108,6 +116,59 @@ serve(async (req: Request) => {
             related_table: 'businesses',
             related_id: biz.id,
           }).then(() => {}, (insErr) => console.error('generate-growth-drafts: audience-opportunity insight failed', insErr))
+        }
+      }
+
+      // Forecast-linked audience insight (Marketing agent, added 2026-09-06) —
+      // same "informational only, no Claude call" shape as the block above,
+      // but sourced from another agent's signal instead of this function's
+      // own suburb ranking. Reads the business's most recent forecast-demand
+      // insight and, if it hasn't already been acted on (an ad_campaign draft
+      // targeting that suburb) or already surfaced recently (dedup window
+      // below), writes one informational suggestion row.
+      const { data: latestForecast } = await supabase
+        .from('agent_insights')
+        .select('trend_address, created_at')
+        .eq('business_id', biz.id)
+        .eq('agent', 'scheduling')
+        .eq('insight_type', 'demand_forecast')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (latestForecast?.trend_address) {
+        const trendSuburb = latestForecast.trend_address.split(',').pop()?.trim() || latestForecast.trend_address
+
+        const { count: priorTrendDraftCount } = await supabase
+          .from('marketing_drafts')
+          .select('id', { count: 'exact', head: true })
+          .eq('business_id', biz.id)
+          .eq('type', 'ad_campaign')
+          .eq('target_suburb', trendSuburb)
+          .gte('created_at', ninetyDaysAgo)
+
+        // 14-day dedup window — forecast-demand runs weekly and can keep
+        // flagging the same trending address for several weeks running;
+        // this stops the same suggestion being re-surfaced every single run.
+        const trendDedupCutoff = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()
+        const { count: priorTrendInsightCount } = await supabase
+          .from('agent_insights')
+          .select('id', { count: 'exact', head: true })
+          .eq('business_id', biz.id)
+          .eq('agent', 'marketing')
+          .eq('trend_address', latestForecast.trend_address)
+          .gte('created_at', trendDedupCutoff)
+
+        if ((priorTrendDraftCount ?? 0) === 0 && (priorTrendInsightCount ?? 0) === 0) {
+          await supabase.from('agent_insights').insert({
+            agent: 'marketing',
+            insight_type: 'suggestion',
+            summary: `Scheduling's demand forecast flagged rising bookings near "${latestForecast.trend_address}" — worth considering as a targeted ad area once you've reviewed the current draft.`,
+            business_id: biz.id,
+            related_table: 'businesses',
+            related_id: biz.id,
+            trend_address: latestForecast.trend_address,
+          }).then(() => {}, (insErr) => console.error('generate-growth-drafts: forecast-linked insight failed', insErr))
         }
       }
 

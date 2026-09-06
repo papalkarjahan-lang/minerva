@@ -43,6 +43,22 @@
 // job is left unassigned for a human to route, same as "nobody free"
 // today. Prevents auto-dispatching someone absurdly far away just because
 // everyone closer happened to be busy.
+//
+// Credential-compliance hard filter (added 2026-09-06, supabase_schema_
+// delta_credential_dispatch.sql): jobs.required_credential_name, null by
+// default (= no requirement, unchanged behaviour). If a dispatcher set it
+// when creating the job, any free technician who does NOT hold a
+// currently-valid (expiry_date >= today) technician_credentials row with
+// that exact credential_name is excluded from the candidate pool BEFORE
+// distance/tiebreak scoring — this is a hard exclude, unlike the soft
+// Fair-Rotation tiebreak above, because sending someone to a job requiring
+// a licence they don't hold is a compliance/safety risk, not a fairness
+// optimization. If this empties the pool, behaves exactly like "nobody
+// free" today (falls through to the subcontractor fallback, then to
+// no_technician_available). HONESTY NOTE: the subcontractor fallback path
+// does NOT check this — no credential data exists for subcontractors in
+// this build, so a subcontractor is only ever a fallback for capacity, not
+// yet a credential-checked one.
 // Deploy with: supabase functions deploy auto-assign-technician
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
@@ -90,7 +106,7 @@ serve(async (req: Request) => {
 
     const { data: job, error: jobErr } = await supabase
       .from('jobs')
-      .select('id, business_id, technician_id, client_lat, client_lng, client_name')
+      .select('id, business_id, technician_id, client_lat, client_lng, client_name, required_credential_name')
       .eq('id', job_id)
       .single()
     if (jobErr || !job) throw new Error('Job not found')
@@ -133,7 +149,22 @@ serve(async (req: Request) => {
       .eq('is_active', true)
       .is('current_job_id', null)
 
-    const free = (techs || []).filter(t => t.current_lat != null && t.current_lng != null)
+    let free = (techs || []).filter(t => t.current_lat != null && t.current_lng != null)
+
+    // Hard-exclude technicians lacking a currently-valid required credential —
+    // see header comment. No requirement set = no filtering, same as before.
+    if (job.required_credential_name && free.length > 0) {
+      const today = new Date().toISOString().slice(0, 10)
+      const { data: validCreds } = await supabase
+        .from('technician_credentials')
+        .select('technician_id')
+        .eq('business_id', job.business_id)
+        .eq('credential_name', job.required_credential_name)
+        .gte('expiry_date', today)
+      const qualifiedIds = new Set((validCreds || []).map(c => c.technician_id))
+      free = free.filter(t => qualifiedIds.has(t.id))
+    }
+
     if (free.length === 0) {
       // No employed technician free — fall back to the subcontractor pool
       // before giving up entirely (only if the business's add-on is

@@ -16,6 +16,12 @@
 // trend is found — most weeks will produce nothing for a small business,
 // which is correct, not a bug). Reuses the same table Phase 2/3 of the
 // Agent OS build already writes to.
+//
+// Cross-agent data sharing (added 2026-09-06, supabase_schema_delta_
+// growth_forecast_sharing.sql): also sets agent_insights.trend_address to
+// the same address as a structured field (summary above is prose-only),
+// so generate-growth-drafts can consume this signal directly instead of
+// re-deriving its own trend from scratch.
 // Deploy with: supabase functions deploy forecast-demand
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
@@ -95,6 +101,9 @@ serve(async (req: Request) => {
           insight_type: 'demand_forecast',
           business_id: biz.id,
           summary: `Bookings trending up near "${best.addr}" — ${best.recent} job(s) in the last 2 weeks vs ${best.older} in the 2 weeks before (trend math on your own job history, not a forecast model). Consider pre-positioning a technician or checking availability in that area.`,
+          // Structured copy of the trending address (summary above is prose-only) —
+          // lets generate-growth-drafts consume this signal without re-parsing text.
+          trend_address: best.addr,
         })
         flagged++
       }

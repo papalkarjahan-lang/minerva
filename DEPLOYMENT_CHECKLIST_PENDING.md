@@ -289,7 +289,49 @@ the bottom.
 
 ## Not yet deployed live
 
-Nothing currently pending on the code/DB side.
+Built this session (2026-09-06, continued) in response to "all of them" —
+the two real cross-agent data-sharing features scoped after the full
+`agent_insights` write-only audit (see prior "Confirmed live" entry above).
+**Code written, tested (lint/vitest/build all clean, brace/paren-balance
+checked on the edited Deno files), and committed locally — NOT yet pushed
+to GitHub or deployed to Supabase.** Both GitHub and Supabase PATs used
+earlier this session are spent (one-time-use); needs fresh tokens next time
+before this goes live.
+
+1. **Credential-aware dispatch** (Dispatch pillar, hard filter, not a soft
+   tiebreak — sending someone to a job requiring a licence they don't hold
+   is a compliance/safety risk, categorically different from the existing
+   Fair-Rotation fairness tiebreak):
+   - New column `jobs.required_credential_name` (nullable — see
+     `supabase_schema_delta_credential_dispatch.sql`).
+   - `auto-assign-technician`: if the job has this set, any free technician
+     lacking a currently-valid (`expiry_date >= today`) matching
+     `technician_credentials` row is hard-excluded from the candidate pool
+     before distance/tiebreak scoring. Empties-the-pool behaves exactly
+     like "nobody free" today (falls through to subcontractor fallback,
+     then `no_technician_available`). Honesty note in the code: the
+     subcontractor fallback does NOT credential-check — no such data exists
+     for subcontractors in this build.
+   - `DispatcherView.jsx`'s `AddJobModal`: new optional "Required credential"
+     dropdown, populated from that business's own distinct
+     `technician_credentials.credential_name` values (only rendered at all
+     if the business has at least one credential on file).
+2. **Demand-forecast-aware marketing targeting** (first real agent-to-agent
+   data link through `agent_insights`, which was previously write-only for
+   machine consumption — only reader was the human-facing weekly digest):
+   - New column `agent_insights.trend_address` (nullable — see
+     `supabase_schema_delta_growth_forecast_sharing.sql`).
+   - `forecast-demand`: now also writes the trending address to this
+     structured column (alongside its existing prose `summary`).
+   - `generate-growth-drafts`: reads the business's most recent
+     `demand_forecast` insight and, if not already covered by a recent
+     `ad_campaign` draft targeting that suburb or already surfaced in the
+     last 14 days (dedup, since forecast-demand runs weekly and could
+     otherwise re-flag the same trend every run), writes a second
+     informational `agent_insights` suggestion row — mirrors the existing
+     "audience-opportunity insight" pattern exactly. Still Growth-pillar
+     constrained: informational only, never auto-creates a real draft or ad
+     spend.
 
 ## Confirmed live (2026-09-06, continued — Agent-OS kill-switch/health-tracking rollout)
 
