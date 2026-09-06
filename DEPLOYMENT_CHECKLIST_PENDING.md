@@ -289,22 +289,26 @@ the bottom.
 
 ## Not yet deployed live
 
-- **Technician-side incident reporting** (`TechnicianView.jsx`): a full
-  system-wiring audit (technician phone flow, all 29 cron-scheduled agent
-  functions, Stripe/Twilio/Mapbox/Xero/Slack integrations) found everything
-  else confirmed working end-to-end, except one genuinely half-built
-  feature — `technician_incidents` (the "Crew Coordination accountability
-  log") already had dispatcher-side UI (`DispatcherView.jsx`'s
+Nothing currently pending on the code/DB side.
+
+## Confirmed live (2026-09-06, continued — technician incident reporting)
+
+- Pushed `8a90183` to `origin/main` using a fresh one-time GitHub PAT
+  (`d03845b..8a90183`). Contains: technician-side incident reporting.
+  A full system-wiring audit (technician phone flow, all 29 cron-scheduled
+  agent functions, Stripe/Twilio/Mapbox/Xero/Slack integrations) found
+  everything else confirmed working end-to-end, except one genuinely
+  half-built feature — `technician_incidents` (the "Crew Coordination
+  accountability log") already had dispatcher-side UI (`DispatcherView.jsx`'s
   `addIncident()`) and its RLS policy already allowed
   `reported_by: 'technician'`, but no technician-side UI ever wrote to it —
   a one-way "dispute log". Added a "Report an issue" button + modal in
   `TechnicianView.jsx` (category: note/dispute/near_miss/commendation,
   works with or without a current job) and updated `DispatcherView.jsx`'s
   incident log line to show who reported it. No schema change needed — the
-  table/RLS/grants already supported this. Plain frontend code, no separate
-  deploy step needed beyond the next `git push` (Vercel auto-deploy).
-  Lint clean, 16/16 tests pass, build clean. Needs a fresh GitHub PAT to
-  push.
+  table/RLS/grants already supported this. Plain frontend code — live via
+  Vercel auto-deploy from this push, no separate function/SQL deploy step.
+  Lint clean, 16/16 tests pass, build clean.
 
 ## Confirmed live (2026-09-06, continued — testing + RLS live-verification pass)
 
