@@ -45,6 +45,11 @@ serve(async (req: Request) => {
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
     const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
+    const { data: fnState } = await supabase.from('agent_functions').select('enabled').eq('name', 'estimate-job-carbon').maybeSingle()
+    if (fnState?.enabled === false) {
+      return new Response(JSON.stringify({ success: true, skipped: true, reason: 'disabled via agent_functions.enabled' }), { status: 200, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } })
+    }
+
     // Minerva Max: carbon_estimate is a paid add-on — defense in depth
     // alongside the frontend gate (DispatcherView's Carbon Est. tab).
     // Resolve the set of businesses with the addon active/trialing first,

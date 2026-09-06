@@ -31,6 +31,11 @@ serve(async (req: Request) => {
     const supabase = createClient(supabaseUrl, supabaseAnonKey)
     const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY')
 
+    const { data: fnState } = await supabase.from('agent_functions').select('enabled').eq('name', 'check-credential-expiry').maybeSingle()
+    if (fnState?.enabled === false) {
+      return new Response(JSON.stringify({ success: true, skipped: true, reason: 'disabled via agent_functions.enabled' }), { status: 200, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } })
+    }
+
     const now = new Date()
     const in30 = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
     const in14 = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)

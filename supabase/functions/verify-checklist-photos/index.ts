@@ -37,6 +37,11 @@ serve(async (req: Request) => {
     const supabase = createClient(supabaseUrl, supabaseAnonKey)
     const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY')
 
+    const { data: fnState } = await supabase.from('agent_functions').select('enabled').eq('name', 'verify-checklist-photos').maybeSingle()
+    if (fnState?.enabled === false) {
+      return new Response(JSON.stringify({ success: true, skipped: true, reason: 'disabled via agent_functions.enabled' }), { status: 200, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } })
+    }
+
     const { data: pending, error } = await supabase
       .from('checklist_photos')
       .select('id, job_id, checklist_item, storage_path')
@@ -95,12 +100,17 @@ serve(async (req: Request) => {
       jobsVerified++
     }
 
+    supabase.rpc('record_agent_run', { fn_name: 'verify-checklist-photos', status: 'ok' }).then(() => {}, () => {})
     return new Response(JSON.stringify({ success: true, reviewed, flagged, scanned: (pending || []).length, jobsVerified }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     })
   } catch (err) {
     console.error('verify-checklist-photos error:', err)
+    try {
+      const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!)
+      supabase.rpc('record_agent_run', { fn_name: 'verify-checklist-photos', status: 'error', error_msg: err.message }).then(() => {}, () => {})
+    } catch (_) { /* best-effort only */ }
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },

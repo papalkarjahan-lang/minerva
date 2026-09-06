@@ -289,7 +289,31 @@ the bottom.
 
 ## Not yet deployed live
 
-Nothing currently pending on the code/DB side.
+- **Agent-OS health-tracking/kill-switch rollout completion** (committed
+  locally, not yet pushed — no fresh GitHub PAT available at the time).
+  In response to "make [the agents] the best possible... as possible",
+  audited all 56 edge functions for `record_agent_run` + `agent_functions.enabled`
+  coverage and closed every remaining gap on genuinely autonomous/cron
+  functions:
+  - Added the `agent_functions.enabled` kill-switch check (matching the
+    canonical pattern already used by `check-inventory-levels`) to 12
+    functions that had `record_agent_run` but no kill-switch:
+    `auto-assign-technician`, `check-credential-expiry`, `detect-idle-assets`,
+    `enrich-industrial-leads`, `estimate-job-carbon`, `flag-abandoned-signups`,
+    `industrial-conductor`, `launch-ad-campaign`, `predict-asset-maintenance`,
+    `send-growth-message`, `harvest-industrial-leads`, `monitor-asset-telemetry`.
+  - Added full wiring (kill-switch check + `record_agent_run` on both the
+    success and error paths) to 3 functions that had neither:
+    `verify-checklist-photos`, `daily-digest`, `run-custom-workflows`.
+  - Deliberately left unchanged: `reconcile-technician-state` (self-healing
+    recovery function, no kill-switch by design), `package-client-verification`
+    and `ai-intake-chat` (human-triggered/real-time, not cron agents).
+  - Lint clean, 16/16 frontend tests pass, build clean. All 14 edited Deno
+    files brace/paren-balance-checked (no local TypeScript compiler in this
+    project's toolchain — see README for why). Needs `supabase functions
+    deploy <name>` for each of the 14 functions once a fresh Supabase
+    token/CLI session is available, and a `git push` once a fresh GitHub PAT
+    is supplied.
 
 ## Confirmed live (2026-09-06, continued — technician incident reporting)
 

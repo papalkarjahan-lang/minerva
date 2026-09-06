@@ -44,6 +44,11 @@ serve(async (req: Request) => {
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
     const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
+    const { data: fnState } = await supabase.from('agent_functions').select('enabled').eq('name', 'run-custom-workflows').maybeSingle()
+    if (fnState?.enabled === false) {
+      return new Response(JSON.stringify({ success: true, skipped: true, reason: 'disabled via agent_functions.enabled' }), { status: 200, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } })
+    }
+
     let businessId: string | null = null
     let event: string | null = null
     let payload: Record<string, any> = {}
@@ -58,6 +63,7 @@ serve(async (req: Request) => {
     // Direct invocation: run only this business's workflows for this one event.
     if (businessId && event) {
       const result = await runWorkflowsFor(supabase, supabaseUrl, supabaseAnonKey, businessId, event, payload)
+      supabase.rpc('record_agent_run', { fn_name: 'run-custom-workflows', status: 'ok' }).then(() => {}, () => {})
       return new Response(JSON.stringify({ success: true, ...result }), {
         status: 200,
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
@@ -68,12 +74,17 @@ serve(async (req: Request) => {
     // triggers are event-driven via direct invocation above), so this is a
     // harmless no-op tick kept for forward-compatibility with future
     // time-based trigger types (e.g. 'invoice.overdue').
+    supabase.rpc('record_agent_run', { fn_name: 'run-custom-workflows', status: 'ok' }).then(() => {}, () => {})
     return new Response(JSON.stringify({ success: true, note: 'no time-based triggers configured' }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     })
   } catch (err) {
     console.error('run-custom-workflows error:', err)
+    try {
+      const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!)
+      supabase.rpc('record_agent_run', { fn_name: 'run-custom-workflows', status: 'error', error_msg: err.message }).then(() => {}, () => {})
+    } catch (_) { /* best-effort only */ }
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
