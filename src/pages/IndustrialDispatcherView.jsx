@@ -104,7 +104,7 @@ export default function IndustrialDispatcherView() {
   async function addLead(e) {
     e.preventDefault()
     const f = new FormData(e.target)
-    await supabase.from('industrial_leads').insert({
+    const { error } = await supabase.from('industrial_leads').insert({
       business_id: businessId,
       company_name: f.get('company_name'),
       source: f.get('source') || 'manual',
@@ -113,6 +113,7 @@ export default function IndustrialDispatcherView() {
       estimated_size: f.get('estimated_size'),
       status: 'new',
     })
+    if (error) { alert(`Couldn't add lead: ${error.message}`); return }
     setShowAddLead(false)
     loadAll()
   }
@@ -120,13 +121,14 @@ export default function IndustrialDispatcherView() {
   async function addSite(e) {
     e.preventDefault()
     const f = new FormData(e.target)
-    await supabase.from('site_projects').insert({
+    const { error } = await supabase.from('site_projects').insert({
       business_id: businessId,
       industrial_lead_id: f.get('industrial_lead_id') || null,
       name: f.get('name'),
       scope_of_work: f.get('scope_of_work'),
       status: 'active',
     })
+    if (error) { alert(`Couldn't add site: ${error.message}`); return }
     setShowAddSite(false)
     loadAll()
   }
@@ -134,13 +136,14 @@ export default function IndustrialDispatcherView() {
   async function addAsset(e) {
     e.preventDefault()
     const f = new FormData(e.target)
-    await supabase.from('industrial_assets').insert({
+    const { error } = await supabase.from('industrial_assets').insert({
       business_id: businessId,
       name: f.get('name'),
       asset_type: f.get('asset_type'),
       tag_id: f.get('tag_id') || null,
       status: 'available',
     })
+    if (error) { alert(`Couldn't add asset: ${error.message}`); return }
     setShowAddAsset(false)
     loadAll()
   }
@@ -148,13 +151,14 @@ export default function IndustrialDispatcherView() {
   async function addItem(e) {
     e.preventDefault()
     const f = new FormData(e.target)
-    await supabase.from('consumables_items').insert({
+    const { error } = await supabase.from('consumables_items').insert({
       business_id: businessId,
       name: f.get('name'),
       unit: f.get('unit') || 'unit',
       quantity_on_hand: Number(f.get('quantity_on_hand')) || 0,
       reorder_threshold: Number(f.get('reorder_threshold')) || 0,
     })
+    if (error) { alert(`Couldn't add item: ${error.message}`); return }
     setShowAddItem(false)
     loadAll()
   }
@@ -196,12 +200,13 @@ export default function IndustrialDispatcherView() {
   async function addIncident(e) {
     e.preventDefault()
     const f = new FormData(e.target)
-    await supabase.from('safety_incidents').insert({
+    const { error } = await supabase.from('safety_incidents').insert({
       business_id: businessId,
       site_id: f.get('site_id') || null,
       severity: f.get('severity') || 'warning',
       description: f.get('description'),
     })
+    if (error) { alert(`Couldn't log incident: ${error.message}`); return }
     setShowAddIncident(false)
     loadAll()
   }

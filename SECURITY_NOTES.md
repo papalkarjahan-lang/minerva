@@ -180,6 +180,24 @@ appropriate to scale indefinitely without revisiting.
   `auth.uid()`, and legitimately need cross-business or unauthenticated
   reads to work).
 
+  **Regression found and fixed 2026-09-07**: the "read exclusively from
+  DispatcherView" claim for `subcontractors` turned out to be wrong —
+  `auto-assign-technician`'s subcontractor-fallback dispatch code (added in
+  a later commit, after this pass shipped) also does a plain anon-key
+  `SELECT` on this table. Since no anon SELECT policy was left on
+  `subcontractors`, RLS default-denied every one of those reads, silently
+  returning zero rows — meaning subcontractor-pool fallback dispatch has
+  been non-functional (never suggests/assigns a subcontractor even when
+  one is genuinely free and the add-on is active) since this pass went
+  live, with no error anywhere to surface it. Fixed via
+  `supabase_schema_delta_subcontractors_select_fix.sql` — restores an open
+  anon SELECT policy on `subcontractors`. This doesn't reduce security
+  below what already existed: INSERT/UPDATE/DELETE on this table were
+  already fully anon-open the whole time, so an anon caller could already
+  read data back via a write's return value regardless. Lesson for future
+  scoping passes: re-check "read exclusively by X" claims after any later
+  commit touches the same table, not just at audit time.
+
 ## Day-1 setup step (do this once, in Supabase Dashboard)
 
 Go to **Authentication → Providers** and turn **off** "Allow new users to

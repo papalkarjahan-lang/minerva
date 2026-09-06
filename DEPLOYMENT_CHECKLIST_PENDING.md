@@ -858,6 +858,83 @@ only a `git push`.
 Pushed to `origin/main` (`1dbb639`) using a fresh one-time GitHub PAT.
 Vercel's auto-deploy-on-push handles the rest — no manual action needed.
 
+## Built, tested, committed locally — needs a fresh GitHub PAT to push (2026-09-07, second unguarded-write sweep + AdminConsole fixes)
+
+Follow-up to "what else can be done?" once every bank-account-gated item was
+ruled out. A mechanical grep (`await supabase\.from\(` not destructured into
+`{ error }`) across all of `src/` surfaced real gaps the 2026-09-06 audit
+pass missed because it wasn't exhaustive. All fixed, pure `.jsx`, no schema
+or edge-function changes:
+
+- **2 silent-swallow bugs** (more serious than a plain missing-check — an
+  existing `try/catch` gave the false impression errors were handled) in
+  `DispatcherView.jsx`:
+  - `AddJobModal.handleSubmit`'s `jobs.insert` — a failed insert previously
+    still closed the modal as if the job had been created.
+  - `convertLeadToJob`'s `jobs.insert` and `leads.update` — a failed write
+    previously still removed the lead from the pipeline as if conversion
+    had succeeded. Both now destructure `{ error }` and `throw` into the
+    existing catch block, which already correctly surfaces `err.message`.
+- **13 additional unguarded writes**, triaged by actual stakes rather than
+  one blanket pattern:
+  - Client-facing / financial-status changes got full user-visible
+    handling (`alert()` + `return`, or a new inline error state):
+    `DispatcherView.jsx`'s `markInvoicePaid`, `voidInvoice`;
+    `AdminConsole.jsx`'s `overrideTier`, `resolveRequest`; `QuoteView.jsx`'s
+    `respond` (client accept/decline); `TrackingView.jsx`'s
+    `submitRebooking` (new `rebookError` state, inline red text, distinct
+    from the page's link-invalid `error` state); `IndustrialDispatcherView.jsx`'s
+    5 add-forms (`addLead`, `addSite`, `addAsset`, `addItem`, `addIncident`)
+    — all now check `{ error }` before closing their modals.
+  - Low-stakes, self-healing secondary writes got `console.error` only, to
+    avoid over-engineering: `DispatcherView.jsx`'s `addCrewMember`
+    (`technicians.current_job_id`, already self-healed by
+    `reconcile-technician-state`) and `dismissNudge`
+    (`upsell_nudge_dismissals`, worst case the nudge just reappears);
+    `TechnicianView.jsx`'s invoice-SMS-failure `client_sms_failed` flag
+    write and `confirmOnboardingChecklist`'s `onboarding_completed_at`
+    write (checklist just reappears next session).
+  - Mid-job technician actions that shouldn't block the flow (no
+    transaction/rollback exists) got the file's existing non-blocking
+    `syncWarning` banner: `TechnicianView.jsx`'s `triggerSMS`,
+    `triggerCompletionSMS`, `saveVoiceNote`.
+- `npm run lint` / `npm test -- --run` (16/16) / `npm run build` all
+  verified clean after every change above.
+
+Committed locally — not yet pushed, needs a fresh one-time GitHub PAT.
+
+## Not yet deployed live — needs a fresh Supabase PAT (2026-09-07, subcontractors RLS regression fix)
+
+Found while double-checking the 2026-09-05 RLS read-scoping pass against
+every actual reader of the tables it touched (rather than trusting that
+pass's own "confirmed read-only from DispatcherView" claims at face
+value — same discipline as verifying live state before trusting any past
+note). Real, live functional bug, not a false positive:
+
+- **`subcontractors` SELECT has been silently broken for
+  `auto-assign-technician` since 2026-09-05.** The RLS pass locked
+  `subcontractors` SELECT to `auth.uid() = owner_user_id` based on an
+  audit that found it read only by the (now auth-gated)
+  `DispatcherView.jsx` — true at the time, but `auto-assign-technician`'s
+  subcontractor-fallback dispatch code was added in a *later* commit
+  (`09aa680`) and also reads this table, running on the plain anon key
+  with no login session (same as every other background agent function).
+  With no anon SELECT policy left on the table, RLS default-denies those
+  reads — zero rows, no error. Net effect: any business with the
+  `subcontractor_pool` add-on active has had subcontractor-fallback
+  dispatch silently never fire, even when a real subcontractor is free
+  and available, since 2026-09-05.
+- **Fix**: `supabase_schema_delta_subcontractors_select_fix.sql` — restores
+  an open anon SELECT policy on `subcontractors`. Doesn't reduce security
+  below what already existed: INSERT/UPDATE/DELETE on this table have
+  been fully anon-open (`using (true)`) this whole time, so an anon caller
+  could already read data back via a write's return value regardless of
+  the SELECT policy.
+- Full writeup in `SECURITY_NOTES.md` under the RLS pass 1 entry.
+- Not deployed yet — needs a fresh one-time Supabase PAT to run this one
+  SQL statement via the Management API's `/database/query` endpoint. Only
+  a policy change, no code/edge-function redeploy needed.
+
 ## Still outstanding (non-code, needs the user or a bank account)
 
 - Twilio Voice webhook for `missed-call-webhook` — blocked, trial accounts

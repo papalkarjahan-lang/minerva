@@ -458,7 +458,10 @@ export default function TechnicianView() {
       }
     })
     // Mark SMS sent to prevent duplicate fires
-    await supabase.from('jobs').update({ sms_sent: true }).eq('id', currentJob.id)
+    const { error } = await supabase.from('jobs').update({ sms_sent: true }).eq('id', currentJob.id)
+    if (error) {
+      setSyncWarning("The ETA text sent, but marking it as sent failed — if the client gets a duplicate text later, that's why.")
+    }
     setCurrentJob(prev => ({ ...prev, sms_sent: true }))
   }
 
@@ -475,7 +478,10 @@ export default function TechnicianView() {
       }
     })
     // Mark completion SMS sent to prevent duplicate fires, same pattern as sms_sent.
-    await supabase.from('jobs').update({ completion_sms_sent: true }).eq('id', currentJob.id)
+    const { error } = await supabase.from('jobs').update({ completion_sms_sent: true }).eq('id', currentJob.id)
+    if (error) {
+      setSyncWarning("The completion text sent, but marking it as sent failed — if the client gets a duplicate text later, that's why.")
+    }
     setCurrentJob(prev => ({ ...prev, completion_sms_sent: true }))
   }
 
@@ -509,7 +515,11 @@ export default function TechnicianView() {
     const entry = `[${new Date().toLocaleString('en-AU')}] ${transcript}`
     // Prepend a timestamp and concatenate — never overwrite prior notes.
     const updatedNotes = currentJob.notes ? `${currentJob.notes}\n${entry}` : entry
-    await supabase.from('jobs').update({ notes: updatedNotes }).eq('id', currentJob.id)
+    const { error } = await supabase.from('jobs').update({ notes: updatedNotes }).eq('id', currentJob.id)
+    if (error) {
+      setSyncWarning("Couldn't save that voice note to the office — it's only showing on this device right now, try again before you leave the job.")
+      return
+    }
     setCurrentJob(prev => ({ ...prev, notes: updatedNotes }))
   }
 
@@ -842,7 +852,8 @@ export default function TechnicianView() {
         if (smsError) {
           console.error('send-invoice-sms failed:', smsError)
           smsFailed = true
-          await supabase.from('invoices').update({ client_sms_failed: true }).eq('id', data.id)
+          const { error: flagError } = await supabase.from('invoices').update({ client_sms_failed: true }).eq('id', data.id)
+          if (flagError) console.error('client_sms_failed flag write also failed', flagError)
         }
       }
 
@@ -878,7 +889,8 @@ export default function TechnicianView() {
 
   async function confirmOnboardingChecklist() {
     const completedAt = new Date().toISOString()
-    await supabase.from('technicians').update({ onboarding_completed_at: completedAt }).eq('id', tech.id)
+    const { error } = await supabase.from('technicians').update({ onboarding_completed_at: completedAt }).eq('id', tech.id)
+    if (error) console.error('onboarding_completed_at write failed (checklist will just show again next session)', error)
     setTech(prev => ({ ...prev, onboarding_completed_at: completedAt }))
     setShowOnboardingChecklist(false)
     setTracking(true)

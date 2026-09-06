@@ -27,9 +27,10 @@ export default function QuoteView() {
 
   async function respond(status) {
     setSubmitting(true)
-    await supabase.from('quotes').update({ status }).eq('id', quoteId)
-    setQuote(prev => ({ ...prev, status }))
+    const { error: updateError } = await supabase.from('quotes').update({ status }).eq('id', quoteId)
     setSubmitting(false)
+    if (updateError) { alert("Couldn't send your response — please try again."); return }
+    setQuote(prev => ({ ...prev, status }))
   }
 
   if (error) return (

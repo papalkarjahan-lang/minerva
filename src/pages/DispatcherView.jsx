@@ -559,7 +559,8 @@ export default function DispatcherView() {
       alert(error.message.includes('crew_splitting') ? error.message : 'Could not add crew member: ' + error.message)
       return
     }
-    await supabase.from('technicians').update({ current_job_id: jobId }).eq('id', techId)
+    const { error: techErr } = await supabase.from('technicians').update({ current_job_id: jobId }).eq('id', techId)
+    if (techErr) console.error('technicians.current_job_id update failed (self-heals via reconcile-technician-state)', techErr)
     await loadAll()
   }
 
@@ -640,7 +641,7 @@ export default function DispatcherView() {
   async function convertLeadToJob(lead) {
     try {
       const { lat, lng } = await geocodeAddress(`${lead.suburb}, Australia`)
-      await supabase.from('jobs').insert({
+      const { error: insertError } = await supabase.from('jobs').insert({
         business_id: businessId,
         client_name: lead.client_name,
         client_phone: lead.client_phone,
@@ -656,7 +657,9 @@ export default function DispatcherView() {
         // this from).
         urgency: lead.urgency || null
       })
-      await supabase.from('leads').update({ status: 'converted' }).eq('id', lead.id)
+      if (insertError) throw insertError
+      const { error: updateError } = await supabase.from('leads').update({ status: 'converted' }).eq('id', lead.id)
+      if (updateError) throw updateError
       setLeads(prev => prev.filter(l => l.id !== lead.id))
       await loadAll()
     } catch (err) {
@@ -694,7 +697,8 @@ export default function DispatcherView() {
   // (EFTPOS, cash, etc.) and records it here once received.
   async function markInvoicePaid(invoiceId) {
     const paidAt = new Date().toISOString()
-    await supabase.from('invoices').update({ status: 'paid', paid_at: paidAt }).eq('id', invoiceId)
+    const { error } = await supabase.from('invoices').update({ status: 'paid', paid_at: paidAt }).eq('id', invoiceId)
+    if (error) { alert(`Couldn't mark invoice paid: ${error.message}`); return }
     setInvoices(prev => prev.map(i => i.id === invoiceId ? { ...i, status: 'paid', paid_at: paidAt } : i))
     // Paid-Invoice Referral Loop: fire-and-forget, same invocation pattern
     // as sync-technician-billing below. Generates a referral code (once,
@@ -720,7 +724,8 @@ export default function DispatcherView() {
     const reason = window.prompt('Why is this invoice being voided? (shown in the audit trail, e.g. "created by mistake" or "duplicate")')
     if (reason === null) return // cancelled
     const voidedAt = new Date().toISOString()
-    await supabase.from('invoices').update({ status: 'void', voided_at: voidedAt, voided_reason: reason || null }).eq('id', invoiceId)
+    const { error } = await supabase.from('invoices').update({ status: 'void', voided_at: voidedAt, voided_reason: reason || null }).eq('id', invoiceId)
+    if (error) { alert(`Couldn't void invoice: ${error.message}`); return }
     setInvoices(prev => prev.map(i => i.id === invoiceId ? { ...i, status: 'void', voided_at: voidedAt, voided_reason: reason || null } : i))
   }
 
@@ -934,7 +939,8 @@ export default function DispatcherView() {
 
   async function dismissNudge(nudgeKey) {
     setDismissedNudges(prev => [...prev, nudgeKey])
-    await supabase.from('upsell_nudge_dismissals').insert({ business_id: businessId, nudge_key: nudgeKey })
+    const { error } = await supabase.from('upsell_nudge_dismissals').insert({ business_id: businessId, nudge_key: nudgeKey })
+    if (error) console.error('upsell_nudge_dismissals insert failed (nudge will just reappear next load)', error)
   }
 
   // Usage-triggered upsell nudges — computed from data this dispatcher
@@ -2464,7 +2470,7 @@ function AddJobModal({ businessId, technicianCredentials, onClose }) {
     setError(null)
     try {
       const { lat, lng } = await geocodeAddress(form.client_address)
-      await supabase.from('jobs').insert({
+      const { error: insertError } = await supabase.from('jobs').insert({
         business_id: businessId,
         client_name: form.client_name,
         client_phone: form.client_phone,
@@ -2477,6 +2483,7 @@ function AddJobModal({ businessId, technicianCredentials, onClose }) {
         required_credential_name: form.required_credential_name || null,
         status: 'scheduled'
       })
+      if (insertError) throw insertError
       onClose()
     } catch (err) {
       setError(err.message)

@@ -89,13 +89,15 @@ export default function AdminConsole() {
 
   async function overrideTier(businessId, newTier) {
     setSavingId(businessId)
-    await supabase.from('businesses').update({ subscription_tier: newTier }).eq('id', businessId)
+    const { error } = await supabase.from('businesses').update({ subscription_tier: newTier }).eq('id', businessId)
+    if (error) { alert(`Couldn't update subscription tier: ${error.message}`); setSavingId(null); return }
     await loadBusinesses()
     setSavingId(null)
   }
 
   async function resolveRequest(id) {
-    await supabase.from('support_requests').update({ status: 'resolved', resolved_at: new Date().toISOString() }).eq('id', id)
+    const { error } = await supabase.from('support_requests').update({ status: 'resolved', resolved_at: new Date().toISOString() }).eq('id', id)
+    if (error) { alert(`Couldn't mark request resolved: ${error.message}`); return }
     loadRequests()
   }
 

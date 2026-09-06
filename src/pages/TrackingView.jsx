@@ -29,10 +29,12 @@ export default function TrackingView() {
   const [rebookDetails, setRebookDetails] = useState('')
   const [rebookSubmitting, setRebookSubmitting] = useState(false)
   const [rebookDone, setRebookDone] = useState(false)
+  const [rebookError, setRebookError] = useState(null)
 
   async function submitRebooking() {
     setRebookSubmitting(true)
-    await supabase.from('leads').insert({
+    setRebookError(null)
+    const { error } = await supabase.from('leads').insert({
       business_id: job.business_id,
       client_name: job.client_name,
       client_phone: job.client_phone,
@@ -44,6 +46,7 @@ export default function TrackingView() {
       is_repeat_client: true
     })
     setRebookSubmitting(false)
+    if (error) { setRebookError("Couldn't send that request — please try again, or call them directly."); return }
     setRebookDone(true)
   }
 
@@ -141,6 +144,7 @@ export default function TrackingView() {
               rows={3}
               placeholder="e.g. same as last time, or describe the new job"
             />
+            {rebookError && <p style={{ color: '#c0392b', fontSize: 13, margin: '6px 0 0' }}>{rebookError}</p>}
             <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
               <button type="button" style={styles.rebookCancelBtn} onClick={() => setShowRebook(false)} disabled={rebookSubmitting}>
                 Cancel
