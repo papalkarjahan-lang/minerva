@@ -289,7 +289,47 @@ the bottom.
 
 ## Not yet deployed live
 
-Nothing currently pending on the code/DB side.
+- **Technician-side incident reporting** (`TechnicianView.jsx`): a full
+  system-wiring audit (technician phone flow, all 29 cron-scheduled agent
+  functions, Stripe/Twilio/Mapbox/Xero/Slack integrations) found everything
+  else confirmed working end-to-end, except one genuinely half-built
+  feature — `technician_incidents` (the "Crew Coordination accountability
+  log") already had dispatcher-side UI (`DispatcherView.jsx`'s
+  `addIncident()`) and its RLS policy already allowed
+  `reported_by: 'technician'`, but no technician-side UI ever wrote to it —
+  a one-way "dispute log". Added a "Report an issue" button + modal in
+  `TechnicianView.jsx` (category: note/dispute/near_miss/commendation,
+  works with or without a current job) and updated `DispatcherView.jsx`'s
+  incident log line to show who reported it. No schema change needed — the
+  table/RLS/grants already supported this. Plain frontend code, no separate
+  deploy step needed beyond the next `git push` (Vercel auto-deploy).
+  Lint clean, 16/16 tests pass, build clean. Needs a fresh GitHub PAT to
+  push.
+
+## Confirmed live (2026-09-06, continued — testing + RLS live-verification pass)
+
+- Pushed `d03845b` to `origin/main` using a fresh one-time GitHub PAT
+  (`6b1e665..d03845b`). Contains: `classifyPriority()`/`URGENT_KEYWORDS`
+  moved from `ContactSupportModal.jsx` into `utils.js` (exported) for unit
+  test coverage, consistent with this project's existing Vitest-covers-
+  utils.js convention. 3 new tests added (`utils.test.js`), 16/16 passing.
+  Plain frontend change — live via Vercel auto-deploy from this push, no
+  separate function/SQL deploy needed.
+- **DELETE-RLS-policy audit live-verified** using a fresh one-time Supabase
+  PAT (Management API query against `pg_policies`, not just the SQL files
+  this time — see below for why that distinction matters in this project).
+  Confirmed the file-based audit's conclusion was correct: `job_assignments`,
+  `custom_workflows`, and `review_requests` (the 3 tables with anon-key
+  `.delete()` call sites in the frontend) all have an unrevoked live
+  `for all using (true) with check (true)` policy each
+  (`anon all job_assignments` / `anon all custom_workflows` /
+  `anon all review_requests`, `cmd: ALL`). No DELETE-policy gap exists.
+  This closes the residual-risk caveat flagged after the file-based-only
+  pass — live DB state now confirmed to match the SQL files for this
+  specific check (past bugs in this project, e.g. the `businesses` and
+  `checklist_photos` UPDATE-policy gaps, were exactly this kind of
+  file-vs-live drift, so this was worth spending a token on to verify
+  rather than trusting the file read alone).
 
 ## Confirmed live (2026-09-06, "make Minerva a fully functioning business" pass)
 

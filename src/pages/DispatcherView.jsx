@@ -1467,7 +1467,7 @@ export default function DispatcherView() {
                                 <p key={inc.id} style={{ color: '#8899a6', fontSize: 12, margin: '0 0 4px' }}>
                                   <span style={styles.incidentBadge(inc.category)}>{(inc.category || 'note').toUpperCase()}</span>
                                   {' '}{inc.description}
-                                  <span style={{ color: '#444' }}> · {new Date(inc.created_at).toLocaleDateString('en-AU')}</span>
+                                  <span style={{ color: '#444' }}> · {inc.reported_by || 'dispatcher'} · {new Date(inc.created_at).toLocaleDateString('en-AU')}</span>
                                 </p>
                               ))
                             ) : (

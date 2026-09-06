@@ -79,6 +79,12 @@ export default function TechnicianView() {
   const [tracking, setTracking] = useState(false)
   const [status, setStatus] = useState('idle') // idle | tracking | job_active | job_done
   const [showSupportModal, setShowSupportModal] = useState(false)
+  const [showIncidentModal, setShowIncidentModal] = useState(false)
+  const [incidentCategory, setIncidentCategory] = useState('note')
+  const [incidentDescription, setIncidentDescription] = useState('')
+  const [incidentSubmitting, setIncidentSubmitting] = useState(false)
+  const [incidentSent, setIncidentSent] = useState(false)
+  const [incidentError, setIncidentError] = useState(null)
   const [error, setError] = useState(null)
   const [lastUpdate, setLastUpdate] = useState(null)
   const [pendingCount, setPendingCount] = useState(0)
@@ -500,6 +506,31 @@ export default function TechnicianView() {
     const updatedNotes = currentJob.notes ? `${currentJob.notes}\n${entry}` : entry
     await supabase.from('jobs').update({ notes: updatedNotes }).eq('id', currentJob.id)
     setCurrentJob(prev => ({ ...prev, notes: updatedNotes }))
+  }
+
+  // Crew Coordination accountability log — technician-side counterpart to
+  // DispatcherView.jsx's addIncident(). The technician_incidents table and
+  // its anon RLS policy already supported reported_by: 'technician', but no
+  // UI ever wrote from this side, making it a one-way "dispute log" — see
+  // SUPPORT_PLAYBOOK.md-adjacent audit that found this gap. job_id is
+  // optional (null) so a technician can log a near-miss/hazard/note even
+  // when not currently on a job.
+  async function submitIncident() {
+    const description = incidentDescription.trim()
+    if (!description || !tech) return
+    setIncidentSubmitting(true)
+    setIncidentError(null)
+    const { error } = await supabase.from('technician_incidents').insert({
+      business_id: tech.business_id,
+      technician_id: tech.id,
+      job_id: currentJob?.id || null,
+      category: incidentCategory,
+      description,
+      reported_by: 'technician',
+    })
+    setIncidentSubmitting(false)
+    if (error) { setIncidentError(error.message); return }
+    setIncidentSent(true)
   }
 
   // Crew members get a reduced, track-only view — see "Leave job" below.
@@ -1174,9 +1205,14 @@ export default function TechnicianView() {
         {tracking ? `GPS updates every 15 seconds` : `Tap "Start Tracking" to go live`}
       </p>
 
-      <button onClick={() => setShowSupportModal(true)} style={{ background: 'none', border: 'none', color: '#888', fontSize: 13, textDecoration: 'underline', cursor: 'pointer', marginTop: 12 }}>
-        Contact support
-      </button>
+      <div style={{ display: 'flex', gap: 16, justifyContent: 'center', marginTop: 12, flexWrap: 'wrap' }}>
+        <button onClick={() => setShowSupportModal(true)} style={{ background: 'none', border: 'none', color: '#888', fontSize: 13, textDecoration: 'underline', cursor: 'pointer' }}>
+          Contact support
+        </button>
+        <button onClick={() => setShowIncidentModal(true)} style={{ background: 'none', border: 'none', color: '#888', fontSize: 13, textDecoration: 'underline', cursor: 'pointer' }}>
+          Report an issue
+        </button>
+      </div>
 
       {showSupportModal && (
         <ContactSupportModal
@@ -1185,6 +1221,58 @@ export default function TechnicianView() {
           defaultContact={tech.phone}
           onClose={() => setShowSupportModal(false)}
         />
+      )}
+
+      {showIncidentModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }}>
+          <div style={{ background: '#0a0f1d', border: '1px solid #1e293b', borderRadius: 16, padding: 32, maxWidth: 420, width: '100%' }}>
+            <h3 style={{ color: '#fff', margin: '0 0 16px' }}>Report an issue</h3>
+            {incidentSent ? (
+              <>
+                <p style={{ color: '#8fd0e8', fontSize: 14, marginBottom: 20 }}>Logged — your dispatcher can see this on the job.</p>
+                <button onClick={() => { setShowIncidentModal(false); setIncidentSent(false); setIncidentDescription(''); setIncidentCategory('note') }} style={{ background: '#2D5FA8', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 20px', cursor: 'pointer' }}>Close</button>
+              </>
+            ) : (
+              <>
+                <p style={{ color: '#888', fontSize: 12, marginBottom: 12 }}>
+                  Log a dispute, near-miss/hazard, or general note{currentJob ? ' for this job' : ''}. Your dispatcher sees this on the job's incident log.
+                </p>
+                <select
+                  value={incidentCategory}
+                  onChange={e => setIncidentCategory(e.target.value)}
+                  style={{ width: '100%', boxSizing: 'border-box', background: '#050811', border: '1px solid #1e293b', borderRadius: 8, color: '#fff', padding: '10px 12px', fontSize: 14, marginBottom: 10 }}
+                >
+                  <option value="note">Note</option>
+                  <option value="dispute">Dispute</option>
+                  <option value="near_miss">Near miss / hazard</option>
+                  <option value="commendation">Commendation</option>
+                </select>
+                <textarea
+                  required
+                  placeholder="What happened?"
+                  rows={4}
+                  value={incidentDescription}
+                  onChange={e => setIncidentDescription(e.target.value)}
+                  style={{ width: '100%', boxSizing: 'border-box', background: '#050811', border: '1px solid #1e293b', borderRadius: 8, color: '#fff', padding: '10px 12px', fontSize: 14, marginBottom: 12, fontFamily: 'inherit', resize: 'vertical' }}
+                />
+                {incidentError && <p style={{ color: '#e07a7a', fontSize: 13, marginBottom: 12 }}>{incidentError}</p>}
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button
+                    type="button"
+                    disabled={incidentSubmitting || !incidentDescription.trim()}
+                    onClick={submitIncident}
+                    style={{ background: '#1D9E75', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 20px', cursor: incidentSubmitting ? 'default' : 'pointer', opacity: incidentSubmitting || !incidentDescription.trim() ? 0.6 : 1 }}
+                  >
+                    {incidentSubmitting ? 'Sending...' : 'Send'}
+                  </button>
+                  <button type="button" onClick={() => { setShowIncidentModal(false); setIncidentError(null) }} style={{ background: 'none', border: '1px solid #1e293b', color: '#aaa', borderRadius: 8, padding: '10px 20px', cursor: 'pointer' }}>
+                    Cancel
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       )}
     </div>
   )
