@@ -289,7 +289,23 @@ the bottom.
 
 ## Not yet deployed live
 
-Nothing currently pending on the code/DB side.
+- **Pro-tier gating, part 2 (built 2026-09-06, follow-up audit on UPDATE/
+  DELETE paths and remaining tables — needs a Supabase PAT to run
+  `supabase_schema_delta_pro_tier_gating_2.sql`)**: the first Pro-tier
+  gating pass covered `invoices`/`assets`/`inventory_items`; a follow-up
+  pass on the same class of gap found two more tables with the identical
+  issue — `technician_credentials` (DispatcherView's "Licence/Ticket
+  Expiry Guardian") and `checklist_templates` (compliance checklist setup,
+  used for both completion and onboarding checklists). Both are listed in
+  `Onboarding.jsx`'s own TIERS copy as Pro-tier features, both have
+  anon-writable INSERT RLS, and neither had a server-side check —
+  `checklist_templates` in particular is a fully usable bypass (not just a
+  dead row) since TechnicianView reads and acts on any checklist template
+  that exists for the business regardless of tier. Fixed with the same
+  `BEFORE INSERT` trigger pattern, reusing the `enforce_pro_tier_feature()`
+  helper already created by the first delta. No frontend changes needed —
+  both call sites already surface `err.message`/`insertErr.message`
+  directly to the UI. Committed locally; not yet run live or pushed.
 
 ## Confirmed live (2026-09-06, continued)
 
