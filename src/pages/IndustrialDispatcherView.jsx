@@ -165,14 +165,16 @@ export default function IndustrialDispatcherView() {
 
   async function runConductor(leadId) {
     setBusyId(leadId)
-    await supabase.functions.invoke('industrial-conductor', { body: { leadId } }).catch(() => {})
+    const { data, error } = await supabase.functions.invoke('industrial-conductor', { body: { leadId } })
     setBusyId(null)
+    if (error || data?.error) alert(`Couldn't run Conductor: ${data?.error || error.message}`)
   }
 
   async function generatePackage(siteId) {
     setBusyId(siteId)
-    await supabase.functions.invoke('package-client-verification', { body: { siteId } }).catch(() => {})
+    const { data, error } = await supabase.functions.invoke('package-client-verification', { body: { siteId } })
     setBusyId(null)
+    if (error || data?.error) { alert(`Couldn't generate package: ${data?.error || error.message}`); return }
     loadAll()
   }
 

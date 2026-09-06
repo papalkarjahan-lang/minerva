@@ -858,7 +858,7 @@ only a `git push`.
 Pushed to `origin/main` (`1dbb639`) using a fresh one-time GitHub PAT.
 Vercel's auto-deploy-on-push handles the rest — no manual action needed.
 
-## Built, tested, committed locally — needs a fresh GitHub PAT to push (2026-09-07, second unguarded-write sweep + AdminConsole fixes)
+## Confirmed live (2026-09-07, second unguarded-write sweep + AdminConsole fixes)
 
 Follow-up to "what else can be done?" once every bank-account-gated item was
 ruled out. A mechanical grep (`await supabase\.from\(` not destructured into
@@ -898,6 +898,45 @@ or edge-function changes:
     transaction/rollback exists) got the file's existing non-blocking
     `syncWarning` banner: `TechnicianView.jsx`'s `triggerSMS`,
     `triggerCompletionSMS`, `saveVoiceNote`.
+- `npm run lint` / `npm test -- --run` (16/16) / `npm run build` all
+  verified clean after every change above.
+
+Pushed to `origin/main` (`20c26cc`) using a fresh one-time GitHub PAT.
+
+## Built, tested, committed locally — needs a fresh GitHub PAT to push (2026-09-07, continued — silently-swallowed edge-function invokes)
+
+Continued sweep, same "what else can be done?" mandate. The prior two
+passes covered unguarded *database* writes; this pass covers the same
+anti-pattern one layer up — `supabase.functions.invoke(...)` calls whose
+result (or `.catch(() => {})`) was thrown away entirely, so a failure was
+indistinguishable from success. Checked every fire-and-forget invoke in
+`src/` individually rather than blanket-fixing: several are genuinely,
+deliberately silent by design (documented inline — e.g. billing-quantity
+sync and assignment/paid-invoice notification SMS are explicitly meant to
+never block their parent action), so those were left untouched. Two were
+real gaps with no such justification and a user sitting there waiting for
+a result:
+
+- `DispatcherView.jsx`'s `dismissWeatherDraft` and `rejectDraft` — bare
+  `await supabase...update(...)` with no `{ error }` captured at all (not
+  even `data`). A failed dismiss/reject silently did nothing; the item
+  would just reappear next load with zero explanation. Now alert on
+  failure, matching the file's existing convention.
+- `IndustrialDispatcherView.jsx`'s `runConductor` ("Suggest asset
+  (Conductor)" button) and `generatePackage` ("Generate verification
+  package" button) — both piped their edge-function invoke through
+  `.catch(() => {})`, so a real failure (e.g. the function erroring, or
+  returning `{ error }` in its 200 body) looked identical to success: the
+  busy state just cleared with nothing to show for it. Now surfaces
+  `alert()` on either transport error or an in-body `data.error`.
+- `TechnicianView.jsx`'s `triggerSMS`/`triggerCompletionSMS` had the
+  opposite problem: only the *secondary* `sms_sent`/`completion_sms_sent`
+  flag write was checked, not the actual `send-eta-sms`/
+  `send-completion-sms` invoke itself — so if the text genuinely failed to
+  send, the technician was never told (only a failure to *mark* it sent
+  produced a warning). Now checks the invoke's own error/`data.error`
+  first and warns distinctly ("the client won't know you're on the way" /
+  "...the job's done") before even attempting the flag write.
 - `npm run lint` / `npm test -- --run` (16/16) / `npm run build` all
   verified clean after every change above.
 

@@ -792,10 +792,11 @@ export default function DispatcherView() {
 
   async function dismissWeatherDraft(draftId) {
     setWeatherActionId(draftId)
-    await supabase
+    const { error } = await supabase
       .from('weather_reschedule_drafts')
       .update({ status: 'dismissed', reviewed_at: new Date().toISOString() })
       .eq('id', draftId)
+    if (error) alert(`Couldn't dismiss: ${error.message}`)
     await loadAll()
     setWeatherActionId(null)
   }
@@ -821,10 +822,11 @@ export default function DispatcherView() {
 
   async function rejectDraft(draftId) {
     setMarketingActionId(draftId)
-    await supabase
+    const { error } = await supabase
       .from('marketing_drafts')
       .update({ status: 'rejected', reviewed_at: new Date().toISOString() })
       .eq('id', draftId)
+    if (error) alert(`Couldn't reject: ${error.message}`)
     await loadAll()
     setMarketingActionId(null)
   }

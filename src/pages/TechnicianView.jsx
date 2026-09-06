@@ -448,7 +448,7 @@ export default function TechnicianView() {
 
   async function triggerSMS(techLat, techLng) {
     const trackingUrl = `${import.meta.env.VITE_APP_URL}/track/${currentJob.id}`
-    await supabase.functions.invoke('send-eta-sms', {
+    const { data: smsData, error: smsError } = await supabase.functions.invoke('send-eta-sms', {
       body: {
         clientPhone: currentJob.client_phone,
         clientName: currentJob.client_name,
@@ -457,6 +457,10 @@ export default function TechnicianView() {
         trackingUrl
       }
     })
+    if (smsError || smsData?.error) {
+      setSyncWarning("The ETA text didn't send — the client won't know you're on the way.")
+      return
+    }
     // Mark SMS sent to prevent duplicate fires
     const { error } = await supabase.from('jobs').update({ sms_sent: true }).eq('id', currentJob.id)
     if (error) {
@@ -468,7 +472,7 @@ export default function TechnicianView() {
   async function triggerCompletionSMS() {
     // Guard against double-firing (e.g. a double-tap on "Complete Job").
     if (!currentJob || currentJob.completion_sms_sent || !currentJob.client_phone) return
-    await supabase.functions.invoke('send-completion-sms', {
+    const { data: smsData, error: smsError } = await supabase.functions.invoke('send-completion-sms', {
       body: {
         clientPhone: currentJob.client_phone,
         clientName: currentJob.client_name,
@@ -477,6 +481,10 @@ export default function TechnicianView() {
         completedAt: new Date().toISOString()
       }
     })
+    if (smsError || smsData?.error) {
+      setSyncWarning("The completion text didn't send — the client won't get a heads-up the job's done.")
+      return
+    }
     // Mark completion SMS sent to prevent duplicate fires, same pattern as sms_sent.
     const { error } = await supabase.from('jobs').update({ completion_sms_sent: true }).eq('id', currentJob.id)
     if (error) {
