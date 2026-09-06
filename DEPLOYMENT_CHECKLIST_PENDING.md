@@ -289,15 +289,14 @@ the bottom.
 
 ## Not yet deployed live
 
-- **Agent-OS health-tracking/kill-switch rollout — code pushed, edge
-  functions not yet redeployed to Supabase.** Pushed `15dd193` to
-  `origin/main` using a fresh one-time GitHub PAT (`8a90183..15dd193`,
-  includes `429c500` + `15dd193`). Still needs `supabase functions deploy
-  <name>` run for each of the 14 functions below once a fresh Supabase
-  token/CLI session is available — the code is in the repo but not live on
-  Supabase's edge runtime yet.
-  In response to "make [the agents] the best possible... as possible",
-  audited all 56 edge functions for `record_agent_run` + `agent_functions.enabled`
+Nothing currently pending on the code/DB side.
+
+## Confirmed live (2026-09-06, continued — Agent-OS kill-switch/health-tracking rollout)
+
+- Pushed `15dd193` to `origin/main` using a fresh one-time GitHub PAT
+  (`8a90183..15dd193`, includes `429c500` + `15dd193`). In response to
+  "make [the agents] the best possible... as possible", audited all 56
+  edge functions for `record_agent_run` + `agent_functions.enabled`
   coverage and closed every remaining gap on genuinely autonomous/cron
   functions:
   - Added the `agent_functions.enabled` kill-switch check (matching the
@@ -313,9 +312,31 @@ the bottom.
   - Deliberately left unchanged: `reconcile-technician-state` (self-healing
     recovery function, no kill-switch by design), `package-client-verification`
     and `ai-intake-chat` (human-triggered/real-time, not cron agents).
-  - Lint clean, 16/16 frontend tests pass, build clean. All 14 edited Deno
-    files brace/paren-balance-checked (no local TypeScript compiler in this
-    project's toolchain — see README for why).
+  - Lint clean, 16/16 frontend tests pass, build clean.
+- **All 14 functions redeployed live to Supabase's edge runtime** using a
+  fresh one-time Supabase PAT, via the Management API (no `supabase` CLI
+  installed in this environment). **Incident during rollout**: the first
+  deploy attempt (`auto-assign-technician`) used `PATCH
+  /v1/projects/{ref}/functions/{slug}` with a raw JSON `body` field — the
+  API accepted it and bumped the version, but produced a broken bundle
+  (`BOOT_ERROR`, HTTP 503) for roughly a minute. This function is invoked
+  synchronously by the `on_job_created_auto_assign` DB trigger on every new
+  job, so any job created in that window would have failed to auto-assign.
+  Caught immediately via a post-deploy OPTIONS smoke test (a habit worth
+  keeping for every future function deploy in this project). Found the
+  correct method — `POST /v1/projects/{ref}/functions/deploy?slug={slug}`
+  with proper `multipart/form-data` (`metadata` JSON part +  `file` part)
+  — redeployed and fixed it, verified via both an OPTIONS check and a real
+  POST invocation (nonexistent job_id, so no side effects) that full logic
+  runs correctly. Redeployed the remaining 13 functions with the corrected
+  method, preserving each function's original `verify_jwt` setting, with an
+  OPTIONS smoke test after every single one before moving to the next. All
+  15 functions (14 batch + `auto-assign-technician`) confirmed `ACTIVE` via
+  a final `GET /v1/projects/{ref}/functions` sweep.
+  **Lesson for any future Management-API-based function deploy in this
+  project: always use the multipart `/functions/deploy` endpoint, never the
+  plain `PATCH /functions/{slug}` with a JSON body — the latter can silently
+  corrupt the live bundle while still reporting success.**
 
 ## Confirmed live (2026-09-06, continued — technician incident reporting)
 
