@@ -1,0 +1,50 @@
+-- ============================================================
+-- MINERVA — Delta: missing UPDATE RLS policy on `businesses` (2026-09-06,
+-- follow-up audit pass on how subscription_tier/max_addons actually get
+-- set).
+--
+-- What was found: `businesses` has RLS enabled (supabase_schema.sql) with
+-- only an INSERT and a SELECT policy — no UPDATE (and no DELETE) policy
+-- was ever added, in this file or any delta. With RLS enabled and no
+-- applicable policy, Postgres denies the operation for every row by
+-- default (confirmed live: an anon-key PATCH to businesses returns
+-- HTTP 200 with an empty array — 0 rows matched/updated — even though the
+-- anon/authenticated roles DO have the underlying UPDATE GRANT).
+--
+-- This silently breaks three real, already-shipped features that all
+-- update `businesses` directly from the browser with the anon key (no
+-- edge function in between):
+--   1. RequireBusinessAuth.jsx's owner_user_id auto-claim on first login —
+--      the update never persists (though the UI still shows "authorized"
+--      that session, since the code only checks for a Postgrest *error*,
+--      and 0-rows-matched isn't itself an error without .select().single()).
+--      Net effect: owner_user_id is permanently stuck null forever, so the
+--      claim silently re-runs and "succeeds" every session by email match
+--      instead of by a persisted foreign key.
+--   2. DispatcherView.jsx's Minerva Max add-on enable/start-trial/disable
+--      buttons (enableMaxAddon/startMaxAddonTrial/disableMaxAddon) — these
+--      DO use .select().single(), so the 0-row update causes a real
+--      Postgrest error there, silently swallowed by `if (data) ...` with no
+--      user-facing message. The entire Minerva Max upsell UI is currently
+--      non-functional: clicking Enable/Start Trial/Disable does nothing.
+--   3. AdminConsole.jsx's overrideTier() — the platform operator's manual
+--      subscription_tier override also silently no-ops.
+--
+-- This is an accidental oversight, not a deliberate protection: per
+-- src/maxAddons.js's own comment ("no real billing wired yet... honest-
+-- scope note") and supabase_schema_delta_minerva_max_tier.sql, Minerva Max
+-- add-ons are explicitly meant to be self-serve toggles at this build
+-- stage, and every other table in this schema already uses the same
+-- permissive `using (true)` pattern (RLS is deliberately not the
+-- enforcement layer anywhere in this app — see supabase_schema_delta_
+-- operational_fixes.sql's crew_splitting header for the full reasoning).
+-- Adding a plain permissive UPDATE policy here is therefore the correct,
+-- consistent fix, not a new gap: it doesn't change who can already set
+-- subscription_tier at signup (Onboarding.jsx already inserts it directly,
+-- unrelated to this delta and out of scope here), and stripe-webhook's own
+-- updates already go through the service_role key, which bypasses RLS
+-- regardless of any policy here.
+-- ============================================================
+
+create policy "anon update business" on businesses
+  for update using (true);

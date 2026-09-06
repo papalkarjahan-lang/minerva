@@ -289,7 +289,36 @@ the bottom.
 
 ## Not yet deployed live
 
-Nothing currently pending on the code/DB side.
+- **Missing UPDATE RLS policy on `businesses` (built 2026-09-06, follow-up
+  audit on how subscription_tier/max_addons actually get set — needs a
+  Supabase PAT to run
+  `supabase_schema_delta_businesses_update_policy.sql`)**: found while
+  tracing exactly how `max_addons`/`subscription_tier` transition from
+  unpaid to paid, to rule out a client-side billing bypass. No bypass
+  exists — but the opposite bug does: `businesses` has RLS enabled with
+  only an INSERT and SELECT policy, no UPDATE (or DELETE) policy was ever
+  added. Empirically confirmed live via a direct anon-key PATCH request
+  (HTTP 200, empty array — 0 rows matched, value unchanged on read-back)
+  that every anon-key UPDATE to `businesses` silently affects 0 rows. This
+  breaks three real, already-shipped features: (1)
+  `RequireBusinessAuth.jsx`'s owner_user_id auto-claim never actually
+  persists (session-only "authorized" state, re-derived by email match
+  every login instead of a real persisted claim); (2)
+  `DispatcherView.jsx`'s Minerva Max add-on Enable/Start Trial/Disable
+  buttons are entirely non-functional (silently swallowed Postgrest error
+  from `.select().single()` on 0 matched rows — no error shown to the
+  user); (3) `AdminConsole.jsx`'s `overrideTier()` manual tier override
+  also silently no-ops. This is an accidental oversight, not a deliberate
+  protection — `src/maxAddons.js`'s own comment documents Minerva Max
+  add-ons as intentionally self-serve/no-billing-check-needed at this
+  build stage, and every other table in the schema already uses the same
+  permissive `using (true)` pattern. Fixed by adding the same standard
+  policy (`create policy "anon update business" on businesses for update
+  using (true);`). Does not reopen a subscription_tier bypass: tier is
+  already client-settable at signup via `Onboarding.jsx`'s INSERT
+  (pre-existing, unrelated, out of scope here), and `stripe-webhook`'s own
+  updates already use the service_role key, which bypasses RLS regardless.
+  Committed locally; not yet run live or pushed.
 
 ## Confirmed live (2026-09-06, continued)
 
