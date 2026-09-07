@@ -1362,8 +1362,15 @@ Verified: lint clean, 16/16 tests passing, build clean.
     lead-capture lock — intentional one-lead-per-session design; and
     several initially-suspected DispatcherView/TechnicianView issues that
     turned out to be already correctly guarded).
-  - Needs a fresh GitHub PAT to push `ce1b107`/`1a008f9`, and a fresh
-    Supabase PAT to redeploy `track-consumables`.
+- **2026-09-07 (later still)**: pushed `ce1b107`/`1a008f9`/`e38b782`
+  (`5bc1159` also included). Redeployed `track-consumables` live
+  (confirmed ACTIVE, v5). Fixed one more low-severity item while doing
+  "everything else possible": `SuccessPage.jsx`'s sector-fetch now retries
+  once on failure instead of silently leaving the console link at its
+  'trade' default forever (`5bc1159`, pushed). Frontend changes ship via
+  Vercel's existing auto-deploy-on-push from `main` — no separate action
+  needed. This closes out every outstanding code fix from the full
+  backend+frontend audit.
 
 ## Still outstanding (non-code, needs the user or a bank account)
 
