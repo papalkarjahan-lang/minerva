@@ -490,9 +490,14 @@ alter table jobs add column no_show_reschedule_sms_sent_at timestamptz; -- set w
 alter table businesses add column weather_sensitive_trade_types text[];
 
 -- jobs.weather_risk_flagged_at: set the first time check-weather-risk
--- creates a weather_reschedule_drafts row for this job — throttle so the
--- same upcoming job isn't re-drafted every morning it remains in the
--- risky forecast window.
+-- checks this job's forecast — whether or not that check found it risky
+-- enough to draft a reschedule. Throttles the function to one Open-Meteo
+-- lookup per job (avoids re-fetching/re-drafting on repeated same-day
+-- runs); in practice each job only ever falls inside the "tomorrow"
+-- window on one calendar day anyway, so this is a defence-in-depth
+-- throttle rather than the primary guard. (Fixed 2026-09-07 — this column
+-- was previously only set on the risky/drafted branch, contradicting the
+-- function's own inline comment.)
 alter table jobs add column weather_risk_flagged_at timestamptz;
 
 -- Table 13: weather_reschedule_drafts

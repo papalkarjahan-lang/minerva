@@ -91,6 +91,7 @@ serve(async (req: Request) => {
             // Not risky today, but mark checked so we don't re-hit the API for
             // this job every run — it'll naturally drop out of the "tomorrow"
             // window after tomorrow passes anyway.
+            await supabase.from('jobs').update({ weather_risk_flagged_at: new Date().toISOString() }).eq('id', job.id)
             continue
           }
 
