@@ -523,6 +523,22 @@ export default function DispatcherView() {
       }, (payload) => {
         setLeads(prev => [payload.new, ...prev].sort((a, b) => (b.score ?? 0) - (a.score ?? 0)))
       })
+      // Crew assignments (job_assignments) had no realtime subscription,
+      // unlike technicians/jobs/leads above — a second dispatcher tab would
+      // show a stale crew list until a manual reload. Refetches just the
+      // affected job's crew list (join needed for technicians(name), so a
+      // single-row payload.new isn't enough on its own). (Fixed 2026-09-07.)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'job_assignments',
+        filter: `business_id=eq.${businessId}`
+      }, (payload) => {
+        const jobId = payload.new?.job_id || payload.old?.job_id
+        if (!jobId) return
+        supabase.from('job_assignments').select('*, technicians(name)').eq('job_id', jobId)
+          .then(({ data }) => setJobCrew(prev => ({ ...prev, [jobId]: data || [] })))
+      })
       .subscribe()
     return () => supabase.removeChannel(channel)
   }, [businessId])

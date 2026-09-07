@@ -183,6 +183,11 @@ export default function TechnicianView() {
   // Track browser connectivity so the badge can show "Offline" vs
   // "Reconnecting..." and so we can flush the queue the moment the browser
   // regains a connection, instead of waiting up to GPS_INTERVAL_MS.
+  // currentJob?.id is in the deps (not just tech) so handleOnline's
+  // flushQueue() closure always has the current job — otherwise a
+  // reassignment while offline (dispatcher moves the tech to a new job)
+  // would flush the queued breadcrumb point under the stale old job_id
+  // once the connection came back. (Fixed 2026-09-07.)
   useEffect(() => {
     function handleOnline() { setIsOnline(true); flushQueue() }
     function handleOffline() { setIsOnline(false) }
@@ -192,7 +197,7 @@ export default function TechnicianView() {
       window.removeEventListener('online', handleOnline)
       window.removeEventListener('offline', handleOffline)
     }
-  }, [tech])
+  }, [tech, currentJob?.id])
 
   // Capture the browser's install prompt (see installPrompt state comment
   // above) instead of letting it fire the native mini-infobar unprompted.
@@ -447,6 +452,12 @@ export default function TechnicianView() {
   }
 
   async function triggerSMS(techLat, techLng) {
+    // Guard against double-firing, same pattern as triggerCompletionSMS —
+    // without this, two pushLocation ticks close together (e.g. a slow
+    // network delaying the first triggerSMS's DB write past the next
+    // 15s GPS tick) could both pass the sms_sent check at the call site
+    // and send the client two ETA texts. (Fixed 2026-09-07.)
+    if (!currentJob || currentJob.sms_sent || !currentJob.client_phone) return
     const trackingUrl = `${import.meta.env.VITE_APP_URL}/track/${currentJob.id}`
     const { data: smsData, error: smsError } = await supabase.functions.invoke('send-eta-sms', {
       body: {

@@ -117,7 +117,24 @@ export default function TrackingView() {
     </div>
   )
 
-  if (!job || !tech) return (
+  if (!job) return (
+    <div style={styles.screen}>
+      <p style={{ color: '#888', fontSize: 16 }}>Loading tracking...</p>
+    </div>
+  )
+
+  // A job with no technician_id yet (not dispatched) would otherwise leave
+  // `tech` null forever, showing "Loading tracking..." indefinitely with no
+  // way for the client to know what's going on. (Fixed 2026-09-07.)
+  if (!job.technician_id) return (
+    <div style={styles.screen}>
+      <div style={styles.errorCard}>
+        <p style={{ color: '#444', fontSize: 15, margin: 0 }}>A technician hasn't been assigned to this job yet — check back soon.</p>
+      </div>
+    </div>
+  )
+
+  if (!tech) return (
     <div style={styles.screen}>
       <p style={{ color: '#888', fontSize: 16 }}>Loading tracking...</p>
     </div>
