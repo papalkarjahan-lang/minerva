@@ -1154,11 +1154,35 @@ Confirmed and fixed 4 real bugs:
   previously no way to clear a stuck/stale connection short of direct
   database access.
 
-Needs a fresh Supabase PAT to redeploy `send-weather-reschedule-sms` and
-`xero-oauth-callback`, and a fresh GitHub PAT to push. Frontend changes
-just need the next normal Vercel deploy.
-
 Verified: lint clean, 16/16 tests passing, build clean.
+
+- **2026-09-07 (confirmed live)**: with a fresh GitHub PAT + fresh Supabase
+  PAT, closed out everything queued above:
+  - Pushed `8cd6c4a` (the edge-function logic-bug fixes above) to
+    `origin/main`.
+  - Ran `supabase_schema_delta_payment_failed.sql` live —
+    `businesses.payment_failed_at` column confirmed added.
+  - Redeployed 4 edge functions via the Management API, all confirmed
+    `ACTIVE`: `stripe-webhook` (now handles `invoice.payment_failed` /
+    `invoice.payment_succeeded`, `verify_jwt=false` as required for a
+    Stripe-called webhook), `reconcile-technician-state` (earlier
+    kill-switch fix), `send-weather-reschedule-sms` (atomic-claim race
+    fix), `xero-oauth-callback` (tenantId null-check fix).
+  - Frontend banners (payment-failed warning in `DispatcherView.jsx` and
+    `IndustrialDispatcherView.jsx`) and pricing-copy fix (`LandingPage.jsx`,
+    `Onboarding.jsx`, `README.md`) ship on the next normal Vercel deploy —
+    no separate action needed, Vercel auto-deploys from `main`.
+  - **Deliberately NOT done**: registering `invoice.payment_failed` /
+    `invoice.payment_succeeded` as sent events on the live Stripe webhook
+    endpoint. This is a Stripe Dashboard (or Stripe API) account-setting
+    change and falls under the standing boundary that Stripe account
+    changes need to be explicitly walked through with the user, not done
+    unilaterally. **Action needed from the user**: in the Stripe Dashboard
+    → Developers → Webhooks → the endpoint pointing at this project's
+    `stripe-webhook` function → "Select events" → add
+    `invoice.payment_failed` and `invoice.payment_succeeded`. Without this,
+    the new column/banners exist but will never actually populate, since
+    Stripe won't be sending those events to the function yet.
 
 ## Still outstanding (non-code, needs the user or a bank account)
 
