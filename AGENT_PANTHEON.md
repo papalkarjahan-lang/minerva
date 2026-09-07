@@ -247,7 +247,414 @@ one-time nudge per trigger — never a sequence, never a sales pitch.
 
 ---
 
-## 3. What this document is *not*
+## 3. Character Dossiers
+
+Every daemon below gets three things: a **Symbol** (a visual shorthand for
+its domain), a **Nature** (a personality trait derived from what its code
+*actually does* — cautious daemons are cautious because they're
+human-approval-gated in the real code, not by invented flavor), and a
+**Bond** (who it actually hands data or work to/from, where that's real).
+Where a daemon has no real bond to another, none is listed — invented
+relationships would misrepresent the architecture.
+
+### Trade Dispatch & Field Ops
+
+**Automedon** — *self-ruling*
+- Symbol: a chariot wheel, already turning.
+- Nature: decisive and silent — acts the instant a job with no technician
+  is created, but only for businesses that opted in; otherwise doesn't
+  move at all.
+- Bond: hands the job to Angelia the moment it picks a technician.
+
+**Angelia** — *the news-bearer*
+- Symbol: a folded note, still warm.
+- Nature: immediate and literal — repeats exactly what it's told (job
+  address, client, time), nothing more, to whichever technician now holds
+  the job and, if reassigned, to whoever just lost it.
+- Bond: fires on Automedon's assignment and on a dispatcher's manual one.
+
+**Arke** — *the swift herald of approach*
+- Symbol: a horizon line, closing.
+- Nature: watches distance, not time — says nothing until the technician
+  crosses the 2km mark, then speaks exactly once per job.
+
+**Ossa** — *the spreading report*
+- Symbol: a closed door, opening.
+- Nature: terse and final — one message, the moment a technician marks
+  the job done, then goes quiet on that job forever.
+
+**Panoptes** — *the all-seeing*
+- Symbol: an unmoving dot, watched too long.
+- Nature: patient and suspicious of stillness — reads the same GPS trail
+  everyone else generates just by working, watching for a technician
+  parked near a client for 15+ minutes on a job that never went "active."
+- Bond: reuses Automedon's/technicians' breadcrumb trail; invents no new
+  tracking of its own.
+
+**Iaso** — *quiet recovery*
+- Symbol: a hairline crack, sealed.
+- Nature: self-healing and uncredited — fixes exactly one known drift
+  (a completed job whose technician never got un-assigned) and never
+  announces that it did.
+
+**Nemesis** — *balance against excess*
+- Symbol: a scale, gently correcting.
+- Nature: fair rather than punitive — doesn't block overworked
+  technicians from being assigned more jobs, just makes the imbalance
+  visible (rolling hours, rolling emergency-job count) so a human can act.
+
+**Thallo** — *the season of new growth*
+- Symbol: an open gate, no lock on it.
+- Nature: purely receptive — never pushes anything to anyone; sits still
+  and answers whenever Google/Apple/Outlook's own calendar app happens to
+  poll it.
+
+**Proteus** — *the shape-shifter*
+- Symbol: a blank shape, waiting to be told what to become.
+- Nature: has no fixed personality at all — it is whatever trigger/
+  condition/action rule each business writes for it, and nothing more;
+  the one daemon whose behavior isn't fixed by Minerva at all.
+
+### Leads, Intake & Client Relationships
+
+**Phantasos** — *the shaper of imagined things*
+- Symbol: a half-finished sketch, in conversation.
+- Nature: adaptive under pressure — triages free-text into
+  emergency/routine/out-of-scope using Claude, but instantly becomes
+  rigid and literal (a fixed five-question script) the moment the AI key
+  is missing, rather than failing the conversation.
+- Bond: writes the lead that Talthybius then announces and Elpis later
+  nurtures.
+
+**Kairos** — *the opportune instant*
+- Symbol: a phone, ringing once, unanswered.
+- Nature: exists only in the moment of a missed call — has no memory
+  before or after it, just a single reflex text back.
+
+**Talthybius** — *the herald who carries word for others*
+- Symbol: a webhook URL, pasted into a settings box.
+- Nature: has no opinions of its own — relays exactly what every other
+  daemon hands it, to exactly one Slack channel, and stays completely
+  silent for any business that hasn't configured one.
+- Bond: the shared voice of Phantasos, Elpis, Poine, Automedon, Pheme,
+  and most others that need to speak to a human.
+
+**Elpis** — *hope, kept alive twice*
+- Symbol: an ember, fed exactly twice.
+- Nature: gently persistent, then done — speaks once at 2 hours, once
+  more at 24 hours, and never again regardless of outcome; doesn't chase.
+
+**Peitho** — *persuasion, once*
+- Symbol: a single closing door, held open a moment longer.
+- Nature: patient to the point of stillness — waits 14 full days after a
+  lead is marked lost, sends exactly one low-pressure message, then
+  never revisits that lead no matter what happens.
+
+**Philotes** — *the bond of affection maintained*
+- Symbol: a porch light, left on.
+- Nature: unhurried and warm — checks in only with people who already
+  trusted the business once (a past completed job), never a stranger,
+  and only after 30 days of silence.
+
+**Pheme** — *report and rumor, gathered honestly*
+- Symbol: an open ledger, read aloud each evening.
+- Nature: comprehensive and self-critical — doesn't just tally wins
+  (jobs, leads, revenue), but specifically calls out where its
+  sibling daemons' own nudges have quietly failed to land.
+- Bond: reads outcomes of Elpis's and Poine's touches to build its
+  "silent automation" flags.
+
+### Quoting, Invoicing & Billing
+
+**Morpheus** — *shaper of forms out of nothing*
+- Symbol: a blank invoice line, filling itself in.
+- Nature: resourceful under failure — if the AI pricing pass fails or
+  isn't configured, doesn't block the quote; hands back a blank editable
+  line rather than an error.
+- Bond: prices using this SAME business's own historical invoice lines
+  only — never another business's pricing data.
+
+**Pothos** — *yearning for an answer*
+- Symbol: a paper airplane, mid-flight.
+- Nature: entirely deferential — never sends on its own initiative,
+  only the instant a dispatcher clicks "Send to Client."
+
+**Plutus** — *wealth, delivered plainly*
+- Symbol: a coin, handed over without ceremony.
+- Nature: matter-of-fact — a single link, no persuasion, the moment a
+  technician finishes building the invoice.
+
+**Poine** — *the debt that doesn't forget*
+- Symbol: a calendar square, circled in red.
+- Nature: relentless but honest — re-sends every 3 days for as long as
+  an invoice stays unpaid, but ONLY advances its own clock on a message
+  that actually succeeded (fixed 2026-09-07 — it used to advance the
+  clock even on a failed send, which meant a Twilio hiccup could buy an
+  invoice 3 days of silence it hadn't earned).
+- Bond: feeds Pheme's "3+ reminders, still unpaid" escalation flag.
+
+**Eunomia** — *good order, quietly enforced*
+- Symbol: two columns of numbers, compared.
+- Nature: exacting and non-punitive — checks Stripe's billed quantity
+  against who's actually connected, and on any mismatch tells a human
+  rather than silently "correcting" what a client is charged.
+
+**Harmonia** — *concord between two ledgers*
+- Symbol: two gears, meshing.
+- Nature: self-correcting by design — recomputes the full technician
+  count from scratch every single time rather than incrementing, so a
+  missed or duplicated call never leaves it wrong for long.
+
+**Euthenia** — *prosperity, offered*
+- Symbol: a door marked "Checkout."
+- Nature: purely transactional — creates the Stripe session and steps
+  aside; has no opinion on price or plan beyond what's configured.
+
+**Eleutheria** — *the freedom to leave*
+- Symbol: an unlocked exit.
+- Nature: exists specifically so "cancel anytime" is true and not just
+  promised copy — opens the real Stripe Customer Portal on request,
+  closing a gap that used to require asking a human for help to cancel.
+
+**Themis** — *the record of what was actually agreed*
+- Symbol: a stamped ledger page.
+- Nature: a scribe, not a judge — persists whatever Stripe reports onto
+  the business record; makes no decisions of its own.
+
+**Charis** — *gratitude, timed well*
+- Symbol: a small gift, handed over at the door.
+- Nature: opportunistic in the gentlest sense — speaks exactly once per
+  invoice, at the single best possible moment (right after payment),
+  and never again for that invoice.
+
+**Euphemia** — *praise, requested politely*
+- Symbol: a folded card that says "how did we do?"
+- Nature: only ever asks, never insists — and refuses outright (an
+  honest 400, not a broken link) if the business hasn't set up a review
+  link yet, rather than sending a client somewhere dead.
+
+### Growth & Marketing — every one of these three defers to a human
+
+**Icelus** — *the vision, not yet real*
+- Symbol: a sealed envelope marked "draft."
+- Nature: proposes and stops — writes an ad idea and a win-back message
+  as pending rows and never, under any configuration, sends or spends
+  on its own.
+- Bond: hands its drafts to Auxesia and Thelxinoe, and only they can act
+  on them, only on a human's click.
+
+**Auxesia** — *growth, only once approved*
+- Symbol: a paused campaign, one switch from live.
+- Nature: the one daemon in this pillar that touches real money — and
+  for that exact reason, it never runs unless a human clicks "Approve &
+  Launch"; even then it creates the campaign PAUSED first.
+
+**Thelxinoe** — *the charm in a well-timed message*
+- Symbol: a single sent message, already reviewed.
+- Nature: executes, never composes — sends exactly what a human already
+  read and approved in Icelus's draft; writes nothing itself.
+
+### Verification, Safety & Compliance
+
+**Rhadamanthus** — *a judge who never blocks the accused*
+- Symbol: a photo, annotated in the margin.
+- Nature: an evidence-keeper, not a gate — reviews checklist photos for
+  a later dispute, but never stops or alters a technician's own
+  submission in the moment.
+
+**Horkos** — *the price of a broken oath*
+- Symbol: a licence card, with a date circled.
+- Nature: calm until it isn't — a routine 30/14/7-day nudge, until a
+  credentialed technician is actually on an active job with an expired
+  or near-expired ticket, at which point it escalates urgency sharply.
+
+### Inventory & Consumables
+
+**Opora** — *the yield, watched as it thins*
+- Symbol: a shelf, one item lower than usual.
+- Nature: alerts once per low-stock episode, not every day it stays
+  low — waits for a restock (crossing back above threshold) before it
+  will ever speak about that item again.
+
+**Aristaeus** — *provisioning for the working day*
+- Symbol: a nearly-empty drum, tagged for reorder.
+- Nature: hourly and unglamorous — the industrial-sector mirror of
+  Opora, watching chemicals/wire/valves instead of shelf stock, with the
+  identical "flag once, re-arm after restock" discipline.
+
+### Weather & Field Risk
+
+**Aeolus** — *keeper of the winds, and what they'll disrupt tomorrow*
+- Symbol: a weathervane, turning early.
+- Nature: cautious and advisory only — checks a free public forecast
+  against tomorrow's weather-sensitive jobs and writes a draft; never
+  sends anything itself.
+- Bond: hands its draft to Notus, who alone can act on it.
+
+**Notus** — *the storm-wind, spoken of only when approved*
+- Symbol: a single reschedule text, sent once.
+- Nature: entirely reactive — exists only to fire the one message a
+  human already approved on Aeolus's draft; never initiates on its own.
+
+### Sustainability
+
+**Chloris** — *green growth, honestly measured*
+- Symbol: a straight line drawn between two points on a map.
+- Nature: rigorously self-caveated — computes a real number from real
+  completed-job locations, but is explicit (in its own header comment)
+  that it's straight-line distance, not real road routing, and carries
+  no material/embodied-carbon component at all.
+
+### Industrial Sector
+
+**Pontos** — *the sea that touches every shore*
+- Symbol: a compass, pointed at the nearest available asset.
+- Nature: central but deferential — matches an urgent lead to the
+  nearest free asset and recommends it in Slack, but never commits
+  equipment on its own; a wrong dispatch here is too expensive to
+  automate past a human.
+
+**Glaucus** — *the ever-wandering, watching for gaps*
+- Symbol: a site marker with no asset pinned to it yet.
+- Nature: a scout, not a dispatcher — every 30 minutes, finds sites with
+  nothing geofenced and suggests, exactly like Pontos, without ever
+  assigning outright.
+
+**Nereus** — *the old man of the sea, who never lies*
+- Symbol: a steady pulse on a live feed.
+- Nature: purely a witness — has no vendor hardware to speak of yet, so
+  it is honestly the raw ingestion point real telemetry (or a manual
+  ping) would feed, nothing invented on top.
+- Bond: feeds Aergia and Telesphorus their raw ping history.
+
+**Aergia** — *the quiet that means something's wrong*
+- Symbol: a dashboard gauge, frozen mid-reading.
+- Nature: notices absence, not activity — flags an asset only once it's
+  gone fully silent past the idle threshold; says nothing about assets
+  that are simply being used normally.
+
+**Telesphorus** — *recovery, anticipated before the injury*
+- Symbol: an hourglass, still half full.
+- Nature: forward-looking by real math, not guesswork — projects usage
+  rate from an asset's own actual ping history to flag maintenance
+  before the reactive threshold trips, and says plainly it isn't a
+  cross-client model, just this asset's own trend.
+
+**Aeacus** — *a judge who assembles the case, not the verdict*
+- Symbol: a folder, three tabs, all filled.
+- Nature: a compiler of evidence, not an authority — gathers telemetry,
+  checkins, and safety records into one client-facing package only
+  when asked, and never characterizes them beyond presenting them.
+
+**Astraea** — *justice, fled to the sky but still watching*
+- Symbol: a star, fixed above an unresolved case.
+- Nature: patient once, insistent after — the backstop that escalates
+  an incident specifically because 24 hours passed with no human
+  acknowledgment; stays quiet before that window and escalates exactly
+  once after.
+- Bond: escalates what Alastor first raised.
+
+**Alastor** — *the unresolved wrong, noticed early*
+- Symbol: two dots on a map, closer than they should be.
+- Nature: fast and literal — every 15 minutes, checks only for a human
+  and an automated process both "on site" at once; raises it once per
+  overlap, not on every sweep that overlap continues.
+- Bond: hands anything unacknowledged to Astraea after 24 hours.
+
+**Hecate** — *the guide between one hand and the next*
+- Symbol: a torch, held out at a crossroads.
+- Nature: notices handoffs that never happened — flags when an
+  automated process finished a task and no human has picked up the
+  follow-on work an hour later; says nothing if someone already has.
+
+**Euryphaessa** — *wide-shining, at the start of the day's work*
+- Symbol: a stack of intake forms, freshly filed.
+- Nature: purely custodial — takes leads exactly as handed to it (a CSV
+  export, a manual batch) and structures them; invents no leads and
+  scrapes nothing itself.
+- Bond: hands structured leads to Euporia and Pontos.
+
+**Euporia** — *resourcefulness, applied honestly*
+- Symbol: a half-filled contact card.
+- Nature: accepts real data from real legitimate sources only — refuses
+  to pretend it can scrape decision-maker contacts, and instead nudges
+  a human when enrichment is genuinely the blocking step.
+
+### Xero / Accounting Integration
+
+**Pistis** — *good faith, extended first*
+- Symbol: a door to someone else's house, knocked on politely.
+- Nature: makes the first move and then steps back — redirects to
+  Xero's own consent screen and does nothing further until Xero replies.
+
+**Aletheia** — *the truth of a completed handshake*
+- Symbol: a token, exchanged and locked away.
+- Nature: careful with what it's given — exchanges the auth code for
+  real tokens and stores them somewhere nothing else (not even the
+  browser) can read, using the service-role key specifically because
+  these are real third-party credentials, unlike the rest of the demo
+  data in this build.
+- Bond: completes what Pistis started.
+
+**Palaemon** — *safe harbor for a merchant's ledger*
+- Symbol: an invoice, still in draft, waiting in a harbor.
+- Nature: deliberately incomplete on purpose — pushes a Minerva invoice
+  into Xero as a DRAFT, never AUTHORISED, so a human reviews it in Xero
+  before a client ever sees it from there.
+
+### Public / Unauthenticated Endpoints
+
+**Adrasteia** — *nothing here goes unrecorded*
+- Symbol: a single footprint, timestamped.
+- Nature: records exactly once — the first click on a review link, and
+  never again for that link — then redirects, or fails honestly with
+  plain text if the business's review link was since cleared.
+
+**Melinoe** — *tending what was left unclaimed*
+- Symbol: an open tab, left running.
+- Nature: notices, never deletes — flags a signup abandoned 48+ hours
+  after Stripe checkout never completed, and leaves the actual decision
+  to delete anything entirely to a human.
+
+### Agent Operating System (Infrastructure)
+
+**Lachesis** — *measuring the week's thread*
+- Symbol: a spool of thread, cut once a week.
+- Nature: reflective and platform-wide — the one daemon that reports to
+  the Minerva operator, not to any single business, synthesizing what
+  every other daemon did across all tenants in the last 7 days.
+- Bond: reads `agent_insights` and every daemon's run history at once.
+
+**Aceso** — *recovery, monitored not performed*
+- Symbol: a pulse line, checked every quarter hour.
+- Nature: deliberately passive — refuses to invoke any of the daemons
+  it watches (most have real side effects — an SMS, a Slack post, a
+  Stripe charge), and instead only reads what they've already logged
+  about themselves.
+- Bond: reads what every other daemon writes via `record_agent_run()`.
+
+**Talos** — *the automaton that keeps working even unconfigured*
+- Symbol: a sealed envelope, stamped but unsent.
+- Nature: honest about its own limits — if no email key is configured,
+  says so plainly (`skipped:true`) rather than pretending to have sent
+  anything, so callers relying on it never fail a real event over a
+  missing email key.
+
+**Aglaea** — *the polish on a fresh start*
+- Symbol: a new phone, one notification waiting.
+- Nature: exists at exactly one moment — the instant a business finishes
+  onboarding — and speaks once to each technician, never again.
+
+**Clio** — *history, read forward as a trend*
+- Symbol: two bar charts, side by side.
+- Nature: modest about what it actually is — real trend arithmetic
+  (recent 2 weeks vs. prior 2 weeks) on a business's own bookings, and
+  explicit that it is not a trained forecasting model.
+- Bond: writes `trend_address` insights that Icelus later reads.
+
+---
+
+## 4. What this document is *not*
 
 It is not a refactor, not a rename of any deployed slug, and not a claim
 that any of this mythology exists in running code, database rows, or
