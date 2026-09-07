@@ -69,9 +69,9 @@ is the actual mechanism behind "adaptability" at the operator level: any
 one daemon can be paused instantly if it misbehaves, without touching the
 rest of the pantheon.
 
-### Self-monitoring: `record_agent_run` + Hygieia (`test-agent-health`)
+### Self-monitoring: `record_agent_run` + Aceso (`test-agent-health`)
 Every daemon calls `record_agent_run()` on completion, logging its own
-last-run timestamp and outcome. `test-agent-health` (named Hygieia below)
+last-run timestamp and outcome. `test-agent-health` (named Aceso below)
 runs every 15 minutes and passively reads that run history — it never
 invokes any other daemon directly, since many of them have real side
 effects (an SMS, a Slack post, a Stripe charge) that shouldn't fire just to
@@ -144,9 +144,9 @@ one-time nudge per trigger — never a sequence, never a sales pitch.
 |---|---|---|
 | **Automedon** *(Achilles' charioteer — his name literally means "self-ruling")* | `auto-assign-technician` | Assigns the nearest free technician to a new job, automatically, only when a business has opted in. |
 | **Angelia** *(obscure messenger-goddess of news)* | `send-job-assignment-sms` | Texts a technician their new job (and the outgoing technician, on reassignment). |
-| **Arke** *(Iris's swift, lesser-known sister)* | `send-eta-sms` | Fires when a technician comes within 2km of the client — sends the "on our way" text. |
+| **Arke** *(minor winged messenger-goddess, a swift herald of approach)* | `send-eta-sms` | Fires when a technician comes within 2km of the client — sends the "on our way" text. |
 | **Ossa** *(Homeric personification of a spreading report)* | `send-completion-sms` | Texts the client once a technician marks the job done. |
-| **Argus** *(Panoptes, the hundred-eyed watchman)* | `detect-wasted-trips` | Cross-checks GPS breadcrumbs against jobs stuck at "scheduled" to catch no-shows/wasted trips. |
+| **Panoptes** *(epithet meaning "all-seeing" — the hundred-eyed watchman)* | `detect-wasted-trips` | Cross-checks GPS breadcrumbs against jobs stuck at "scheduled" to catch no-shows/wasted trips. |
 | **Iaso** *(goddess of recuperation)* | `reconcile-technician-state` | Self-heals a known drift where a job completes but the technician's `current_job_id` never clears. |
 | **Nemesis** *(balance and retribution against excess)* | `update-technician-workload` | Recomputes rolling hours/emergency-job load per technician — the burnout/fair-rotation guard. |
 | **Thallo** *(a Hora, goddess of the season of blooming)* | `calendar-feed` | Serves the public, unauthenticated ICS calendar feed for Google/Apple/Outlook subscription. |
@@ -157,7 +157,7 @@ one-time nudge per trigger — never a sequence, never a sales pitch.
 |---|---|---|
 | **Phantasos** *(one of the three Oneiroi, shaper of imagined things)* | `ai-intake-chat` | Runs the AI intake widget that triages a prospect and captures a lead. |
 | **Kairos** *(god of the critical, opportune moment)* | `missed-call-webhook` | Catches a missed call on Twilio and texts the caller back immediately. |
-| **Iris** *(rainbow messenger of the gods)* | `notify-slack` | Generic internal Slack notifier used by most other daemons. |
+| **Talthybius** *(Agamemnon's herald in the Iliad — carries messages on others' behalf)* | `notify-slack` | Generic internal Slack notifier used by most other daemons. |
 | **Elpis** *(spirit of hope)* | `nurture-stale-leads` | Two scheduled touches keeping a new, unclaimed lead warm before it goes cold. |
 | **Peitho** *(goddess of persuasion)* | `winback-lost-leads` | One re-engagement text, 14 days after a lead is marked lost — then never touches it again. |
 | **Philotes** *(goddess of friendship/affection)* | `retention-checkin` | A low-pressure "need anything else?" text to past clients who haven't returned in 30+ days. |
@@ -167,21 +167,21 @@ one-time nudge per trigger — never a sequence, never a sales pitch.
 | Daemon | Function | Duty |
 |---|---|---|
 | **Morpheus** *(Oneiros who shapes human forms in dreams)* | `draft-quote` | Drafts a line-item quote from a plain-English job description. |
-| **Litae** *(the Litai, spirits of entreaty from the Iliad)* | `send-quote-sms` | Texts a quote to the client — only on a dispatcher's explicit click. |
+| **Pothos** *(minor god of yearning/longing — a quote sent out, hoping the client accepts)* | `send-quote-sms` | Texts a quote to the client — only on a dispatcher's explicit click. |
 | **Plutus** *(god of wealth)* | `send-invoice-sms` | Texts the client their invoice link after job completion. |
 | **Poine** *(spirit of penalty for an unpaid debt)* | `chase-unpaid-invoices` | Daily reminder sweep for invoices unpaid 3+ days, throttled to once every 3 days on actual send success. |
-| **Dike** *(goddess of just judgment)* | `reconcile-billing` | Compares local connected-technician counts against Stripe's billed quantity and flags drift. |
+| **Eunomia** *(goddess of good order and lawful governance, one of the Horae)* | `reconcile-billing` | Compares local connected-technician counts against Stripe's billed quantity and flags drift. |
 | **Harmonia** *(goddess of concord)* | `sync-technician-billing` | Recomputes and syncs Stripe subscription quantity the moment a technician's phone first reports in. |
 | **Euthenia** *(personification of prosperity)* | `create-checkout-session` | Creates the Stripe Checkout session for a new subscription. |
 | **Eleutheria** *(personification of liberty)* | `create-billing-portal-session` | Opens the Stripe Customer Portal so a business can self-serve manage or cancel. |
 | **Themis** *(goddess of divine law and decree)* | `stripe-webhook` | Receives and records Stripe's account-of-record events onto the business row. |
-| **Charis** *(grace/gratitude, singular of the Charites)* | `send-referral-code-sms` | Texts a referral code the moment an invoice is marked paid — the "thank you, tell a friend" nudge. |
+| **Charis** *(goddess of grace and gratitude)* | `send-referral-code-sms` | Texts a referral code the moment an invoice is marked paid — the "thank you, tell a friend" nudge. |
 | **Euphemia** *(goddess of praise and good report)* | `send-review-request-sms` | Texts a paid client a link asking for a public review. |
 
 ### Growth & Marketing — human-approval gated, no exceptions
 | Daemon | Function | Duty |
 |---|---|---|
-| **Icelus** *(also called Phobetor — the Oneiros who shapes animal/fearsome dream-forms)* | `generate-growth-drafts` | Weekly: drafts an ad idea and a win-back SMS as *pending* rows only — never sends or spends. |
+| **Icelus** *(a dream-shaping minor god — conjures a persuasive vision, not yet real)* | `generate-growth-drafts` | Weekly: drafts an ad idea and a win-back SMS as *pending* rows only — never sends or spends. |
 | **Auxesia** *(obscure growth-goddess, worshipped at Aegina)* | `launch-ad-campaign` | The one place real ad spend commits — only on a human's explicit "Approve & Launch" click. |
 | **Thelxinoe** *(an early, little-known Muse name meaning "she who charms the mind")* | `send-growth-message` | Sends an already-drafted, already-approved outreach SMS — only on a human's click. |
 
@@ -206,7 +206,7 @@ one-time nudge per trigger — never a sequence, never a sales pitch.
 ### Sustainability
 | Daemon | Function | Duty |
 |---|---|---|
-| **Aether** *(primordial personification of the upper atmosphere)* | `estimate-job-carbon` | Daily per-technician estimate of transit CO2-e from that day's completed jobs (straight-line distance, clearly caveated). |
+| **Chloris** *(goddess of vegetation and greenery)* | `estimate-job-carbon` | Daily per-technician estimate of transit CO2-e from that day's completed jobs (straight-line distance, clearly caveated). |
 
 ### Industrial Sector
 | Daemon | Function | Duty |
@@ -214,7 +214,7 @@ one-time nudge per trigger — never a sequence, never a sales pitch.
 | **Pontos** *(primordial sea god, father of the sea-deities — a broad, central domain)* | `industrial-conductor` | Matches urgent industrial leads to the nearest available asset and posts a Slack recommendation — never auto-commits equipment. |
 | **Glaucus** *(fisherman-turned-prophetic sea god, ever wandering)* | `optimize-industrial-routes` | Every 30 min, suggests the nearest unassigned asset for any site with none geofenced yet. |
 | **Nereus** *(the Old Man of the Sea, always truthful)* | `monitor-asset-telemetry` | Real-time ingestion endpoint for asset telemetry pings — the ground-truth data source for the sector. |
-| **Hypnos** *(god of sleep)* | `detect-idle-assets` | Daily sweep flagging assets that have gone quiet — no telemetry ping in the idle threshold window. |
+| **Aergia** *(minor goddess of sloth and inactivity, daughter of Eris)* | `detect-idle-assets` | Daily sweep flagging assets that have gone quiet — no telemetry ping in the idle threshold window. |
 | **Telesphorus** *(obscure god of convalescence, depicted as a hooded child)* | `predict-asset-maintenance` | Projects usage rate from real ping history to flag maintenance needs *before* the reactive threshold trips. |
 | **Aeacus** *(a Judge of the Underworld)* | `package-client-verification` | Assembles telemetry/checkin/safety evidence into a client-facing sign-off package on request. |
 | **Astraea** *(star-maiden goddess of justice, who fled the earth to the sky)* | `verify-industrial-compliance` | Hourly backstop escalating safety incidents unacknowledged 24h+ after being raised. |
@@ -233,16 +233,16 @@ one-time nudge per trigger — never a sequence, never a sales pitch.
 ### Public / Unauthenticated Endpoints
 | Daemon | Function | Duty |
 |---|---|---|
-| **Mnemosyne** *(Titaness of memory)* | `track-review-click` | Records the first click on a review-request link, then redirects to the business's Google review page. |
-| **Lethe** *(spirit of forgetting/oblivion)* | `flag-abandoned-signups` | Daily flag (never deletes) for signups 48h+ old that never completed Stripe checkout. |
+| **Adrasteia** *(epithet meaning "the inescapable one" — nothing that happens here goes unrecorded)* | `track-review-click` | Records the first click on a review-request link, then redirects to the business's Google review page. |
+| **Melinoe** *(minor goddess associated with appeasing restless, ownerless spirits)* | `flag-abandoned-signups` | Daily flag (never deletes) for signups 48h+ old that never completed Stripe checkout. |
 
 ### Agent Operating System (Infrastructure)
 | Daemon | Function | Duty |
 |---|---|---|
-| **Moirai** *(the three Fates, who see the whole thread of things)* | `agent-council-report` | Weekly, platform-wide synthesis of the last 7 days' agent activity, written for the Minerva operator — not any one customer. |
-| **Hygieia** *(goddess of health)* | `test-agent-health` | Every 15 min, passively checks every other daemon's run history for staleness or errors. |
+| **Lachesis** *(the Fate who measures out the thread — apportions the past week into a report)* | `agent-council-report` | Weekly, platform-wide synthesis of the last 7 days' agent activity, written for the Minerva operator — not any one customer. |
+| **Aceso** *(minor goddess of the process of healing/recovery from an illness)* | `test-agent-health` | Every 15 min, passively checks every other daemon's run history for staleness or errors. |
 | **Talos** *(the mythical bronze automaton that patrolled Crete)* | `send-email` | Generic transactional email sender — a documented, honest no-op until `RESEND_API_KEY` is configured. |
-| **Hebe** *(goddess of youth)* | `send-setup-sms` | Texts each technician their setup link the moment a business finishes onboarding. |
+| **Aglaea** *(goddess of splendor and adornment — the fresh start of a new setup)* | `send-setup-sms` | Texts each technician their setup link the moment a business finishes onboarding. |
 | **Clio** *(Muse of history)* | `forecast-demand` | Weekly trend comparison (recent 2 weeks vs prior 2 weeks) per client address — directional signal, not a trained model. |
 
 ---
