@@ -10,8 +10,22 @@ export default function SuccessPage() {
 
   useEffect(() => {
     if (!businessId) return
-    supabase.from('businesses').select('sector').eq('id', businessId).single()
-      .then(({ data }) => { if (data?.sector) setSector(data.sector) })
+    // Retries once on failure before giving up (rather than silently
+    // leaving sector at its 'trade' default forever) — an industrial
+    // business landing here right after a Stripe redirect, hitting a
+    // transient fetch error, would otherwise get sent to the wrong
+    // console with no indication anything went wrong. (Fixed 2026-09-07.)
+    let cancelled = false
+    async function loadSector() {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const { data, error } = await supabase.from('businesses').select('sector').eq('id', businessId).single()
+        if (cancelled) return
+        if (!error && data?.sector) { setSector(data.sector); return }
+        if (attempt === 0) await new Promise(r => setTimeout(r, 800))
+      }
+    }
+    loadSector()
+    return () => { cancelled = true }
   }, [businessId])
 
   const intakeUrl = businessId ? `${window.location.origin}/intake/${businessId}` : ''
