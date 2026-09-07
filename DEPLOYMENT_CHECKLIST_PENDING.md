@@ -1319,6 +1319,52 @@ Verified: lint clean, 16/16 tests passing, build clean.
   every function in `supabase/functions/` has now been manually read and
   checked at least once this project.
 
+- **2026-09-07 (frontend audit, no fresh PAT this round — local commits
+  only, pending push/deploy)**: fixed a real edge-function bug found while
+  closing out the last low-priority item from the earlier industrial
+  audit round — `track-consumables` only flagged items strictly below
+  `reorder_threshold`, while `check-inventory-levels` (the trade-sector
+  equivalent) flags at-or-below; an item sitting exactly at threshold
+  never alerted. Fixed to match (`ce1b107`). Then ran the same
+  audit-and-manually-verify process across all 14 React frontend pages in
+  `src/pages/` (2 parallel subagent passes — dispatcher/technician/admin
+  group and client-facing group), fixing 4 more confirmed real bugs
+  (`1a008f9`):
+  - `TechnicianView.jsx`: the browser online-event handler's
+    `flushQueue()` had a stale closure over `currentJob` (effect only
+    depended on `[tech]`) — a job reassignment while offline could write
+    the reconnect GPS breadcrumb under the wrong `job_id`. Fixed by adding
+    `currentJob?.id` to the effect's deps.
+  - `TechnicianView.jsx`: `triggerSMS` (the ETA text) had no self-guard
+    against re-entry, unlike its sibling `triggerCompletionSMS` — a slow
+    network delaying the `sms_sent` DB write past the next 15s GPS tick
+    could send the client a duplicate ETA text. Added the same guard its
+    sibling already has.
+  - `DispatcherView.jsx`: `job_assignments` (crew) had no realtime
+    subscription, unlike `technicians`/`jobs`/`leads` — a second
+    dispatcher tab showed a stale crew list until manual reload. Added a
+    subscription matching the established pattern.
+  - `TrackingView.jsx`: a job with no `technician_id` yet (not dispatched)
+    left `tech` null forever, showing "Loading tracking..." indefinitely
+    with no explanation to the client. Added a distinct "not assigned
+    yet" state.
+  - **Noted, low-severity, not fixed**: `SuccessPage.jsx`'s sector lookup
+    silently no-ops on query failure (rare — would need the DB call
+    itself to fail right after the Stripe redirect), defaulting to the
+    trade console URL for what might be an industrial business. Narrow
+    edge case, left as-is per the established low-severity threshold.
+  - **All other findings across both frontend audit rounds were false
+    positives** rejected after reading actual source (AdminConsole's
+    tier-override race — already guarded by disabling the select during
+    save; QuoteView/InvoiceView/DisputeView — all correctly scoped to
+    `businesses(name)` per SECURITY_NOTES.md's existing fix; Onboarding's
+    phone validation — intentionally deferred to Twilio; IntakeAssistant's
+    lead-capture lock — intentional one-lead-per-session design; and
+    several initially-suspected DispatcherView/TechnicianView issues that
+    turned out to be already correctly guarded).
+  - Needs a fresh GitHub PAT to push `ce1b107`/`1a008f9`, and a fresh
+    Supabase PAT to redeploy `track-consumables`.
+
 ## Still outstanding (non-code, needs the user or a bank account)
 
 - Twilio Voice webhook for `missed-call-webhook` — blocked, trial accounts
