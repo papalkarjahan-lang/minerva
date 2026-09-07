@@ -28,6 +28,7 @@ const AdminConsole = lazy(() => import('./pages/AdminConsole'))
 const TermsOfService = lazy(() => import('./pages/TermsOfService'))
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'))
 const RefundPolicy = lazy(() => import('./pages/RefundPolicy'))
+const CaseStudy = lazy(() => import('./pages/CaseStudy'))
 
 function RouteLoadingFallback() {
   return (
@@ -50,6 +51,11 @@ export default function App() {
         <Route path="/terms" element={<TermsOfService />} />
         <Route path="/privacy" element={<PrivacyPolicy />} />
         <Route path="/refund-policy" element={<RefundPolicy />} />
+        {/* Case-study template — see CaseStudy.jsx header comment. Not
+            linked from the nav/footer until it's filled in with a real
+            customer's real numbers (still has bracketed placeholders as
+            of 2026-09-08) — reachable at /case-study for direct preview. */}
+        <Route path="/case-study" element={<CaseStudy />} />
 
         {/* Internal Minerva staff admin console — gated by an
             admin-email allowlist checked against the Supabase Auth

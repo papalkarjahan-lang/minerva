@@ -52,14 +52,17 @@ underlying mechanism runs either way:
 
 ## Social proof — not safe to say until there's a real converted customer
 
-The Day-7 breakup emails in `OUTREACH_EMAILS.md` and
-`EXACT_OUTREACH_EMAIL_DRAFTS.md` (Clients 1, 4, 6) all include a line like
-"A few [trade type] businesses in [region] are already running Minerva."
-This is currently false — zero real businesses have signed up yet (checked
-live in the database 2026-09-02). Don't send any Email 3 containing this
-line until at least one real paying customer exists. Once one does, it's
-fine to say "a [trade type] business" (singular, true) rather than "a few"
-until there are genuinely several.
+**Fixed 2026-09-08:** the Day-7 breakup emails in `OUTREACH_EMAILS.md` and
+`EXACT_OUTREACH_EMAIL_DRAFTS.md` (Clients 1, 4, 6) previously included a
+line like "A few [trade type] businesses in [region] are already running
+Minerva" — false with zero real customers (checked live in the database
+2026-09-02). These now use an honest "founding customer" framing instead,
+true regardless of actual customer count. Once there's at least one real
+paying customer, it's fine to swap in real social proof — say "a [trade
+type] business" (singular, true) rather than "a few" until there are
+genuinely several. Any NEW pitch copy written from now on should default
+to the founding-customer framing until real social proof exists, rather
+than a placeholder claim that needs to be remembered and stripped later.
 
 ## On the Industrial sector specifically
 

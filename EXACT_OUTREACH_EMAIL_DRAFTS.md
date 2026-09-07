@@ -12,12 +12,16 @@ the phone scripts might say "smart," and no email claims the system
 "learns." If `ANTHROPIC_API_KEY` is live by the time you send these, check
 `ANTHROPIC_KEY_LIVE_UPGRADE_NOTE.md` for which lines can upgrade.
 
-**One exception, flagged 2026-09-02:** the Day 7 emails for Client 1
-(Plumbing), Client 4 (Commercial Cleaning), and Client 6 (Pest Control) each
-include a social-proof line ("A few [trade type] businesses in [region] are
-already running Minerva..."). This is false until there's at least one real
-paying customer — don't send those three Email 3s as-written until then.
-Drop that sentence and go straight to the demo-link close in the meantime.
+**Fixed 2026-09-08:** the Day 7 emails for Client 1 (Plumbing), Client 4
+(Commercial Cleaning), and Client 6 (Pest Control) previously included a
+false social-proof line ("A few [trade type] businesses in [region] are
+already running Minerva..." — untrue with zero real customers, per
+`SALES_CLAIMS_ACCURACY_NOTE.md`). Replaced with an honest "founding
+customer" framing that's true regardless of customer count and needs no
+manual edit before sending. Once there are genuinely several real
+customers in a given trade, feel free to swap back to real social proof —
+just keep it truthful to the actual count (see
+`SALES_CLAIMS_ACCURACY_NOTE.md`'s singular-vs-plural guidance).
 
 Same send-time rule as the base sequence: Tue–Thu, 7:30–8:30am local time.
 Never Monday, never Friday afternoon.
@@ -68,9 +72,9 @@ Subject: last one — [Business Name]
 
 Hi [First name],
 
-Last note. A few plumbing businesses in [region] are already running
-Minerva — the thing they all say is it kills the "where are you" calls in
-the first week.
+Last note. We're onboarding a small number of plumbing businesses as
+founding customers right now, before this opens up more broadly — the
+pitch is simple: it kills the "where are you" calls in the first week.
 
 Want to see it live on your own phone? 2 minutes, no signup: [demo link].
 If not, no hard feelings.
@@ -224,9 +228,10 @@ Subject: last one — [Business Name]
 
 Hi [First name],
 
-Last note. A few cleaning businesses in [region] are already running
-Minerva — they say it ends the "did the team actually show up" question
-entirely. 2-minute demo, no signup: [demo link].
+Last note. We're onboarding a small number of commercial cleaning
+businesses as founding customers right now — it ends the "did the team
+actually show up" question entirely. 2-minute demo, no signup: [demo
+link].
 
 [Your name] / [Your mobile]
 
@@ -323,8 +328,9 @@ Subject: last one — [Business Name]
 
 Hi [First name],
 
-Last note. A couple of pest control businesses in [region] are already
-running this — happy to send a 2-minute self-serve demo: [demo link].
+Last note. We're onboarding a small number of pest control businesses as
+founding customers right now — happy to send a 2-minute self-serve demo:
+[demo link].
 
 [Your name] / [Your mobile]
 
