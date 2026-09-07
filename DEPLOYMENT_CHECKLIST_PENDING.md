@@ -1266,6 +1266,59 @@ Verified: lint clean, 16/16 tests passing, build clean.
     "clean" verdicts on `monitor-asset-telemetry`,
     `optimize-industrial-routes`, `detect-safety-hazards`.
 
+- **2026-09-07 (later still)**: fixed and deployed `check-weather-risk`'s
+  non-risky branch not setting `weather_risk_flagged_at` (commit `a8f1710`,
+  redeployed v6). Then ran a full sweep of every remaining not-yet-audited
+  edge function (industrial re-verify + growth/marketing + remaining
+  operational/infra functions — the last ~35 of 58 total) via 3 parallel
+  subagent passes, manually re-verifying every claim before acting:
+  - **Fixed**: `detect-safety-hazards` ("The Warden") was clearing a
+    person/process from its "on site" presence map on `task_complete`, not
+    just `departure` — but `task_complete` is a task-level progress marker
+    (confirmed via `sequence-handoffs`/`package-client-verification`'s own
+    usage), not a departure signal. A technician who finished a task but
+    hadn't physically left the site could silently drop off the registry,
+    letting a real human/automated-process proximity hazard go undetected.
+    Fixed to only clear presence on `departure`, matching the function's
+    own header comment. Committed (`968e469`), pushed, redeployed (v5,
+    ACTIVE).
+  - **Fixed**: `chase-unpaid-invoices` updated `reminder_sent_at` /
+    `reminder_count` unconditionally, even when the SMS failed or Twilio
+    wasn't configured — resetting the documented 3-day re-send throttle on
+    a reminder that never went out, so a failed send went quiet for 3+
+    days instead of retrying tomorrow. Fixed to only advance the throttle
+    on confirmed send success. Committed (`968e469`), pushed, redeployed
+    (v6, ACTIVE).
+  - **Audited and confirmed NOT bugs** (large batch, all rejected after
+    reading actual source): predict-asset-maintenance's event-type naming
+    (docs-only lag, not a logic bug), harvest-industrial-leads' Slack
+    count (correctly counts actual inserted rows), monitor-asset-telemetry
+    (correct partial-update `?? undefined` pattern), optimize-industrial-
+    routes and industrial-conductor (both clean). Across growth/marketing
+    (nurture-stale-leads, winback-lost-leads, flag-abandoned-signups,
+    package-client-verification, generate-growth-drafts, send-growth-
+    message, launch-ad-campaign, retention-checkin) — 0 real bugs, all
+    idempotent-failure-mode / documented-proxy / human-approval-gate
+    designs confirmed intentional. Across the remaining ~24 operational/
+    infra functions (draft-quote, send-quote-sms, send-review-request-sms,
+    send-job-assignment-sms, update-technician-workload, track-review-
+    click, verify-checklist-photos, run-custom-workflows, forecast-demand,
+    test-agent-health, agent-council-report, check-credential-expiry,
+    detect-wasted-trips, estimate-job-carbon, calendar-feed, daily-digest,
+    reconcile-technician-state, send-weather-reschedule-sms, missed-call-
+    webhook, xero-oauth-connect, xero-oauth-callback, xero-sync-invoice,
+    stripe-webhook, send-email) — only the `chase-unpaid-invoices` bug
+    above was real; everything else (including close scrutiny of
+    stripe-webhook's signature verification and xero-oauth-callback's
+    token handling) checked out as correct or as an already-documented
+    honest limitation (e.g. estimate-job-carbon's straight-line-distance
+    caveat, detect-wasted-trips' no-duration-data caveat, xero-oauth-
+    connect's unsigned state for single-tenant deployments).
+
+  This effectively closes out the full 58-function edge-function audit —
+  every function in `supabase/functions/` has now been manually read and
+  checked at least once this project.
+
 ## Still outstanding (non-code, needs the user or a bank account)
 
 - Twilio Voice webhook for `missed-call-webhook` — blocked, trial accounts
