@@ -1184,6 +1184,46 @@ Verified: lint clean, 16/16 tests passing, build clean.
     the new column/banners exist but will never actually populate, since
     Stripe won't be sending those events to the function yet.
 
+- **2026-09-07 (continued audit — no fresh PAT this round, committed
+  locally only, `dcd26c3`)**: broadened the sweep beyond edge-function
+  logic to README/landing-page accuracy and the billing-critical
+  functions (`sync-technician-billing`, `reconcile-billing`,
+  `create-checkout-session`, `create-billing-portal-session`).
+  - **Real bug found and fixed**: `send-referral-code-sms`'s own
+    idempotency check permanently blocked retrying a referral-code SMS
+    after a transient send failure (the code is persisted before the SMS
+    attempt, and its mere existence was treated as "already handled").
+    Added `invoices.referral_sms_failed` (new column, SQL delta not yet
+    run) and a DispatcherView "Resend" button next to paid invoices,
+    mirroring the existing `client_sms_failed` pattern.
+  - **Real bug found and fixed**: README's Xero/QuickBooks section
+    claimed invoice CSV export works "on any tier, with no tier gate in
+    the code" — false, since the Invoices tab itself is Pro-only.
+  - **Audited and confirmed NOT bugs** (rejected after reading the actual
+    code, not just the subagent's claims): `notify-slack`'s "silent
+    no-op when unconfigured" — documented intentional design, Slack is
+    optional everywhere. `ai-intake-chat`'s chat-reply "XSS risk" — false,
+    React's `{m.content}` JSX interpolation auto-escapes. The 4 SMS
+    functions (`send-eta-sms`/`send-completion-sms`/`send-invoice-sms`/
+    `send-setup-sms`) "missing double-send protection" — false,
+    `TechnicianView.jsx` already guards eta/completion via
+    `sms_sent`/`completion_sms_sent` flags checked before invoking, and
+    setup-sms's "resend" is an intentional explicit action, not an
+    accidental duplicate. `sync-technician-billing`'s "double-billing
+    race" — false, the function is explicitly self-correcting/idempotent
+    per its own header (always recomputes full quantity, never
+    increments), so two concurrent calls converge on Stripe's side rather
+    than double-charging. `reconcile-billing`/`create-checkout-session`
+    "silent drift"/"untrusted businessId" — the drift scenario is exactly
+    what `reconcile-billing`'s daily Slack-alert safety net is designed to
+    catch (deliberately alerts rather than auto-corrects billing — a
+    human should review first); the businessId trust model matches the
+    already-documented, accepted "unguessable UUID, no real auth"
+    architecture in `SECURITY_NOTES.md`, not a new gap.
+  - Needs a fresh Supabase PAT to run
+    `supabase_schema_delta_referral_sms_failed.sql` and redeploy
+    `send-referral-code-sms`, and a fresh GitHub PAT to push `dcd26c3`.
+
 ## Still outstanding (non-code, needs the user or a bank account)
 
 - Twilio Voice webhook for `missed-call-webhook` — blocked, trial accounts
