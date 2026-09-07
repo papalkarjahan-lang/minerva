@@ -11,8 +11,13 @@
 // After deploying, register the endpoint in Stripe Dashboard > Developers >
 // Webhooks:
 //   URL: https://YOUR_PROJECT_REF.supabase.co/functions/v1/stripe-webhook
-//   Events to send: checkout.session.completed, customer.subscription.deleted
+//   Events to send: checkout.session.completed, customer.subscription.deleted,
+//                    invoice.payment_failed, invoice.payment_succeeded
 // Copy the signing secret into Supabase secrets as STRIPE_WEBHOOK_SECRET.
+//
+// Run supabase_schema_delta_payment_failed.sql once before relying on the
+// invoice.payment_failed / invoice.payment_succeeded handling below — it adds
+// the businesses.payment_failed_at column those two cases write to.
 //
 // Required Supabase secrets:
 //   STRIPE_SECRET_KEY       (same key used by create-checkout-session)
@@ -109,6 +114,43 @@ serve(async (req: Request) => {
           .update({ subscription_tier: 'cancelled' })
           .eq('stripe_sub_id', subscription.id)
         if (error) console.error('Failed to mark subscription cancelled:', error.message)
+        break
+      }
+
+      case 'invoice.payment_failed': {
+        // A charge was declined. The subscription isn't cancelled yet —
+        // Stripe enters its own dunning/retry cycle first, which can run for
+        // days to weeks depending on account settings — but nothing else in
+        // Minerva has any way to know that's happening until (if) Stripe
+        // eventually gives up and fires customer.subscription.deleted above.
+        // Record it now so the dispatcher app can warn the owner immediately
+        // instead of leaving them unaware their card was declined.
+        const invoice = event.data.object as Stripe.Invoice
+        const subId = invoice.subscription as string | null
+        if (subId) {
+          const { error } = await supabaseAdmin
+            .from('businesses')
+            .update({ payment_failed_at: new Date().toISOString() })
+            .eq('stripe_sub_id', subId)
+          if (error) console.error('Failed to record payment_failed_at:', error.message)
+        }
+        break
+      }
+
+      case 'invoice.payment_succeeded': {
+        // Clears the warning set above — either a retried charge went
+        // through and the subscription is healthy again, or this is the
+        // very first invoice on a fresh subscription (payment_failed_at is
+        // already null then, so this is a harmless no-op in that case).
+        const invoice = event.data.object as Stripe.Invoice
+        const subId = invoice.subscription as string | null
+        if (subId) {
+          const { error } = await supabaseAdmin
+            .from('businesses')
+            .update({ payment_failed_at: null })
+            .eq('stripe_sub_id', subId)
+          if (error) console.error('Failed to clear payment_failed_at:', error.message)
+        }
         break
       }
 

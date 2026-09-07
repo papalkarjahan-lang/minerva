@@ -1011,6 +1011,77 @@ site (no live DB query needed, so no token spent to find this):
   multipart `/functions/deploy` API, per the established deploy method —
   no CLI installed, never PATCH+JSON body).
 
+## Built, tested, committed locally — needs a fresh GitHub PAT to push (2026-09-07, "employee phones" — technician setup-SMS recovery)
+
+Direct response to the user's "look at everything... employee phones..."
+mandate. Traced the full lifecycle of a technician's login PIN end to
+end: created in `insertTechniciansWithPinRetry`, delivered via the
+`send-setup-sms` edge function invoke, and then checked whether the PIN
+is recoverable anywhere else in the UI if that text never arrives.
+It wasn't — found two real gaps:
+
+- Neither call site that invokes `send-setup-sms` (`Onboarding.jsx`'s
+  signup flow, `DispatcherView.jsx`'s `AddTechnicianModal`) checked the
+  invoke's result. A silently-failed send looked identical to success.
+- `technicians.pin` was never displayed anywhere in the dispatcher UI.
+  Combined with the above, a technician whose setup text failed to send
+  (bad number, carrier filtering, Twilio outage) was **permanently
+  unable to log in**, with zero recovery path short of direct database
+  access.
+
+Fixed:
+- `Onboarding.jsx` and `AddTechnicianModal` now check the invoke's
+  `error`/`data.error` and alert the owner immediately if a text failed,
+  instead of assuming success.
+- `DispatcherView.jsx`'s technician list now shows **"Copy setup link"**
+  and **"Resend text"** buttons for any technician who hasn't connected
+  yet (`!tech.last_seen`) — a durable, always-available recovery path
+  that doesn't depend on the original SMS having worked.
+
+Also fixed, same "silently swallowed write" class as the
+`93008ed` batch: `dismissWeatherDraft`/`rejectDraft` in
+`DispatcherView.jsx` weren't checking their update's result either.
+
+Verified: lint clean, 16/16 tests passing, build clean.
+
+## Built, tested, committed locally — needs a fresh Supabase PAT to run SQL + redeploy, and a fresh GitHub PAT to push (2026-09-07, Stripe billing lifecycle — declined-card gap)
+
+Continued tracing "the different systems exactly as advertised" through
+the Stripe billing lifecycle. `stripe-webhook` only ever listened for
+`checkout.session.completed` and `customer.subscription.deleted` — a
+business whose card gets declined mid-subscription enters Stripe's own
+dunning/retry cycle first (which can run for days to weeks depending on
+the Stripe account's retry schedule), and during that whole window
+nothing in Minerva noticed anything was wrong. Full access continued
+silently with zero in-app signal to the business owner, until/unless
+Stripe eventually gave up and fired the already-handled
+`customer.subscription.deleted` event.
+
+Fixed:
+- New column `businesses.payment_failed_at`
+  (`supabase_schema_delta_payment_failed.sql`, not yet run live).
+- `stripe-webhook` now also handles `invoice.payment_failed` (stamps
+  `payment_failed_at`) and `invoice.payment_succeeded` (clears it, so a
+  successful retry — or a brand-new subscription's first invoice —
+  removes the warning automatically).
+- New in-app banner (mirrors the existing "Subscription ended" banner
+  style) in both `DispatcherView.jsx` and `IndustrialDispatcherView.jsx`
+  — the latter previously had **no billing-status banner at all**, not
+  even for full cancellation, despite loading the same `businesses` row.
+  Both banners are now present in both dispatcher views.
+
+Needs, in order: (1) a fresh Supabase PAT to run
+`supabase_schema_delta_payment_failed.sql` and redeploy `stripe-webhook`;
+(2) registering `invoice.payment_failed` and `invoice.payment_succeeded`
+as sent events on the existing Stripe webhook endpoint (Stripe Dashboard
+> Developers > Webhooks — an account-settings change, so this needs to
+be walked through with the user rather than done autonomously); (3) a
+fresh GitHub PAT to push. Also still pending a Supabase PAT/redeploy from
+the prior batch: `reconcile-technician-state`'s kill-switch fix
+(`d258653`).
+
+Verified: lint clean, 16/16 tests passing, build clean.
+
 ## Still outstanding (non-code, needs the user or a bank account)
 
 - Twilio Voice webhook for `missed-call-webhook` — blocked, trial accounts

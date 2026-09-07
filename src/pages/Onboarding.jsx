@@ -74,10 +74,15 @@ export default function Onboarding() {
       const { data: techData, error: techErr } = await insertTechniciansWithPinRetry(supabase, techRows)
       if (techErr) throw new Error(techErr.message)
 
-      // 3. Send each technician their setup SMS
+      // 3. Send each technician their setup SMS. A failed send here isn't
+      // fatal — the PIN link is safely recoverable later from
+      // DispatcherView's technician list ("Copy setup link"/"Resend text")
+      // once the owner logs in after payment — but it's tracked so they
+      // know to actually go check, instead of assuming every text arrived.
       const appUrl = import.meta.env.VITE_APP_URL
+      const failedSmsNames = []
       for (const tech of techData) {
-        await supabase.functions.invoke('send-setup-sms', {
+        const { data: smsData, error: smsError } = await supabase.functions.invoke('send-setup-sms', {
           body: {
             phone: tech.phone,
             name: tech.name,
@@ -85,6 +90,10 @@ export default function Onboarding() {
             techUrl: `${appUrl}/tech?pin=${tech.pin}`
           }
         })
+        if (smsError || smsData?.error) failedSmsNames.push(tech.name)
+      }
+      if (failedSmsNames.length > 0) {
+        alert(`Setup texts didn't send to: ${failedSmsNames.join(', ')}. After payment, open the technician list in your dashboard and use "Copy setup link" or "Resend text" for them.`)
       }
 
       // 4. Redirect to Stripe checkout

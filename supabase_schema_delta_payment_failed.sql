@@ -1,0 +1,26 @@
+-- ============================================================
+-- MINERVA - Delta: track failed subscription payments (2026-09-07)
+-- Adds 1 column only. Nothing else in your live DB is touched, so this
+-- won't hit an "already exists" error (see supabase_schema_missing.sql for
+-- why that matters — a failed statement rolls back the whole paste).
+-- Run this entire block once in the Supabase SQL Editor.
+--
+-- What this fixes: stripe-webhook previously only listened for
+-- checkout.session.completed and customer.subscription.deleted. A business
+-- whose card gets declined mid-subscription enters Stripe's dunning/retry
+-- cycle — during that window (days to weeks depending on the Stripe
+-- account's retry schedule) the subscription is neither "active" nor
+-- "deleted", so nothing in Minerva noticed anything was wrong. Full access
+-- continued silently, and the business owner got zero in-app signal
+-- (only whatever email Stripe itself sends) until either the card is
+-- fixed or Stripe eventually gives up and fires
+-- customer.subscription.deleted, which was already handled.
+--
+-- This column lets stripe-webhook record *when* a payment attempt failed
+-- (invoice.payment_failed) so the dispatcher UI can show an in-app warning
+-- immediately instead of waiting for eventual cancellation. Cleared
+-- automatically on the next successful invoice payment
+-- (invoice.payment_succeeded) or a fresh checkout.
+-- ============================================================
+
+alter table businesses add column payment_failed_at timestamptz;

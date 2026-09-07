@@ -221,6 +221,23 @@ export default function IndustrialDispatcherView() {
         <div>
           <p style={styles.bizLabel}>INDUSTRIAL SECTOR</p>
           <h1 style={styles.title}>{business?.name || '...'}</h1>
+          {business?.subscription_tier === 'cancelled' && (
+            <div style={styles.subscriptionCancelledBanner}>
+              <p style={styles.subscriptionCancelledTitle}>⚠️ Subscription ended</p>
+              <p style={styles.subscriptionCancelledLine}>
+                Your Stripe subscription was cancelled — contact us to reactivate.
+              </p>
+            </div>
+          )}
+          {business?.subscription_tier !== 'cancelled' && business?.payment_failed_at && (
+            <div style={styles.subscriptionCancelledBanner}>
+              <p style={styles.subscriptionCancelledTitle}>⚠️ Payment failed</p>
+              <p style={styles.subscriptionCancelledLine}>
+                Your last card charge was declined. Stripe will keep retrying automatically —
+                update your card to avoid a lapse.
+              </p>
+            </div>
+          )}
         </div>
         <div style={styles.tabRow}>
           {[
@@ -513,6 +530,9 @@ const styles = {
   header: { padding: '20px 28px', borderBottom: '1px solid #1e293b' },
   bizLabel: { color: '#555', fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', margin: '0 0 4px' },
   title: { color: '#fff', fontSize: 24, fontWeight: 'bold', margin: '0 0 16px' },
+  subscriptionCancelledBanner: { background: '#2A0F0F', border: '1px solid #8A2525', borderRadius: 8, padding: '8px 10px', margin: '0 0 12px', maxWidth: 480 },
+  subscriptionCancelledTitle: { color: '#e05555', fontSize: 12, fontWeight: 'bold', margin: '0 0 4px' },
+  subscriptionCancelledLine: { color: '#ccc', fontSize: 11, lineHeight: 1.4, margin: 0 },
   tabRow: { display: 'flex', gap: 8, flexWrap: 'wrap' },
   tabBtn: (active) => ({ background: active ? '#2D5FA822' : 'transparent', color: active ? '#8fd0e8' : '#666', border: `1px solid ${active ? '#2D5FA8' : '#1e293b'}`, borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 'bold', cursor: 'pointer' }),
   tabCount: { background: '#8A2525', color: '#fff', borderRadius: 10, padding: '0 6px', fontSize: 10, marginLeft: 4 },

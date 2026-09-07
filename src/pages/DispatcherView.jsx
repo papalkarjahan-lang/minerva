@@ -115,6 +115,8 @@ export default function DispatcherView() {
   const [showAddTech, setShowAddTech] = useState(false)
   const [linkCopied, setLinkCopied] = useState(false)
   const [calendarLinkCopied, setCalendarLinkCopied] = useState(false)
+  const [copiedTechId, setCopiedTechId] = useState(null)
+  const [resendingTechId, setResendingTechId] = useState(null)
   const [slackWebhookInput, setSlackWebhookInput] = useState('')
   const [savingSettings, setSavingSettings] = useState(false)
   const [viewState, setViewState] = useState({
@@ -753,6 +755,28 @@ export default function DispatcherView() {
     setTimeout(() => setCalendarLinkCopied(false), 2000)
   }
 
+  // Fallback for when a technician's setup text never arrived (bad number,
+  // Twilio hiccup, phone lost the message) — the PIN link is otherwise only
+  // ever sent once, over SMS, with no other record of it visible anywhere,
+  // so a silently-failed send leaves that technician permanently unable to
+  // log in until someone thinks to check here.
+  function copyTechLink(tech) {
+    const appUrl = import.meta.env.VITE_APP_URL
+    navigator.clipboard.writeText(`${appUrl}/tech?pin=${tech.pin}`)
+    setCopiedTechId(tech.id)
+    setTimeout(() => setCopiedTechId(null), 2000)
+  }
+
+  async function resendTechSMS(tech) {
+    setResendingTechId(tech.id)
+    const appUrl = import.meta.env.VITE_APP_URL
+    const { data, error } = await supabase.functions.invoke('send-setup-sms', {
+      body: { phone: tech.phone, name: tech.name, businessName: business?.name, techUrl: `${appUrl}/tech?pin=${tech.pin}` }
+    })
+    setResendingTechId(null)
+    if (error || data?.error) alert(`Couldn't resend the text: ${data?.error || error.message}. You can still copy their setup link directly.`)
+  }
+
   async function saveSettings({ slackWebhookUrl, autoDispatchEnabled, autoDispatchMaxKm, metaAccessToken, metaAdAccountId, metaPageId, weatherSensitiveTradeTypes, googleReviewLink }) {
     setSavingSettings(true)
     const { data } = await supabase
@@ -1180,6 +1204,15 @@ export default function DispatcherView() {
               </p>
             </div>
           )}
+          {business?.subscription_tier !== 'cancelled' && business?.payment_failed_at && (
+            <div style={styles.subscriptionCancelledBanner}>
+              <p style={styles.subscriptionCancelledTitle}>⚠️ Payment failed</p>
+              <p style={styles.subscriptionCancelledLine}>
+                Your last card charge was declined. Stripe will keep retrying automatically —
+                update your card from billing below so it doesn't lapse.
+              </p>
+            </div>
+          )}
           {businessId && (
             <button style={styles.copyLinkBtn} onClick={copyIntakeLink}>
               {linkCopied ? 'Copied!' : '🔗 Copy intake chat link'}
@@ -1244,6 +1277,16 @@ export default function DispatcherView() {
                   <button style={styles.techRemoveBtn} title="Remove technician"
                     onClick={(e) => { e.stopPropagation(); deactivateTech(tech.id) }}>✕</button>
                 </div>
+                {!tech.last_seen && (
+                  <div style={{ display: 'flex', gap: 8, marginTop: 4 }} onClick={(e) => e.stopPropagation()}>
+                    <button style={styles.techLinkBtn} onClick={() => copyTechLink(tech)}>
+                      {copiedTechId === tech.id ? 'Copied!' : "Copy setup link"}
+                    </button>
+                    <button style={styles.techLinkBtn} disabled={resendingTechId === tech.id} onClick={() => resendTechSMS(tech)}>
+                      {resendingTechId === tech.id ? 'Sending...' : 'Resend text'}
+                    </button>
+                  </div>
+                )}
               </div>
             )
           })}
@@ -2413,9 +2456,12 @@ function AddTechnicianModal({ businessId, businessName, onClose }) {
       if (insertErr) throw new Error(insertErr.message)
 
       const appUrl = import.meta.env.VITE_APP_URL
-      await supabase.functions.invoke('send-setup-sms', {
+      const { data: smsData, error: smsError } = await supabase.functions.invoke('send-setup-sms', {
         body: { phone: phone.trim(), name: name.trim(), businessName, techUrl: `${appUrl}/tech?pin=${inserted[0].pin}` }
       })
+      if (smsError || smsData?.error) {
+        alert(`${name.trim()} was added, but the setup text didn't send. Use "Copy setup link" next to their name in the technician list to send it yourself.`)
+      }
       onClose()
     } catch (err) {
       setError(err.message)
@@ -3197,6 +3243,7 @@ const styles = {
   techName: { color: '#fff', fontSize: 14, fontWeight: 'bold', margin: '0 0 3px' },
   techMeta: { color: '#666', fontSize: 12, margin: '0 0 2px' },
   techRemoveBtn: { background: 'none', border: 'none', color: '#444', fontSize: 13, cursor: 'pointer', padding: '2px 4px' },
+  techLinkBtn: { background: '#132030', border: '1px solid #1e293b', color: '#8899a6', fontSize: 11, cursor: 'pointer', padding: '4px 8px', borderRadius: 6 },
   jobRow: { padding: '10px 12px', background: '#050811', borderRadius: 10, marginBottom: 8 },
   jobClient: { color: '#fff', fontSize: 14, fontWeight: 'bold', margin: '0 0 3px' },
   jobAddr: { color: '#666', fontSize: 12, margin: '0 0 4px' },
