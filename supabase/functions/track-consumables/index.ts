@@ -33,7 +33,13 @@ serve(async (req: Request) => {
 
     let flagged = 0
     for (const item of lowItems || []) {
-      if (item.quantity_on_hand >= item.reorder_threshold) continue
+      // At-or-below threshold counts as low (matches check-inventory-levels'
+      // semantic in the trade sector — "reorder_threshold" means the level
+      // at which you should reorder, not one unit past it). Fixed
+      // 2026-09-07: this previously only fired strictly below the
+      // threshold, so an item sitting exactly at reorder_threshold never
+      // alerted.
+      if (item.quantity_on_hand > item.reorder_threshold) continue
       const { data: current } = await supabase.from('consumables_items').select('reorder_requested_at').eq('id', item.id).maybeSingle()
       if (current?.reorder_requested_at) continue // already flagged, waiting on restock
 
