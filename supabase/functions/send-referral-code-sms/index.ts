@@ -1,18 +1,26 @@
 // Supabase Edge Function: send-referral-code-sms
-// NOT scheduled — invoked fire-and-forget from DispatcherView.jsx's
-// markInvoicePaid handler the moment an invoice is marked paid (same
-// invocation pattern as sync-technician-billing being called
-// fire-and-forget from the frontend). Paid-Invoice Referral Loop: a client
-// who just paid is the best moment to ask for a referral. Generates a
-// short referral code for the invoice (once — idempotent, see below) and
-// texts it to the client with a plain, no-pressure "share this with a
-// friend" message. This is the same "acknowledgment-tier nudge" scope as
-// nurture-stale-leads/retention-checkin — a single, low-stakes thank-you
-// text, not a marketing campaign, so it does not need the Growth pillar's
-// human-approval gate.
+// Invoked from DispatcherView.jsx's markInvoicePaid handler the moment an
+// invoice is marked paid (same invocation pattern as
+// sync-technician-billing being called fire-and-forget from the
+// frontend), AND from the "Resend" button DispatcherView shows next to a
+// paid invoice when referral_sms_failed is true. Paid-Invoice Referral
+// Loop: a client who just paid is the best moment to ask for a referral.
+// Generates a short referral code for the invoice ONCE (idempotent — see
+// below) and texts it to the client with a plain, no-pressure "share this
+// with a friend" message. This is the same "acknowledgment-tier nudge"
+// scope as nurture-stale-leads/retention-checkin — a single, low-stakes
+// thank-you text, not a marketing campaign, so it does not need the
+// Growth pillar's human-approval gate.
 // Deploy with: supabase functions deploy send-referral-code-sms
 //
 // Required secrets: same Twilio secrets as the other SMS functions.
+//
+// referral_sms_failed (added 2026-09-07, see supabase_schema_delta_
+// referral_sms_failed.sql): the code itself is only ever generated once
+// (regenerating it would invalidate a code the client may have already
+// been told about some other way), but the SMS *send* is retryable — if
+// it fails, this flag is set so DispatcherView can offer a manual resend
+// of the SAME code, mirroring invoices.client_sms_failed's pattern.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
@@ -43,25 +51,31 @@ serve(async (req: Request) => {
 
     const { data: invoice, error } = await supabase
       .from('invoices')
-      .select('id, business_id, client_name, client_phone, referral_code, businesses(name)')
+      .select('id, business_id, client_name, client_phone, referral_code, referral_sms_failed, businesses(name)')
       .eq('id', invoiceId)
       .single()
     if (error || !invoice) throw new Error('Invoice not found')
 
-    // Idempotent: a referral_code already existing means this invoice was
-    // already processed by this function on an earlier "mark paid" click —
-    // don't generate a new code or send a second SMS.
-    if (invoice.referral_code) {
-      return new Response(JSON.stringify({ success: true, skipped: true, reason: 'referral code already exists' }), {
+    // The code itself is generated at most once per invoice — regenerating
+    // it on a resend would invalidate a code the client may already have.
+    // If a code already exists AND the SMS already went out successfully,
+    // there's nothing left to do. But if the earlier send failed
+    // (referral_sms_failed), fall through and retry sending that same code
+    // — this is what DispatcherView's "Resend" button calls.
+    if (invoice.referral_code && !invoice.referral_sms_failed) {
+      return new Response(JSON.stringify({ success: true, skipped: true, reason: 'referral code already sent' }), {
         status: 200,
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
       })
     }
 
-    const code = generateReferralCode()
-    await supabase.from('invoices').update({ referral_code: code }).eq('id', invoiceId)
+    const code = invoice.referral_code || generateReferralCode()
+    if (!invoice.referral_code) {
+      await supabase.from('invoices').update({ referral_code: code }).eq('id', invoiceId)
+    }
 
     if (!invoice.client_phone) {
+      await supabase.from('invoices').update({ referral_sms_failed: true }).eq('id', invoiceId)
       return new Response(JSON.stringify({ success: true, skipped: true, reason: 'no client phone on file' }), {
         status: 200,
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
@@ -95,6 +109,11 @@ serve(async (req: Request) => {
         smsOk = !result.error_code
       }
     }
+
+    // Clears the flag on a successful (re)send, sets it on failure — lets
+    // a resent code that finally goes through drop off the dispatcher's
+    // "needs resend" list.
+    await supabase.from('invoices').update({ referral_sms_failed: !smsOk }).eq('id', invoiceId)
 
     await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
       method: 'POST',

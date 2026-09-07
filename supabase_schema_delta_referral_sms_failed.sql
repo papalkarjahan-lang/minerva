@@ -1,0 +1,23 @@
+-- ============================================================
+-- MINERVA - Delta: track failed referral-code SMS sends (2026-09-07)
+-- Adds 1 column only. Run this entire block once in the Supabase SQL
+-- Editor (or via the Management API /database/query endpoint).
+--
+-- What this fixes: send-referral-code-sms generates invoices.referral_code
+-- the first time an invoice is marked paid, then tries to text it to the
+-- client. If that SMS attempt fails (bad number, Twilio hiccup), the
+-- referral_code is already persisted, and the function's own idempotency
+-- check ("a referral_code already existing means this was already
+-- processed") meant the code could never be reattempted — the client
+-- silently never received it, and there was no dispatcher-facing signal
+-- and no code path to resend, unlike the equivalent, already-fixed gap
+-- for invoice SMS (see invoices.client_sms_failed in
+-- supabase_schema_delta_operational_fixes.sql, same pattern).
+--
+-- This column lets send-referral-code-sms record when the SMS attempt
+-- failed so the dispatcher UI can show the same "resend" affordance it
+-- already has for failed invoice SMS. Cleared automatically once a
+-- retried send succeeds.
+-- ============================================================
+
+alter table invoices add column referral_sms_failed boolean not null default false;

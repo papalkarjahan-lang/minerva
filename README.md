@@ -312,10 +312,14 @@ business's scheduled jobs. Treat the link like a secret (see
 schedule.
 
 ### Accounting export (Xero / QuickBooks)
-Any business, on any tier, can export their invoices, jobs, and leads as a
-CSV from the **Invoices**, **Jobs**, and **Leads** tabs (**⬇ Export CSV**)
-and import into Xero, QuickBooks, or Excel — the zero-setup option, works
-today for either provider, with no tier gate in the code.
+Any business, on any tier, can export their jobs and leads as a CSV from
+the **Jobs** and **Leads** tabs (**⬇ Export CSV**) and import into Xero,
+QuickBooks, or Excel — no tier gate on those two tabs. The **Invoices**
+tab itself is Pro-tier only (`business.subscription_tier === 'pro'` in
+`DispatcherView.jsx`) — Starter/Standard businesses don't have invoicing
+at all, so there's nothing to export from that tab until upgrading to
+Pro. (Corrected 2026-09-07 — this section previously claimed invoice
+export was ungated on every tier, which was never true in code.)
 
 There's also a real, working Xero OAuth integration (`xero-oauth-connect`,
 `xero-oauth-callback`, `xero-sync-invoice` — added 2026-09-04, see "Minerva

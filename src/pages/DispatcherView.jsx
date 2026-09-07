@@ -53,6 +53,7 @@ export default function DispatcherView() {
   const [reviewRequests, setReviewRequests] = useState({})
   const [googleReviewLinkInput, setGoogleReviewLinkInput] = useState('')
   const [requestingReviewId, setRequestingReviewId] = useState(null)
+  const [resendingReferralId, setResendingReferralId] = useState(null)
   // Round-2 batch: seasonal demand forecasting — most recent business-scoped insight, or null.
   const [demandForecast, setDemandForecast] = useState(null)
   // Minerva Max add-on tier (2026-09-04) — gates the Minerva Max batch +
@@ -727,12 +728,25 @@ export default function DispatcherView() {
     // as sync-technician-billing below. Generates a referral code (once,
     // idempotent inside the function) and texts it to the client — never
     // blocks the "mark paid" click.
-    supabase.functions.invoke('send-referral-code-sms', { body: { invoiceId } }).catch(() => {})
+    supabase.functions.invoke('send-referral-code-sms', { body: { invoiceId } }).then(({ data }) => {
+      if (data?.code) setInvoices(prev => prev.map(i => i.id === invoiceId ? { ...i, referral_code: data.code, referral_sms_failed: !data.smsSent } : i))
+    }).catch(() => {})
     // Custom Workflows: fire the 'invoice.paid' trigger for this business, if any are configured.
     const invoice = invoices.find(i => i.id === invoiceId)
     supabase.functions.invoke('run-custom-workflows', {
       body: { businessId: business?.id, event: 'invoice.paid', payload: { total: invoice?.total, client_name: invoice?.client_name } },
     }).catch(() => {})
+  }
+
+  // Manual retry for a referral-code SMS that failed the first time
+  // (invoice.referral_sms_failed) — reuses the same already-generated
+  // code, never mints a new one (see send-referral-code-sms header).
+  async function resendReferralSms(invoiceId) {
+    setResendingReferralId(invoiceId)
+    const { data, error } = await supabase.functions.invoke('send-referral-code-sms', { body: { invoiceId } })
+    setResendingReferralId(null)
+    if (error || data?.error) { alert(`Couldn't resend: ${data?.error || error.message}`); return }
+    setInvoices(prev => prev.map(i => i.id === invoiceId ? { ...i, referral_code: data.code ?? i.referral_code, referral_sms_failed: !data.smsSent } : i))
   }
 
   // Void an invoice created by mistake. Deliberately NOT a real delete —
@@ -1811,6 +1825,23 @@ export default function DispatcherView() {
                   )}
                   {reviewRequests[inv.id] && !reviewRequests[inv.id].clicked_at && (
                     <p style={{ ...styles.jobAddr, color: '#888' }}>Review request sent</p>
+                  )}
+                  {inv.status === 'paid' && inv.referral_code && !inv.referral_sms_failed && (
+                    <p style={{ ...styles.jobAddr, color: '#888' }}>Referral code {inv.referral_code} texted to client</p>
+                  )}
+                  {inv.status === 'paid' && inv.referral_code && inv.referral_sms_failed && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <p style={{ ...styles.jobAddr, color: '#8A2525', margin: 0 }}>
+                        ⚠️ Referral code {inv.referral_code} generated but never texted — the send failed.
+                      </p>
+                      <button
+                        style={styles.leadActionSecondary}
+                        disabled={resendingReferralId === inv.id}
+                        onClick={() => resendReferralSms(inv.id)}
+                      >
+                        {resendingReferralId === inv.id ? 'Sending...' : 'Resend'}
+                      </button>
+                    </div>
                   )}
                 </div>
               ))}
