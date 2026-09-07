@@ -1224,6 +1224,48 @@ Verified: lint clean, 16/16 tests passing, build clean.
     `supabase_schema_delta_referral_sms_failed.sql` and redeploy
     `send-referral-code-sms`, and a fresh GitHub PAT to push `dcd26c3`.
 
+- **2026-09-07 (later same day)**: pushed `dcd26c3`/`e1c8ecb` (`87b1ad9`
+  merge), ran `supabase_schema_delta_referral_sms_failed.sql` live, and
+  redeployed `send-referral-code-sms` (now ACTIVE) — column existence and
+  new deploy both confirmed via direct queries. Continued the audit
+  mandate with a third subagent pass over 11 industrial/asset edge
+  functions:
+  - **Fixed**: `verify-industrial-compliance` ("Sentry") had zero
+    suppression/throttling on its hourly escalation sweep — unlike every
+    other repeat-alert cron function in the codebase
+    (`detect-idle-assets`, `check-inventory-levels`,
+    `enrich-industrial-leads`, `track-consumables`, all of which have a
+    single-nudge suppression flag), this one would re-Slack the same
+    unacknowledged `safety_incidents` row every single hour, forever.
+    Fixed by adding `safety_incidents.escalated_at` (see
+    `supabase_schema_delta_safety_incident_escalation.sql`) and gating the
+    query/write on it. Committed (`457b8f2`), pushed, SQL delta run live
+    (column confirmed via query), function redeployed (now ACTIVE,
+    version 5).
+  - **Audited and confirmed NOT bugs**: `detect-idle-assets`'s `.lt()` vs
+    `.lte()` day-boundary — false/nitpick, matches its own "14+ days"
+    message wording. `track-consumables`'s claimed "backwards logic" —
+    false, matches its own documented "below threshold" semantic (a real
+    but very minor threshold-semantic inconsistency with
+    `check-inventory-levels`'s `<=` was noted, not acted on — low
+    impact). `enrich-industrial-leads`'s "silent update failure on error"
+    — rejected, this unchecked-error pattern is ubiquitous and already
+    accepted throughout the codebase, not unique to this file.
+    `verify-industrial-compliance`'s own `.lt()`/`.lte()` boundary claim —
+    also a nitpick, but investigating it is what surfaced the real
+    escalation-spam bug above.
+  - **Noted, real but low-severity, not yet fixed**: `check-weather-risk`'s
+    non-risky branch never sets `weather_risk_flagged_at` despite its own
+    comment claiming it does — low practical impact since the "tomorrow"
+    time-window query is naturally self-limiting, but worth a follow-up
+    fix for correctness.
+  - **Not yet independently re-verified**: subagent's claims on
+    `predict-asset-maintenance` (naming/boundary) and
+    `harvest-industrial-leads` (possible Slack-count undercounting, which
+    the subagent itself flagged as needing re-verification), and its
+    "clean" verdicts on `monitor-asset-telemetry`,
+    `optimize-industrial-routes`, `detect-safety-hazards`.
+
 ## Still outstanding (non-code, needs the user or a bank account)
 
 - Twilio Voice webhook for `missed-call-webhook` — blocked, trial accounts
