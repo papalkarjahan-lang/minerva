@@ -103,11 +103,19 @@ serve(async (req: Request) => {
         }
       }
 
-      await supabase.from('invoices').update({
-        reminder_sent_at: new Date().toISOString(),
-        reminder_count: (inv.reminder_count || 0) + 1,
-      }).eq('id', inv.id)
-      if (smsOk) sent++
+      // Only advance the 3-day throttle on an actual successful send — the
+      // query above re-fetches anything with reminder_sent_at null/stale, so
+      // leaving it untouched on failure means a transient Twilio error (or
+      // Twilio being unconfigured) gets retried on tomorrow's run instead of
+      // silently going quiet for 3 days while looking like a reminder went
+      // out. (Fixed 2026-09-07 — this previously updated unconditionally.)
+      if (smsOk) {
+        await supabase.from('invoices').update({
+          reminder_sent_at: new Date().toISOString(),
+          reminder_count: (inv.reminder_count || 0) + 1,
+        }).eq('id', inv.id)
+        sent++
+      }
 
       await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
         method: 'POST',
