@@ -43,6 +43,22 @@ serve(async (req: Request) => {
     if (!job.client_phone) throw new Error('This job has no client phone number on file')
     if (!TWILIO_SID || !TWILIO_TOKEN || !TWILIO_FROM) throw new Error('Twilio secrets not configured')
 
+    // Atomically claim the draft before sending any real SMS — the status
+    // check above alone is a time-of-check/time-of-use race (two rapid
+    // clicks, or a retried request, could both pass it before either
+    // writes a new status). This conditional update only succeeds for
+    // whichever request gets there first; a second concurrent request sees
+    // 0 rows affected and bails out before texting the client twice. Same
+    // pattern as send-growth-message / launch-ad-campaign.
+    const { data: claimed, error: claimErr } = await supabase
+      .from('weather_reschedule_drafts')
+      .update({ status: 'sending' })
+      .eq('id', draftId)
+      .eq('status', 'pending')
+      .select('id')
+    if (claimErr) throw claimErr
+    if (!claimed || claimed.length === 0) throw new Error('Draft already being sent — refusing to send twice')
+
     const message = `Hi ${job.client_name || ''}, tomorrow's forecast isn't looking great for your scheduled job (${draft.forecast_summary || 'weather risk flagged'}) and we'd rather reschedule than have it cut short or unsafe. Reply here or give us a call to pick a new time.`.trim()
 
     let phone = job.client_phone.replace(/\s/g, '')

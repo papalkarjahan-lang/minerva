@@ -1108,6 +1108,58 @@ inline for whoever picks this up.
 
 Verified: lint clean, 16/16 tests passing, build clean.
 
+## Built, tested, committed locally — needs a fresh GitHub PAT to push, and a fresh Supabase PAT to redeploy 2 edge functions (2026-09-07, "the different agents" — logic-correctness sweep)
+
+Dispatched parallel audits across all 58 edge functions (grouped: core
+dispatch/billing, Industrial track, growth/marketing, Xero integration)
+specifically hunting for business-logic bugs — not the error-handling
+class already fixed earlier today. Manually verified every claimed
+finding against the actual code before touching anything (several
+claims turned out to be false positives on re-check, e.g.
+`industrial-conductor`'s "unassigned asset" filter — `industrial_assets`
+has no other assignment column, so `geofence_site_id IS NULL` genuinely
+is the only definition of "unassigned" in this schema).
+
+Confirmed and fixed 4 real bugs:
+
+- **`send-weather-reschedule-sms`** — missing the atomic "claim the draft
+  before sending" step that `send-growth-message`/`launch-ad-campaign`
+  already use. A genuine time-of-check/time-of-use race: two near-
+  simultaneous clicks (double-click, two tabs) on the same pending draft
+  could both pass the `status !== 'pending'` check and both text the
+  client. Added the same atomic conditional-update claim used elsewhere.
+- **`chase-unpaid-invoices`** — the Slack notification always said
+  "Payment reminder sent" even when the SMS send itself had failed
+  (`smsOk === false`), actively misinforming the business owner that a
+  reminder went out when it didn't. Now conditions the Slack text on
+  `smsOk`, matching the pattern already used in
+  `send-referral-code-sms`/`send-weather-reschedule-sms`.
+- **`xero-oauth-callback`** — set `businesses.xero_connected = true`
+  unconditionally after a successful token exchange, even when the
+  follow-up call to fetch the authorized Xero org (`tenantId`) failed or
+  returned nothing. Since `xero-sync-invoice` explicitly requires
+  `cred.tenant_id` to do anything, this left businesses in a state where
+  the UI said "✓ Connected" but every sync attempt failed with "not
+  connected yet" — a confusing state mismatch. Now only reports
+  `connected` (and only sets the flag) when a real `tenantId` was found;
+  the tokens are still stored either way so a retry doesn't require
+  starting the OAuth consent screen over.
+- **`DispatcherView.jsx`** — the Xero OAuth round-trip
+  (`xero-oauth-callback` redirects back with `?xero=connected|failed`)
+  was never read anywhere in the frontend. A business owner clicking
+  "Connect Xero" got zero feedback either way — success and failure
+  looked identical (nothing happened visibly). Added handling that shows
+  the result and strips the query params so a refresh doesn't re-alert.
+  Also added a **"Disconnect"** button next to "✓ Connected" — there was
+  previously no way to clear a stuck/stale connection short of direct
+  database access.
+
+Needs a fresh Supabase PAT to redeploy `send-weather-reschedule-sms` and
+`xero-oauth-callback`, and a fresh GitHub PAT to push. Frontend changes
+just need the next normal Vercel deploy.
+
+Verified: lint clean, 16/16 tests passing, build clean.
+
 ## Still outstanding (non-code, needs the user or a bank account)
 
 - Twilio Voice webhook for `missed-call-webhook` — blocked, trial accounts

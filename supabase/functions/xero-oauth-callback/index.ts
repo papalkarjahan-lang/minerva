@@ -77,6 +77,9 @@ serve(async (req: Request) => {
     const supabase = createClient(supabaseUrl, serviceRoleKey)
     const expiresAt = new Date(Date.now() + (tokens.expires_in || 1800) * 1000).toISOString()
 
+    // Store whatever tokens we got either way — even without a tenant id,
+    // the access/refresh tokens are still valid, so a business that hits
+    // this can just retry connecting rather than losing the tokens outright.
     await supabase.from('integration_credentials').upsert({
       business_id: businessId,
       provider: 'xero',
@@ -86,6 +89,14 @@ serve(async (req: Request) => {
       expires_at: expiresAt,
       connected_at: new Date().toISOString(),
     }, { onConflict: 'business_id,provider' })
+
+    // Without a tenant id, xero-sync-invoice can never actually sync
+    // anything (it explicitly requires cred.tenant_id) — don't tell the
+    // business they're "connected" if syncing would immediately fail with
+    // a confusing "not connected" error despite the UI saying otherwise.
+    if (!tenantId) {
+      return redirectWithStatus('failed', 'no_tenant_found')
+    }
 
     await supabase.from('businesses').update({ xero_connected: true }).eq('id', businessId)
 

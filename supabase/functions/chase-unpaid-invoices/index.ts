@@ -114,7 +114,9 @@ serve(async (req: Request) => {
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseAnonKey}` },
         body: JSON.stringify({
           businessId: inv.business_id,
-          text: `💰 Payment reminder sent for unpaid invoice ($${Number(inv.total).toFixed(2)}) — *${inv.client_name || 'unknown client'}*.`,
+          text: smsOk
+            ? `💰 Payment reminder sent for unpaid invoice ($${Number(inv.total).toFixed(2)}) — *${inv.client_name || 'unknown client'}*.`
+            : `⚠️ Payment reminder for unpaid invoice ($${Number(inv.total).toFixed(2)}) — *${inv.client_name || 'unknown client'}* — failed to send. Check the number on file.`,
         }),
       }).catch(() => {})
     }

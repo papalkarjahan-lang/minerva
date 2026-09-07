@@ -19,7 +19,7 @@ export default function DispatcherView() {
   // data is platform-wide (every customer's automation health), not this
   // business's, so it shouldn't appear by default in a random business
   // owner's day-to-day console.
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const showAgentsTab = searchParams.get('agents') === '1'
   const [business, setBusiness] = useState(null)
   const [technicians, setTechnicians] = useState([])
@@ -131,6 +131,27 @@ export default function DispatcherView() {
   useEffect(() => {
     loadAll()
   }, [businessId])
+
+  // xero-oauth-callback redirects back here with ?xero=connected|failed
+  // (and an optional ?xero_detail=...) once the Xero OAuth round-trip
+  // finishes — without this, a business owner clicking "Connect Xero" got
+  // no feedback at all about whether it actually worked. Strip the params
+  // from the URL after showing the result so a page refresh doesn't
+  // re-trigger the alert.
+  useEffect(() => {
+    const xeroStatus = searchParams.get('xero')
+    if (!xeroStatus) return
+    if (xeroStatus === 'connected') {
+      alert('Xero connected! You can now sync paid invoices across from the Invoices tab.')
+    } else {
+      const detail = searchParams.get('xero_detail')
+      alert(`Couldn't connect Xero${detail ? ` (${detail})` : ''}. You can try again from Settings.`)
+    }
+    const next = new URLSearchParams(searchParams)
+    next.delete('xero')
+    next.delete('xero_detail')
+    setSearchParams(next, { replace: true })
+  }, [searchParams])
 
   async function loadAll() {
     const { data: biz } = await supabase
@@ -937,6 +958,19 @@ export default function DispatcherView() {
       return
     }
     await loadAll()
+  }
+
+  // There was previously no way to clear this once set — if the tokens get
+  // revoked on Xero's side (or a bad connection leaves xero_connected stuck
+  // true with no usable tenant), the owner had no way to reset it and try
+  // reconnecting short of direct database access. Only clears the flag on
+  // this side; doesn't call Xero to revoke the tokens (Xero's own "Connected
+  // apps" screen is the place to actually revoke access).
+  async function disconnectXero() {
+    if (!confirm('Disconnect Xero? You can reconnect any time from this same panel.')) return
+    const { error } = await supabase.from('businesses').update({ xero_connected: false }).eq('id', businessId)
+    if (error) { alert(`Couldn't disconnect: ${error.message}`); return }
+    setBusiness(prev => ({ ...prev, xero_connected: false }))
   }
 
   // Minerva Max add-on management — see src/maxAddons.js. Enabling/trialing
@@ -2986,7 +3020,12 @@ function SettingsModal({
                 🔒 Xero Sync is a Minerva Max add-on — enable it from the MAX tab first.
               </p>
             ) : business?.xero_connected ? (
-              <p style={{ color: '#1D9E75', fontSize: 13, margin: '4px 0 0' }}>✓ Connected</p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <p style={{ color: '#1D9E75', fontSize: 13, margin: '4px 0 0' }}>✓ Connected</p>
+                <button style={{ ...styles.copyLinkBtn, padding: '4px 8px', fontSize: 11 }} onClick={disconnectXero}>
+                  Disconnect
+                </button>
+              </div>
             ) : (
               <>
                 <a
