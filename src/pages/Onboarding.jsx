@@ -23,8 +23,8 @@ const FEATURE_PRIORITIES_INDUSTRIAL = [
 
 // Base per-technician monthly price for each tier.
 const TIERS = [
-  { id: 'starter', name: 'Starter', price: 49, blurb: 'Live GPS map, client ETA SMS, job start/complete' },
-  { id: 'standard', name: 'Standard', price: 79, blurb: 'Everything in Starter + dispatch board, automatic intake chat & lead scoring, job scheduling' },
+  { id: 'starter', name: 'Starter', price: 49, blurb: 'Live GPS map, client ETA SMS, job start/complete, dispatch board, intake chat & lead scoring, job scheduling' },
+  { id: 'standard', name: 'Standard', price: 79, blurb: 'Everything in Starter — recommended for growing teams' },
   { id: 'pro', name: 'Pro', price: 119, blurb: 'Everything in Standard + on-site invoicing, asset tracking, compliance checklists' },
 ]
 

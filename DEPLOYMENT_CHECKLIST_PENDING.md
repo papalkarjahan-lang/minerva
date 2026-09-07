@@ -1082,6 +1082,32 @@ the prior batch: `reconcile-technician-state`'s kill-switch fix
 
 Verified: lint clean, 16/16 tests passing, build clean.
 
+## Confirmed live (2026-09-07, pricing copy/code mismatch — Starter/Standard feature claims)
+
+Cross-checked every marketing/docs surface (`LandingPage.jsx`, `Onboarding.jsx`
+tier picker, `README.md`) against actual `subscription_tier` gating in
+`DispatcherView.jsx`/`TechnicianView.jsx`. Found only `=== 'pro'` checks
+anywhere — Starter and Standard were advertised as having a real feature
+split (dispatch board / job scheduling / intake chat & lead scoring listed
+as Standard-exclusive) but **no such gating exists in code**. Every
+business gets those regardless of whether they're on the $49 or $79 tier —
+a real monetization/false-advertising gap, not just a doc typo.
+
+Reported to the user with two options (add real gating vs. fix the copy).
+User said "do everything" — chose to fix the copy rather than retrofit
+tier-gating into the monolithic `DispatcherView`, since a rushed gating
+implementation risks breaking core functionality for any real Starter
+customers with no clear spec for exactly what should be cut. Updated
+`LandingPage.jsx`, `Onboarding.jsx`, and `README.md` so Starter/Standard now
+list identical (true) features, with Standard positioned as "recommended
+for growing teams" rather than claiming exclusive functionality it doesn't
+have. Pro's feature claims were left unchanged — that tier genuinely is
+gated in code. If real Starter/Standard differentiation is wanted later,
+it needs actual gating logic added, not just copy — flagged in `README.md`
+inline for whoever picks this up.
+
+Verified: lint clean, 16/16 tests passing, build clean.
+
 ## Still outstanding (non-code, needs the user or a bank account)
 
 - Twilio Voice webhook for `missed-call-webhook` — blocked, trial accounts

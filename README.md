@@ -1273,15 +1273,24 @@ minerva/
 ---
 
 ## Pricing
-- **Starter**: $49/technician/month — GPS map, ETA SMS, job start/complete
-- **Standard**: $79/technician/month — everything + dispatch board, job scheduling, history
+- **Starter**: $49/technician/month
+- **Standard**: $79/technician/month — recommended for growing teams
 - **Pro**: $119/technician/month — everything + on-site invoicing (with client SMS + payment status
   tracking), asset tracking, and compliance checklists
 
 Tier is chosen at signup (`Onboarding.jsx`) and drives which Stripe price is
-charged (`create-checkout-session`) and which features render in the
-dispatcher/technician views. Billed quantity auto-adjusts to the number of
-technicians actually connected — see `sync-technician-billing` above.
+charged (`create-checkout-session`). **Only the Pro tier is actually feature-
+gated in the app** (`business.subscription_tier === 'pro'` checks in
+`DispatcherView.jsx`/`TechnicianView.jsx` unlock invoicing, checklists,
+Watchtower, and Marketing). Starter and Standard render identically — there
+is no code path that restricts the dispatch board, job scheduling, or the
+intake chat/lead-scoring widget to Standard+; every business gets those
+regardless of tier. (Found and fixed 2026-09-07 — the pricing page and this
+README previously claimed a Starter/Standard feature split that never
+existed in code. If a real Starter/Standard split is wanted later, it needs
+actual gating logic added to those two views, not just copy.) Billed
+quantity auto-adjusts to the number of technicians actually connected — see
+`sync-technician-billing` above.
 
 - **Minerva Max add-ons**: $19-59/month each, layered on top of any tier —
   see "Minerva Max add-on tier" above. Not real Stripe-billed yet (see that

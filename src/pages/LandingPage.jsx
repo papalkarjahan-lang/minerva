@@ -59,8 +59,8 @@ export default function LandingPage() {
         <p style={{ color: '#aaa', margin: '0 0 36px' }}>Per technician. Cancel anytime.</p>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
           {[
-            ['Starter', '$49', 'per tech/month', ['Live GPS map', 'Client ETA SMS', 'Job start/complete', 'Works on any phone']],
-            ['Standard', '$79', 'per tech/month', ['Everything in Starter', 'Dispatch board', 'Automatic intake chat & lead scoring', 'Job scheduling'], true],
+            ['Starter', '$49', 'per tech/month', ['Live GPS map', 'Client ETA SMS', 'Job start/complete', 'Dispatch board & job scheduling', 'Automatic intake chat & lead scoring', 'Works on any phone']],
+            ['Standard', '$79', 'per tech/month', ['Everything in Starter', 'Recommended for growing teams'], true],
             ['Pro', '$119', 'per tech/month', ['Everything in Standard', 'On-site invoicing', 'Asset tracking', 'Compliance checklists']],
           ].map(([name, price, period, features, highlight]) => (
             <div key={name} style={{ background: highlight ? '#2D5FA8' : '#0a0f1d', borderRadius: 16, padding: 24, border: `1px solid ${highlight ? '#2D5FA8' : '#1e293b'}` }}>
