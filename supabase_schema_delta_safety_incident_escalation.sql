@@ -1,0 +1,23 @@
+-- ============================================================
+-- MINERVA - Delta: suppress repeat safety-incident escalation spam (2026-09-07)
+-- Adds 1 column only. Run this entire block once in the Supabase SQL
+-- Editor (or via the Management API /database/query endpoint).
+--
+-- What this fixes: verify-industrial-compliance ("Sentry") runs hourly and
+-- Slack-escalates every safety_incidents row that's been unacknowledged
+-- for 24h+. Unlike every other repeating-alert agent in this codebase
+-- (detect-idle-assets' RENOTIFY_SUPPRESS_DAYS, check-inventory-levels'
+-- low_stock_alert_sent_at, enrich-industrial-leads' enrichment_nudge_
+-- sent_at, track-consumables' reorder_requested_at), this function had no
+-- suppression flag at all — an incident left unacknowledged would get
+-- re-Slacked EVERY SINGLE HOUR, forever, spamming the business's channel
+-- instead of escalating once and trusting the Slack history.
+--
+-- This column lets verify-industrial-compliance escalate an incident once
+-- and go quiet after, matching the single-nudge pattern used everywhere
+-- else. Clearing acknowledged_at was already how a human resolves the
+-- underlying incident; this column is purely about not spamming while it
+-- waits to be acknowledged.
+-- ============================================================
+
+alter table safety_incidents add column escalated_at timestamptz;

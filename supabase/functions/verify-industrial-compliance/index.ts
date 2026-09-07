@@ -6,6 +6,12 @@
 // escalates them distinctly from detect-safety-hazards' initial flag (that
 // one fires once on detection; this one is the "still nobody's dealt with
 // this" backstop, same two-stage pattern as nurture-stale-leads).
+//
+// escalated_at (added 2026-09-07, see supabase_schema_delta_safety_
+// incident_escalation.sql): escalates once per incident, not every hourly
+// run — without this, an unacknowledged incident got re-Slacked every
+// single hour forever. Same single-nudge pattern as enrich-industrial-
+// leads' enrichment_nudge_sent_at.
 // Deploy with: supabase functions deploy verify-industrial-compliance
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
@@ -30,6 +36,7 @@ serve(async (req: Request) => {
     const { data: stale, error } = await supabase.from('safety_incidents')
       .select('id, business_id, description, severity, created_at, site_projects(name)')
       .is('acknowledged_at', null)
+      .is('escalated_at', null)
       .lt('created_at', dayAgo)
     if (error) throw error
 
@@ -41,6 +48,7 @@ serve(async (req: Request) => {
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseAnonKey}` },
         body: JSON.stringify({ businessId: inc.business_id, text: `🛡️ *Sentry*: unresolved ${inc.severity} at *${siteName}*, open 24h+: "${inc.description}". Needs sign-off before this site's work is considered compliant.` }),
       }).catch(() => {})
+      await supabase.from('safety_incidents').update({ escalated_at: new Date().toISOString() }).eq('id', inc.id)
       escalated++
     }
 
