@@ -27,14 +27,23 @@ serve(async (req: Request) => {
   }
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-  const appUrl = Deno.env.get('VITE_APP_URL') || supabaseUrl
+  // APP_URL (not VITE_APP_URL — that prefix is a frontend-only Vite
+  // convention; this is a Deno edge function, and every other function
+  // that needs the app's public URL, e.g. create-checkout-session,
+  // send-quote-sms, reads plain APP_URL) — see ACCOUNT_SETUP_WALKTHROUGH.md.
+  // (Fixed 2026-09-08 — this previously always fell back to the raw
+  // Supabase project URL instead of the real app domain.)
+  const appUrl = Deno.env.get('APP_URL') || supabaseUrl
   const url = new URL(req.url)
   const code = url.searchParams.get('code')
   const businessId = url.searchParams.get('state')
   const xeroError = url.searchParams.get('error')
 
   function redirectWithStatus(status: 'connected' | 'failed', detail?: string) {
-    const dest = new URL(`${appUrl}/dispatcher/${businessId || ''}`)
+    // Real route is /dispatch/:businessId (see src/App.jsx) — /dispatcher/
+    // was a typo with no matching route, so this redirect previously landed
+    // on a blank page after every Xero OAuth approval. (Fixed 2026-09-08.)
+    const dest = new URL(`${appUrl}/dispatch/${businessId || ''}`)
     dest.searchParams.set('xero', status)
     if (detail) dest.searchParams.set('xero_detail', detail)
     return new Response(null, { status: 302, headers: { 'Location': dest.toString(), 'Access-Control-Allow-Origin': '*' } })

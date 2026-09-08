@@ -119,7 +119,10 @@ else first.
 4. Copy each live Price ID (starts with `price_`, different from your
    test-mode ones)
 5. Go to **Developers → API keys** (still in live mode) → copy the
-   **Publishable key** (`pk_live_...`) and **Secret key** (`sk_live_...`)
+   **Secret key** (`sk_live_...`) — that's the only one you need; this app's
+   checkout is entirely server-side (a redirect to a Stripe-hosted session
+   URL), so the publishable key is never used anywhere and doesn't need to
+   be saved
 6. Go to **Developers → Webhooks → Add endpoint**:
    - Endpoint URL: `https://xiikytqxevivrupkljwc.supabase.co/functions/v1/stripe-webhook`
    - Events to send: `checkout.session.completed`,
@@ -137,13 +140,6 @@ else first.
    npx supabase secrets set STRIPE_PRICE_ID_PRO=price_...
    npx supabase secrets set STRIPE_WEBHOOK_SECRET=whsec_...
    ```
-9. Update `.env.local` AND Vercel's env vars with the live publishable
-   key:
-   ```
-   VITE_STRIPE_PUBLISHABLE_KEY=pk_live_...
-   ```
-   (same Vercel Dashboard → Settings → Environment Variables → Redeploy
-   step as Mapbox above)
 
 **Done when:** a real signup with a real card actually creates a
 subscription in Stripe's live Subscriptions list, not the test one.

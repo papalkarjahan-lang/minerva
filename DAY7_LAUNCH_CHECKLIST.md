@@ -16,11 +16,12 @@ Stop and fix before continuing if any box fails — don't skip ahead.
 ## 0. Before you start
 
 - [ ] `.env.local` and Vercel env vars both have the real (not placeholder)
-      `VITE_MAPBOX_TOKEN` and `VITE_STRIPE_PUBLISHABLE_KEY=pk_live_...`
+      `VITE_MAPBOX_TOKEN`
 - [ ] Vercel shows a successful deploy after the last env var change
 - [ ] Supabase secrets (`npx supabase secrets list`) show `TWILIO_PHONE_NUMBER`,
-      `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and the three
-      `STRIPE_PRICE_ID_*` vars set (no need to see values, just that they exist)
+      `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `APP_URL`, and the three
+      `STRIPE_PRICE_ID_*` vars set (no need to see values, just that they exist —
+      note it's `APP_URL`, not `VITE_APP_URL`, for the Supabase secret)
 
 ---
 

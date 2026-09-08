@@ -1107,10 +1107,22 @@ export default function DispatcherView() {
     )
   }
 
-  function exportJobsCSV() {
+  // Fetches fresh from Supabase rather than the `jobs` state array, which is
+  // deliberately scoped to scheduled/active jobs for the live dispatch board
+  // (see the initial fetch above) — completed jobs age out of `jobs` on
+  // every reload regardless of tier, so exporting straight from state was
+  // silently dropping a business's own completed-job history from their own
+  // CSV record every time. (Fixed 2026-09-08.)
+  async function exportJobsCSV() {
+    const { data: allJobs, error } = await supabase
+      .from('jobs')
+      .select('*')
+      .eq('business_id', businessId)
+      .order('created_at', { ascending: false })
+    if (error) { alert(`Couldn't export jobs: ${error.message}`); return }
     exportCSV(
       ['Created', 'Scheduled', 'Client Name', 'Client Phone', 'Client Address', 'Status', 'Started', 'Completed', 'Notes'],
-      jobs.map(j => [
+      (allJobs || []).map(j => [
         new Date(j.created_at).toLocaleDateString('en-AU'),
         j.scheduled_time ? new Date(j.scheduled_time).toLocaleString('en-AU') : '',
         j.client_name, j.client_phone, j.client_address, j.status,

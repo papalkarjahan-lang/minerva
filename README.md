@@ -44,7 +44,10 @@ A live GPS dispatch tracking tool for trade businesses. Technicians share their 
    - **Minerva Standard**: $79/technician/month, 7-day trial
    - **Minerva Pro**: $119/technician/month, 7-day trial
 3. Copy the Price IDs for each
-4. Copy your publishable key (pk_live_...) and secret key (sk_live_...)
+4. Copy your secret key (sk_live_...) — set it as the `STRIPE_SECRET_KEY`
+   Supabase secret below. Checkout happens entirely server-side (a redirect
+   to a Stripe-hosted session URL), so the publishable key isn't needed
+   anywhere in this app — no need to save it.
 5. Enable the Customer Portal under Settings → Billing → Customer Portal
 
 ---
