@@ -167,6 +167,18 @@ serve(async (req: Request) => {
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
       })
     }
+    // Cost-abuse guard: this is a public, unauthenticated endpoint
+    // (/intake/:businessId) that spends real Anthropic API money per call.
+    // There's no per-IP/per-business request-rate limiter yet (would need a
+    // new DB table + migration to track it reliably across edge-function
+    // cold starts — not added speculatively here), but an oversized payload
+    // is a cheap, immediate multiplier on that cost, so cap it outright.
+    if (messages.length > 40 || messages.some(m => typeof m?.content !== 'string' || m.content.length > 2000)) {
+      return new Response(JSON.stringify({ error: 'Message too long or conversation too long for this widget.' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!

@@ -215,6 +215,23 @@ than "you need to already know the row's id" without breaking the live map
 entirely. This is a real constraint of the anon-key + no-login + Realtime
 combination, not an oversight.
 
+## Fixed 2026-09-08: xero-oauth-connect forged-callback CSRF
+
+`xero-oauth-connect` previously accepted any `businessId` query param with
+no ownership check at all — a raw public Edge Function URL, so the
+client-side `RequireBusinessAuth.jsx` route guard never protected it.
+Anyone who knew or guessed a `businessId` could hit the URL directly with
+their own Xero account and link their own Xero org's credentials to a
+victim business, letting that attacker's `xero-sync-invoice` calls read/
+receive that business's invoice data. Now requires a real Supabase Auth
+`Authorization: Bearer <token>` proving the caller owns (or auto-claims,
+same rule as `RequireBusinessAuth.jsx`) the target business before
+returning the Xero authorize URL — enforced server-side in the function
+itself, not just in the React route. `DispatcherView.jsx`'s "Connect Xero"
+control changed from a static unauthenticated `<a href>` to a fetch call
+carrying the session token, since a redirect-only flow can't attach a
+header.
+
 ## Fixed: missed-call-webhook now validates Twilio's signature
 
 `missed-call-webhook` is deployed with `--no-verify-jwt` (like

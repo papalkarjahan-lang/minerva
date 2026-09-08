@@ -60,7 +60,8 @@ npm install
 
 # Copy the example env file and fill in your real values
 cp .env.local.example .env.local
-# Edit .env.local with your Supabase, Mapbox, and Stripe keys
+# Edit .env.local with your Supabase and Mapbox keys (Stripe keys are
+# server-side only — set via `supabase secrets set`, never in .env.local)
 
 # Start the dev server
 npm run dev
@@ -1189,11 +1190,17 @@ minerva/
 │       ├── TrackingView.jsx       # Client-facing tracking link — also shows the
 │       │                          #   post-job "Request this again" rebooking button
 │       ├── InvoiceView.jsx        # Client-facing invoice view (Pro tier)
+│       ├── QuoteView.jsx          # Client-facing quote accept/decline view
+│       ├── ClientHistoryView.jsx  # Client-facing portal: past jobs + invoices for one client
 │       ├── IntakeAssistant.jsx    # AI lead-triage chat widget (embedded on client sites)
 │       ├── DisputeView.jsx        # BONUS: read-only Dispute Pack (GPS route, photos,
 │       │                          #   materials, invoice) for a single job
-│       └── IndustrialDispatcherView.jsx # Track B: industrial sector console
-│                                  #   (leads, sites, assets, inventory, safety, verification)
+│       ├── IndustrialDispatcherView.jsx # Track B: industrial sector console
+│       │                          #   (leads, sites, assets, inventory, safety, verification)
+│       ├── CaseStudy.jsx          # Public case-study/social-proof page
+│       ├── TermsOfService.jsx     # Public legal page
+│       ├── PrivacyPolicy.jsx      # Public legal page
+│       └── RefundPolicy.jsx       # Public legal page
 ├── supabase_schema.sql            # Run this in Supabase SQL Editor first
 ├── supabase_schema_delta_agent_expansion.sql # Track A: workflows, incidents, photo verification, lost-lead winback
 ├── supabase_schema_delta_industrial.sql      # Track B: industrial sector tables

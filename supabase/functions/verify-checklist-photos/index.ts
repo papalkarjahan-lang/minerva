@@ -10,12 +10,15 @@
 // afterwards.
 //
 // Also sets jobs.ai_verified_at once every checklist photo on a job has
-// been reviewed and none came back 'flagged' — this is what DispatcherView
-// and InvoiceView read to show the "AI-Verified" badge. HONESTY NOTE: this
-// is NOT blueprint/BIM cross-referencing (no BIM data source exists in this
-// build) — it's the same plausibility check described above, just rolled
-// up to job level. It shortens "did someone even look at this" review, not
-// a compliance certification.
+// actually come back 'pass' (none still 'pending', none 'flagged', none
+// 'unavailable') — this is what DispatcherView and InvoiceView read to show
+// the "AI-Verified" badge. HONESTY NOTE: this is NOT blueprint/BIM
+// cross-referencing (no BIM data source exists in this build) — it's the
+// same plausibility check described above, just rolled up to job level. It
+// shortens "did someone even look at this" review, not a compliance
+// certification. Because 'unavailable' blocks the badge (fixed 2026-09-08),
+// a business running without ANTHROPIC_API_KEY set will simply never show
+// this badge, rather than showing it without any review having happened.
 // Deploy with: supabase functions deploy verify-checklist-photos
 //
 // Required secret: ANTHROPIC_API_KEY. If not set, every pending photo is
@@ -91,7 +94,13 @@ serve(async (req: Request) => {
       if (!jobPhotos || jobPhotos.length === 0) continue
       const stillPending = jobPhotos.some(p => p.verification_status === 'pending')
       const anyFlagged = jobPhotos.some(p => p.verification_status === 'flagged')
-      if (stillPending || anyFlagged) continue
+      // 'unavailable' (missing API key, API error, or unparseable response)
+      // means a photo was never actually reviewed — must block the badge the
+      // same as 'pending' does, otherwise InvoiceView/DispatcherView show
+      // real clients "✓ AI-verified: completion photos were checked" for
+      // photos nothing ever actually checked (fixed 2026-09-08).
+      const anyUnavailable = jobPhotos.some(p => p.verification_status === 'unavailable')
+      if (stillPending || anyFlagged || anyUnavailable) continue
 
       const { data: job } = await supabase.from('jobs').select('id, ai_verified_at').eq('id', jobId).maybeSingle()
       if (!job || job.ai_verified_at) continue
@@ -156,8 +165,13 @@ async function reviewPhoto(
     const text: string = data?.content?.[0]?.text || ''
     const statusMatch = text.match(/STATUS:\s*(pass|flagged)/i)
     const notesMatch = text.match(/NOTES:\s*(.+)/i)
-    const status = statusMatch ? (statusMatch[1].toLowerCase() as 'pass' | 'flagged') : 'pass'
-    const notes = notesMatch ? notesMatch[1].trim() : text.trim().slice(0, 200)
+    // A 2xx response whose text doesn't match the expected format is a parse
+    // failure, not a verification result — same "must not silently look like
+    // pass" rule as the !res.ok and network-error branches above (fixed
+    // 2026-09-08; this used to default to 'pass' here, which could mark an
+    // actually-unreviewed photo as AI-verified).
+    const status = statusMatch ? (statusMatch[1].toLowerCase() as 'pass' | 'flagged') : 'unavailable'
+    const notes = notesMatch ? notesMatch[1].trim() : (statusMatch ? text.trim().slice(0, 200) : `AI review response didn't match expected format — photo not AI-reviewed. Raw: ${text.trim().slice(0, 150)}`)
     return { status, notes }
   } catch (err) {
     // Network error / thrown exception — same reasoning as the !res.ok

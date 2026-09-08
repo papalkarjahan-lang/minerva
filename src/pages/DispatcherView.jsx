@@ -1003,6 +1003,27 @@ export default function DispatcherView() {
     setBusiness(prev => ({ ...prev, xero_connected: false }))
   }
 
+  // xero-oauth-connect now requires proof the caller owns this business (a
+  // forged businessId in a plain link could otherwise link a stranger's Xero
+  // org to this business — fixed 2026-09-08), so this can no longer be a
+  // plain <a href>: it needs the current Supabase Auth session token in an
+  // Authorization header, then navigates the browser to the URL the function
+  // returns.
+  async function handleConnectXero() {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session?.access_token) { alert('Please log in again, then retry.'); return }
+    try {
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/xero-oauth-connect?businessId=${businessId}`, {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      })
+      const data = await res.json()
+      if (!res.ok || !data.url) { alert(data.error || data.detail || "Couldn't start Xero connection."); return }
+      window.location.href = data.url
+    } catch (err) {
+      alert(`Couldn't start Xero connection: ${err.message}`)
+    }
+  }
+
   // Minerva Max add-on management — see src/maxAddons.js. Enabling/trialing
   // just flips a jsonb flag on `businesses`; no real billing wired yet (see
   // honest-scope note in supabase_schema_delta_minerva_max_tier.sql).
@@ -3087,12 +3108,9 @@ function SettingsModal({
               </div>
             ) : (
               <>
-                <a
-                  href={`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/xero-oauth-connect?businessId=${business?.id}`}
-                  style={{ ...styles.copyLinkBtn, padding: '8px 10px', display: 'inline-block', textDecoration: 'none' }}
-                >
+                <button type="button" style={{ ...styles.copyLinkBtn, padding: '8px 10px' }} onClick={handleConnectXero}>
                   Connect Xero
-                </a>
+                </button>
                 <p style={{ color: '#888', fontSize: 12, margin: '6px 0 0' }}>
                   Requires the operator to have registered a free Xero developer app and set the
                   XERO_CLIENT_ID/XERO_CLIENT_SECRET secrets — until then this shows a setup message
