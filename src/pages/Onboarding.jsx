@@ -133,13 +133,15 @@ export default function Onboarding() {
 
             <div style={styles.fieldGroup}>
               <label style={styles.label}>What kind of business is this?</label>
-              <div style={styles.sectorToggle}>
-                <div onClick={() => setSector('trade')}
+              <div style={styles.sectorToggle} role="radiogroup" aria-label="Business sector">
+                <div onClick={() => setSector('trade')} onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), setSector('trade'))}
+                  role="radio" aria-checked={sector === 'trade'} tabIndex={0}
                   style={{ ...styles.sectorOption, ...(sector === 'trade' ? styles.sectorOptionActive : {}) }}>
                   <p style={styles.sectorOptionName}>Trade</p>
                   <p style={styles.sectorOptionBlurb}>Plumbers, electricians, HVAC, and other on-demand home/commercial trades</p>
                 </div>
-                <div onClick={() => setSector('industrial')}
+                <div onClick={() => setSector('industrial')} onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), setSector('industrial'))}
+                  role="radio" aria-checked={sector === 'industrial'} tabIndex={0}
                   style={{ ...styles.sectorOption, ...(sector === 'industrial' ? styles.sectorOptionActive : {}) }}>
                   <p style={styles.sectorOptionName}>Industrial</p>
                   <p style={styles.sectorOptionBlurb}>Heavy equipment, multi-day site work, asset tracking, and B2B contracts</p>
@@ -183,6 +185,8 @@ export default function Onboarding() {
               {(sector === 'industrial' ? FEATURE_PRIORITIES_INDUSTRIAL : FEATURE_PRIORITIES_TRADE).map(label => (
                 <div key={label}
                   onClick={() => toggleFeaturePriority(label)}
+                  onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), toggleFeaturePriority(label))}
+                  role="checkbox" aria-checked={featurePriorities.includes(label)} tabIndex={0}
                   style={{ ...styles.priorityRow, ...(featurePriorities.includes(label) ? styles.priorityRowActive : {}) }}>
                   <span style={styles.priorityCheck}>{featurePriorities.includes(label) ? '✓' : ''}</span>
                   <span>{label}</span>
@@ -218,10 +222,12 @@ export default function Onboarding() {
 
             {/* Plan tier */}
             <p style={styles.label}>Choose your plan</p>
-            <div style={styles.tierGrid}>
+            <div style={styles.tierGrid} role="radiogroup" aria-label="Choose your plan">
               {TIERS.map(t => (
                 <div key={t.id}
                   onClick={() => selectTier(t.id)}
+                  onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), selectTier(t.id))}
+                  role="radio" aria-checked={tier === t.id} tabIndex={0}
                   style={{ ...styles.tierCard, ...(tier === t.id ? styles.tierCardActive : {}) }}>
                   <p style={styles.tierName}>{t.name}</p>
                   <p style={styles.tierPrice}>${t.price}<span style={styles.tierPriceUnit}>/tech/mo</span></p>

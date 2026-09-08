@@ -215,6 +215,20 @@ than "you need to already know the row's id" without breaking the live map
 entirely. This is a real constraint of the anon-key + no-login + Realtime
 combination, not an oversight.
 
+## Known: react-router-dom CVE-2025-68470 (moderate, not exploitable here)
+
+`npm audit` flags `react-router-dom@6.30.6` for two advisories: an open
+redirect via backslash in `<Link>`/`useNavigate` when the target is
+user-controlled, and an arbitrary-constructor-injection bug in SSR
+hydration. Neither applies to this app: there is no SSR (plain Vite SPA),
+and the only `useNavigate()` call in the whole codebase
+(`TrackingView.jsx`, after a successful rebooking submission) navigates to
+a server-generated token (`/client/${data.token}`), never to a
+user-supplied string. The fix requires a v6→v7 major upgrade (breaking
+router API changes) — not worth the regression risk to close a vector this
+app doesn't have. Revisit if a future feature ever calls `navigate()` or
+renders `<Link to=...>` with a user-supplied path.
+
 ## Fixed 2026-09-08: xero-oauth-connect forged-callback CSRF
 
 `xero-oauth-connect` previously accepted any `businessId` query param with

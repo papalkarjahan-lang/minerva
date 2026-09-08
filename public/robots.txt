@@ -1,0 +1,14 @@
+User-agent: *
+Allow: /
+Disallow: /dispatch/
+Disallow: /industrial/
+Disallow: /admin
+Disallow: /track/
+Disallow: /invoice/
+Disallow: /quote/
+Disallow: /dispute/
+Disallow: /client/
+Disallow: /intake/
+Disallow: /tech
+
+Sitemap: https://minervaops.com.au/sitemap.xml
