@@ -1267,6 +1267,18 @@ export default function TechnicianView() {
       <p style={styles.gpsNote}>
         {tracking ? `GPS updates every 15 seconds` : `Tap "Start Tracking" to go live`}
       </p>
+      {tracking && (
+        // Honest platform limitation, not a bug: this is a browser tab, not
+        // a native background service. iOS Safari (and, after a longer
+        // delay, most Android browsers) suspends JS execution — including
+        // this GPS interval — once the screen locks or the tab is fully
+        // backgrounded, so the dispatcher map will stop moving until the
+        // technician reopens the tab. Telling them this up front is better
+        // than a silently stale dot on the dispatcher's map.
+        <p style={styles.gpsWarnNote}>
+          Keep this page open and your screen on while tracking — locking your phone pauses updates.
+        </p>
+      )}
 
       <div style={{ display: 'flex', gap: 16, justifyContent: 'center', marginTop: 12, flexWrap: 'wrap' }}>
         <button onClick={() => setShowSupportModal(true)} style={{ background: 'none', border: 'none', color: '#888', fontSize: 13, textDecoration: 'underline', cursor: 'pointer' }}>
@@ -1363,6 +1375,7 @@ const styles = {
   btnBlue: { background: '#2D5FA8', color: '#fff', border: 'none', borderRadius: 14, padding: '18px 0', fontSize: 17, fontWeight: 'bold', cursor: 'pointer', width: '100%' },
   btnOrange: { background: '#A87C16', color: '#fff', border: 'none', borderRadius: 14, padding: '18px 0', fontSize: 17, fontWeight: 'bold', cursor: 'pointer', width: '100%' },
   gpsNote: { color: '#444', fontSize: 12, marginTop: 24, textAlign: 'center' },
+  gpsWarnNote: { color: '#A87C16', fontSize: 12, marginTop: 6, textAlign: 'center', maxWidth: 300 },
   errorBox: { background: '#FAEAEA', border: '1px solid #8A2525', borderRadius: 12, padding: 20, maxWidth: 340, textAlign: 'center' },
   invoiceCard: { background: '#0a0f1d', border: '1px solid #1e293b', borderRadius: 16, padding: 20, width: '100%', maxWidth: 360, marginBottom: 20 },
   checklistRow: { display: 'flex', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #1e293b', cursor: 'pointer' },

@@ -319,3 +319,17 @@ any client with sensitive commercial data:
   the SELECT policy on `technician_locations`, which is why that table in
   particular can't be tightened without also solving the technician-auth
   problem above — see the original note this replaced, still accurate.
+
+## Added 2026-09-08: embeddable widget (`public/widget.js`)
+
+New surface: a client can now paste `<script src=".../widget.js"
+data-business-id="...">` into their own website to render a chat bubble
+that opens `/intake/:businessId` in an iframe. Trust boundary is
+unchanged from the existing plain-link flow (same public intake page,
+same `businessId`-is-the-only-secret model above) — the widget doesn't
+grant the host page any new access, it just loads an iframe. The iframe
+is sandboxed to `allow-scripts allow-same-origin` only (no
+allow-top-navigation, allow-popups, or allow-forms), so it can't navigate
+or pop anything up on the host page itself. Nothing here changes the RLS
+posture described above; the intake flow was already reachable by anyone
+who has (or guesses) a businessId, embed or not.
