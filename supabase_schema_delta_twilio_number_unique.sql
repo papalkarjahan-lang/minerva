@@ -1,0 +1,33 @@
+-- ============================================================
+-- MINERVA - Delta: unique constraint on businesses.twilio_number (2026-09-10)
+-- Adds 1 constraint only. Nothing else in your live DB is touched, so this
+-- won't hit an "already exists" error (see supabase_schema_missing.sql for
+-- why that matters — a failed statement rolls back the whole paste).
+-- Run this entire block once in the Supabase SQL Editor.
+--
+-- What this fixes: missed-call-webhook looks up a business by
+-- `.eq('twilio_number', to).maybeSingle()` (see
+-- supabase/functions/missed-call-webhook/index.ts). With no uniqueness
+-- enforcement, two businesses could end up with the same twilio_number
+-- (a UI/config mistake while onboarding several real clients this month is
+-- the realistic way this would happen) and the missed-call auto-reply
+-- would route to whichever business happens to match first — the wrong
+-- business's name would be read back to a caller who dialed a different
+-- business's number. This constraint makes that impossible at the DB
+-- level; a duplicate-key error at insert/update time is far better than a
+-- silent cross-business misroute in production.
+--
+-- twilio_number is nullable (most businesses don't have one configured),
+-- and Postgres unique constraints already treat NULL as "not equal to any
+-- other NULL" — so any number of businesses can safely have a NULL
+-- twilio_number at once. Only two non-null rows sharing the same value
+-- would violate this.
+--
+-- NOTE: if this statement fails with a duplicate-key error, it means a
+-- collision has already happened live — check `select twilio_number,
+-- count(*) from businesses where twilio_number is not null group by
+-- twilio_number having count(*) > 1` before re-running, and correct
+-- whichever business's number is wrong first.
+-- ============================================================
+
+alter table businesses add constraint businesses_twilio_number_unique unique (twilio_number);

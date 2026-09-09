@@ -27,10 +27,14 @@
 // "Minerva's own Slack" concept anywhere in this codebase. Rather than
 // invent one or pick an arbitrary business to notify (which would be
 // actively misleading — that business didn't cause this and can't fix it),
-// this writes an agent_insights row instead (agent='core',
-// insight_type='health_alert') and logs to console. That's the correct
-// audience for this signal today: a human operator reading Supabase logs
-// or a future ops dashboard — not a tradie's Slack channel.
+// this writes an agent_insights row (agent='core', insight_type=
+// 'health_alert'), logs to console, AND — if OPERATOR_EMAIL is set —
+// sends a real email via send-email. Added 2026-09-10: with multiple real
+// paying businesses depending on these agents, "a human operator reading
+// Supabase logs" was in practice nobody actually looking until a client
+// complained. Email is best-effort and gated on the same dedup as the
+// agent_insights write below, so it fires once per new unhealthy episode,
+// not every 15-min sweep. No-ops cleanly if OPERATOR_EMAIL isn't set.
 //
 // Dedup: mirrors check-inventory-levels' low_stock_alert_sent_at pattern.
 // agent_functions.last_health_alert_at is only set/cleared based on whether
@@ -145,6 +149,19 @@ serve(async (req: Request) => {
         related_table: 'agent_functions',
         related_id: fn.id,
       })
+
+      const operatorEmail = Deno.env.get('OPERATOR_EMAIL')
+      if (operatorEmail) {
+        fetch(`${supabaseUrl}/functions/v1/send-email`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || supabaseAnonKey}` },
+          body: JSON.stringify({
+            to: operatorEmail,
+            subject: `[Minerva] Agent unhealthy: ${fn.name}`,
+            html: `<p>${summary}</p><p>This runs across all businesses, not just one — check the Supabase function logs for "${fn.name}" for the underlying error.</p>`,
+          }),
+        }).catch(err => console.error('test-agent-health: operator email failed', err))
+      }
 
       await supabase.from('agent_functions').update({ last_health_alert_at: new Date().toISOString() }).eq('id', fn.id)
       alerted++

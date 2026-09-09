@@ -154,3 +154,30 @@ in live mode — for the final live-mode pass, use a real card, then
 immediately cancel via the Customer Portal to avoid being charged, or ask
 Stripe support about a full pilot refund policy for yourself). Once that
 passes clean, you're ready for the first real client call.
+
+---
+
+## 5. Optional but strongly recommended before onboarding multiple real clients: OPERATOR_EMAIL
+
+Once you have more than one real paying business, you won't be watching
+every dashboard all day. Two things now email you directly instead of
+sitting silently in a database or a Deno log you'd have to go looking for:
+a client's card payment failing, and a background agent function going
+unhealthy (stuck, or erroring repeatedly) — the second one matters because
+these agents run across every business, not just one, so a silent failure
+there affects all of your clients at once, not just one.
+
+1. Requires `RESEND_API_KEY` to already be set (see `send-email`'s own
+   header comment) — without it, this is a no-op either way.
+2. Set your own email as a Supabase secret:
+   ```bash
+   npx supabase secrets set OPERATOR_EMAIL=you@example.com
+   ```
+3. Redeploy `stripe-webhook` and `test-agent-health` after setting this
+   (secrets are only picked up by a function that's been deployed after
+   the secret was set — see `minerva_supabase_function_deploy_method.md`
+   if you're doing this yourself via the Management API).
+
+**Done when:** you can trigger a Stripe test-mode failed payment (Stripe
+dashboard → a test card like `4000 0000 0000 0341`) and an email actually
+lands in your inbox within a minute or two.

@@ -1397,3 +1397,14 @@ Verified: lint clean, 16/16 tests passing, build clean.
   add-on enable/trial flags and gating are live, but actually charging for
   each add-on through Stripe still needs to be wired up and walked through
   with the user (per the standing boundary on Stripe account changes).
+- **New 2026-09-10**: `stripe-webhook` and `test-agent-health` were edited
+  to add optional operator email alerts (payment failures, unhealthy
+  agents) but not yet redeployed — needs a fresh Supabase PAT. Both are
+  safe no-ops until the new `OPERATOR_EMAIL` secret is set (see
+  `ACCOUNT_SETUP_WALKTHROUGH.md` section 5), so redeploying doesn't change
+  current behavior by itself.
+- **New 2026-09-10**: `supabase_schema_delta_twilio_number_unique.sql` —
+  new migration, not yet run. Adds a unique constraint on
+  `businesses.twilio_number` so two client businesses can never end up
+  misconfigured with the same number. Run once in the Supabase SQL Editor,
+  same as every other `*_delta_*.sql` file in this repo.

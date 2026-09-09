@@ -27,6 +27,9 @@
 //                              stripe_customer_id/stripe_sub_id; the anon key
 //                              cannot write these columns since no anon
 //                              UPDATE policy exists on businesses by design)
+//   OPERATOR_EMAIL (optional — your own email. If set, a failed payment
+//                    sends you a heads-up via send-email; if unset, this
+//                    step is a no-op, same as RESEND_API_KEY being unset)
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import Stripe from "https://esm.sh/stripe@14?target=deno"
@@ -128,11 +131,31 @@ serve(async (req: Request) => {
         const invoice = event.data.object as Stripe.Invoice
         const subId = invoice.subscription as string | null
         if (subId) {
-          const { error } = await supabaseAdmin
+          const { data: biz, error } = await supabaseAdmin
             .from('businesses')
             .update({ payment_failed_at: new Date().toISOString() })
             .eq('stripe_sub_id', subId)
+            .select('id, name')
+            .maybeSingle()
           if (error) console.error('Failed to record payment_failed_at:', error.message)
+
+          // Best-effort operator alert — see test-agent-health's header
+          // comment for why this exists: without it, a declined card sits
+          // silently in Stripe's own dunning cycle for days with nothing in
+          // Minerva surfacing it to the person who'd actually want to know.
+          // No-ops cleanly if OPERATOR_EMAIL isn't set (see send-email).
+          const operatorEmail = Deno.env.get('OPERATOR_EMAIL')
+          if (operatorEmail) {
+            fetch(`${Deno.env.get('SUPABASE_URL')!}/functions/v1/send-email`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!}` },
+              body: JSON.stringify({
+                to: operatorEmail,
+                subject: `[Minerva] Payment failed — ${biz?.name || subId}`,
+                html: `<p>A Stripe charge for <strong>${biz?.name || 'a business'}</strong> (subscription ${subId}) failed. Stripe will retry automatically per its dunning schedule — no action needed unless it keeps failing. Check the dispatcher app's billing warning or the Stripe dashboard for details.</p>`,
+              }),
+            }).catch(err => console.error('stripe-webhook: operator payment-failed alert failed', err))
+          }
         }
         break
       }

@@ -124,7 +124,7 @@ export default function Onboarding() {
       <div style={styles.card}>
         {/* Logo */}
         <div style={styles.logo}>MINERVA</div>
-        <p style={styles.subtitle}>Set up your team in 5 minutes</p>
+        <p style={styles.subtitle}>Set up your team in 20 minutes</p>
 
         {/* Step 1: Business details */}
         {step === 1 && (

@@ -108,7 +108,7 @@ Hi [First name],
 
 Following up — happy to keep this short.
 
-At Standard, [N] techs runs $[N x 79]/month. At Operations ($119/tech),
+At Standard, [N] techs runs $[N x 79]/month. At Pro ($119/tech),
 you also get asset tracking (make/model/refrigerant/last service per
 client) and a pre-departure van checklist so nobody's dispatched without
 the right parts.
@@ -311,7 +311,7 @@ Hi [First name],
 
 Following up — happy to keep this short.
 
-At Operations ($119/tech, includes recurring schedule management), [N]
+At Pro ($119/tech, includes recurring schedule management), [N]
 techs is $[N x 119]/month. If you've got 200 recurring clients and 10% miss
 their window, that's 80 missed appointments a year — automatic reminders
 typically cut that by more than half.
