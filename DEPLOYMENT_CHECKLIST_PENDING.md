@@ -1437,3 +1437,11 @@ Verified: lint clean, 16/16 tests passing, build clean.
   `generate-roi-proposal` (now accepts an optional `bigAccountTargetId` and
   auto-advances that target's pipeline stage to `proposal_sent`). See
   `BIG_ACCOUNT_EXECUTION_KIT.md` for how to actually use this tab.
+- **New 2026-09-10 (third pass same day)**: `supabase_seed_big_account_targets_2026-09-10.sql`
+  — a one-time DATA seed (not a schema delta, deliberately not run-safe
+  twice — no unique constraint to guard on) inserting 7 real, named
+  candidate companies found via web research into `big_account_targets`
+  at `stage='researching'`. Run this ONCE, after the two deltas above.
+  Fleet sizes are only populated where a real source confirmed a number
+  (Twin Electrics & Plumbing: 30, Multisparx: 7) — everything else is
+  left `null` with a note to verify on the first call, not guessed.

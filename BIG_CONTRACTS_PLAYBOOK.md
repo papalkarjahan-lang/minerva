@@ -59,7 +59,16 @@ technicians at once:
   technicians across many client sites under contract and are exactly the
   buyer profile Minerva's GPS/compliance/route-optimization bundle was
   built for. One FM contract could mean 50-200 technicians under one
-  decision-maker.
+  decision-maker. **Caveat found 2026-09-10 (real, worth naming directly,
+  same trap as Jim's Group above):** avoid chasing the largest national FM
+  players — e.g. **Programmed** (part of PERSOL Group, 32,000+ employees,
+  ASX/enterprise-conglomerate scale) — as a "one big win" shortcut. At that
+  scale there's no single accessible decision-maker for a small vendor to
+  reach, procurement is fully formalized, and they likely already run an
+  enterprise CMMS. Target mid-size, privately-run FM companies instead
+  (see `BIG_ACCOUNT_EXECUTION_KIT.md` for named examples) — small enough
+  that an owner/ops-manager can still say yes, large enough that the
+  technician count is worth it.
 - **Local council / government maintenance fleets** — councils run their
   own trade maintenance crews (parks, water, electrical) and are large,
   single-decision buyers, though with a real caveat: government procurement
@@ -68,7 +77,17 @@ technicians at once:
   within weeks.
 - **Strata/property management companies** — similar structure to FM,
   smaller scale typically (5-30 techs), but faster decision cycles than
-  government.
+  government. **Correction found 2026-09-10 (real, checked directly):**
+  most large Australian strata management companies (checked Network
+  Pacific, Strata Data, Australian Strata Management/MBCM) **contract
+  trades work out to external providers rather than employing their own
+  maintenance technicians in-house.** That undermines the original
+  assumption here — a strata manager's own headcount isn't the
+  per-technician fleet Minerva prices against. Still worth a call if a
+  specific strata company is confirmed to run an in-house maintenance
+  team, but don't treat "strata company" as a reliable target category by
+  default the way FM and multi-van companies are — verify in-house trades
+  staff exists before adding one to the pipeline.
 
 ## 4. Channel partnerships — a REAL, proven precedent in this exact market
 
