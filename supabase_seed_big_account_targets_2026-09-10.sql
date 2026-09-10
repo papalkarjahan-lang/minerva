@@ -87,6 +87,58 @@ values
   ('Liverpool City Council', 'council', null, null, null, 'Liverpool, NSW', 'researching',
    'CONFIRMED: council runs its own in-house Trades Services team (liverpool.nsw.gov.au), not fully outsourced - a genuine single-employer trades fleet. Per BIG_CONTRACTS_PLAYBOOK.md section 3 caveat, treat this as a 2027 target: start the relationship now (get on their vendor radar) but do not count it toward 2026 numbers - formal tender/procurement cycles are typically 3-6+ months and budget-cycle-gated. Fleet size UNCONFIRMED.');
 
+-- ============================================================
+-- Addition (2026-09-10, third research pass): broader-trade candidates
+-- (locksmith, security, garage-door, pest-control, HVAC, cleaning) found
+-- while trying to answer "what would it take to reach $500K by Dec 31" -
+-- see the math in BIG_CONTRACTS_PLAYBOOK.md / chat: even adding every one
+-- of these at 100% close (unrealistic) does not get anywhere close to
+-- $500K, because single-owner trade companies of this size are naturally
+-- capped in headcount - the ceiling is real, not a lack-of-searching
+-- problem. Kept in the pipeline anyway because they're genuinely real,
+-- decent-fit candidates for ongoing 2026/2027 pipeline-building.
+-- ============================================================
+
+insert into big_account_targets
+  (company_name, company_type, contact_email, contact_phone, estimated_fleet_size, region, stage, notes)
+values
+
+  ('A. Abbott Locksmiths', 'multi_van', null, null, 18, 'Sydney (Campsie/Hurstville), NSW', 'researching',
+   'CONFIRMED: own site states "18 Expert Locksmith Professionals and 10 Mobile Locksmith Vans" (abbottlocksmiths.com.au) - used 18 as the technician-seat estimate, though the van count (10) is a more conservative floor if not every professional has their own van. Family-owned, independent, 50+ years operating. ~$14K-19K/yr if closed at $79-89/tech.'),
+
+  ('Mr Splash Plumbing', 'multi_van', null, null, 15, 'Sydney, NSW', 'researching',
+   'CONFIRMED: own site states "over 15 fully stocked vans across Sydney" (mrsplashplumbing.com.au) - used 15 as a floor since the real number is "over" that. Family-owned (Jon & Tara Tsingolis), grew from one van, 20+ years, some industry press coverage (OwnerDriver fleet feature). ~$14K-16K/yr if closed.'),
+
+  ('CLASS Locksmiths (Complete Lock and Security Services)', 'multi_van', null, null, 10, 'Canberra (Fyshwick), ACT', 'researching',
+   'CONFIRMED: own site states "a fleet of ten service vans and four commercial support vehicles" (classlocks.com.au) - used 10 (service vans only) as the technician-seat estimate, excluding support vehicles which may not be field-billable seats. Independently owned since 1986, serves ACT government/commercial/residential. ~$9.5K-10.7K/yr if closed on service vans alone.'),
+
+  ('M.A.S.S. Electrics Pty Ltd', 'multi_van', null, null, 9, 'Melbourne (Keilor Park), VIC', 'researching',
+   'CONFIRMED: own site states "9 fully equipped service vans on the road" (masselectrics.com.au). Family-owned, three generations, established 1985, real commercial clients cited (McDonald''s, Bunnings, IGA). Smallest of the newly-found confirmed-fleet candidates - ~$8.5K-9.6K/yr if closed - useful as another practice call, not a big-money target on its own.'),
+
+  ('Garage Door Solutions (VIC)', 'multi_van', null, null, null, 'Melbourne (Braeside/eastern & bayside), VIC', 'researching',
+   'Real, family-owned (Van Den Broek family) since 1962, 60+ years operating (garagedoorsolutions.com.au). Own site states "over 20 loyal and experienced employees" but this figure is NOT confirmed to be field technicians specifically (may include admin/office staff) - UNCONFIRMED for revenue purposes, verify actual field-tech headcount on the first call.'),
+
+  ('Best Doors', 'multi_van', null, null, null, 'HQ Narangba, QLD - branches Brisbane/Adelaide/Melbourne/Rockhampton/Gladstone/Bundaberg/Townsville/Cairns/Mackay/Toowoomba/Sunshine Coast/Newcastle', 'researching',
+   'Real, "family-owned Australian company" since 1975 per own site (bestdoors.com.au), "80+ dedicated people from technicians to administrators." CAUTION - two real risks before treating this as a fast single-decision-maker close: (1) the 80+ figure mixes technicians and admin, not a clean tech count; (2) it operates via a multi-region branch network across many states, which raises real doubt about whether one person can actually say yes for the whole network the way BIG_CONTRACTS_PLAYBOOK.md section 1 requires - verify actual decision-making structure (single HQ owner vs. semi-independent regional branches) before investing outreach effort here.'),
+
+  ('Australian Security', 'multi_van', null, null, null, 'Melbourne (Box Hill), VIC', 'researching',
+   'Real, describes itself as "one of Melbourne''s largest privately owned and operated Security System installers," operating since 1986 (australiansecurity.com.au), "a large team of licensed security technicians" - no exact count published. Potentially a decent-size wildcard (self-described as one of the largest in its category) but genuinely UNCONFIRMED - do not assume it is large without verifying on the first call.'),
+
+  ('Associated Cleaning Services', 'other', null, null, null, 'Brisbane (Newstead), QLD', 'researching',
+   'Real, established 1969, "Australian-owned," own site states "450+ cleaners" servicing "400+ sites nationally" (associatedcleaning.com.au) - large headcount signal, but TWO real caveats: (1) ownership structure (single family owner vs. a more corporate/consolidated structure) is NOT confirmed, unlike the trade companies above; (2) commercial cleaning staff are typically site-based rather than vehicle-fleet/GPS-dispatch technicians, so the product fit (GPS/route tracking) is weaker than for trade/field-service companies - worth a call to understand if this fits the same per-technician compliance/tracking pitch at all before treating as comparable to the multi-van targets.')
+;
+
+-- Smaller, unconfirmed-fleet candidates found in the same research pass
+-- but with NO fleet/technician count published anywhere and no unusually
+-- strong prominence signal beyond "family owned, N years operating" -
+-- kept out of the main list above to avoid pipeline clutter, but real and
+-- worth a look if the above list is exhausted: Perth Pest Control (WA),
+-- Perkins Exterminators (Melbourne), ART Security (Melbourne), Casals
+-- Security (Melbourne), GAM Air Conditioning (Sydney), Whywait Plumbing
+-- (Gold Coast), Charlie The Plumber (Gold Coast/Logan), Duncan's Plumbing
+-- Heating & Air Conditioning (Canberra), Infratec Security Systems
+-- (Adelaide), Fleet Pest Control (Melbourne).
+
 -- No ON CONFLICT clause: there is no unique constraint on company_name (a
 -- real company legitimately could appear once per region), so this file
 -- is intentionally a run-once seed, not an idempotent delta. Check the

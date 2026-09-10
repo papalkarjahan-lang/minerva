@@ -152,7 +152,39 @@ thread), a per-target ROI proposal generator/link, and a researched
 discovery-call script + objection-handling table + real "why this target
 type would say yes" reasoning for each of the 4 target types.
 
-## 7. Revised honest range for Dec 31, 2026
+## 7. The $500K-by-Dec-31 question, and why the ceiling is real
+
+Asked directly (2026-09-10): could enough named companies be found to reach
+**$500K by Dec 31, 2026**? Answer, worked from real numbers, not vibes: **no,
+and it's not a searching problem - the ceiling is structural.**
+
+Every real single-owner trade company found across two full research passes
+(15+ companies, multiple cities, multiple trades - locksmiths, electricians,
+plumbers, garage-door, security, pest control) tops out around 10-30
+technicians, because that's genuinely the natural size of a privately-owned
+field-service business before it either franchises, gets acquired into a
+larger group, or restructures into a multi-branch network with its own
+buying-committee problem (see Best Doors and Metropolitan Plumbing above -
+both grew past single-owner scale). **Ken Hall Plumbers (122 vehicles) is a
+real outlier, not a repeatable pattern** - businesses that size are rare.
+
+The math: summing literally every real candidate found so far - both top
+picks plus every smaller confirmed-fleet company - at a fantasy 100% close
+rate (which will never happen - real close probabilities per target run
+roughly 15-45%, see `BIG_ACCOUNT_EXECUTION_KIT.md`) produces roughly
+**$220K-270K**, not $500K. Reaching $500K
+through this channel would require finding several more Ken-Hall-scale
+(100+ tech) single-owner businesses, and those are not common enough to
+list on demand.
+
+**What would actually get to $500K:** either (a) landing a genuine large
+institutional contract (FM/council) at 100-300 technicians - real, but on a
+3-6+ month cycle that lands in 2027, not this Dec 31 - or (b) a much larger
+volume of small SMB deals stacking on top of the big-account wins, via the
+existing automated outreach engine (`outreach_prospects`), run at real
+volume for months, not weeks. There's no shortcut that skips both of these.
+
+## 8. Revised honest range for Dec 31, 2026
 
 If normal cold-outreach volume (now running through the automated
 drafting/follow-up pipeline instead of by hand) lands 8-15 SMBs, AND even
