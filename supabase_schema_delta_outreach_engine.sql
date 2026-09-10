@@ -63,4 +63,16 @@ drop policy if exists "admin update outreach_prospects" on outreach_prospects;
 create policy "admin update outreach_prospects" on outreach_prospects
   for update using (exists (select 1 from admin_users a where a.user_id = auth.uid()));
 
-grant select, update on outreach_prospects to authenticated;
+-- Fixed 2026-09-10 (before this delta was ever run, so no data-loss risk):
+-- AdminConsole.jsx's CSV bulk-import (importCsv()) inserts prospect rows
+-- directly from the client using the admin's own session, not through an
+-- edge function — the header comment above ("every write goes through an
+-- edge function") was only ever true for AI-drafted rows
+-- (parse-prospect-text uses the service role key). Without this policy,
+-- that CSV import silently fails under RLS. Scoped to admin_users, same
+-- as select/update above.
+drop policy if exists "admin insert outreach_prospects" on outreach_prospects;
+create policy "admin insert outreach_prospects" on outreach_prospects
+  for insert with check (exists (select 1 from admin_users a where a.user_id = auth.uid()));
+
+grant select, insert, update on outreach_prospects to authenticated;

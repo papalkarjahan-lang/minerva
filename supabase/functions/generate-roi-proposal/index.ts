@@ -1,6 +1,7 @@
 // Supabase Edge Function: generate-roi-proposal
-// Direct invocation: { prospectId?, companyName, contactName?, tradeType?,
-// fleetSize, avgMonthlyFuelSpend? } — builds a shareable, personalized ROI
+// Direct invocation: { prospectId?, bigAccountTargetId?, companyName,
+// contactName?, tradeType?, fleetSize, avgMonthlyFuelSpend? } — builds a
+// shareable, personalized ROI
 // one-pager (see ProposalView.jsx at /proposal/:id) for a big-account
 // target (multi-van company, FM company, etc.). Called from the admin
 // console's Outreach tab. The resulting link is something the OPERATOR
@@ -40,7 +41,7 @@ serve(async (req: Request) => {
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, serviceRoleKey)
 
-    const { prospectId, companyName, contactName, tradeType, fleetSize, avgMonthlyFuelSpend } = await req.json()
+    const { prospectId, bigAccountTargetId, companyName, contactName, tradeType, fleetSize, avgMonthlyFuelSpend } = await req.json()
     if (!companyName || !fleetSize || fleetSize <= 0) {
       return new Response(JSON.stringify({ error: 'companyName and a positive fleetSize are required' }), {
         status: 400,
@@ -58,6 +59,7 @@ serve(async (req: Request) => {
 
     const { data: proposal, error } = await supabase.from('roi_proposals').insert({
       prospect_id: prospectId || null,
+      big_account_target_id: bigAccountTargetId || null,
       company_name: companyName,
       contact_name: contactName || null,
       trade_type: tradeType || null,
@@ -68,6 +70,19 @@ serve(async (req: Request) => {
       estimated_minerva_monthly_cost: estimatedMinervaMonthlyCost,
     }).select().single()
     if (error) throw error
+
+    // Advance the big-account pipeline stage automatically when a proposal
+    // is generated for it — only moves it forward (never backward past
+    // negotiating/closed), and only if it's still at an early stage, so
+    // this can't accidentally undo manual stage-tracking done later.
+    if (bigAccountTargetId) {
+      const { data: target } = await supabase.from('big_account_targets').select('stage').eq('id', bigAccountTargetId).single()
+      if (target && ['researching', 'contacted', 'discovery_call'].includes(target.stage)) {
+        await supabase.from('big_account_targets')
+          .update({ stage: 'proposal_sent', updated_at: new Date().toISOString() })
+          .eq('id', bigAccountTargetId)
+      }
+    }
 
     return new Response(JSON.stringify({ success: true, proposalId: proposal.id }), {
       status: 200,

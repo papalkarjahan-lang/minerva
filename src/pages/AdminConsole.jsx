@@ -22,6 +22,8 @@ const ADMIN_EMAILS = (import.meta.env.VITE_ADMIN_EMAILS || '')
   .split(',').map(e => e.trim().toLowerCase()).filter(Boolean)
 
 const TIERS = ['starter', 'standard', 'pro', 'cancelled']
+const COMPANY_TYPES = ['multi_van', 'facilities_management', 'council', 'strata', 'other']
+const STAGES = ['researching', 'contacted', 'discovery_call', 'proposal_sent', 'negotiating', 'closed_won', 'closed_lost']
 
 export default function AdminConsole() {
   const [state, setState] = useState('loading') // loading | unauthenticated | forbidden | ready
@@ -39,6 +41,9 @@ export default function AdminConsole() {
   const [pasteStatus, setPasteStatus] = useState('')
   const [proposalLinks, setProposalLinks] = useState({})
   const [roiBusyId, setRoiBusyId] = useState(null)
+  const [bigAccounts, setBigAccounts] = useState([])
+  const [newTarget, setNewTarget] = useState({ company_name: '', company_type: 'multi_van', contact_name: '', contact_title: '', contact_email: '', contact_phone: '', estimated_fleet_size: '', region: '' })
+  const [bigAccountBusy, setBigAccountBusy] = useState(null)
 
   useEffect(() => {
     let cancelled = false
@@ -60,6 +65,7 @@ export default function AdminConsole() {
     loadBusinesses()
     loadRequests()
     loadProspects()
+    loadBigAccounts()
   }, [state])
 
   async function loadBusinesses() {
@@ -173,6 +179,65 @@ export default function AdminConsole() {
     setProposalLinks(prev => ({ ...prev, [prospect.id]: data.proposalId }))
   }
 
+  // --- Big Accounts pipeline (the 5-10 named multi-van/FM/council/strata
+  // targets from BIG_CONTRACTS_PLAYBOOK.md) — separate from the SMB
+  // outreach_prospects flow above because these deals run 3-6+ months with
+  // multiple stakeholders, not a single draft->send->reply email. Every row
+  // is entered/edited by hand; see BIG_ACCOUNT_EXECUTION_KIT.md for the
+  // discovery-call script and objection handling to use alongside this.
+  async function loadBigAccounts() {
+    const { data } = await supabase
+      .from('big_account_targets')
+      .select('*')
+      .order('next_action_date', { ascending: true, nullsFirst: false })
+    setBigAccounts(data || [])
+    if (data && data.length > 0) {
+      const { data: proposals } = await supabase
+        .from('roi_proposals')
+        .select('id, big_account_target_id')
+        .in('big_account_target_id', data.map(t => t.id))
+      if (proposals) {
+        setProposalLinks(prev => {
+          const next = { ...prev }
+          proposals.forEach(p => { if (p.big_account_target_id) next[p.big_account_target_id] = p.id })
+          return next
+        })
+      }
+    }
+  }
+
+  async function addBigAccount() {
+    if (!newTarget.company_name.trim()) { alert('Company name is required.'); return }
+    const { error } = await supabase.from('big_account_targets').insert({
+      ...newTarget,
+      estimated_fleet_size: newTarget.estimated_fleet_size ? Number(newTarget.estimated_fleet_size) : null,
+    })
+    if (error) { alert(`Couldn't add target: ${error.message}`); return }
+    setNewTarget({ company_name: '', company_type: 'multi_van', contact_name: '', contact_title: '', contact_email: '', contact_phone: '', estimated_fleet_size: '', region: '' })
+    loadBigAccounts()
+  }
+
+  async function saveBigAccount(id, patch) {
+    setBigAccountBusy(id)
+    const { error } = await supabase.from('big_account_targets').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', id)
+    setBigAccountBusy(null)
+    if (error) { alert(`Couldn't save: ${error.message}`); return }
+    loadBigAccounts()
+  }
+
+  async function generateProposalForTarget(target, fleetSize) {
+    const n = Number(fleetSize) || target.estimated_fleet_size
+    if (!n || n <= 0) { alert('Enter a fleet size first.'); return }
+    setRoiBusyId(target.id)
+    const { data, error } = await supabase.functions.invoke('generate-roi-proposal', {
+      body: { bigAccountTargetId: target.id, companyName: target.company_name, contactName: target.contact_name, tradeType: target.company_type, fleetSize: n },
+    })
+    setRoiBusyId(null)
+    if (error) { alert(`Couldn't generate proposal: ${error.message}`); return }
+    setProposalLinks(prev => ({ ...prev, [target.id]: data.proposalId }))
+    loadBigAccounts() // pick up the auto-advanced stage
+  }
+
   async function draftOutreach() {
     setOutreachBusy(true)
     const { data, error } = await supabase.functions.invoke('draft-outreach-batch', { body: {} })
@@ -252,6 +317,9 @@ export default function AdminConsole() {
           </button>
           <button onClick={() => setTab('outreach')} style={tabStyle(tab === 'outreach')}>
             Outreach ({prospects.filter(p => p.status === 'drafted').length} to review, {prospects.filter(p => p.status === 'approved').length} ready to send)
+          </button>
+          <button onClick={() => setTab('bigaccounts')} style={tabStyle(tab === 'bigaccounts')}>
+            Big Accounts ({bigAccounts.filter(t => !['closed_won', 'closed_lost'].includes(t.stage)).length} active)
           </button>
         </div>
 
@@ -401,6 +469,55 @@ export default function AdminConsole() {
             </p>
           </div>
         )}
+
+        {tab === 'bigaccounts' && (
+          <div>
+            <p style={{ color: '#888', fontSize: 13, margin: '0 0 16px' }}>
+              The 5-10 named multi-van/FM/council/strata targets from <code>BIG_CONTRACTS_PLAYBOOK.md</code> —
+              one of these closing is worth 20-40 typical SMB deals. See <code>BIG_ACCOUNT_EXECUTION_KIT.md</code>{' '}
+              for the discovery-call script, objection handling, and why each type would realistically say yes.
+              Nothing here sends anything — this is a tracker, and a per-target ROI proposal generator.
+            </p>
+
+            <div style={{ ...cardStyle, maxWidth: 'none', textAlign: 'left', marginBottom: 20 }}>
+              <p style={{ color: '#fff', fontWeight: 'bold', margin: '0 0 10px' }}>Add a target</p>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+                <input placeholder="Company name" value={newTarget.company_name} onChange={e => setNewTarget({ ...newTarget, company_name: e.target.value })} style={{ ...inputStyle, width: 200 }} />
+                <select value={newTarget.company_type} onChange={e => setNewTarget({ ...newTarget, company_type: e.target.value })} style={{ ...inputStyle, width: 160 }}>
+                  {COMPANY_TYPES.map(t => <option key={t} value={t}>{t.replace('_', ' ')}</option>)}
+                </select>
+                <input placeholder="Contact name" value={newTarget.contact_name} onChange={e => setNewTarget({ ...newTarget, contact_name: e.target.value })} style={{ ...inputStyle, width: 150 }} />
+                <input placeholder="Title" value={newTarget.contact_title} onChange={e => setNewTarget({ ...newTarget, contact_title: e.target.value })} style={{ ...inputStyle, width: 130 }} />
+                <input placeholder="Email" value={newTarget.contact_email} onChange={e => setNewTarget({ ...newTarget, contact_email: e.target.value })} style={{ ...inputStyle, width: 180 }} />
+                <input placeholder="Phone" value={newTarget.contact_phone} onChange={e => setNewTarget({ ...newTarget, contact_phone: e.target.value })} style={{ ...inputStyle, width: 130 }} />
+                <input type="number" min="1" placeholder="Est. fleet size" value={newTarget.estimated_fleet_size} onChange={e => setNewTarget({ ...newTarget, estimated_fleet_size: e.target.value })} style={{ ...inputStyle, width: 110 }} />
+                <input placeholder="Region" value={newTarget.region} onChange={e => setNewTarget({ ...newTarget, region: e.target.value })} style={{ ...inputStyle, width: 130 }} />
+              </div>
+              <button onClick={addBigAccount} style={{ background: '#2D5FA8', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', cursor: 'pointer', fontSize: 13 }}>
+                Add target
+              </button>
+            </div>
+
+            {bigAccounts.filter(t => !['closed_won', 'closed_lost'].includes(t.stage)).length === 0 && (
+              <p style={{ color: '#888' }}>No active big-account targets yet — add the first one above.</p>
+            )}
+            {bigAccounts.filter(t => !['closed_won', 'closed_lost'].includes(t.stage)).map(t => (
+              <BigAccountCard
+                key={t.id}
+                target={t}
+                onSave={saveBigAccount}
+                onGenerateProposal={generateProposalForTarget}
+                proposalId={proposalLinks[t.id]}
+                roiBusy={roiBusyId === t.id}
+                busy={bigAccountBusy === t.id}
+              />
+            ))}
+
+            <p style={{ color: '#555', fontSize: 12, marginTop: 24 }}>
+              {bigAccounts.filter(t => t.stage === 'closed_won').length} closed won · {bigAccounts.filter(t => t.stage === 'closed_lost').length} closed lost
+            </p>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -476,10 +593,77 @@ function ProspectCard({ prospect: p, onSaveDraft, onApprove, onReject, savingId,
   )
 }
 
+function BigAccountCard({ target: t, onSave, onGenerateProposal, proposalId, roiBusy, busy }) {
+  const [stage, setStage] = useState(t.stage)
+  const [nextAction, setNextAction] = useState(t.next_action || '')
+  const [nextActionDate, setNextActionDate] = useState(t.next_action_date || '')
+  const [notes, setNotes] = useState(t.notes || '')
+  const [fleetSize, setFleetSize] = useState(t.estimated_fleet_size || '')
+  const dirty = stage !== t.stage || nextAction !== (t.next_action || '') || nextActionDate !== (t.next_action_date || '') || notes !== (t.notes || '')
+
+  return (
+    <div style={{ ...cardStyle, maxWidth: 'none', textAlign: 'left', marginBottom: 14, border: stage === 'negotiating' ? '1px solid #1D9E75' : cardStyle.border }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+        <strong style={{ color: '#fff' }}>{t.company_name}</strong>
+        <span style={{ color: '#8fd0e8', fontSize: 12, textTransform: 'uppercase' }}>{(t.company_type || '').replace('_', ' ')}</span>
+      </div>
+      <p style={{ color: '#888', fontSize: 12, margin: '0 0 10px' }}>
+        {t.contact_name || 'unknown contact'}{t.contact_title ? ` (${t.contact_title})` : ''} ·{' '}
+        {t.contact_email || 'no email'} · {t.contact_phone || 'no phone'} ·{' '}
+        est. fleet {t.estimated_fleet_size || '?'}{t.region ? ` · ${t.region}` : ''}
+      </p>
+
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+        <select value={stage} onChange={e => setStage(e.target.value)} style={{ ...inputStyle, width: 160 }}>
+          {STAGES.map(s => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
+        </select>
+        <input placeholder="Next action (e.g. call Dave back)" value={nextAction} onChange={e => setNextAction(e.target.value)} style={{ ...inputStyle, width: 220 }} />
+        <input type="date" value={nextActionDate || ''} onChange={e => setNextActionDate(e.target.value)} style={{ ...inputStyle, width: 140 }} />
+      </div>
+      <textarea
+        value={notes}
+        onChange={e => setNotes(e.target.value)}
+        placeholder="Running notes — call summaries, objections raised, who else is involved in the decision..."
+        style={{ width: '100%', minHeight: 70, background: '#0a0f1d', color: '#ccc', border: '1px solid #1e293b', borderRadius: 6, padding: 8, fontSize: 13 }}
+      />
+
+      <div style={{ display: 'flex', gap: 10, marginTop: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        {dirty && (
+          <button
+            onClick={() => onSave(t.id, { stage, next_action: nextAction || null, next_action_date: nextActionDate || null, notes: notes || null })}
+            disabled={busy}
+            style={{ background: '#2D5FA8', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13 }}
+          >
+            Save
+          </button>
+        )}
+        <input
+          type="number" min="1" value={fleetSize} onChange={e => setFleetSize(e.target.value)}
+          placeholder="Fleet size"
+          style={{ width: 90, background: '#0a0f1d', color: '#fff', border: '1px solid #1e293b', borderRadius: 6, padding: '4px 8px', fontSize: 13 }}
+        />
+        <button
+          onClick={() => onGenerateProposal(t, fleetSize)}
+          disabled={roiBusy}
+          style={{ background: 'none', border: '1px solid #2D5FA8', color: '#8fd0e8', borderRadius: 8, padding: '5px 12px', cursor: roiBusy ? 'default' : 'pointer', fontSize: 12, opacity: roiBusy ? 0.6 : 1 }}
+        >
+          {roiBusy ? 'Generating...' : proposalId ? 'Regenerate ROI proposal' : 'Generate ROI proposal'}
+        </button>
+        {proposalId && (
+          <a href={`/proposal/${proposalId}`} target="_blank" rel="noreferrer" style={{ color: '#1D9E75', fontSize: 12 }}>
+            /proposal/{proposalId} →
+          </a>
+        )}
+      </div>
+    </div>
+  )
+}
+
 const pageStyle = { minHeight: '100vh', background: '#050811', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Arial, sans-serif', padding: 24 }
 const cardStyle = { background: '#0a0f1d', borderRadius: 20, padding: 40, maxWidth: 420, width: '100%', textAlign: 'center', border: '1px solid #1e293b' }
 const thStyle = { padding: '8px 12px', fontSize: 12, textTransform: 'uppercase', letterSpacing: 1 }
 const tdStyle = { padding: '10px 12px' }
+const inputStyle = { background: '#0a0f1d', color: '#fff', border: '1px solid #1e293b', borderRadius: 6, padding: '6px 10px', fontSize: 13 }
 function tabStyle(active) {
   return { background: active ? '#2D5FA8' : 'transparent', color: '#fff', border: '1px solid #1e293b', borderRadius: 8, padding: '8px 16px', cursor: 'pointer', fontSize: 14 }
 }

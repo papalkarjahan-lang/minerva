@@ -1425,3 +1425,15 @@ Verified: lint clean, 16/16 tests passing, build clean.
   `generate-roi-proposal` and `parse-prospect-text`. Both reuse the existing
   `ANTHROPIC_API_KEY`/service-role-key secrets already required by the rest
   of the outreach engine — no new secrets to set.
+- **New 2026-09-10 (later same day)**: Big Accounts CRM (`big_account_targets`
+  table + new "Big Accounts" tab in `AdminConsole.jsx`) and a fix to
+  `supabase_schema_delta_outreach_engine.sql` (it was missing an admin
+  INSERT policy on `outreach_prospects`, which would have silently broken
+  the CSV bulk-import button — fixed in the delta file itself before it was
+  ever run, so no re-migration needed, just run the corrected file). Needs,
+  in order: (1) run the now-corrected `supabase_schema_delta_outreach_engine.sql`,
+  (2) run `supabase_schema_delta_big_account_targets.sql` (also adds a
+  `big_account_target_id` column to `roi_proposals`), (3) redeploy
+  `generate-roi-proposal` (now accepts an optional `bigAccountTargetId` and
+  auto-advances that target's pipeline stage to `proposal_sent`). See
+  `BIG_ACCOUNT_EXECUTION_KIT.md` for how to actually use this tab.

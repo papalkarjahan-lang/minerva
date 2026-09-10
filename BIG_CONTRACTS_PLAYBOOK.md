@@ -125,6 +125,14 @@ boundary — never sent automatically, always your explicit click):**
   a $20K-90K/year decision is not won by a cold email alone; it needs a
   real call/meeting, which nobody but you can do
 
+**Added 2026-09-10 — see `BIG_ACCOUNT_EXECUTION_KIT.md` and the "Big
+Accounts" tab in `AdminConsole.jsx`:** a dedicated pipeline tracker for
+these 5-10 targets (stage, next action, running notes — separate from the
+SMB email flow above since these run 3-6+ months, not a single email
+thread), a per-target ROI proposal generator/link, and a researched
+discovery-call script + objection-handling table + real "why this target
+type would say yes" reasoning for each of the 4 target types.
+
 ## 7. Revised honest range for Dec 31, 2026
 
 If normal cold-outreach volume (now running through the automated
