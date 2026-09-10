@@ -34,6 +34,11 @@ export default function AdminConsole() {
   const [outreachBusy, setOutreachBusy] = useState(false)
   const [csvText, setCsvText] = useState('')
   const [csvStatus, setCsvStatus] = useState('')
+  const [pasteText, setPasteText] = useState('')
+  const [pasteBusy, setPasteBusy] = useState(false)
+  const [pasteStatus, setPasteStatus] = useState('')
+  const [proposalLinks, setProposalLinks] = useState({})
+  const [roiBusyId, setRoiBusyId] = useState(null)
 
   useEffect(() => {
     let cancelled = false
@@ -136,6 +141,36 @@ export default function AdminConsole() {
     setCsvStatus(`Imported ${rows.length} prospect(s).`)
     setCsvText('')
     loadProspects()
+  }
+
+  // Alternate import path for prospects copied by hand off a directory
+  // listing/LinkedIn page/etc. rather than typed as clean CSV — see
+  // parse-prospect-text/index.ts's HONESTY NOTE for why this is not scraping.
+  async function importPastedText() {
+    if (!pasteText.trim()) { setPasteStatus('Paste some text first.'); return }
+    setPasteBusy(true)
+    const { data, error } = await supabase.functions.invoke('parse-prospect-text', { body: { text: pasteText } })
+    setPasteBusy(false)
+    if (error) { setPasteStatus(`Extraction failed: ${error.message}`); return }
+    if (data?.error) { setPasteStatus(data.error); return }
+    setPasteStatus(data?.note || `Imported ${data?.inserted ?? 0} prospect(s).`)
+    setPasteText('')
+    loadProspects()
+  }
+
+  // Generates a shareable /proposal/:id ROI one-pager for a big-account
+  // prospect — see generate-roi-proposal/index.ts. Never sent automatically;
+  // the operator copies the resulting link and shares it personally.
+  async function generateProposal(prospect, fleetSize) {
+    const n = Number(fleetSize)
+    if (!n || n <= 0) { alert('Enter a fleet size (number of vehicles/technicians) first.'); return }
+    setRoiBusyId(prospect.id)
+    const { data, error } = await supabase.functions.invoke('generate-roi-proposal', {
+      body: { prospectId: prospect.id, companyName: prospect.company_name, contactName: prospect.contact_name, tradeType: prospect.trade_type, fleetSize: n },
+    })
+    setRoiBusyId(null)
+    if (error) { alert(`Couldn't generate proposal: ${error.message}`); return }
+    setProposalLinks(prev => ({ ...prev, [prospect.id]: data.proposalId }))
   }
 
   async function draftOutreach() {
@@ -308,6 +343,25 @@ export default function AdminConsole() {
                 </button>
                 {csvStatus && <span style={{ color: '#8fd0e8', fontSize: 13 }}>{csvStatus}</span>}
               </div>
+
+              <div style={{ height: 1, background: '#1e293b', margin: '16px 0' }} />
+
+              <p style={{ color: '#888', fontSize: 13, margin: '0 0 10px' }}>
+                Or paste messy text you copied by hand off a directory listing, LinkedIn page, or
+                similar (AI extracts the rows for you — nothing here fetches any website itself).
+              </p>
+              <textarea
+                value={pasteText}
+                onChange={e => setPasteText(e.target.value)}
+                placeholder="Paste the raw copied text here..."
+                style={{ width: '100%', minHeight: 100, background: '#0a0f1d', color: '#fff', border: '1px solid #1e293b', borderRadius: 8, padding: 10, fontSize: 13 }}
+              />
+              <div style={{ display: 'flex', gap: 10, marginTop: 10, alignItems: 'center' }}>
+                <button onClick={importPastedText} disabled={pasteBusy} style={{ background: '#2D5FA8', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', cursor: pasteBusy ? 'default' : 'pointer', fontSize: 13, opacity: pasteBusy ? 0.6 : 1 }}>
+                  {pasteBusy ? 'Extracting...' : 'Extract & import (AI)'}
+                </button>
+                {pasteStatus && <span style={{ color: '#8fd0e8', fontSize: 13 }}>{pasteStatus}</span>}
+              </div>
             </div>
 
             <div style={{ ...cardStyle, maxWidth: 'none', textAlign: 'left', marginBottom: 20 }}>
@@ -329,7 +383,17 @@ export default function AdminConsole() {
               <p style={{ color: '#888' }}>No drafts waiting on review right now.</p>
             )}
             {prospects.filter(p => ['drafted', 'approved'].includes(p.status)).map(p => (
-              <ProspectCard key={p.id} prospect={p} onSaveDraft={saveDraft} onApprove={approveProspect} onReject={rejectProspect} savingId={savingId} />
+              <ProspectCard
+                key={p.id}
+                prospect={p}
+                onSaveDraft={saveDraft}
+                onApprove={approveProspect}
+                onReject={rejectProspect}
+                savingId={savingId}
+                onGenerateProposal={generateProposal}
+                proposalId={proposalLinks[p.id]}
+                roiBusy={roiBusyId === p.id}
+              />
             ))}
 
             <p style={{ color: '#555', fontSize: 12, marginTop: 24 }}>
@@ -342,9 +406,10 @@ export default function AdminConsole() {
   )
 }
 
-function ProspectCard({ prospect: p, onSaveDraft, onApprove, onReject, savingId }) {
+function ProspectCard({ prospect: p, onSaveDraft, onApprove, onReject, savingId, onGenerateProposal, proposalId, roiBusy }) {
   const [subject, setSubject] = useState(p.draft_subject || '')
   const [body, setBody] = useState(p.draft_body || '')
+  const [fleetSize, setFleetSize] = useState('')
   const dirty = subject !== (p.draft_subject || '') || body !== (p.draft_body || '')
 
   return (
@@ -381,6 +446,30 @@ function ProspectCard({ prospect: p, onSaveDraft, onApprove, onReject, savingId 
           <button onClick={() => onReject(p.id)} style={{ background: 'none', border: '1px solid #1e293b', color: '#888', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13 }}>
             Discard
           </button>
+        )}
+      </div>
+
+      {/* Big-account pitch tool — see BIG_CONTRACTS_PLAYBOOK.md. Only worth
+          using on a multi-van/multi-tech prospect, hence asking fleet size
+          rather than generating this for every single-van SMB by default. */}
+      <div style={{ borderTop: '1px solid #1e293b', marginTop: 12, paddingTop: 10, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span style={{ color: '#666', fontSize: 12 }}>Multi-van/big account? Fleet size:</span>
+        <input
+          type="number" min="1" value={fleetSize} onChange={e => setFleetSize(e.target.value)}
+          placeholder="e.g. 12"
+          style={{ width: 70, background: '#0a0f1d', color: '#fff', border: '1px solid #1e293b', borderRadius: 6, padding: '4px 8px', fontSize: 13 }}
+        />
+        <button
+          onClick={() => onGenerateProposal(p, fleetSize)}
+          disabled={roiBusy}
+          style={{ background: 'none', border: '1px solid #2D5FA8', color: '#8fd0e8', borderRadius: 8, padding: '5px 12px', cursor: roiBusy ? 'default' : 'pointer', fontSize: 12, opacity: roiBusy ? 0.6 : 1 }}
+        >
+          {roiBusy ? 'Generating...' : 'Generate ROI proposal'}
+        </button>
+        {proposalId && (
+          <a href={`/proposal/${proposalId}`} target="_blank" rel="noreferrer" style={{ color: '#1D9E75', fontSize: 12 }}>
+            /proposal/{proposalId} →
+          </a>
         )}
       </div>
     </div>

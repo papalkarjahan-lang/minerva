@@ -29,6 +29,7 @@ const TermsOfService = lazy(() => import('./pages/TermsOfService'))
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'))
 const RefundPolicy = lazy(() => import('./pages/RefundPolicy'))
 const CaseStudy = lazy(() => import('./pages/CaseStudy'))
+const ProposalView = lazy(() => import('./pages/ProposalView'))
 
 function RouteLoadingFallback() {
   return (
@@ -98,6 +99,12 @@ export default function App() {
             (GPS route, checklist photos, materials, invoice), opened from
             DispatcherView's Recently Completed section. URL: /dispute/:jobId */}
         <Route path="/dispute/:jobId" element={<DisputeView />} />
+
+        {/* Personalized ROI one-pager for a big-account sales target
+            (multi-van company, FM company, etc.) — generated from the
+            admin console's Outreach tab, shared personally by the
+            operator, never sent automatically. URL: /proposal/:proposalId */}
+        <Route path="/proposal/:proposalId" element={<ProposalView />} />
       </Routes>
       </Suspense>
     </BrowserRouter>

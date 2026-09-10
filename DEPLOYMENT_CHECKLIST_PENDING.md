@@ -1417,3 +1417,11 @@ Verified: lint clean, 16/16 tests passing, build clean.
   manual forever, see `BIG_CONTRACTS_PLAYBOOK.md` and `SECURITY_NOTES.md`),
   (4) `RESEND_API_KEY` must already be set for actual sends to work (same
   gate as the existing welcome email — safe no-op until then).
+- **New 2026-09-10**: ROI proposal tool (`roi_proposals` table,
+  `generate-roi-proposal` edge function, `/proposal/:id` page, wired into
+  the Outreach tab's "Generate ROI proposal" button) and `parse-prospect-text`
+  (AI paste-text import, wired into the same tab) — needs, in order:
+  (1) run `supabase_schema_delta_roi_proposals.sql`, (2) deploy
+  `generate-roi-proposal` and `parse-prospect-text`. Both reuse the existing
+  `ANTHROPIC_API_KEY`/service-role-key secrets already required by the rest
+  of the outreach engine — no new secrets to set.
