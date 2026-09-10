@@ -1408,3 +1408,12 @@ Verified: lint clean, 16/16 tests passing, build clean.
   `businesses.twilio_number` so two client businesses can never end up
   misconfigured with the same number. Run once in the Supabase SQL Editor,
   same as every other `*_delta_*.sql` file in this repo.
+- **New 2026-09-10**: outreach engine (`outreach_prospects` table,
+  `draft-outreach-batch`/`send-outreach-batch`/`followup-outreach` edge
+  functions, new Outreach tab in `AdminConsole.jsx`) — needs, in order:
+  (1) run `supabase_schema_delta_outreach_engine.sql`, (2) deploy the 3 new
+  edge functions, (3) run `supabase_schema_delta_outreach_engine_cron.sql`
+  (registers the daily follow-up drafting sweep only — sending stays
+  manual forever, see `BIG_CONTRACTS_PLAYBOOK.md` and `SECURITY_NOTES.md`),
+  (4) `RESEND_API_KEY` must already be set for actual sends to work (same
+  gate as the existing welcome email — safe no-op until then).

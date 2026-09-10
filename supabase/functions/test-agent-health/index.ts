@@ -76,6 +76,7 @@ const CADENCE_MINUTES: Record<string, number> = {
   'retention-checkin': 7 * 24 * 60,
   'generate-growth-drafts': 7 * 24 * 60,
   'test-agent-health': 15,
+  'followup-outreach': 24 * 60,
 }
 
 // Buffer multiplier so normal cron jitter / a slightly-late run doesn't

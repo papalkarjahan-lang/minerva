@@ -28,8 +28,12 @@ export default function AdminConsole() {
   const [session, setSession] = useState(null)
   const [businesses, setBusinesses] = useState([])
   const [requests, setRequests] = useState([])
+  const [prospects, setProspects] = useState([])
   const [tab, setTab] = useState('businesses')
   const [savingId, setSavingId] = useState(null)
+  const [outreachBusy, setOutreachBusy] = useState(false)
+  const [csvText, setCsvText] = useState('')
+  const [csvStatus, setCsvStatus] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -50,6 +54,7 @@ export default function AdminConsole() {
     if (state !== 'ready') return
     loadBusinesses()
     loadRequests()
+    loadProspects()
   }, [state])
 
   async function loadBusinesses() {
@@ -101,6 +106,76 @@ export default function AdminConsole() {
     loadRequests()
   }
 
+  // --- Outreach pipeline (Minerva's own client acquisition, not a client's) ---
+  // See supabase_schema_delta_outreach_engine.sql for the full design note.
+  // Nothing here ever sends an email except sendApproved(), and that only
+  // ever touches rows already at status='approved' — the send-outreach-batch
+  // function itself re-enforces that same filter server-side too, so this
+  // client-side gate is a UX convenience, not the only safeguard.
+  async function loadProspects() {
+    const { data } = await supabase
+      .from('outreach_prospects')
+      .select('*')
+      .order('created_at', { ascending: false })
+    setProspects(data || [])
+  }
+
+  // Bulk-add via pasted CSV: company_name,contact_name,contact_email,trade_type,city
+  // — solves the "can't hand-type enough prospects" bottleneck at the data-
+  // entry stage; draftOutreach() below solves it at the writing stage.
+  async function importCsv() {
+    const lines = csvText.split('\n').map(l => l.trim()).filter(Boolean)
+    if (lines.length === 0) { setCsvStatus('Paste at least one line first.'); return }
+    const rows = lines.map(line => {
+      const [company_name, contact_name, contact_email, trade_type, city] = line.split(',').map(v => v?.trim())
+      return { company_name, contact_name: contact_name || null, contact_email: contact_email || null, trade_type: trade_type || null, city: city || null, source: 'manual' }
+    }).filter(r => r.company_name)
+    if (rows.length === 0) { setCsvStatus('No valid rows found — expected: company_name,contact_name,contact_email,trade_type,city'); return }
+    const { error } = await supabase.from('outreach_prospects').insert(rows)
+    if (error) { setCsvStatus(`Import failed: ${error.message}`); return }
+    setCsvStatus(`Imported ${rows.length} prospect(s).`)
+    setCsvText('')
+    loadProspects()
+  }
+
+  async function draftOutreach() {
+    setOutreachBusy(true)
+    const { data, error } = await supabase.functions.invoke('draft-outreach-batch', { body: {} })
+    setOutreachBusy(false)
+    if (error) { alert(`Drafting failed: ${error.message}`); return }
+    alert(`Drafted ${data?.drafted ?? 0} email(s) (${data?.aiDrafted ?? 0} AI-personalized, ${data?.fallbackUsed ?? 0} plain-template — review both before approving).`)
+    loadProspects()
+  }
+
+  async function saveDraft(id, draft_subject, draft_body) {
+    setSavingId(id)
+    await supabase.from('outreach_prospects').update({ draft_subject, draft_body }).eq('id', id)
+    setSavingId(null)
+    loadProspects()
+  }
+
+  async function approveProspect(id) {
+    await supabase.from('outreach_prospects').update({ status: 'approved' }).eq('id', id)
+    loadProspects()
+  }
+
+  async function rejectProspect(id) {
+    await supabase.from('outreach_prospects').update({ status: 'closed_lost' }).eq('id', id)
+    loadProspects()
+  }
+
+  async function sendApproved() {
+    const approvedCount = prospects.filter(p => p.status === 'approved').length
+    if (approvedCount === 0) { alert('No approved prospects to send.'); return }
+    if (!window.confirm(`Send ${approvedCount} approved outreach email(s) now? This actually sends real emails.`)) return
+    setOutreachBusy(true)
+    const { data, error } = await supabase.functions.invoke('send-outreach-batch', { body: {} })
+    setOutreachBusy(false)
+    if (error) { alert(`Send failed: ${error.message}`); return }
+    alert(`Sent ${data?.sent ?? 0}, skipped (no email) ${data?.skippedNoEmail ?? 0}, failed ${data?.failed ?? 0}.`)
+    loadProspects()
+  }
+
   if (state === 'loading') {
     return <div style={pageStyle}><p style={{ color: '#888' }}>Loading...</p></div>
   }
@@ -139,6 +214,9 @@ export default function AdminConsole() {
             Support ({requests.filter(r => r.status === 'open').length} open
             {requests.some(r => r.status === 'open' && r.priority === 'urgent') &&
               `, ${requests.filter(r => r.status === 'open' && r.priority === 'urgent').length} urgent`})
+          </button>
+          <button onClick={() => setTab('outreach')} style={tabStyle(tab === 'outreach')}>
+            Outreach ({prospects.filter(p => p.status === 'drafted').length} to review, {prospects.filter(p => p.status === 'approved').length} ready to send)
           </button>
         </div>
 
@@ -209,6 +287,100 @@ export default function AdminConsole() {
               </div>
             ))}
           </div>
+        )}
+
+        {tab === 'outreach' && (
+          <div>
+            <div style={{ ...cardStyle, maxWidth: 'none', textAlign: 'left', marginBottom: 20 }}>
+              <p style={{ color: '#fff', fontWeight: 'bold', margin: '0 0 8px' }}>1. Add prospects</p>
+              <p style={{ color: '#888', fontSize: 13, margin: '0 0 10px' }}>
+                Paste one prospect per line: <code>company_name,contact_name,contact_email,trade_type,city</code>
+              </p>
+              <textarea
+                value={csvText}
+                onChange={e => setCsvText(e.target.value)}
+                placeholder="Fergusons Plumbing,Dave Ferguson,dave@fergusonsplumbing.com.au,plumbing,Melbourne"
+                style={{ width: '100%', minHeight: 100, background: '#0a0f1d', color: '#fff', border: '1px solid #1e293b', borderRadius: 8, padding: 10, fontFamily: 'monospace', fontSize: 13 }}
+              />
+              <div style={{ display: 'flex', gap: 10, marginTop: 10, alignItems: 'center' }}>
+                <button onClick={importCsv} style={{ background: '#2D5FA8', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', cursor: 'pointer', fontSize: 13 }}>
+                  Import
+                </button>
+                {csvStatus && <span style={{ color: '#8fd0e8', fontSize: 13 }}>{csvStatus}</span>}
+              </div>
+            </div>
+
+            <div style={{ ...cardStyle, maxWidth: 'none', textAlign: 'left', marginBottom: 20 }}>
+              <p style={{ color: '#fff', fontWeight: 'bold', margin: '0 0 8px' }}>2. Draft, then 3. review/edit each one below, then 4. send</p>
+              <p style={{ color: '#888', fontSize: 13, margin: '0 0 10px' }}>
+                Drafting never sends anything. Sending only ever goes out to prospects you've personally clicked "Approve" on below.
+              </p>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={draftOutreach} disabled={outreachBusy} style={{ background: '#1D9E75', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', cursor: outreachBusy ? 'default' : 'pointer', fontSize: 13, opacity: outreachBusy ? 0.6 : 1 }}>
+                  {outreachBusy ? 'Working...' : `Draft new (${prospects.filter(p => p.status === 'new').length} pending)`}
+                </button>
+                <button onClick={sendApproved} disabled={outreachBusy} style={{ background: '#8A2525', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', cursor: outreachBusy ? 'default' : 'pointer', fontSize: 13, opacity: outreachBusy ? 0.6 : 1 }}>
+                  {outreachBusy ? 'Working...' : `Send approved (${prospects.filter(p => p.status === 'approved').length})`}
+                </button>
+              </div>
+            </div>
+
+            {prospects.filter(p => ['drafted', 'approved'].includes(p.status)).length === 0 && (
+              <p style={{ color: '#888' }}>No drafts waiting on review right now.</p>
+            )}
+            {prospects.filter(p => ['drafted', 'approved'].includes(p.status)).map(p => (
+              <ProspectCard key={p.id} prospect={p} onSaveDraft={saveDraft} onApprove={approveProspect} onReject={rejectProspect} savingId={savingId} />
+            ))}
+
+            <p style={{ color: '#555', fontSize: 12, marginTop: 24 }}>
+              {prospects.filter(p => p.status === 'sent').length} sent · {prospects.filter(p => p.status === 'replied' || p.replied_at).length} replied · {prospects.filter(p => p.status === 'closed_won').length} closed won · {prospects.filter(p => p.status === 'closed_lost').length} closed lost
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function ProspectCard({ prospect: p, onSaveDraft, onApprove, onReject, savingId }) {
+  const [subject, setSubject] = useState(p.draft_subject || '')
+  const [body, setBody] = useState(p.draft_body || '')
+  const dirty = subject !== (p.draft_subject || '') || body !== (p.draft_body || '')
+
+  return (
+    <div style={{ ...cardStyle, maxWidth: 'none', textAlign: 'left', marginBottom: 14, border: p.status === 'approved' ? '1px solid #1D9E75' : cardStyle.border }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+        <strong style={{ color: '#fff' }}>{p.company_name}{p.followup_stage > 0 ? ` (follow-up #${p.followup_stage})` : ''}</strong>
+        <span style={{ color: p.status === 'approved' ? '#1D9E75' : '#8fd0e8', fontSize: 12, textTransform: 'uppercase' }}>{p.status}</span>
+      </div>
+      <p style={{ color: '#888', fontSize: 12, margin: '0 0 10px' }}>
+        {p.contact_name || 'unknown contact'} · {p.contact_email || 'no email on file'} · {p.trade_type || 'unknown trade'}{p.city ? ` · ${p.city}` : ''}
+      </p>
+      <input
+        value={subject}
+        onChange={e => setSubject(e.target.value)}
+        style={{ width: '100%', background: '#0a0f1d', color: '#fff', border: '1px solid #1e293b', borderRadius: 6, padding: 8, marginBottom: 8, fontSize: 13 }}
+      />
+      <textarea
+        value={body}
+        onChange={e => setBody(e.target.value)}
+        style={{ width: '100%', minHeight: 120, background: '#0a0f1d', color: '#ccc', border: '1px solid #1e293b', borderRadius: 6, padding: 8, fontSize: 13, whiteSpace: 'pre-wrap' }}
+      />
+      <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
+        {dirty && (
+          <button onClick={() => onSaveDraft(p.id, subject, body)} disabled={savingId === p.id} style={{ background: '#2D5FA8', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13 }}>
+            Save edits
+          </button>
+        )}
+        {p.status === 'drafted' && !dirty && (
+          <button onClick={() => onApprove(p.id)} style={{ background: '#1D9E75', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13 }}>
+            Approve for sending
+          </button>
+        )}
+        {p.status !== 'closed_lost' && (
+          <button onClick={() => onReject(p.id)} style={{ background: 'none', border: '1px solid #1e293b', color: '#888', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13 }}>
+            Discard
+          </button>
         )}
       </div>
     </div>

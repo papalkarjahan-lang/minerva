@@ -117,6 +117,22 @@ entirely by possession of an unguessable URL or PIN:
   `businesses.sector` and `businesses.feature_priorities` are likewise
   plain columns on the already-anon-readable `businesses` row.
 
+## Added 2026-09-10: outreach engine — Minerva's own sales pipeline, same click-only rule
+
+`outreach_prospects` is Minerva's own client-acquisition pipeline (not a
+client's leads — see `supabase_schema_delta_outreach_engine.sql`). Same
+non-negotiable boundary as the Growth pillar above, applied to Minerva's
+own outbound: `draft-outreach-batch` and `followup-outreach` fully
+automate writing personalized emails and follow-ups, but only ever write
+`status='drafted'` rows. `send-outreach-batch` is the ONLY function that
+calls `send-email` for a prospect, and it hard-filters to
+`status='approved'` server-side — a bug in the admin console UI cannot
+cause an unreviewed email to go out, because the function itself
+re-enforces the filter regardless of what it's asked to send. No RLS
+anon/authenticated policy grants access beyond `admin_users` (mirrors
+`support_requests`' scoping) — every write outside the admin console goes
+through an edge function using `SUPABASE_SERVICE_ROLE_KEY`.
+
 ## Growth pillar — why spend/send is click-only, never autonomous
 
 `generate-growth-drafts` runs weekly and fully autonomously, but it only
