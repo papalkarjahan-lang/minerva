@@ -1437,11 +1437,19 @@ Verified: lint clean, 16/16 tests passing, build clean.
   `generate-roi-proposal` (now accepts an optional `bigAccountTargetId` and
   auto-advances that target's pipeline stage to `proposal_sent`). See
   `BIG_ACCOUNT_EXECUTION_KIT.md` for how to actually use this tab.
-- **New 2026-09-10 (third pass same day)**: `supabase_seed_big_account_targets_2026-09-10.sql`
+- **New 2026-09-10 (third + fourth pass same day)**: `supabase_seed_big_account_targets_2026-09-10.sql`
   — a one-time DATA seed (not a schema delta, deliberately not run-safe
-  twice — no unique constraint to guard on) inserting 7 real, named
+  twice — no unique constraint to guard on) inserting 15 real, named
   candidate companies found via web research into `big_account_targets`
   at `stage='researching'`. Run this ONCE, after the two deltas above.
   Fleet sizes are only populated where a real source confirmed a number
-  (Twin Electrics & Plumbing: 30, Multisparx: 7) — everything else is
-  left `null` with a note to verify on the first call, not guessed.
+  (Ken Hall Plumbers: 122, Twin Electrics & Plumbing: 30, Multisparx: 7,
+  Abbott Locksmiths: 18, Mr Splash: 15, CLASS Locksmiths: 10, M.A.S.S.
+  Electrics: 9) — everything else is left `null` with a note to verify
+  on the first call, not guessed. Also pre-fills `next_action`/
+  `next_action_date` on every row (staggered, top picks first) so the Big
+  Accounts tab is an actionable to-do list on first load, not just a
+  name list — these are starting suggestions, edit freely once real
+  progress happens. See `OUTREACH_DRAFTS_TOP_PICKS.md` for ready-to-
+  personalize first-contact email/call drafts for the top 2 picks (Twin
+  Electrics, Ken Hall Plumbers) — drafts only, nothing has been sent.
