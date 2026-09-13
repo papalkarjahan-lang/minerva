@@ -79,6 +79,26 @@ Nothing in Part 3 works until this is live. In order:
 None of this is optional — skipping straight to outreach with `RESEND_API_KEY`
 unset means every "Send approved" click will silently do nothing.
 
+**Status update (2026-09-13):** steps 2-4 above are now actually done — the
+outreach-engine, ROI-proposal, and big-account-CRM SQL deltas have all run
+live, and `draft-outreach-batch`/`send-outreach-batch`/`followup-outreach`/
+`generate-roi-proposal`/`parse-prospect-text` are all deployed and
+smoke-tested (see `minerva_setup_progress.md` Round 9e). `RESEND_API_KEY`
+and `OPERATOR_EMAIL` (step 5-6) are still unset — `send-outreach-batch`
+remains a safe no-op until the user provides a real key. Steps 1 and 7 (bank
+account → Twilio/Mapbox/Anthropic/Stripe live-mode, and legal review) are
+still fully outstanding and still the two things nothing else can substitute
+for. Two more real, deployed features have also landed since this plan was
+written and are worth using in Track A conversations as genuine proof
+points, not aspirational pitch language: automatic corrective-action tickets
+on flagged safety photos/hazards, and a fatigue-aware dispatch tiebreak.
+Both are true today, with no credentials pending — see
+`SALES_CLAIMS_ACCURACY_NOTE.md` for exact safe phrasing. A phone AI
+receptionist (`voice-intake-agent`) is also built and deployed, but is not
+yet a live claim — it needs Twilio's own number-verification step (the same
+bank-account-gated blocker as the SMS upgrade) before any real business can
+turn it on.
+
 ---
 
 ## Part 3 — The two parallel tracks, week by week
@@ -90,7 +110,10 @@ Track-A deals. Track B is not automatable, so it needs dedicated calendar
 time every week regardless of how Track A is performing.
 
 ### Week 1 (Sept 10-16): Setup + target list
-- Finish Part 2 deployment order completely.
+- Finish Part 2 deployment order completely — **as of 2026-09-13, the
+  outreach engine, ROI-proposal tool, and big-account CRM are already live**
+  (see status update above); what's left in Part 2 is entirely the
+  bank-account-gated credentials (step 1) and the legal review (step 7).
 - Track B: build the actual candidate list — 10-15 named companies across the
   4 real target types from `BIG_CONTRACTS_PLAYBOOK.md` §3 (multi-van trade
   companies with 10-50 vans under one owner, FM companies, council fleets,

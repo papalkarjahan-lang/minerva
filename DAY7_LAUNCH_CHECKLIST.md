@@ -163,12 +163,76 @@ Stop and fix before continuing if any box fails — don't skip ahead.
 - [ ] Approve an `outreach_sms` draft → confirm the SMS arrives on the
       test lead's phone and the draft's status updates to SENT
 
+## 11. Corrective-action tickets + fatigue-aware dispatch (added 2026-09-13
+##     — no extra credentials needed, works on any tier/sector today)
+
+- [ ] Industrial sector: from a site's Safety tab, log an incident that
+      creates a proximity hazard the same way `detect-safety-hazards`
+      checks for (a technician and an automated process both active at the
+      same site at once) → next scheduled run (or manual "Invoke" from
+      Supabase Dashboard → Edge Functions) creates a linked ticket in the
+      corrective-actions list under that incident, with Assign/Due
+      date/Close controls
+- [ ] Trade sector: flag a checklist photo as `flagged` directly in
+      Supabase (Table Editor → `checklist_photos` → set
+      `verification_status='flagged'` on a test row) → the completed job's
+      expanded view in `DispatcherView.jsx` shows the linked ticket — **only
+      test this manually if `ANTHROPIC_API_KEY` isn't live yet**, since the
+      real AI photo-review path only ever produces a `flagged` status once
+      that key is set (see `SALES_CLAIMS_ACCURACY_NOTE.md`'s 2026-09-13
+      correction — don't be surprised if a real photo submission never
+      flags anything with no key configured, that's expected, not a bug)
+- [ ] Assign the ticket to a technician, set a due date, then close it →
+      all three controls persist and reflect immediately in the list
+- [ ] Fatigue-aware dispatch: give one technician a high
+      `rolling_week_hours` value (Table Editor → `technicians`, or let
+      `update-technician-workload` accumulate it naturally over real
+      tracked hours) and a second, less-fatigued technician roughly the
+      same distance from a new job → confirm the auto-assign trigger
+      (`auto-assign-technician`) picks the less-fatigued one; this is a
+      soft tiebreak, so it should only change the outcome when the two
+      technicians are close in distance, not override a clearly-closer tech
+
+## 12. Voice receptionist (`voice-intake-agent`, added 2026-09-13 — genuinely
+##     blocked on Twilio's own number-verification step; skip entirely
+##     until that's done, no point testing before then)
+
+- [ ] Confirm the business's Twilio number has completed Twilio's own
+      phone/identity verification (account-level, in the Twilio Console —
+      unrelated to this codebase)
+- [ ] In the Twilio Console, point that number's "A CALL COMES IN" (Voice)
+      webhook at `voice-intake-agent` instead of the default
+      `missed-call-webhook`
+- [ ] Call the number from a real phone → hear the opening question, speak
+      a plausible job description → confirm each follow-up question comes
+      back correctly (job description → urgency → name → suburb)
+- [ ] Finish all four answers → confirm the closing line plays and the call
+      hangs up
+- [ ] Dispatcher's Leads tab shows the new lead with `source:
+      'voice_intake_agent'`, scored, with urgency set correctly (say
+      something like "it's an emergency, water's flooding everywhere" on a
+      test call to confirm the emergency keyword path works)
+- [ ] Business phone/Slack (if configured) receives the same notification
+      pattern as a text-widget lead
+- [ ] Say nothing for the full timeout on one test call (or call from a bad
+      line) → confirm one re-prompt happens, then a graceful fallback SMS +
+      hangup on the second silence, not a dead call
+- [ ] Hang up mid-conversation on a separate test call → confirm the
+      partial session doesn't block future calls from the same number (call
+      again — it should start a fresh session, not resume the abandoned one)
+- [ ] If testing with `ANTHROPIC_API_KEY` unset, confirm the same call still
+      completes end-to-end via the fixed 4-question script — say so
+      explicitly, don't just assume the AI path works and skip the fallback
+      test, since these are two genuinely different code paths
+
 ---
 
 ## Go / no-go
 
 **Do not call a single real client until sections 1-7 are all ticked.**
 Section 8 only applies if you're selling Pro; section 9 only if you're
-selling to an industrial client; section 10 only if pg_cron is set up.
-If anything in 1-7 fails, that's the actual blocker — fix it before
-booking the first real call, not after.
+selling to an industrial client; section 10 only if pg_cron is set up;
+section 11 applies to any tier/sector and needs no extra credentials;
+section 12 only once Twilio's number verification is actually done. If
+anything in 1-7 fails, that's the actual blocker — fix it before booking
+the first real call, not after.

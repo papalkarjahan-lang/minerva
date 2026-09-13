@@ -216,8 +216,9 @@ property manager ever queries an invoice, you've got a timestamped GPS
 record of exactly when your team arrived and left.
 
 Also worth knowing: Minerva watches each crew member's hours and shift load
-through the week and flags it before someone's quietly heading toward
-burnout — useful with split shifts.
+through the week — and now factors that fatigue directly into who gets
+assigned the next job, not just an alert after the fact — useful with split
+shifts.
 
 7-day free trial, no card required.
 
@@ -463,6 +464,11 @@ check-in log, safety incident log, asset register, and consumables
 alerts; $349/site adds the auto-assembled client verification package. It
 doesn't move if your crew size changes site to site, which is the thing
 most per-seat products in this category get wrong.
+
+Also worth knowing: when a proximity or safety hazard gets flagged, it
+doesn't just sit in a log — it automatically becomes an assignable ticket
+with a due date, so it's tracked to close-out instead of getting lost in a
+list.
 
 Happy to walk through it on a short call, or send a self-serve demo link
 if that's easier on your week.

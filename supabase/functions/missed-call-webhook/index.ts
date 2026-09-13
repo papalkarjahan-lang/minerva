@@ -6,6 +6,16 @@
 // this is a simple "catch the missed call and text them back" responder,
 // not a live dispatcher call-forward).
 //
+// Opt-in upgrade path (added 2026-09-13): voice-intake-agent is a full
+// conversational AI phone receptionist (Twilio <Gather> speech input,
+// same lead-capture logic as ai-intake-chat) that a business can point
+// their "A CALL COMES IN" webhook at INSTEAD OF this function, if they
+// want callers to actually be asked questions and booked as a lead over
+// the phone rather than just receiving a text. This function is
+// deliberately left untouched as the default/simpler path — nothing
+// about existing businesses' behaviour changes unless they explicitly
+// switch their Twilio webhook URL.
+//
 // Deploy with: supabase functions deploy missed-call-webhook --no-verify-jwt
 // (must be reachable by Twilio without a Supabase auth header, same as
 // stripe-webhook)

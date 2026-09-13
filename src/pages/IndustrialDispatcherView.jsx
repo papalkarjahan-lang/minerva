@@ -17,6 +17,8 @@ export default function IndustrialDispatcherView() {
   const [assets, setAssets] = useState([])
   const [consumables, setConsumables] = useState([])
   const [incidents, setIncidents] = useState([])
+  const [correctiveActions, setCorrectiveActions] = useState([])
+  const [technicians, setTechnicians] = useState([])
   const [packages, setPackages] = useState([])
   const [tab, setTab] = useState('leads') // 'leads' | 'sites' | 'assets' | 'inventory' | 'safety' | 'verification'
   const [showAddLead, setShowAddLead] = useState(false)
@@ -55,6 +57,19 @@ export default function IndustrialDispatcherView() {
     const { data: incidentList } = await supabase.from('safety_incidents')
       .select('*').eq('business_id', businessId).order('created_at', { ascending: false })
     setIncidents(incidentList || [])
+
+    // Corrective-action tickets (added 2026-09-12) linked to safety_incidents
+    // (and, on the trade-sector side, checklist_photos) by (source_type,
+    // source_id) — see supabase_schema_delta_corrective_actions.sql. Loaded
+    // once for the whole business since the safety tab needs to match each
+    // incident to its ticket, not paginate them separately.
+    const { data: actionList } = await supabase.from('corrective_actions')
+      .select('*').eq('business_id', businessId).order('created_at', { ascending: false })
+    setCorrectiveActions(actionList || [])
+
+    const { data: techList } = await supabase.from('technicians')
+      .select('id, name').eq('business_id', businessId).eq('is_active', true).order('name', { ascending: true })
+    setTechnicians(techList || [])
 
     const { data: packageList } = await supabase.from('client_verification_packages')
       .select('*').eq('business_id', businessId).order('created_at', { ascending: false })
@@ -181,6 +196,32 @@ export default function IndustrialDispatcherView() {
   async function acknowledgeIncident(id) {
     const { error } = await supabase.from('safety_incidents').update({ acknowledged_at: new Date().toISOString() }).eq('id', id)
     if (error) { alert(`Couldn't acknowledge incident: ${error.message}`); return }
+    loadAll()
+  }
+
+  // Corrective-action ticket actions — see corrective_actions load in
+  // loadAll(). All three are direct row updates (same "anon all" RLS model
+  // as safety_incidents), not a separate edge function, matching how
+  // acknowledgeIncident/restockItem above already write straight to their
+  // tables from this console.
+  async function assignCorrectiveAction(id, technicianId) {
+    const { error } = await supabase.from('corrective_actions')
+      .update({ assigned_to_technician_id: technicianId || null, status: technicianId ? 'in_progress' : 'open' })
+      .eq('id', id)
+    if (error) { alert(`Couldn't assign: ${error.message}`); return }
+    loadAll()
+  }
+
+  async function setCorrectiveActionDueDate(id, dueDate) {
+    const { error } = await supabase.from('corrective_actions').update({ due_date: dueDate || null }).eq('id', id)
+    if (error) { alert(`Couldn't set due date: ${error.message}`); return }
+    loadAll()
+  }
+
+  async function closeCorrectiveAction(id) {
+    const { error } = await supabase.from('corrective_actions')
+      .update({ status: 'closed', closed_at: new Date().toISOString() }).eq('id', id)
+    if (error) { alert(`Couldn't close: ${error.message}`); return }
     loadAll()
   }
 
@@ -406,18 +447,49 @@ export default function IndustrialDispatcherView() {
               <button style={styles.addBtn} onClick={() => setShowAddIncident(true)}>+ Report incident</button>
             </div>
             {incidents.length === 0 && <p style={styles.emptyText}>No incidents recorded.</p>}
-            {incidents.map(i => (
-              <div key={i.id} style={styles.row}>
-                <p style={styles.rowDesc}>{i.description}</p>
-                <p style={styles.rowMeta}>{i.severity} · {timeAgo(i.created_at)}</p>
-                <div style={styles.rowActions}>
-                  <span style={styles.statusBadge(i.acknowledged_at ? 'acknowledged' : 'open')}>{i.acknowledged_at ? 'acknowledged' : 'open'}</span>
-                  {!i.acknowledged_at && (
-                    <button style={styles.smallBtn} onClick={() => acknowledgeIncident(i.id)}>Acknowledge</button>
+            {incidents.map(i => {
+              const ticket = correctiveActions.find(a => a.source_type === 'safety_incident' && a.source_id === i.id)
+              return (
+                <div key={i.id} style={styles.row}>
+                  <p style={styles.rowDesc}>{i.description}</p>
+                  <p style={styles.rowMeta}>{i.severity} · {timeAgo(i.created_at)}</p>
+                  <div style={styles.rowActions}>
+                    <span style={styles.statusBadge(i.acknowledged_at ? 'acknowledged' : 'open')}>{i.acknowledged_at ? 'acknowledged' : 'open'}</span>
+                    {!i.acknowledged_at && (
+                      <button style={styles.smallBtn} onClick={() => acknowledgeIncident(i.id)}>Acknowledge</button>
+                    )}
+                  </div>
+                  {ticket && (
+                    <div style={styles.correctiveActionBox}>
+                      <p style={styles.rowMeta}>
+                        Corrective action: <span style={styles.statusBadge(ticket.status === 'closed' ? 'acknowledged' : ticket.status === 'in_progress' ? 'pending sign-off' : 'open')}>{ticket.status}</span>
+                        {ticket.due_date && ` · due ${ticket.due_date}`}
+                        {ticket.closed_at && ` · closed ${timeAgo(ticket.closed_at)}`}
+                      </p>
+                      {ticket.status !== 'closed' && (
+                        <div style={styles.rowActions}>
+                          <select
+                            style={styles.smallSelect}
+                            defaultValue={ticket.assigned_to_technician_id || ''}
+                            onChange={e => assignCorrectiveAction(ticket.id, e.target.value)}
+                          >
+                            <option value="">Unassigned</option>
+                            {technicians.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                          </select>
+                          <input
+                            type="date"
+                            style={styles.smallSelect}
+                            defaultValue={ticket.due_date || ''}
+                            onChange={e => setCorrectiveActionDueDate(ticket.id, e.target.value)}
+                          />
+                          <button style={styles.smallBtn} onClick={() => closeCorrectiveAction(ticket.id)}>Close</button>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </>
         )}
 
@@ -552,6 +624,8 @@ const styles = {
     background: ['open', 'pending sign-off', 'new'].includes(status) ? '#A87C1622' : ['acknowledged', 'signed off', 'available'].includes(status) ? '#1D9E7522' : '#2D5FA822',
   }),
   smallBtn: { background: 'transparent', border: '1px solid #1e293b', color: '#8fd0e8', borderRadius: 8, padding: '5px 10px', fontSize: 11, fontWeight: 'bold', cursor: 'pointer' },
+  smallSelect: { background: '#0b1622', border: '1px solid #1e293b', color: '#cbd5e1', borderRadius: 8, padding: '5px 8px', fontSize: 11 },
+  correctiveActionBox: { marginTop: 8, paddingTop: 8, borderTop: '1px dashed #1e293b' },
   modalOverlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999 },
   modal: { background: '#fff', borderRadius: 16, padding: 28, width: '90%', maxWidth: 420, boxShadow: '0 20px 60px rgba(0,0,0,0.4)', display: 'flex', flexDirection: 'column', gap: 10 },
   modalTitle: { fontSize: 17, fontWeight: 'bold', color: '#1B2B4B', margin: '0 0 8px' },

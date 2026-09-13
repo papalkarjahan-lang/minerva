@@ -26,6 +26,20 @@
 // is preferred. This never changes who's eligible (still "free,
 // active, known position"), only who's picked among them.
 //
+// Fatigue tiebreak (added 2026-09-12): update-technician-workload has
+// computed technicians.rolling_week_hours (real GPS-breadcrumb-derived
+// hours worked in the trailing 7 days) for a while, but nothing in
+// dispatch actually used it — a technician already at 60+ hours this week
+// could still be picked over someone comparably close who's had a lighter
+// week, same "who gets today's job" blind spot the emergency tiebreak
+// already covers for emergency-call load. Same soft-penalty pattern: hours
+// worked beyond FATIGUE_BASELINE_HOURS (a normal full-time week) add a
+// small distance penalty, so a genuinely much-closer technician still
+// wins the job, but among comparably-close technicians the less-fatigued
+// one is preferred. Hours at or under the baseline add nothing — this
+// isn't a punishment for a normal week, only a nudge away from someone
+// already working unusually long hours.
+//
 // Hybrid workforce fallback (added 2026-09-04): if no employed technician
 // is free, falls back to the nearest active subcontractor (subcontractors
 // table) with a known position, same haversine-nearest logic, no emergency
@@ -68,6 +82,12 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 // is enough to swing a choice between two techs who are within a couple
 // of km of each other, without overriding a genuinely much-nearer tech.
 const EMERGENCY_TIEBREAK_KM = 2
+
+// Fatigue tiebreak — see header comment. A normal full-time week is ~40hrs;
+// only hours beyond that add penalty, at a rate small enough that a truly
+// nearer technician still wins the job outright.
+const FATIGUE_BASELINE_HOURS = 40
+const FATIGUE_TIEBREAK_KM_PER_HOUR = 0.15
 
 function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371
@@ -144,7 +164,7 @@ serve(async (req: Request) => {
 
     const { data: techs } = await supabase
       .from('technicians')
-      .select('id, name, current_lat, current_lng, current_job_id, is_active, rolling_emergency_job_count')
+      .select('id, name, current_lat, current_lng, current_job_id, is_active, rolling_emergency_job_count, rolling_week_hours')
       .eq('business_id', job.business_id)
       .eq('is_active', true)
       .is('current_job_id', null)
@@ -226,7 +246,10 @@ serve(async (req: Request) => {
       let bestScore = Infinity
       for (const t of free) {
         const d = haversineKm(job.client_lat, job.client_lng, t.current_lat, t.current_lng)
-        const score = d + (t.rolling_emergency_job_count || 0) * EMERGENCY_TIEBREAK_KM
+        const fatigueHoursOverBaseline = Math.max(0, (t.rolling_week_hours || 0) - FATIGUE_BASELINE_HOURS)
+        const score = d
+          + (t.rolling_emergency_job_count || 0) * EMERGENCY_TIEBREAK_KM
+          + fatigueHoursOverBaseline * FATIGUE_TIEBREAK_KM_PER_HOUR
         if (score < bestScore) { bestScore = score; nearest = t; nearestDist = d }
       }
     }

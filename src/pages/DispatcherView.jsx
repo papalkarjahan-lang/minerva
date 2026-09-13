@@ -26,6 +26,7 @@ export default function DispatcherView() {
   const [jobs, setJobs] = useState([])
   const [leads, setLeads] = useState([])
   const [lostLeads, setLostLeads] = useState([])
+  const [leadAttribution, setLeadAttribution] = useState([]) // from lead_attribution_summary view — which channel is actually converting
   const [assets, setAssets] = useState([]) // Pro tier only
   const [invoices, setInvoices] = useState([]) // Pro tier only
   const [carbonEstimates, setCarbonEstimates] = useState([]) // Pro tier only — see estimate-job-carbon
@@ -80,6 +81,7 @@ export default function DispatcherView() {
   const [completedJobs, setCompletedJobs] = useState([])
   const [expandedJobId, setExpandedJobId] = useState(null)
   const [jobPhotos, setJobPhotos] = useState({}) // job_id -> checklist_photos rows, fetched lazily
+  const [jobCorrectiveActions, setJobCorrectiveActions] = useState({}) // job_id -> corrective_actions rows (source_type='checklist_photo'), fetched lazily
   const [jobMaterials, setJobMaterials] = useState({}) // job_id -> job_materials rows, fetched lazily
   const [jobIncidents, setJobIncidents] = useState({}) // job_id -> technician_incidents rows, fetched lazily
   const [incidentDraft, setIncidentDraft] = useState({ category: 'note', description: '' })
@@ -203,6 +205,15 @@ export default function DispatcherView() {
       .order('created_at', { ascending: false })
       .limit(20)
     setLostLeads(lostLeadList || [])
+
+    // Lead-source attribution: real counts per channel from the DB view, not
+    // an estimate — sorted so the highest-volume channel shows first.
+    const { data: attributionList } = await supabase
+      .from('lead_attribution_summary')
+      .select('*')
+      .eq('business_id', businessId)
+      .order('total_leads', { ascending: false })
+    setLeadAttribution(attributionList || [])
 
     const { data: subList } = await supabase
       .from('subcontractors')
@@ -378,6 +389,23 @@ export default function DispatcherView() {
         .eq('job_id', jobId)
       if (error) console.error('checklist_photos fetch failed', error)
       setJobPhotos(prev => ({ ...prev, [jobId]: data || [] }))
+
+      // Corrective-action tickets (added 2026-09-12) linked to any flagged
+      // photo on this job — see supabase_schema_delta_corrective_actions.sql.
+      // Fetched by source_id in one query rather than per-photo since a job
+      // usually has just a handful of photos.
+      const photoIds = (data || []).map(p => p.id)
+      if (photoIds.length > 0) {
+        const { data: actions, error: actionsErr } = await supabase
+          .from('corrective_actions')
+          .select('*')
+          .eq('source_type', 'checklist_photo')
+          .in('source_id', photoIds)
+        if (actionsErr) console.error('corrective_actions fetch failed', actionsErr)
+        setJobCorrectiveActions(prev => ({ ...prev, [jobId]: actions || [] }))
+      } else {
+        setJobCorrectiveActions(prev => ({ ...prev, [jobId]: [] }))
+      }
     }
     if (!jobMaterials[jobId]) {
       const { data, error } = await supabase
@@ -419,6 +447,39 @@ export default function DispatcherView() {
     if (error) { console.error('addIncident failed', error); return }
     setJobIncidents(prev => ({ ...prev, [job.id]: [data, ...(prev[job.id] || [])] }))
     setIncidentDraft({ category: 'note', description: '' })
+  }
+
+  // Corrective-action ticket actions for flagged checklist photos — same
+  // direct-row-update pattern as addIncident above, mirrors the equivalent
+  // industrial-sector actions in IndustrialDispatcherView.jsx.
+  async function assignCorrectiveAction(jobId, actionId, technicianId) {
+    const { error } = await supabase.from('corrective_actions')
+      .update({ assigned_to_technician_id: technicianId || null, status: technicianId ? 'in_progress' : 'open' })
+      .eq('id', actionId)
+    if (error) { console.error('assignCorrectiveAction failed', error); return }
+    setJobCorrectiveActions(prev => ({
+      ...prev,
+      [jobId]: (prev[jobId] || []).map(a => a.id === actionId ? { ...a, assigned_to_technician_id: technicianId || null, status: technicianId ? 'in_progress' : 'open' } : a),
+    }))
+  }
+
+  async function setCorrectiveActionDueDate(jobId, actionId, dueDate) {
+    const { error } = await supabase.from('corrective_actions').update({ due_date: dueDate || null }).eq('id', actionId)
+    if (error) { console.error('setCorrectiveActionDueDate failed', error); return }
+    setJobCorrectiveActions(prev => ({
+      ...prev,
+      [jobId]: (prev[jobId] || []).map(a => a.id === actionId ? { ...a, due_date: dueDate || null } : a),
+    }))
+  }
+
+  async function closeCorrectiveAction(jobId, actionId) {
+    const closedAt = new Date().toISOString()
+    const { error } = await supabase.from('corrective_actions').update({ status: 'closed', closed_at: closedAt }).eq('id', actionId)
+    if (error) { console.error('closeCorrectiveAction failed', error); return }
+    setJobCorrectiveActions(prev => ({
+      ...prev,
+      [jobId]: (prev[jobId] || []).map(a => a.id === actionId ? { ...a, status: 'closed', closed_at: closedAt } : a),
+    }))
   }
 
   // Agent Operating System dashboard (Phase 5) — lazy-loads its 3 queries
@@ -1157,10 +1218,11 @@ export default function DispatcherView() {
 
   function exportLeadsCSV() {
     exportCSV(
-      ['Created', 'Client Name', 'Client Phone', 'Suburb', 'Urgency', 'Job Description', 'Score', 'Status'],
+      ['Created', 'Client Name', 'Client Phone', 'Suburb', 'Urgency', 'Job Description', 'Score', 'Status', 'Source', 'UTM Campaign'],
       leads.map(l => [
         new Date(l.created_at).toLocaleDateString('en-AU'),
-        l.client_name, l.client_phone, l.suburb, l.urgency, l.job_description, l.score, l.status
+        l.client_name, l.client_phone, l.suburb, l.urgency, l.job_description, l.score, l.status,
+        l.source, l.utm_campaign || l.utm_source || ''
       ]),
       'minerva-leads'
     )
@@ -1628,6 +1690,42 @@ export default function DispatcherView() {
                           ) : (
                             <p style={{ color: '#444', fontSize: 11, margin: '0 0 8px' }}>No checklist photos attached</p>
                           )}
+                          {(jobCorrectiveActions[job.id] || []).length > 0 && (
+                            <div style={{ marginBottom: 8 }}>
+                              {jobCorrectiveActions[job.id].map(action => (
+                                <div key={action.id} style={{ border: '1px dashed #1e293b', borderRadius: 8, padding: 8, marginBottom: 6 }}>
+                                  <p style={{ color: '#8899a6', fontSize: 12, margin: '0 0 4px' }}>
+                                    {action.title}
+                                    {' — '}{action.status}
+                                    {action.due_date && ` · due ${action.due_date}`}
+                                    {action.closed_at && ` · closed ${new Date(action.closed_at).toLocaleDateString('en-AU')}`}
+                                  </p>
+                                  {action.status !== 'closed' && (
+                                    <div style={{ display: 'flex', gap: 6 }} onClick={(e) => e.stopPropagation()}>
+                                      <select
+                                        defaultValue={action.assigned_to_technician_id || ''}
+                                        onChange={e => assignCorrectiveAction(job.id, action.id, e.target.value)}
+                                        style={styles.incidentSelect}>
+                                        <option value="">Unassigned</option>
+                                        {technicians.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                      </select>
+                                      <input
+                                        type="date"
+                                        defaultValue={action.due_date || ''}
+                                        onChange={e => setCorrectiveActionDueDate(job.id, action.id, e.target.value)}
+                                        style={styles.incidentSelect}
+                                      />
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); closeCorrectiveAction(job.id, action.id) }}
+                                        style={styles.leadActionSecondary}>
+                                        Close
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
                           {(jobMaterials[job.id] || []).length > 0 ? (
                             (jobMaterials[job.id]).map(m => (
                               <p key={m.id} style={{ color: '#8899a6', fontSize: 12, margin: '0 0 2px' }}>
@@ -1714,6 +1812,17 @@ export default function DispatcherView() {
 
           {queueTab === 'leads' && (
             <>
+              {leadAttribution.length > 0 && (
+                <div style={{ marginBottom: 14, padding: 10, background: '#0f1420', borderRadius: 8, border: '1px solid #1e293b' }}>
+                  <p style={styles.sectionLabel}>LEAD SOURCES — WHAT'S ACTUALLY CONVERTING</p>
+                  {leadAttribution.map(row => (
+                    <div key={row.channel} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#9aa5b1', padding: '3px 0' }}>
+                      <span>{row.channel}</span>
+                      <span>{row.total_leads} lead{row.total_leads === 1 ? '' : 's'} · {row.converted_leads} converted ({row.conversion_rate_pct}%)</span>
+                    </div>
+                  ))}
+                </div>
+              )}
               {leads.length > 0 && (
                 <button style={{ ...styles.addJobBtn, marginBottom: 10 }} onClick={exportLeadsCSV}>⬇ Export CSV</button>
               )}

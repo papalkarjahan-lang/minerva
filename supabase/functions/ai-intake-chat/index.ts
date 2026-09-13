@@ -35,6 +35,9 @@ interface ChatMessage {
 interface ChatPayload {
   businessId: string
   messages: ChatMessage[]
+  utmSource?: string
+  utmMedium?: string
+  utmCampaign?: string
 }
 
 interface IntakeResult {
@@ -160,7 +163,7 @@ serve(async (req: Request) => {
   }
 
   try {
-    const { businessId, messages }: ChatPayload = await req.json()
+    const { businessId, messages, utmSource, utmMedium, utmCampaign }: ChatPayload = await req.json()
     if (!businessId || !Array.isArray(messages) || messages.length === 0) {
       return new Response(JSON.stringify({ error: 'Missing businessId or messages' }), {
         status: 400,
@@ -333,6 +336,11 @@ if not yet captured}`
         if (matchedInvoice) referredByCode = rawCode
       }
 
+      // Attribution: same untrusted-public-input treatment as everything
+      // else on this endpoint — cap length and drop anything empty, rather
+      // than trusting whatever a URL's query string happened to contain.
+      const cleanUtm = (v?: string) => (typeof v === 'string' && v.trim()) ? v.trim().slice(0, 100) : null
+
       await supabase.from('leads').insert({
         business_id: businessId,
         client_name: name,
@@ -345,6 +353,9 @@ if not yet captured}`
         estimated_value_tier: parsed.lead.estimated_value_tier || null,
         is_repeat_client: isRepeatClient,
         transcript: [...messages, { role: 'assistant', content: parsed.reply }],
+        utm_source: cleanUtm(utmSource),
+        utm_medium: cleanUtm(utmMedium),
+        utm_campaign: cleanUtm(utmCampaign),
         ...(referredByCode ? { referred_by_code: referredByCode, source: 'referral' } : {}),
       })
 

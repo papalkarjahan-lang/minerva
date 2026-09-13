@@ -25,6 +25,12 @@
 // marked verification_status='unavailable' (not 'flagged') so a missing key
 // never looks like a failed inspection — it just means nothing's been
 // checked yet.
+//
+// Corrective-action tracking (added 2026-09-12, supabase_schema_delta_
+// corrective_actions.sql): a photo that comes back 'flagged' now also
+// creates a linked corrective_actions row (source_type='checklist_photo')
+// so a dispatcher has an assignable/closeable ticket instead of just a
+// status change on the photo row itself. Purely additive.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
@@ -47,7 +53,7 @@ serve(async (req: Request) => {
 
     const { data: pending, error } = await supabase
       .from('checklist_photos')
-      .select('id, job_id, checklist_item, storage_path')
+      .select('id, job_id, business_id, checklist_item, storage_path')
       .eq('verification_status', 'pending')
       .limit(20) // small batches — this runs every 15 min, no need to burn the whole queue at once
 
@@ -77,6 +83,17 @@ serve(async (req: Request) => {
         verification_status: result.status,
         verification_notes: result.notes,
       }).eq('id', photo.id)
+
+      if (result.status === 'flagged') {
+        await supabase.from('corrective_actions').insert({
+          business_id: photo.business_id ?? null,
+          source_type: 'checklist_photo',
+          source_id: photo.id,
+          title: `Flagged photo: "${photo.checklist_item || 'checklist item'}"`,
+          description: result.notes,
+          status: 'open',
+        }).then(() => {}, () => {}) // best-effort — a failure here shouldn't block the photo status update above
+      }
 
       reviewed++
       if (result.status === 'flagged') flagged++

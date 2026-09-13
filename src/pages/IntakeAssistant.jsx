@@ -1,9 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 
 export default function IntakeAssistant() {
   const { businessId } = useParams()
+  // Attribution: captured once from whatever URL actually loaded this widget
+  // (e.g. a link with ?utm_source=facebook&utm_campaign=spring_promo in an
+  // outreach email or ad), then sent along with every chat turn so the lead
+  // insert on ai-intake-chat's side can persist it. Read once at mount —
+  // this widget never navigates away from itself, so the params can't change
+  // mid-conversation.
+  const [searchParams] = useSearchParams()
+  const utmSource = searchParams.get('utm_source') || undefined
+  const utmMedium = searchParams.get('utm_medium') || undefined
+  const utmCampaign = searchParams.get('utm_campaign') || undefined
   const [business, setBusiness] = useState(null)
   const [error, setError] = useState(null)
   const [messages, setMessages] = useState([])
@@ -33,7 +43,7 @@ export default function IntakeAssistant() {
     setSending(true)
     try {
       const response = await supabase.functions.invoke('ai-intake-chat', {
-        body: { businessId, messages: nextMessages }
+        body: { businessId, messages: nextMessages, utmSource, utmMedium, utmCampaign }
       })
       if (response.error) throw new Error(response.error.message)
       const { reply, leadCaptured: captured } = response.data

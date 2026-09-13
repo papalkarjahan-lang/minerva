@@ -6,6 +6,13 @@
 // a proximity condition worth a human's attention before it becomes an
 // incident. Writes a safety_incidents row (once per open overlap, not
 // re-flagged every run) and notifies Slack.
+// Corrective-action tracking (added 2026-09-12, supabase_schema_delta_
+// corrective_actions.sql): every safety_incidents row this function
+// creates now also creates a linked corrective_actions row
+// (source_type='safety_incident'), so the hazard becomes an assignable,
+// due-dateable, closeable ticket in the Safety tab instead of just an
+// acknowledge-only alert. Purely additive — safety_incidents/Slack
+// behaviour above is unchanged.
 // Deploy with: supabase functions deploy detect-safety-hazards
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
@@ -64,10 +71,21 @@ serve(async (req: Request) => {
         .limit(1)
       if (existing && existing.length > 0) continue
 
-      await supabase.from('safety_incidents').insert({
+      const { data: newIncident } = await supabase.from('safety_incidents').insert({
         site_id: site.id, business_id: site.business_id, severity: 'warning',
         description: `Human technician and automated process both active on site simultaneously.`,
-      })
+      }).select('id').single()
+
+      if (newIncident) {
+        await supabase.from('corrective_actions').insert({
+          business_id: site.business_id,
+          source_type: 'safety_incident',
+          source_id: newIncident.id,
+          title: `Proximity hazard at "${site.name}"`,
+          description: `Human technician and automated process both active on site simultaneously.`,
+          status: 'open',
+        }).then(() => {}, () => {}) // best-effort — a failure here shouldn't block the incident/Slack alert above
+      }
       // Also written as an agent_insights row (not just Slack) so recurring
       // proximity hazards at the same site show up as a pattern in the
       // weekly agent-council-report, not just as one-off business Slack

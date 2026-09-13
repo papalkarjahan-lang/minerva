@@ -64,6 +64,43 @@ genuinely several. Any NEW pitch copy written from now on should default
 to the founding-customer framing until real social proof exists, rather
 than a placeholder claim that needs to be remembered and stripped later.
 
+## On the phone AI receptionist (voice-intake-agent, added 2026-09-13)
+
+- "Minerva can answer your phone and book the job for you" — technically
+  true only once (a) the business's Twilio number has completed Twilio's
+  own phone/identity verification (a real account-level step, unrelated to
+  this code, still outstanding as of this note — see
+  `minerva_setup_progress.md`), AND (b) their "A CALL COMES IN" webhook is
+  pointed at `voice-intake-agent` specifically, not the default
+  `missed-call-webhook`. Until both are true, calls get the existing
+  static "we missed you, here's a text" response, not a real conversation.
+- Even once live, the fallback (no `ANTHROPIC_API_KEY`) path is a fixed
+  4-question script (job description, urgency, name, suburb), not free-text
+  understanding — say "automatically books your call" rather than "AI"
+  until the key is set, same rule as every other agent in this doc.
+- Never claim the phone agent "recognizes" what's wrong from how something
+  sounds, detects distress, or does anything with audio beyond what
+  Twilio's own speech-to-text transcribes into text — there is no separate
+  audio/voice-analysis model here.
+
+## On corrective-action tracking and fatigue-aware dispatch (added 2026-09-12)
+
+- "Minerva turns flagged safety issues into an assignable ticket with a
+  due date" — true, real (`corrective_actions` table), no AI dependency,
+  works identically with or without any API key.
+- **Correction (2026-09-13):** the same is NOT true yet for photo
+  problems specifically. `verify-checklist-photos` only ever marks a
+  photo `'flagged'` (which is what triggers a ticket) when
+  `ANTHROPIC_API_KEY` is set — without it, every photo goes
+  `'unavailable'` instead, so the photo→ticket path never actually fires
+  today. Don't say "flagged photo problems" becomes a ticket until the
+  key is live; "flagged safety issues" (hazards) is the only half of that
+  claim that's true right now.
+- "Minerva avoids overloading your most burnt-out technician" — true, pure
+  threshold logic on GPS-derived hours worked (`rolling_week_hours`), not
+  AI, and it's a soft tiebreak among comparably-close technicians, not a
+  hard block — don't imply it overrides distance/availability entirely.
+
 ## On the Industrial sector specifically
 
 See the honesty note already written into

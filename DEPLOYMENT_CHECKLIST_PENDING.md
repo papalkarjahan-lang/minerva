@@ -1397,59 +1397,61 @@ Verified: lint clean, 16/16 tests passing, build clean.
   add-on enable/trial flags and gating are live, but actually charging for
   each add-on through Stripe still needs to be wired up and walked through
   with the user (per the standing boundary on Stripe account changes).
-- **New 2026-09-10**: `stripe-webhook` and `test-agent-health` were edited
-  to add optional operator email alerts (payment failures, unhealthy
-  agents) but not yet redeployed — needs a fresh Supabase PAT. Both are
-  safe no-ops until the new `OPERATOR_EMAIL` secret is set (see
-  `ACCOUNT_SETUP_WALKTHROUGH.md` section 5), so redeploying doesn't change
-  current behavior by itself.
-- **New 2026-09-10**: `supabase_schema_delta_twilio_number_unique.sql` —
-  new migration, not yet run. Adds a unique constraint on
-  `businesses.twilio_number` so two client businesses can never end up
-  misconfigured with the same number. Run once in the Supabase SQL Editor,
-  same as every other `*_delta_*.sql` file in this repo.
-- **New 2026-09-10**: outreach engine (`outreach_prospects` table,
-  `draft-outreach-batch`/`send-outreach-batch`/`followup-outreach` edge
-  functions, new Outreach tab in `AdminConsole.jsx`) — needs, in order:
-  (1) run `supabase_schema_delta_outreach_engine.sql`, (2) deploy the 3 new
-  edge functions, (3) run `supabase_schema_delta_outreach_engine_cron.sql`
-  (registers the daily follow-up drafting sweep only — sending stays
-  manual forever, see `BIG_CONTRACTS_PLAYBOOK.md` and `SECURITY_NOTES.md`),
-  (4) `RESEND_API_KEY` must already be set for actual sends to work (same
-  gate as the existing welcome email — safe no-op until then).
-- **New 2026-09-10**: ROI proposal tool (`roi_proposals` table,
-  `generate-roi-proposal` edge function, `/proposal/:id` page, wired into
-  the Outreach tab's "Generate ROI proposal" button) and `parse-prospect-text`
-  (AI paste-text import, wired into the same tab) — needs, in order:
-  (1) run `supabase_schema_delta_roi_proposals.sql`, (2) deploy
-  `generate-roi-proposal` and `parse-prospect-text`. Both reuse the existing
-  `ANTHROPIC_API_KEY`/service-role-key secrets already required by the rest
-  of the outreach engine — no new secrets to set.
-- **New 2026-09-10 (later same day)**: Big Accounts CRM (`big_account_targets`
-  table + new "Big Accounts" tab in `AdminConsole.jsx`) and a fix to
-  `supabase_schema_delta_outreach_engine.sql` (it was missing an admin
-  INSERT policy on `outreach_prospects`, which would have silently broken
-  the CSV bulk-import button — fixed in the delta file itself before it was
-  ever run, so no re-migration needed, just run the corrected file). Needs,
-  in order: (1) run the now-corrected `supabase_schema_delta_outreach_engine.sql`,
-  (2) run `supabase_schema_delta_big_account_targets.sql` (also adds a
-  `big_account_target_id` column to `roi_proposals`), (3) redeploy
-  `generate-roi-proposal` (now accepts an optional `bigAccountTargetId` and
-  auto-advances that target's pipeline stage to `proposal_sent`). See
-  `BIG_ACCOUNT_EXECUTION_KIT.md` for how to actually use this tab.
-- **New 2026-09-10 (third + fourth pass same day)**: `supabase_seed_big_account_targets_2026-09-10.sql`
-  — a one-time DATA seed (not a schema delta, deliberately not run-safe
-  twice — no unique constraint to guard on) inserting 15 real, named
-  candidate companies found via web research into `big_account_targets`
-  at `stage='researching'`. Run this ONCE, after the two deltas above.
-  Fleet sizes are only populated where a real source confirmed a number
-  (Ken Hall Plumbers: 122, Twin Electrics & Plumbing: 30, Multisparx: 7,
-  Abbott Locksmiths: 18, Mr Splash: 15, CLASS Locksmiths: 10, M.A.S.S.
-  Electrics: 9) — everything else is left `null` with a note to verify
-  on the first call, not guessed. Also pre-fills `next_action`/
-  `next_action_date` on every row (staggered, top picks first) so the Big
-  Accounts tab is an actionable to-do list on first load, not just a
-  name list — these are starting suggestions, edit freely once real
-  progress happens. See `OUTREACH_DRAFTS_TOP_PICKS.md` for ready-to-
-  personalize first-contact email/call drafts for the top 2 picks (Twin
-  Electrics, Ken Hall Plumbers) — drafts only, nothing has been sent.
+- ~~`stripe-webhook` and `test-agent-health` operator email alerts~~ —
+  **DONE 2026-09-10.** Redeployed via multipart API (`stripe-webhook` v6,
+  `test-agent-health` v4), both smoke-tested ACTIVE/healthy. Still a
+  no-op behaviorally until `OPERATOR_EMAIL` secret is actually set — that
+  part is still on the user.
+- ~~`supabase_schema_delta_twilio_number_unique.sql`~~ — **DONE 2026-09-10.**
+  Checked for existing duplicate `twilio_number` values first (none found),
+  then ran the migration live. Constraint is now in place.
+- ~~Outreach engine~~ — **DONE 2026-09-10.** `outreach_prospects` table
+  created (with the corrected admin INSERT policy), `draft-outreach-batch`,
+  `send-outreach-batch`, and `followup-outreach` all deployed (v1, ACTIVE,
+  smoke-tested), and `supabase_schema_delta_outreach_engine_cron.sql` run
+  (daily 6am UTC follow-up-drafting sweep registered as cron job id 51).
+  Still genuinely blocked: `RESEND_API_KEY` isn't set, so `send-*` remains
+  a safe no-op (logged, not sent) until the user provides that key.
+- ~~ROI proposal tool~~ — **DONE 2026-09-10.** `roi_proposals` table
+  created, `generate-roi-proposal` and `parse-prospect-text` both deployed
+  (v1, ACTIVE, smoke-tested).
+- ~~Big Accounts CRM~~ — **DONE 2026-09-10.** `big_account_targets` table
+  created (with the `big_account_target_id` column added to
+  `roi_proposals`), `generate-roi-proposal` redeployed with the
+  `bigAccountTargetId` support live.
+- ~~`supabase_seed_big_account_targets_2026-09-10.sql`~~ — **DONE
+  2026-09-10.** Ran once; 18 real, named companies now live in
+  `big_account_targets` at `stage='researching'` (confirmed via row
+  count). See `OUTREACH_DRAFTS_TOP_PICKS.md` for ready-to-personalize
+  first-contact drafts for the top 2 picks (Twin Electrics, Ken Hall
+  Plumbers) — drafts only, nothing has been sent to anyone.
+- **New 2026-09-10, still genuinely outstanding**: the Supabase PAT used
+  for all of the above (`sbp_9b...`) was pasted directly into chat — the
+  user should rotate/revoke it in the Supabase dashboard (Account →
+  Access Tokens) once done relying on it, since a plaintext-shared token
+  should be treated as compromised regardless of outcome.
+- ~~Corrective-action tickets (safety hazards + flagged checklist
+  photos)~~ — **DONE 2026-09-13.** `corrective_actions` table live,
+  `detect-safety-hazards` (v6) and `verify-checklist-photos` (v8) both
+  create a linked ticket on every flag, UI built in both dispatcher
+  consoles (assign/due-date/close controls).
+- ~~Fatigue-aware dispatch tiebreak~~ — **DONE 2026-09-13.**
+  `auto-assign-technician` (v12) now uses `technicians.rolling_week_hours`
+  as a soft distance-penalty tiebreak above a 40hr/week baseline.
+- ~~AI phone receptionist (`voice-intake-agent`)~~ — **DONE 2026-09-13,
+  code/DB side.** New edge function deployed (v1, ACTIVE, smoke-tested),
+  `voice_call_sessions` table live (RLS on, zero policies — service_role
+  only). Opt-in alternative to `missed-call-webhook`, which is untouched
+  and remains the default. **Still genuinely blocked** on the same Twilio
+  trial-account phone-verification gap noted above — until a business's
+  Twilio number is verified AND its "A CALL COMES IN" webhook is manually
+  pointed at `voice-intake-agent` instead of `missed-call-webhook`, calls
+  keep getting the existing static text-back response. See
+  `SALES_CLAIMS_ACCURACY_NOTE.md` for exactly what's safe to say about
+  this on a call today.
+- **New 2026-09-13, still genuinely outstanding**: the Supabase PAT used
+  for the corrective-actions + voice-intake-agent work (`sbp_f236...`,
+  later replaced mid-session by `sbp_a664...` after the first one died)
+  was pasted directly into chat — same rotate/revoke recommendation as
+  above applies to whichever of these is still active once this round's
+  work is confirmed done.
