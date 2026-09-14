@@ -501,6 +501,107 @@ original `name`.
 Nothing left open from the original pass-1/2/3 lists — every table
 flagged across all three passes has now been through this audit.
 
+**Correction, pass 5 (below)**: this claim turned out to be about
+coverage of the *known* lists only — pass 5 found 8 more tables that had
+never been on any list at all, in any pass, ever.
+
+## Fixed 2026-09-14: RLS read/write-scoping, pass 5 — the unaudited-8, found by querying live instead of trusting any list
+
+Passes 1-4 all worked from a specific list of tables flagged as "still
+open" in this doc. This pass instead queried `pg_tables`/`pg_policies`
+directly for every RLS-enabled table's actual policy shape, independent
+of any list — and found 8 tables that had **never been mentioned in any
+previous pass or in this doc at all**: `quotes`, `review_requests`,
+`corrective_actions`, `custom_workflows`, `workflow_runs`,
+`client_portal_links`, `compliance_packages`, `carbon_estimates`. All 8
+still had their original single blanket
+`anon all ... using (true) with check (true)` policy from whichever delta
+first created them — not a regression, just never audited by any prior
+pass. Confirmed every real caller of each via grep of `src/` and
+`supabase/functions/` before writing `supabase_schema_delta_rls_scoping_v4.sql`:
+
+- **`quotes`**: the one genuine public/anon caller is `QuoteView.jsx`
+  (unguessable quote-id link, no login) — reads the quote and updates its
+  `status` (accept/decline), same "unguessable link is the bearer token"
+  model as `invoices`. SELECT/UPDATE stay anon `using (true)`. INSERT is
+  dropped entirely — `draft-quote` and `send-quote-sms` are both
+  service_role, nothing in the browser ever inserts a quote directly.
+  DELETE was unused, dropped too.
+- **`review_requests`**: DispatcherView (owner) only ever SELECTs.
+  `send-review-request-sms` and `track-review-click` are both
+  service_role — even the "public" click-through is a redirect the
+  browser follows to an edge function, not a direct table write from the
+  browser's own anon key. Scoped to owner-select-only.
+- **`corrective_actions`**: DispatcherView and IndustrialDispatcherView
+  (both owner-authenticated) are the only browser callers
+  (select/insert/update). Scoped to owner-all (`for all`).
+- **`custom_workflows`**: DispatcherView (owner) only, all 4 operations.
+  `run-custom-workflows` only reads, via service_role. Scoped to
+  owner-all.
+- **`workflow_runs`**: DispatcherView (owner) SELECT-only (read-only run
+  history). `run-custom-workflows` INSERTs via service_role. Scoped to
+  owner-select-only.
+- **`compliance_packages`**: DispatcherView (owner) SELECT + UPDATE
+  (`sent_at`/`sent_to`, when the dispatcher marks a package sent).
+  `generate-compliance-package` INSERTs via service_role. No public
+  reader — unlike the superficially similar `client_verification_
+  packages`/`roi_proposals`, this one is never shown to the client via a
+  link. Scoped to owner-select-and-update.
+- **`carbon_estimates`**: DispatcherView (owner) SELECT-only.
+  `estimate-job-carbon` INSERTs via service_role. Scoped to
+  owner-select-only.
+- **`client_portal_links`**: genuinely public — `TrackingView.jsx`
+  upserts (insert-or-update, unguessable job-id page, no login) and
+  `ClientHistoryView.jsx` reads by the link's own opaque `token`. Postgres
+  `ON CONFLICT` upsert needs both INSERT and UPDATE privilege, so
+  SELECT/INSERT/UPDATE all stay anon `using (true)` — same
+  unguessable-link model as `invoices`/`quotes`. Only DELETE (never used)
+  was dropped.
+
+None of these 8 tables are touched by `TechnicianView.jsx` at all
+(confirmed by grep), so no technician-side carve-out was needed for any
+of them, unlike `checklist_templates`/`leads`/etc. in pass 4.
+
+**A second, more severe bug found live-testing this pass, unrelated to
+any RLS policy**: anon SELECT on `corrective_actions` returned a hard
+Postgres `permission denied for table corrective_actions` (42501)
+instead of a clean RLS deny. Checking `information_schema.role_table_grants`
+confirmed `corrective_actions` had **never had any base GRANT
+(SELECT/INSERT/UPDATE/DELETE) to `anon` or `authenticated` at all**, since
+its creation on 2026-09-12 — the delta that created it enabled RLS and
+added the old blanket policy, but never ran the matching `grant ... to
+anon, authenticated, service_role` that every sibling delta (e.g.
+`compliance_packages`) does. Practical impact: the entire
+corrective-actions feature, in both DispatcherView and
+IndustrialDispatcherView, has been completely broken for all browser
+access — pre-login and post-login — since 2026-09-12, unrelated to
+anything changed in this pass or any RLS policy at all. Every other
+newly-touched table in this pass was checked against the same query and
+found to have its grants intact; this gap was isolated to
+`corrective_actions` only. Fixed live with
+`grant select, insert, update, delete on corrective_actions to anon,
+authenticated, service_role;`, now included directly in
+`supabase_schema_delta_rls_scoping_v4.sql`. Retested: anon SELECT now
+returns a clean `[]`; a service_role insert+delete round-trip confirmed
+the table is fully functional again.
+
+Live-tested end-to-end: `quotes` public accept/decline flow (service_role
+creates a test quote → anon SELECT succeeds → anon UPDATE `status`
+succeeds → anon direct INSERT correctly denied `42501`); `workflow_runs`
+anon SELECT returns clean `[]`; `corrective_actions` anon SELECT (before
+and after the grant fix, see above). All test rows created for this were
+deleted immediately after via service_role.
+
+**Lesson for future passes**: don't trust a prior pass's "nothing left
+open" closing line at face value — it can only ever be as complete as the
+list it started from. Querying `pg_tables`/`pg_policies` directly, with
+no assumed list, is what surfaced these 8 gaps that four separate
+passes had all missed. Worth doing again periodically, and worth a
+one-time systematic check of `information_schema.role_table_grants`
+across every RLS-enabled table (not just the ones touched so far) to see
+if any other table has the same silent-grant-gap bug `corrective_actions`
+had.
+
 ## Added 2026-09-08: embeddable widget (`public/widget.js`)
 
 New surface: a client can now paste `<script src=".../widget.js"
