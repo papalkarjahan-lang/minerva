@@ -362,7 +362,7 @@ That unblocked two real, previously-open gaps documented above under
   scoped to `auth.uid() = businesses.owner_user_id` for SELECT/UPDATE,
   same pattern as pass 1's `assets`/`subcontractors`.
 
-Still open, same as before: `jobs`, `technicians`, `leads`, `invoices`,
+Still open after pass 2: `jobs`, `technicians`, `leads`, `invoices`,
 `technician_locations`, `checklist_templates`, `checklist_photos`,
 `job_materials`, `inventory_items`, `technician_credentials`,
 `businesses`, `roi_proposals`, all `industrial_*` tables. Each has a
@@ -372,6 +372,64 @@ break if scoped today. Closing that gap needs a real technician auth
 session tied to their PIN — a separate, larger, scoped project (frontend
 + schema + every technician-facing edge function), deliberately not
 attempted blind alongside this pass.
+
+## Fixed 2026-09-14: real technician authentication + RLS write-scoping, pass 3
+
+The blocker called out immediately above — "technicians authenticate via
+PIN (no Supabase auth session at all)" — is now fixed, which unblocks
+write-scoping (not read-scoping, see below) on the technician-facing
+tables that pass 1/2 had to leave open.
+
+**What changed:**
+- `technicians.auth_user_id` (nullable uuid, FK to `auth.users`) — added
+  by `supabase_schema_delta_technician_auth_v1.sql`.
+- New edge function `technician-login`: takes the same PIN the technician
+  has always used, looks up their `technicians` row (service_role), and —
+  on first-ever login — creates a synthetic Supabase Auth user for them
+  (`tech-<technician.id>@technicians.minerva.internal`, `email_confirm:
+  true`, never a real inbox, never emailed anywhere) and links its id back
+  onto `auth_user_id`. Every login (first or subsequent) then calls
+  `admin.generateLink({type: 'magiclink'})` and hands the resulting
+  `token_hash` back over HTTPS — no email is ever sent, since the address
+  can't receive one anyway. `TechnicianView.jsx` calls this once on mount,
+  then `supabase.auth.verifyOtp({token_hash, type: 'magiclink'})` client-
+  side to mint the actual session. **The PIN itself hasn't changed at
+  all** — same SMS link, same `?pin=...` UX, same no-password flow. The
+  PIN is now a one-time exchange credential instead of being the entire
+  security model; `auth.uid()` exists for every request after that first
+  exchange, same as `owner_user_id` has always existed for dispatcher
+  sessions.
+- `supabase_schema_delta_technician_auth_rls_v1.sql`: WRITE policies
+  (INSERT/UPDATE/DELETE) on `technicians`, `jobs`, `technician_locations`,
+  `invoices`, `checklist_photos`, `job_materials`, `technician_credentials`,
+  `technician_incidents`, `job_assignments`, and `inventory_items` are no
+  longer `anon ... using (true)`. Each now requires either the business
+  owner (`auth.uid() = businesses.owner_user_id`) or the authenticated
+  technician actually on that job/row (`auth.uid() = technicians.auth_user_id`,
+  joined through `jobs.technician_id` or `job_assignments`). Before this,
+  literally anyone with the anon key — extractable from any browser's JS
+  bundle by anyone, not just a real technician — could forge checklist
+  photos/materials/invoices for jobs that were never theirs, move any
+  technician's live GPS pin, deactivate any technician on the platform, or
+  drain arbitrary inventory, across every business, not just one.
+
+**Deliberately NOT touched — SELECT stays anon `using (true)` on most of
+these tables**, because `TrackingView.jsx`/`DisputeView.jsx`/`InvoiceView.jsx`
+(the public, no-login client-facing pages) read `technicians`, `jobs`,
+`technician_locations`, `invoices`, `checklist_photos`, and `job_materials`
+by bare unguessable id with no auth of any kind — narrowing SELECT there
+would break those real features, not just tighten a gap, and none of them
+have (or should have) a login. Confirmed by grep of all three files before
+deciding this, not assumed. `technician_credentials`, `job_assignments`,
+and `inventory_items` are NOT read by any of those three pages, so their
+SELECT was scoped down too (owner or the technician themselves).
+
+**Still open, same as pass 2**: `leads`, `checklist_templates`,
+`businesses`, `roi_proposals`, all `industrial_*` tables — SELECT on all
+of these is still anon-wide for the same public/anonymous-reader reasons
+as above (intake widget, onboarding, quote/proposal links), not yet
+audited table-by-table for a write-scoping pass the way the technician
+tables just were.
 
 ## Added 2026-09-08: embeddable widget (`public/widget.js`)
 

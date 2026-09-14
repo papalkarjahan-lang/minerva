@@ -236,6 +236,28 @@ export default function TechnicianView() {
   }, [pin])
 
   async function loadTech() {
+    // Exchange the PIN for a real Supabase Auth session first (see
+    // technician-login/index.ts) — establishes auth.uid() for this
+    // technician so every write below is RLS-scoped to their own rows
+    // instead of the old "anyone with the anon key" model. Re-run on every
+    // mount (not just once) so a shared/handed-off device always ends up
+    // authenticated as whichever technician's PIN is currently in the URL.
+    const { data: loginResult, error: loginError } = await supabase.functions.invoke('technician-login', {
+      body: { pin },
+    })
+    if (loginError || !loginResult?.token_hash) {
+      setError(loginResult?.error || 'PIN not recognised. Contact your manager.')
+      return
+    }
+    const { error: verifyErr } = await supabase.auth.verifyOtp({
+      token_hash: loginResult.token_hash,
+      type: 'magiclink',
+    })
+    if (verifyErr) {
+      setError('Could not start your session. Contact your manager.')
+      return
+    }
+
     const { data, error } = await supabase
       .from('technicians')
       .select('*, businesses(*)')
