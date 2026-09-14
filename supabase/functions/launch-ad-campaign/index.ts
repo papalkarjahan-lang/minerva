@@ -33,8 +33,8 @@ serve(async (req: Request) => {
     if (!draftId) throw new Error('draftId is required')
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
-    const supabase = createClient(supabaseUrl, supabaseAnonKey)
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
     const { data: fnState } = await supabase.from('agent_functions').select('enabled').eq('name', 'launch-ad-campaign').maybeSingle()
     if (fnState?.enabled === false) {
@@ -142,8 +142,8 @@ serve(async (req: Request) => {
     console.error('launch-ad-campaign error:', err)
     try {
       const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-      const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
-      createClient(supabaseUrl, supabaseAnonKey)
+      const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+      createClient(supabaseUrl, supabaseServiceKey)
         .rpc('record_agent_run', { fn_name: 'launch-ad-campaign', status: 'error', error_msg: err.message })
         .then(() => {}, () => {})
     } catch (_) { /* never let health tracking break the actual error response */ }

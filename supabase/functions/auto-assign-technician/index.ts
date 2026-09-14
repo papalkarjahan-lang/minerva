@@ -116,8 +116,8 @@ serve(async (req: Request) => {
     }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
-    const supabase = createClient(supabaseUrl, supabaseAnonKey)
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
     const { data: fnState } = await supabase.from('agent_functions').select('enabled').eq('name', 'auto-assign-technician').maybeSingle()
     if (fnState?.enabled === false) {
@@ -227,7 +227,7 @@ serve(async (req: Request) => {
       await supabase.from('jobs').update({ assigned_subcontractor_id: nearestSub.id }).eq('id', job.id)
       await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseAnonKey}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
         body: JSON.stringify({
           businessId: job.business_id,
           text: `🚚 No technician was free — auto-dispatched subcontractor *${nearestSub.name}* to job for *${job.client_name || 'client'}*.`,
@@ -267,13 +267,13 @@ serve(async (req: Request) => {
 
     await fetch(`${supabaseUrl}/functions/v1/send-job-assignment-sms`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseAnonKey}` },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
       body: JSON.stringify({ jobId: job.id, technicianId: nearest.id }),
     }).catch(() => {})
 
     await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseAnonKey}` },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
       body: JSON.stringify({
         businessId: job.business_id,
         text: `🚚 Auto-dispatched *${nearest.name}* to job for *${job.client_name || 'client'}*.`,
@@ -290,8 +290,8 @@ serve(async (req: Request) => {
     console.error('auto-assign-technician error:', err)
     try {
       const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-      const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
-      createClient(supabaseUrl, supabaseAnonKey)
+      const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+      createClient(supabaseUrl, supabaseServiceKey)
         .rpc('record_agent_run', { fn_name: 'auto-assign-technician', status: 'error', error_msg: err.message })
         .then(() => {}, () => {})
     } catch (_) { /* never let health tracking break the actual error response */ }

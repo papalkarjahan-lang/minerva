@@ -27,7 +27,7 @@
 //
 // Required Supabase secrets:
 //   ANTHROPIC_API_KEY  (optional — see fallback above)
-//   SUPABASE_URL / SUPABASE_ANON_KEY (auto-provided in Edge Function runtime)
+//   SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY (auto-provided in Edge Function runtime)
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
@@ -55,8 +55,8 @@ serve(async (req: Request) => {
     }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
-    const supabase = createClient(supabaseUrl, supabaseAnonKey)
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
     // Fetch exactly the one record the caller has the id for, plus its
     // business's public contact info — nothing else, and never a list.

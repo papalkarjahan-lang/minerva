@@ -69,8 +69,8 @@ serve(async (req: Request) => {
   }
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-  const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
-  const supabase = createClient(supabaseUrl, supabaseAnonKey)
+  const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+  const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
   try {
     const { data: fnState } = await supabase.from('agent_functions').select('enabled').eq('name', 'agent-council-report').maybeSingle()

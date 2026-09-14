@@ -38,8 +38,8 @@ serve(async (req: Request) => {
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
-    const supabase = createClient(supabaseUrl, supabaseAnonKey)
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
     const { data: fnState } = await supabase.from('agent_functions').select('enabled').eq('name', 'detect-wasted-trips').maybeSingle()
     if (fnState?.enabled === false) {
@@ -105,7 +105,7 @@ serve(async (req: Request) => {
         }
       }
 
-      await notifySlack(supabaseUrl, supabaseAnonKey, job.business_id,
+      await notifySlack(supabaseUrl, supabaseServiceKey, job.business_id,
         `🚚 Wasted trip detected for job with *${job.client_name || 'unknown client'}* — technician GPS confirms on-site presence but the job never started. Reschedule SMS sent to the client. Geotagged proof: technician_locations, job_id ${job.id}.`)
     }
 
@@ -196,8 +196,8 @@ serve(async (req: Request) => {
     console.error('detect-wasted-trips error:', err)
     try {
       const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-      const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
-      createClient(supabaseUrl, supabaseAnonKey)
+      const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+      createClient(supabaseUrl, supabaseServiceKey)
         .rpc('record_agent_run', { fn_name: 'detect-wasted-trips', status: 'error', error_msg: err.message })
         .then(() => {}, () => {})
     } catch (_) { /* never let health tracking break the actual error response */ }
@@ -247,10 +247,10 @@ async function sendSms(
   return !result.error_code
 }
 
-async function notifySlack(supabaseUrl: string, supabaseAnonKey: string, businessId: string, text: string) {
+async function notifySlack(supabaseUrl: string, supabaseServiceKey: string, businessId: string, text: string) {
   await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseAnonKey}` },
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
     body: JSON.stringify({ businessId, text }),
   }).catch(() => {})
 }

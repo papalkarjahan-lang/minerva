@@ -43,8 +43,8 @@ serve(async (req: Request) => {
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
-    const supabase = createClient(supabaseUrl, supabaseAnonKey)
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const supabase = createClient(supabaseUrl, supabaseServiceKey)
     const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY')
 
     const { data: fnState } = await supabase.from('agent_functions').select('enabled').eq('name', 'generate-growth-drafts').maybeSingle()
@@ -261,8 +261,8 @@ serve(async (req: Request) => {
     console.error('generate-growth-drafts error:', err)
     try {
       const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-      const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
-      createClient(supabaseUrl, supabaseAnonKey)
+      const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+      createClient(supabaseUrl, supabaseServiceKey)
         .rpc('record_agent_run', { fn_name: 'generate-growth-drafts', status: 'error', error_msg: err.message })
         .then(() => {}, () => {})
     } catch (_) { /* never let health tracking break the actual error response */ }

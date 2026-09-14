@@ -23,8 +23,8 @@ serve(async (req: Request) => {
     if (!draftId) throw new Error('draftId is required')
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
-    const supabase = createClient(supabaseUrl, supabaseAnonKey)
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
     const TWILIO_SID = Deno.env.get('TWILIO_ACCOUNT_SID')
     const TWILIO_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN')
@@ -84,7 +84,7 @@ serve(async (req: Request) => {
 
     await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseAnonKey}` },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
       body: JSON.stringify({
         businessId: job.business_id,
         text: smsOk

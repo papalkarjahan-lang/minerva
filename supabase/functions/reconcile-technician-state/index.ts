@@ -26,8 +26,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 serve(async (_req: Request) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
-    const supabase = createClient(supabaseUrl, supabaseAnonKey)
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
     const { data: fnState } = await supabase.from('agent_functions').select('enabled').eq('name', 'reconcile-technician-state').maybeSingle()
     if (fnState?.enabled === false) {
@@ -73,7 +73,7 @@ serve(async (_req: Request) => {
   } catch (err) {
     console.error('reconcile-technician-state error:', err)
     try {
-      const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!)
+      const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
       await supabase.rpc('record_agent_run', { fn_name: 'reconcile-technician-state', status: 'error', error_msg: err.message })
     } catch (_) { /* never let health tracking break the actual error response */ }
     return new Response(JSON.stringify({ error: err.message }), {

@@ -27,8 +27,8 @@ serve(async (req: Request) => {
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
-    const supabase = createClient(supabaseUrl, supabaseAnonKey)
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const supabase = createClient(supabaseUrl, supabaseServiceKey)
     const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY')
 
     const { data: fnState } = await supabase.from('agent_functions').select('enabled').eq('name', 'check-credential-expiry').maybeSingle()
@@ -55,7 +55,7 @@ serve(async (req: Request) => {
 
       // 30-day threshold
       if (!cred.warning_30_sent_at && cred.expiry_date <= in30 && cred.expiry_date > in14) {
-        await notifySlack(supabaseUrl, supabaseAnonKey, cred.business_id,
+        await notifySlack(supabaseUrl, supabaseServiceKey, cred.business_id,
           `📋 *${techName}*'s ${cred.credential_name || 'credential'} expires ${cred.expiry_date} (30 days away).`)
         await supabase.from('technician_credentials').update({ warning_30_sent_at: new Date().toISOString() }).eq('id', cred.id)
         warned30++
@@ -65,7 +65,7 @@ serve(async (req: Request) => {
       }
       // 14-day threshold
       if (!cred.warning_14_sent_at && cred.expiry_date <= in14 && cred.expiry_date > in7) {
-        await notifySlack(supabaseUrl, supabaseAnonKey, cred.business_id,
+        await notifySlack(supabaseUrl, supabaseServiceKey, cred.business_id,
           `📋 *${techName}*'s ${cred.credential_name || 'credential'} expires ${cred.expiry_date} (14 days away).`)
         await supabase.from('technician_credentials').update({ warning_14_sent_at: new Date().toISOString() }).eq('id', cred.id)
         warned14++
@@ -75,7 +75,7 @@ serve(async (req: Request) => {
       }
       // 7-day threshold
       if (!cred.warning_7_sent_at && cred.expiry_date <= in7) {
-        await notifySlack(supabaseUrl, supabaseAnonKey, cred.business_id,
+        await notifySlack(supabaseUrl, supabaseServiceKey, cred.business_id,
           `📋 *${techName}*'s ${cred.credential_name || 'credential'} expires ${cred.expiry_date} (7 days or less).`)
         await supabase.from('technician_credentials').update({ warning_7_sent_at: new Date().toISOString() }).eq('id', cred.id)
         warned7++
@@ -87,7 +87,7 @@ serve(async (req: Request) => {
       // Urgent: expired-or-expiring-within-3-days AND currently on a job.
       if (cred.expiry_date <= in3 && tech?.current_job_id) {
         const expired = cred.expiry_date < now.toISOString().slice(0, 10)
-        await notifySlack(supabaseUrl, supabaseAnonKey, cred.business_id,
+        await notifySlack(supabaseUrl, supabaseServiceKey, cred.business_id,
           `🚨 *${techName}* is currently on a job with ${expired ? 'an EXPIRED' : 'a credential expiring within 3 days'}: ${cred.credential_name || 'credential'} (expiry ${cred.expiry_date}). Worth a same-day check.`)
         urgentPings++
         await writeCredentialInsight(supabase, anthropicKey, cred, techName,
@@ -108,7 +108,7 @@ serve(async (req: Request) => {
   } catch (err) {
     console.error('check-credential-expiry error:', err)
     try {
-      const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!)
+      const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
       supabase.rpc('record_agent_run', { fn_name: 'check-credential-expiry', status: 'error', error_msg: err.message }).then(() => {}, () => {})
     } catch (_) { /* best-effort only */ }
     return new Response(JSON.stringify({ error: err.message }), {
@@ -118,10 +118,10 @@ serve(async (req: Request) => {
   }
 })
 
-async function notifySlack(supabaseUrl: string, supabaseAnonKey: string, businessId: string, text: string) {
+async function notifySlack(supabaseUrl: string, supabaseServiceKey: string, businessId: string, text: string) {
   await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseAnonKey}` },
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
     body: JSON.stringify({ businessId, text }),
   }).catch(() => {})
 }

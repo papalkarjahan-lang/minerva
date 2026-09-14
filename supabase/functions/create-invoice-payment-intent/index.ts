@@ -12,7 +12,7 @@
 //
 // Required Supabase secrets:
 //   STRIPE_SECRET_KEY   (same key used by create-checkout-session)
-//   SUPABASE_URL / SUPABASE_ANON_KEY (auto-provided in Edge Function runtime)
+//   SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY (auto-provided in Edge Function runtime)
 //
 // Deploy with the multipart /functions/deploy Supabase Management API
 // (no CLI in this project — see minerva_supabase_function_deploy_method
@@ -43,7 +43,7 @@ serve(async (req: Request) => {
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     )
 
     const { data: invoice, error: invErr } = await supabase

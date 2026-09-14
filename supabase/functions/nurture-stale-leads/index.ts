@@ -34,8 +34,8 @@ serve(async (req: Request) => {
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
-    const supabase = createClient(supabaseUrl, supabaseAnonKey)
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
     const { data: fnState } = await supabase.from('agent_functions').select('enabled').eq('name', 'nurture-stale-leads').maybeSingle()
     if (fnState?.enabled === false) {
@@ -84,7 +84,7 @@ serve(async (req: Request) => {
       await supabase.from('leads').update({ nurture_sent_at: new Date().toISOString() }).eq('id', lead.id)
       if (smsOk) sent++
 
-      await notifySlack(supabaseUrl, supabaseAnonKey, lead.business_id,
+      await notifySlack(supabaseUrl, supabaseServiceKey, lead.business_id,
         `⏳ Nurture SMS sent to stale lead *${lead.client_name || 'unknown'}* (waiting ${'>'}2hrs untouched).`)
     }
 
@@ -120,7 +120,7 @@ serve(async (req: Request) => {
       await supabase.from('leads').update({ second_nurture_sent_at: new Date().toISOString() }).eq('id', lead.id)
       if (smsOk) sentSecond++
 
-      await notifySlack(supabaseUrl, supabaseAnonKey, lead.business_id,
+      await notifySlack(supabaseUrl, supabaseServiceKey, lead.business_id,
         `⏳ Second nurture SMS sent to lead *${lead.client_name || 'unknown'}* (still 'new' 24h after the first nudge — might be worth a personal follow-up).`)
     }
 
@@ -140,8 +140,8 @@ serve(async (req: Request) => {
     console.error('nurture-stale-leads error:', err)
     try {
       const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-      const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
-      createClient(supabaseUrl, supabaseAnonKey)
+      const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+      createClient(supabaseUrl, supabaseServiceKey)
         .rpc('record_agent_run', { fn_name: 'nurture-stale-leads', status: 'error', error_msg: err.message })
         .then(() => {}, () => {})
     } catch (_) { /* never let health tracking break the actual error response */ }
@@ -215,10 +215,10 @@ async function sendSms(
   return !result.error_code
 }
 
-async function notifySlack(supabaseUrl: string, supabaseAnonKey: string, businessId: string, text: string) {
+async function notifySlack(supabaseUrl: string, supabaseServiceKey: string, businessId: string, text: string) {
   await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseAnonKey}` },
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
     body: JSON.stringify({ businessId, text }),
   }).catch(() => {})
 }

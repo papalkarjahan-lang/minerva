@@ -23,7 +23,7 @@
 //
 // Deploy with: supabase functions deploy check-weather-risk
 // No secrets required beyond the ones already set (SUPABASE_URL /
-// SUPABASE_ANON_KEY, injected automatically).
+// SUPABASE_SERVICE_ROLE_KEY, injected automatically).
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
@@ -39,8 +39,8 @@ serve(async (req: Request) => {
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
-    const supabase = createClient(supabaseUrl, supabaseAnonKey)
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
     const { data: fnState } = await supabase.from('agent_functions').select('enabled').eq('name', 'check-weather-risk').maybeSingle()
     if (fnState?.enabled === false) {
@@ -110,7 +110,7 @@ serve(async (req: Request) => {
           await supabase.from('jobs').update({ weather_risk_flagged_at: new Date().toISOString() }).eq('id', job.id)
           drafted++
 
-          await notifySlack(supabaseUrl, supabaseAnonKey, biz.id,
+          await notifySlack(supabaseUrl, supabaseServiceKey, biz.id,
             `⛈️ Weather risk flagged for tomorrow's job with *${job.client_name || 'a client'}* — ${summary} A reschedule draft is waiting for your review in the Weather tab.`)
         } catch (err) {
           console.error('check-weather-risk: forecast lookup failed for job', job.id, err)
@@ -128,8 +128,8 @@ serve(async (req: Request) => {
     console.error('check-weather-risk error:', err)
     try {
       const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-      const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
-      createClient(supabaseUrl, supabaseAnonKey)
+      const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+      createClient(supabaseUrl, supabaseServiceKey)
         .rpc('record_agent_run', { fn_name: 'check-weather-risk', status: 'error', error_msg: err.message })
         .then(() => {}, () => {})
     } catch (_) { /* never let health tracking break the actual error response */ }
@@ -154,10 +154,10 @@ async function fetchForecast(lat: number, lng: number, dateStr: string): Promise
   }
 }
 
-async function notifySlack(supabaseUrl: string, supabaseAnonKey: string, businessId: string, text: string) {
+async function notifySlack(supabaseUrl: string, supabaseServiceKey: string, businessId: string, text: string) {
   await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseAnonKey}` },
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
     body: JSON.stringify({ businessId, text }),
   }).catch(() => {})
 }

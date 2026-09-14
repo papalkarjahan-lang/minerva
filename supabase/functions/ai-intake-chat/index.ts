@@ -19,7 +19,7 @@
 //   ANTHROPIC_API_KEY     (server-side only — never exposed to the browser;
 //                          optional — falls back to runTemplateIntake if unset)
 //   SUPABASE_URL          (auto-provided in Edge Function runtime)
-//   SUPABASE_ANON_KEY     (auto-provided in Edge Function runtime)
+//   SUPABASE_SERVICE_ROLE_KEY     (auto-provided in Edge Function runtime)
 //   TWILIO_ACCOUNT_SID    (same as other SMS functions; optional — lead
 //   TWILIO_AUTH_TOKEN      capture still succeeds without SMS if unset)
 //   TWILIO_PHONE_NUMBER
@@ -184,8 +184,8 @@ serve(async (req: Request) => {
     }
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
-    const supabase = createClient(supabaseUrl, supabaseAnonKey)
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
     const { data: business, error: bizErr } = await supabase
       .from('businesses')
@@ -362,7 +362,7 @@ if not yet captured}`
       // Custom Workflows: fire the 'lead.created' trigger for this business, if any are configured.
       fetch(`${supabaseUrl}/functions/v1/run-custom-workflows`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseAnonKey}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
         body: JSON.stringify({ businessId, event: 'lead.created', payload: { urgency, estimated_value_tier: parsed.lead.estimated_value_tier || null } }),
       }).catch(() => {})
 
@@ -392,7 +392,7 @@ if not yet captured}`
       const repeatTag2 = isRepeatClient ? ' (returning client)' : ''
       await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseAnonKey}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
         body: JSON.stringify({
           businessId,
           text: `${urgencyTag2} · score ${score}${repeatTag2}: *${name}*, ${phone}, ${suburb}. ${job_description}`,

@@ -25,8 +25,8 @@ serve(async (req: Request) => {
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
-    const supabase = createClient(supabaseUrl, supabaseAnonKey)
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
     const { data: fnState } = await supabase.from('agent_functions').select('enabled').eq('name', 'detect-safety-hazards').maybeSingle()
     if (fnState?.enabled === false) {
@@ -97,7 +97,7 @@ serve(async (req: Request) => {
       }).then(() => {}, () => {})
       await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseAnonKey}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
         body: JSON.stringify({ businessId: site.business_id, text: `⚠️ *Warden*: site *${site.name}* has a human technician and an automated process both active at once — proximity hazard, worth a check.` }),
       }).catch(() => {})
       flagged++
@@ -111,7 +111,7 @@ serve(async (req: Request) => {
   } catch (err) {
     console.error('detect-safety-hazards error:', err)
     try {
-      const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!)
+      const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
       supabase.rpc('record_agent_run', { fn_name: 'detect-safety-hazards', status: 'error', error_msg: err.message }).then(() => {}, () => {})
     } catch (_) { /* best-effort only */ }
     return new Response(JSON.stringify({ error: err.message }), {

@@ -34,8 +34,8 @@ serve(async (req: Request) => {
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
-    const supabase = createClient(supabaseUrl, supabaseAnonKey)
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
     const { data: fnState } = await supabase.from('agent_functions').select('enabled').eq('name', 'monitor-asset-telemetry').maybeSingle()
     if (fnState?.enabled === false) {
@@ -80,7 +80,7 @@ serve(async (req: Request) => {
             asset_id: assetId, business_id: asset.business_id, event_type: 'geofence_breach',
             lat, lng, detail: `${Math.round(distanceM)}m outside assigned site geofence`,
           })
-          await notify(supabaseUrl, supabaseAnonKey, asset.business_id,
+          await notify(supabaseUrl, supabaseServiceKey, asset.business_id,
             `🚨 *Audit*: asset *${asset.name}* is ${Math.round(distanceM)}m outside its assigned site geofence.`)
         }
       }
@@ -94,7 +94,7 @@ serve(async (req: Request) => {
           asset_id: assetId, business_id: asset.business_id, event_type: 'maintenance_due',
           engine_hours: engineHours, detail: `${engineHours}h reached, interval ${asset.maintenance_interval_hours}h`,
         })
-        await notify(supabaseUrl, supabaseAnonKey, asset.business_id,
+        await notify(supabaseUrl, supabaseServiceKey, asset.business_id,
           `🔧 *Audit*: asset *${asset.name}* has hit its preventative-maintenance threshold (${engineHours}h).`)
       }
     }
@@ -107,7 +107,7 @@ serve(async (req: Request) => {
   } catch (err) {
     console.error('monitor-asset-telemetry error:', err)
     try {
-      const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!)
+      const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
       supabase.rpc('record_agent_run', { fn_name: 'monitor-asset-telemetry', status: 'error', error_msg: err.message }).then(() => {}, () => {})
     } catch (_) { /* best-effort only */ }
     return new Response(JSON.stringify({ error: err.message }), {
@@ -126,10 +126,10 @@ function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number)
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
-async function notify(supabaseUrl: string, supabaseAnonKey: string, businessId: string, text: string) {
+async function notify(supabaseUrl: string, supabaseServiceKey: string, businessId: string, text: string) {
   await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseAnonKey}` },
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
     body: JSON.stringify({ businessId, text }),
   }).catch(() => {})
 }

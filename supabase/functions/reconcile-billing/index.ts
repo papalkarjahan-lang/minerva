@@ -105,7 +105,7 @@ serve(async (req: Request) => {
         mismatches++
         await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/notify-slack`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}` },
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}` },
           body: JSON.stringify({
             businessId: biz.id,
             text: `⚠️ Billing drift detected for *${biz.name}*: Stripe is billing ${stripeQuantity} technician(s), but ${localQuantity} are actually connected. Worth a manual check.`,

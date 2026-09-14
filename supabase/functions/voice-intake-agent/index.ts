@@ -412,11 +412,11 @@ serve(async (req: Request) => {
       })
 
       const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-      const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
+      const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
       fetch(`${supabaseUrl}/functions/v1/run-custom-workflows`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseAnonKey}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
         body: JSON.stringify({ businessId, event: 'lead.created', payload: { urgency, estimated_value_tier: parsed.lead.estimated_value_tier || null } }),
       }).catch(() => {})
 
@@ -446,7 +446,7 @@ serve(async (req: Request) => {
       const repeatTag2 = isRepeatClient ? ' (returning client)' : ''
       await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseAnonKey}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
         body: JSON.stringify({
           businessId,
           text: `${urgencyTag2} · score ${score}${repeatTag2} (phone): *${name}*, ${phone || 'no number'}, ${suburb}. ${job_description}`,

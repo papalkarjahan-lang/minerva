@@ -23,8 +23,8 @@ serve(async (req: Request) => {
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
-    const supabase = createClient(supabaseUrl, supabaseAnonKey)
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
     const { data: fnState } = await supabase.from('agent_functions').select('enabled').eq('name', 'flag-abandoned-signups').maybeSingle()
     if (fnState?.enabled === false) {
@@ -69,7 +69,7 @@ serve(async (req: Request) => {
   } catch (err) {
     console.error('flag-abandoned-signups error:', err)
     try {
-      const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!)
+      const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
       supabase.rpc('record_agent_run', { fn_name: 'flag-abandoned-signups', status: 'error', error_msg: err.message }).then(() => {}, () => {})
     } catch (_) { /* best-effort only */ }
     return new Response(JSON.stringify({ error: err.message }), {

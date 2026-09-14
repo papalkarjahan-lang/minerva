@@ -17,8 +17,8 @@ serve(async (req: Request) => {
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
-    const supabase = createClient(supabaseUrl, supabaseAnonKey)
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
     const { siteId } = await req.json()
     if (!siteId) throw new Error('siteId is required')
@@ -59,7 +59,7 @@ serve(async (req: Request) => {
 
     await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseAnonKey}` },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
       body: JSON.stringify({ businessId: site.business_id, text: `📋 *Closer*: verification package assembled for *${site.name}* — ready to present for client sign-off.` }),
     }).catch(() => {})
 
@@ -71,7 +71,7 @@ serve(async (req: Request) => {
   } catch (err) {
     console.error('package-client-verification error:', err)
     try {
-      const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!)
+      const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
       supabase.rpc('record_agent_run', { fn_name: 'package-client-verification', status: 'error', error_msg: err.message }).then(() => {}, () => {})
     } catch (_) { /* best-effort only */ }
     return new Response(JSON.stringify({ error: err.message }), {

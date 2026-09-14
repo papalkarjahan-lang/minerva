@@ -41,8 +41,8 @@ serve(async (req: Request) => {
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
-    const supabase = createClient(supabaseUrl, supabaseAnonKey)
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
     const { data: fnState } = await supabase.from('agent_functions').select('enabled').eq('name', 'run-custom-workflows').maybeSingle()
     if (fnState?.enabled === false) {
@@ -62,7 +62,7 @@ serve(async (req: Request) => {
 
     // Direct invocation: run only this business's workflows for this one event.
     if (businessId && event) {
-      const result = await runWorkflowsFor(supabase, supabaseUrl, supabaseAnonKey, businessId, event, payload)
+      const result = await runWorkflowsFor(supabase, supabaseUrl, supabaseServiceKey, businessId, event, payload)
       supabase.rpc('record_agent_run', { fn_name: 'run-custom-workflows', status: 'ok' }).then(() => {}, () => {})
       return new Response(JSON.stringify({ success: true, ...result }), {
         status: 200,
@@ -82,7 +82,7 @@ serve(async (req: Request) => {
   } catch (err) {
     console.error('run-custom-workflows error:', err)
     try {
-      const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!)
+      const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
       supabase.rpc('record_agent_run', { fn_name: 'run-custom-workflows', status: 'error', error_msg: err.message }).then(() => {}, () => {})
     } catch (_) { /* best-effort only */ }
     return new Response(JSON.stringify({ error: err.message }), {
@@ -95,7 +95,7 @@ serve(async (req: Request) => {
 async function runWorkflowsFor(
   supabase: any,
   supabaseUrl: string,
-  supabaseAnonKey: string,
+  supabaseServiceKey: string,
   businessId: string,
   event: string,
   payload: Record<string, any>
@@ -129,7 +129,7 @@ async function runWorkflowsFor(
       } else if (wf.action_type === 'slack') {
         await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseAnonKey}` },
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
           body: JSON.stringify({ businessId, text: `🔧 Workflow *${wf.name}* triggered by ${event}` }),
         })
       }

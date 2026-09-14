@@ -336,6 +336,43 @@ any client with sensitive commercial data:
   particular can't be tightened without also solving the technician-auth
   problem above — see the original note this replaced, still accurate.
 
+## Fixed 2026-09-14: RLS read/write-scoping, pass 2
+
+All 52 background edge functions migrated from `SUPABASE_ANON_KEY` to
+`SUPABASE_SERVICE_ROLE_KEY` (server-side only, never exposed to a
+browser — this changes nothing observable, since none of them relied on
+RLS to restrict their own already-fully-trusted cross-business behavior).
+That unblocked two real, previously-open gaps documented above under
+"Phase 2 priority" and "Agent Operating System Phase 1":
+
+- **`agent_functions` / `agent_insights` / `agent_council_reports`**
+  (Minerva's own platform-wide operator data — `agent_functions` has no
+  `business_id` column at all) are no longer anon-select/anon-update.
+  Previously, anyone with the anon key — extractable from the live site
+  by anyone, not just a business owner — could read every function's
+  health status and cross-business insights, and could flip any
+  function's `enabled` kill-switch off **for the entire platform**, not
+  just their own business, since the DispatcherView "Agent Ops" tab's
+  `?agents=1` gate was UX-only, not a security boundary (as its own code
+  comment already said). Now requires the caller to be a real logged-in
+  Supabase Auth user present in `admin_users` — see pass 1's header for
+  how to add one. See `supabase_schema_delta_rls_scoping_v2.sql`.
+- **`marketing_drafts`** (confirmed by grep to have zero technician/
+  public reader, only the owner-authed DispatcherView Growth tab) is now
+  scoped to `auth.uid() = businesses.owner_user_id` for SELECT/UPDATE,
+  same pattern as pass 1's `assets`/`subcontractors`.
+
+Still open, same as before: `jobs`, `technicians`, `leads`, `invoices`,
+`technician_locations`, `checklist_templates`, `checklist_photos`,
+`job_materials`, `inventory_items`, `technician_credentials`,
+`businesses`, `roi_proposals`, all `industrial_*` tables. Each has a
+genuine anonymous technician (PIN, no `auth.uid()`) or public client-
+facing reader (tracking/invoice/quote/dispute/proposal links) that would
+break if scoped today. Closing that gap needs a real technician auth
+session tied to their PIN — a separate, larger, scoped project (frontend
++ schema + every technician-facing edge function), deliberately not
+attempted blind alongside this pass.
+
 ## Added 2026-09-08: embeddable widget (`public/widget.js`)
 
 New surface: a client can now paste `<script src=".../widget.js"

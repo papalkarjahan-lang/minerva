@@ -19,8 +19,8 @@ serve(async (req: Request) => {
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
-    const supabase = createClient(supabaseUrl, supabaseAnonKey)
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
     const { data: fnState } = await supabase.from('agent_functions').select('enabled').eq('name', 'check-inventory-levels').maybeSingle()
     if (fnState?.enabled === false) {
@@ -49,7 +49,7 @@ serve(async (req: Request) => {
       const supplierNote = item.supplier_name ? ` Usual supplier: ${item.supplier_name}.` : ''
       await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseAnonKey}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
         body: JSON.stringify({
           businessId: item.business_id,
           text: `📦 Low stock: *${item.name}* is at ${item.quantity} ${item.unit || 'units'} (reorder threshold ${item.reorder_threshold}).${supplierNote} Time to reorder.`,
@@ -70,8 +70,8 @@ serve(async (req: Request) => {
     console.error('check-inventory-levels error:', err)
     try {
       const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-      const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
-      createClient(supabaseUrl, supabaseAnonKey)
+      const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+      createClient(supabaseUrl, supabaseServiceKey)
         .rpc('record_agent_run', { fn_name: 'check-inventory-levels', status: 'error', error_msg: err.message })
         .then(() => {}, () => {})
     } catch (_) { /* never let health tracking break the actual error response */ }

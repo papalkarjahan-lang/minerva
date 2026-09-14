@@ -26,8 +26,8 @@ serve(async (req: Request) => {
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
-    const supabase = createClient(supabaseUrl, supabaseAnonKey)
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
     const { data: fnState } = await supabase.from('agent_functions').select('enabled').eq('name', 'winback-lost-leads').maybeSingle()
     if (fnState?.enabled === false) {
@@ -74,7 +74,7 @@ serve(async (req: Request) => {
       await supabase.from('leads').update({ lost_winback_sent_at: new Date().toISOString() }).eq('id', lead.id)
       if (smsOk) sent++
 
-      await notifySlack(supabaseUrl, supabaseAnonKey, lead.business_id,
+      await notifySlack(supabaseUrl, supabaseServiceKey, lead.business_id,
         `📮 Win-back SMS sent to lost lead *${lead.client_name || 'unknown'}* (marked lost 14+ days ago).`)
     }
 
@@ -88,8 +88,8 @@ serve(async (req: Request) => {
     console.error('winback-lost-leads error:', err)
     try {
       const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-      const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
-      createClient(supabaseUrl, supabaseAnonKey)
+      const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+      createClient(supabaseUrl, supabaseServiceKey)
         .rpc('record_agent_run', { fn_name: 'winback-lost-leads', status: 'error', error_msg: err.message })
         .then(() => {}, () => {})
     } catch (_) { /* never let health tracking break the actual error response */ }
@@ -164,10 +164,10 @@ async function sendSms(
   return !result.error_code
 }
 
-async function notifySlack(supabaseUrl: string, supabaseAnonKey: string, businessId: string, text: string) {
+async function notifySlack(supabaseUrl: string, supabaseServiceKey: string, businessId: string, text: string) {
   await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseAnonKey}` },
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
     body: JSON.stringify({ businessId, text }),
   }).catch(() => {})
 }

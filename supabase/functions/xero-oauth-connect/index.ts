@@ -32,8 +32,8 @@ serve(async (req: Request) => {
 
   const clientId = Deno.env.get('XERO_CLIENT_ID')
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-  const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
-  const supabase = createClient(supabaseUrl, supabaseAnonKey)
+  const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+  const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
   const urlParams = new URL(req.url).searchParams
   const businessIdParam = urlParams.get('businessId')

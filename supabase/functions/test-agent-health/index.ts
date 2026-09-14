@@ -94,8 +94,8 @@ serve(async (req: Request) => {
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
-    const supabase = createClient(supabaseUrl, supabaseAnonKey)
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
     const { data: fns, error } = await supabase
       .from('agent_functions')
@@ -155,7 +155,7 @@ serve(async (req: Request) => {
       if (operatorEmail) {
         fetch(`${supabaseUrl}/functions/v1/send-email`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || supabaseAnonKey}` },
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || supabaseServiceKey}` },
           body: JSON.stringify({
             to: operatorEmail,
             subject: `[Minerva] Agent unhealthy: ${fn.name}`,
