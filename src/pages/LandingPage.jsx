@@ -1,15 +1,5 @@
 import { Link } from 'react-router-dom'
-
-// Business contact line for the public footer. Each part is independently
-// optional (VITE_BUSINESS_ABN/EMAIL/PHONE) — only configured parts are
-// shown, never a broken "[your ABN]"-style placeholder in production.
-// (Fixed 2026-09-08 — this footer used to hardcode literal bracket
-// placeholder text that was visible to real visitors.)
-const CONTACT_PARTS = [
-  import.meta.env.VITE_BUSINESS_ABN && `ABN ${import.meta.env.VITE_BUSINESS_ABN}`,
-  import.meta.env.VITE_BUSINESS_EMAIL,
-  import.meta.env.VITE_BUSINESS_PHONE,
-].filter(Boolean)
+import { SiteNav, SiteFooter } from '../components/SiteChrome'
 
 const FAQS = [
   ['Do my technicians need to install an app?', 'No — it opens straight in their phone\'s browser from a text link. No app store, no install, no account to create.'],
@@ -22,16 +12,7 @@ const FAQS = [
 export default function LandingPage() {
   return (
     <div style={{ fontFamily: 'Arial, sans-serif', background: '#050811', minHeight: '100vh', color: '#fff' }}>
-      {/* Nav */}
-      <nav style={{ padding: '20px 40px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #1e293b' }}>
-        <span style={{ fontSize: 22, fontWeight: 'bold', color: '#fff', letterSpacing: 3 }}>MINERVA</span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-          <Link to="/login" style={{ color: '#aaa', textDecoration: 'none', fontSize: 14 }}>Log in</Link>
-          <Link to="/start" style={{ background: '#2D5FA8', color: '#fff', textDecoration: 'none', padding: '10px 22px', borderRadius: 10, fontSize: 14, fontWeight: 'bold' }}>
-            Start free trial
-          </Link>
-        </div>
-      </nav>
+      <SiteNav />
 
       {/* Hero */}
       <div style={{ maxWidth: 680, margin: '0 auto', textAlign: 'center', padding: '80px 24px 60px' }}>
@@ -136,17 +117,7 @@ export default function LandingPage() {
         </Link>
       </div>
 
-      {/* Footer */}
-      <footer style={{ borderTop: '1px solid #1e293b', padding: '24px 40px', textAlign: 'center', color: '#444', fontSize: 13 }}>
-        <p style={{ margin: '0 0 10px' }}>
-          Minerva | An Antikythera / Krios AI product{CONTACT_PARTS.length > 0 ? ` | ${CONTACT_PARTS.join(' | ')}` : ''}
-        </p>
-        <p style={{ margin: 0 }}>
-          <Link to="/terms" style={{ color: '#666', textDecoration: 'none', margin: '0 10px' }}>Terms of Service</Link>
-          <Link to="/privacy" style={{ color: '#666', textDecoration: 'none', margin: '0 10px' }}>Privacy Policy</Link>
-          <Link to="/refund-policy" style={{ color: '#666', textDecoration: 'none', margin: '0 10px' }}>Refund Policy</Link>
-        </p>
-      </footer>
+      <SiteFooter />
     </div>
   )
 }

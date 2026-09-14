@@ -30,6 +30,12 @@ const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'))
 const RefundPolicy = lazy(() => import('./pages/RefundPolicy'))
 const CaseStudy = lazy(() => import('./pages/CaseStudy'))
 const ProposalView = lazy(() => import('./pages/ProposalView'))
+const Features = lazy(() => import('./pages/Features'))
+const Pricing = lazy(() => import('./pages/Pricing'))
+const About = lazy(() => import('./pages/About'))
+const Contact = lazy(() => import('./pages/Contact'))
+const Blog = lazy(() => import('./pages/Blog'))
+const BlogPost = lazy(() => import('./pages/BlogPost'))
 
 function RouteLoadingFallback() {
   return (
@@ -52,6 +58,12 @@ export default function App() {
         <Route path="/terms" element={<TermsOfService />} />
         <Route path="/privacy" element={<PrivacyPolicy />} />
         <Route path="/refund-policy" element={<RefundPolicy />} />
+        <Route path="/features" element={<Features />} />
+        <Route path="/pricing" element={<Pricing />} />
+        <Route path="/about" element={<About />} />
+        <Route path="/contact" element={<Contact />} />
+        <Route path="/blog" element={<Blog />} />
+        <Route path="/blog/:slug" element={<BlogPost />} />
         {/* Case-study template — see CaseStudy.jsx header comment. Not
             linked from the nav/footer until it's filled in with a real
             customer's real numbers (still has bracketed placeholders as

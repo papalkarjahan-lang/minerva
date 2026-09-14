@@ -9,6 +9,26 @@
     <priority>0.9</priority>
   </url>
   <url>
+    <loc>https://minervaops.com.au/features</loc>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://minervaops.com.au/pricing</loc>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://minervaops.com.au/about</loc>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://minervaops.com.au/contact</loc>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://minervaops.com.au/blog</loc>
+    <priority>0.6</priority>
+  </url>
+  <url>
     <loc>https://minervaops.com.au/terms</loc>
     <priority>0.3</priority>
   </url>
@@ -19,5 +39,17 @@
   <url>
     <loc>https://minervaops.com.au/refund-policy</loc>
     <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>https://minervaops.com.au/blog/stop-calling-your-technicians-to-ask-where-they-are</loc>
+    <priority>0.4</priority>
+  </url>
+  <url>
+    <loc>https://minervaops.com.au/blog/the-real-cost-of-a-missed-technician-eta</loc>
+    <priority>0.4</priority>
+  </url>
+  <url>
+    <loc>https://minervaops.com.au/blog/why-website-chat-widgets-lose-you-jobs</loc>
+    <priority>0.4</priority>
   </url>
 </urlset>
