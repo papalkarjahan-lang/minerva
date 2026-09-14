@@ -17,6 +17,85 @@ public reviews) — not compiling a personal dossier on a named individual.
 
 ---
 
+## RECOMMENDATION (added 2026-09-15) — the single most-likely-to-work path, stated directly, not as a guarantee
+
+**The honest math, combining every real lever that exists today, run
+perfectly:**
+
+| Lever | Best-case 2026 cash | Why |
+|---|---|---|
+| Plan 2 (diversified 4 named accounts below) | ~$60-90K | Same ceiling as always — physically-impossible instant-close case, unchanged |
+| Self-serve solo/small volume (organic outreach only, no ad spend) | ~$15-25K | High scenario from `GRAND_PLAN_END_OF_2026.md` §4 — real, because signup is now instant, but bounded by how many prospects you can personally review and approve |
+| Plan 1 (Jim's Group wildcard) | ~$0 in 2026 | Explicitly modeled as a 2027 revenue event even in the best real case — a franchisor pilot doesn't invoice this year |
+| **Combined realistic ceiling, everything run perfectly** | **~$75-115K** | 15-25x today's $0 baseline — genuinely excellent, still not $200K |
+
+**What would actually have to be true to close the remaining ~$85-125K gap
+— ranked by realistic likelihood, most likely first:**
+
+1. **One named account closing at a materially larger contract value than
+   simple per-tech pricing assumes.** Most plausible on Ken Hall Plumbers
+   (100+ technicians) or an FM/council target — ask directly in the
+   discovery call whether they'd consider an annual or multi-year
+   agreement instead of month-to-month per-tech billing. One account
+   closing this way is a single signature adding $30-60K, which is a much
+   higher-odds path than needing dozens of smaller deals to overperform
+   simultaneously.
+2. **Paid customer acquisition to scale self-serve signups beyond what
+   free cold-outreach volume can produce.** `launch-ad-campaign` already
+   exists in the codebase and is real, but running it means spending the
+   user's real ad budget on a real payment method — that's your call to
+   make and fund directly, not something to launch autonomously. If you
+   want this lever: tell me a monthly budget and target
+   platform/audience, and I'll draft the campaign copy/targeting for your
+   review — nothing gets spent without your explicit go-ahead per
+   campaign. Rough real-world benchmark for local-service SaaS: $30-60
+   cost-per-acquisition, so $1-2K/month over the remaining ~3.5 months
+   could plausibly add 15-65 signups — real, but bounded by what you're
+   willing to spend, not a free lever.
+3. **Jim's Group producing an actual signed single-division pilot fast
+   enough to invoice in 2026, not just a conversation.** Ranked last
+   because even Plan 1's own honest note below says this is realistically
+   a 2027 outcome — worth running regardless (it's one email), just don't
+   plan the $200K case around it happening early.
+
+**The exact sequence to run, starting today (2026-09-15):** run Plan 3
+(Combined, below) exactly as written — Track A (diversified named
+accounts) and Track B (Jim's Group) in parallel — and add a third,
+new **Track C (self-serve volume)** alongside both, since none of the
+three compete for the same hours:
+
+- **This week (Sept 15-19):** Track A — send Twin Electrics + Ken Hall
+  Angle A emails (drafts below). Track B — send the Jim's Group inquiry to
+  the first division. Track C — set `RESEND_API_KEY`; paste your first
+  30-50 real SMB prospects into `parse-prospect-text`; run
+  `draft-outreach-batch`; personally review and edit every draft; click
+  "Send approved."
+- **Sept 22-26:** Track A — Associated Cleaning sent, Metropolitan contact
+  identified. Track B — second division if no reply. Track C — second
+  wave of 30-50 prospects; let `followup-outreach` handle automatic
+  day-3/7/14 nudges on wave 1, so you only touch a thread again when
+  someone replies.
+- **October:** Track A — discovery calls as replies arrive, ask the
+  contract-value question above on every one. Track B — qualify only, no
+  pricing pitch yet. Track C — keep sending a new wave every 1-2 weeks;
+  this is now pure repetition, not new setup.
+- **November-December:** close whatever's in motion on Track A (prioritize
+  the contract-value conversation on Ken Hall specifically); Track B
+  becomes a 2027 seed, log it as a win either way; Track C keeps
+  compounding on the same cadence.
+- **Ongoing, your decision:** if you want to add the paid-ads lever, tell
+  me the budget and I'll prepare campaign copy for your review — that's
+  the one piece of this sequence that needs your explicit input to start.
+
+**Said plainly:** running all three tracks perfectly, for free, most
+realistically lands around $75-115K — a genuinely strong year from zero.
+Reaching $200K specifically depends on one of the three items in the gap
+list above breaking your way, most likely #1 (an outsized single contract)
+or #2 (funded ad spend), not on the base plans below overperforming their
+own stated ceilings.
+
+---
+
 # PLAN 1 — Jim's Group-centric (the wildcard swing)
 
 **The bet:** one relationship (a Jim's Group divisional lead) multiplies
