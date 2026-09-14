@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import Map, { Marker, Source, Layer } from 'react-map-gl'
 import { supabase } from '../supabaseClient'
 import { timeAgo } from '../utils'
+import ClientSupportChat from '../components/ClientSupportChat'
 import 'mapbox-gl/dist/mapbox-gl.css'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
@@ -266,6 +267,7 @@ export default function TrackingView() {
           <p style={styles.statusBadge}>En route</p>
         </div>
       </div>
+      <ClientSupportChat jobId={jobId} businessName={business?.name} />
     </div>
   )
 }

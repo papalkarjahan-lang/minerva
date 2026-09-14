@@ -1,18 +1,35 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { loadStripe } from '@stripe/stripe-js'
+import { Elements, PaymentElement, useElements, useStripe } from '@stripe/react-stripe-js'
 import { supabase } from '../supabaseClient'
+import ClientSupportChat from '../components/ClientSupportChat'
 
 // Client-facing, read-only invoice view (Pro tier). Texted to the client
 // via send-invoice-sms once a technician builds the invoice on job
-// completion. This displays the invoice and its paid/unpaid status — it
-// does not collect payment itself (no payment-processor integration is
-// wired up); the business marks it paid once payment is taken on-site
-// (card terminal, cash, etc.) or via their own means.
+// completion. This displays the invoice and its paid/unpaid status. The
+// business marking an invoice paid manually after taking payment on-site
+// (EFTPOS, cash, etc.) remains the default, unchanged flow — see the "Mark
+// Paid" button in DispatcherView, which this doesn't touch. The "Pay now"
+// card button below is a purely OPTIONAL addition (2026-09-14): if the
+// business has a Stripe publishable key configured, a client can instead
+// pay by card right here. Card details are entered directly into Stripe's
+// own hosted Payment Element (an iframe) — they never pass through this
+// component, Minerva's servers, or Minerva's database. See
+// create-invoice-payment-intent and stripe-webhook's payment_intent.succeeded
+// handler for the rest of this flow.
+const stripePromise = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY
+  ? loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY)
+  : null
+
 export default function InvoiceView() {
   const { invoiceId } = useParams()
   const [invoice, setInvoice] = useState(null)
   const [business, setBusiness] = useState(null)
   const [error, setError] = useState(null)
+  const [clientSecret, setClientSecret] = useState(null)
+  const [payError, setPayError] = useState(null)
+  const [payOpen, setPayOpen] = useState(false)
 
   useEffect(() => { loadInvoice() }, [invoiceId])
 
@@ -22,6 +39,15 @@ export default function InvoiceView() {
     if (err || !data) { setError('This invoice link is invalid or has expired.'); return }
     setInvoice(data)
     setBusiness(data.businesses)
+  }
+
+  async function startPayNow() {
+    setPayError(null)
+    setPayOpen(true)
+    if (clientSecret) return // already fetched
+    const { data, error: err } = await supabase.functions.invoke('create-invoice-payment-intent', { body: { invoiceId } })
+    if (err || data?.error) { setPayError(data?.error || 'Could not start payment. Please try again.'); return }
+    setClientSecret(data.clientSecret)
   }
 
   if (error) return (
@@ -82,13 +108,73 @@ export default function InvoiceView() {
           <span style={styles.totalValue}>${Number(invoice.total).toFixed(2)}</span>
         </div>
 
+        {invoice.status !== 'paid' && stripePromise && !payOpen && (
+          <button style={styles.payButton} onClick={startPayNow}>Pay now with card</button>
+        )}
+
+        {invoice.status !== 'paid' && payOpen && (
+          <div style={{ marginTop: 16 }}>
+            {payError && <p style={{ color: '#8A2525', fontSize: 13, marginBottom: 10 }}>{payError}</p>}
+            {clientSecret ? (
+              <Elements stripe={stripePromise} options={{ clientSecret }}>
+                <PayNowForm invoiceId={invoiceId} onPaid={loadInvoice} />
+              </Elements>
+            ) : !payError && (
+              <p style={{ color: '#888', fontSize: 13 }}>Loading payment form...</p>
+            )}
+          </div>
+        )}
+
         <p style={styles.footerNote}>
           {invoice.status === 'paid'
             ? 'This invoice has been marked as paid. Thank you!'
-            : `Please arrange payment with ${business?.name || 'your provider'} directly.`}
+            : `Or arrange payment with ${business?.name || 'your provider'} directly.`}
         </p>
       </div>
+      <ClientSupportChat invoiceId={invoiceId} businessName={business?.name} />
     </div>
+  )
+}
+
+// Card-entry form rendered inside <Elements>. Stripe's own Payment Element
+// (an iframe) collects the card number/expiry/CVC directly — this
+// component never sees or handles raw card data, only the confirm() call
+// and its success/failure result.
+function PayNowForm({ invoiceId, onPaid }) {
+  const stripe = useStripe()
+  const elements = useElements()
+  const [submitting, setSubmitting] = useState(false)
+  const [formError, setFormError] = useState(null)
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    if (!stripe || !elements) return
+    setSubmitting(true)
+    setFormError(null)
+    const { error: confirmError } = await stripe.confirmPayment({
+      elements,
+      confirmParams: { return_url: `${window.location.origin}/invoice/${invoiceId}` },
+      redirect: 'if_required',
+    })
+    if (confirmError) {
+      setFormError(confirmError.message || 'Payment failed. Please check your card details and try again.')
+      setSubmitting(false)
+      return
+    }
+    // Webhook (payment_intent.succeeded) marks the invoice paid server-side;
+    // re-fetch so the UI reflects it without needing a manual page refresh.
+    onPaid()
+    setSubmitting(false)
+  }
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <PaymentElement />
+      {formError && <p style={{ color: '#8A2525', fontSize: 13, margin: '10px 0 0' }}>{formError}</p>}
+      <button type="submit" disabled={!stripe || submitting} style={{ ...styles.payButton, marginTop: 14, opacity: submitting ? 0.6 : 1 }}>
+        {submitting ? 'Processing...' : 'Confirm payment'}
+      </button>
+    </form>
   )
 }
 
@@ -110,5 +196,6 @@ const styles = {
   subValue: { color: '#888', fontSize: 13 },
   totalLabel: { color: '#fff', fontSize: 17, fontWeight: 'bold' },
   totalValue: { color: '#1D9E75', fontSize: 17, fontWeight: 'bold' },
-  footerNote: { color: '#555', fontSize: 12, textAlign: 'center', marginTop: 24 }
+  footerNote: { color: '#555', fontSize: 12, textAlign: 'center', marginTop: 24 },
+  payButton: { width: '100%', marginTop: 20, padding: '13px 0', background: '#1D9E75', color: '#fff', border: 'none', borderRadius: 10, fontSize: 15, fontWeight: 'bold', cursor: 'pointer' }
 }

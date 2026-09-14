@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import Map, { Marker, Popup, Source, Layer } from 'react-map-gl'
 import { supabase } from '../supabaseClient'
-import { timeAgo, geocodeAddress, insertTechniciansWithPinRetry } from '../utils'
+import { timeAgo, geocodeAddress, insertTechniciansWithPinRetry, haversineKm } from '../utils'
 import ContactSupportModal from '../components/ContactSupportModal'
 import { MAX_ADDONS, hasAddon, isTrialing, trialDaysLeft, hasUsedTrial, enableAddonPatch, disableAddonPatch, startTrialPatch } from '../maxAddons'
 import 'mapbox-gl/dist/mapbox-gl.css'
@@ -27,6 +27,12 @@ export default function DispatcherView() {
   const [leads, setLeads] = useState([])
   const [lostLeads, setLostLeads] = useState([])
   const [leadAttribution, setLeadAttribution] = useState([]) // from lead_attribution_summary view — which channel is actually converting
+  const [expandedLeadId, setExpandedLeadId] = useState(null) // which lead's activity timeline is open, if any
+  const [leadActivities, setLeadActivities] = useState({}) // leadId -> lead_activities[] loaded on demand
+  const [newLeadNote, setNewLeadNote] = useState('')
+  const [optimizingTechId, setOptimizingTechId] = useState(null)
+  const [generatingPackageForJobId, setGeneratingPackageForJobId] = useState(null)
+  const [compliancePackages, setCompliancePackages] = useState({}) // jobId -> compliance_packages[]
   const [assets, setAssets] = useState([]) // Pro tier only
   const [invoices, setInvoices] = useState([]) // Pro tier only
   const [carbonEstimates, setCarbonEstimates] = useState([]) // Pro tier only — see estimate-job-carbon
@@ -113,6 +119,15 @@ export default function DispatcherView() {
   const [showAddInventory, setShowAddInventory] = useState(false)
   const [selected, setSelected] = useState(null) // selected technician
   const [showTrail, setShowTrail] = useState(false) // today's GPS breadcrumb trail for `selected`
+  // Drag-and-drop job reassignment on the map: dragging a job pin onto a
+  // technician marker reassigns that job to that technician (same DB write
+  // as the existing Jobs-tab dropdown, just a faster gesture from the map).
+  // The pin always snaps back to the job's real client_lat/lng after drop —
+  // this never moves a client's address, it only reads where the pin was
+  // released to pick the nearest technician within DRAG_ASSIGN_RADIUS_KM.
+  const [draggingJobId, setDraggingJobId] = useState(null)
+  const [dragHoverTechId, setDragHoverTechId] = useState(null)
+  const DRAG_ASSIGN_RADIUS_KM = 0.6
   const [trailPoints, setTrailPoints] = useState([]) // [{lat,lng,recorded_at}]
   const [showAddJob, setShowAddJob] = useState(false)
   const [showAddTech, setShowAddTech] = useState(false)
@@ -625,6 +640,29 @@ export default function DispatcherView() {
     return () => { cancelled = true }
   }, [selected, showTrail])
 
+  // Called when a job pin is dropped on the map. Finds the nearest
+  // technician marker to the drop point within DRAG_ASSIGN_RADIUS_KM and,
+  // if found, reassigns via the same assignJob() used by the Jobs-tab
+  // dropdown. The job's own map position always reverts to its real
+  // client_lat/lng on the next render (we never write the drop coordinates
+  // anywhere) — dragging only ever expresses "assign this job to that
+  // technician", never "move this client".
+  async function handleJobPinDrop(job, lngLat) {
+    setDraggingJobId(null)
+    setDragHoverTechId(null)
+    let nearest = null
+    let nearestKm = Infinity
+    for (const tech of technicians) {
+      if (tech.current_lat == null || tech.current_lng == null) continue
+      const km = haversineKm(lngLat.lat, lngLat.lng, tech.current_lat, tech.current_lng)
+      if (km < nearestKm) { nearestKm = km; nearest = tech }
+    }
+    if (!nearest || nearestKm > DRAG_ASSIGN_RADIUS_KM) return
+    if (nearest.id === job.technician_id) return
+    if (!confirm(`Assign "${job.client_name || 'this job'}" to ${nearest.name}?`)) return
+    await assignJob(job.id, nearest.id)
+  }
+
   // Assign job to technician
   async function assignJob(jobId, techId) {
     const previousTechId = jobs.find(j => j.id === jobId)?.technician_id || null
@@ -737,6 +775,56 @@ export default function DispatcherView() {
     const { error } = await supabase.from('leads').update({ status }).eq('id', leadId)
     if (error) { alert(`Couldn't update lead: ${error.message}`); return }
     setLeads(prev => prev.filter(l => l.id !== leadId)) // leaves the active pipeline view
+  }
+
+  // CRM pipeline_stage — a finer-grained lens on top of the existing status
+  // field (see supabase_schema_delta_lead_crm_pipeline.sql). Does not touch
+  // status, so nurture-stale-leads/winback-lost-leads/daily-digest are
+  // unaffected. The on_lead_stage_change trigger auto-logs a lead_activities
+  // row server-side, so this never needs a separate insert here.
+  async function updateLeadPipelineStage(leadId, pipeline_stage) {
+    const { error } = await supabase.from('leads').update({ pipeline_stage }).eq('id', leadId)
+    if (error) { alert(`Couldn't update pipeline stage: ${error.message}`); return }
+    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, pipeline_stage } : l))
+  }
+
+  async function updateLeadDealValue(leadId, low, high) {
+    const { error } = await supabase.from('leads').update({
+      deal_value_estimate_low: low === '' ? null : Number(low),
+      deal_value_estimate_high: high === '' ? null : Number(high),
+    }).eq('id', leadId)
+    if (error) { alert(`Couldn't update deal value: ${error.message}`); return }
+    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, deal_value_estimate_low: low === '' ? null : Number(low), deal_value_estimate_high: high === '' ? null : Number(high) } : l))
+  }
+
+  async function updateLeadNextAction(leadId, next_action_at, next_action_note) {
+    const { error } = await supabase.from('leads').update({ next_action_at, next_action_note }).eq('id', leadId)
+    if (error) { alert(`Couldn't update next action: ${error.message}`); return }
+    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, next_action_at, next_action_note } : l))
+  }
+
+  async function toggleLeadActivity(leadId) {
+    if (expandedLeadId === leadId) { setExpandedLeadId(null); return }
+    setExpandedLeadId(leadId)
+    if (!leadActivities[leadId]) {
+      const { data, error } = await supabase
+        .from('lead_activities')
+        .select('*')
+        .eq('lead_id', leadId)
+        .order('created_at', { ascending: false })
+      if (!error) setLeadActivities(prev => ({ ...prev, [leadId]: data || [] }))
+    }
+  }
+
+  async function logLeadNote(leadId) {
+    if (!newLeadNote.trim()) return
+    const { error } = await supabase.from('lead_activities').insert({
+      lead_id: leadId, business_id: businessId, activity_type: 'note', body: newLeadNote.trim(), created_by: 'dispatcher',
+    })
+    if (error) { alert(`Couldn't log note: ${error.message}`); return }
+    setNewLeadNote('')
+    const { data } = await supabase.from('lead_activities').select('*').eq('lead_id', leadId).order('created_at', { ascending: false })
+    setLeadActivities(prev => ({ ...prev, [leadId]: data || [] }))
   }
 
   async function convertLeadToJob(lead) {
@@ -1293,6 +1381,60 @@ export default function DispatcherView() {
     supabase.functions.invoke('sync-technician-billing', { body: { businessId } }).catch(() => {})
   }
 
+  // Human-click only, same pattern as sync-technician-billing above —
+  // never fires on its own. Writes route_sequence/estimated_arrival_at
+  // onto that technician's remaining jobs today (nearest-neighbor
+  // heuristic — see optimize-daily-route's own header comment for the
+  // honest caveat on what this is and isn't).
+  async function optimizeTechRoute(techId) {
+    setOptimizingTechId(techId)
+    try {
+      const { data, error } = await supabase.functions.invoke('optimize-daily-route', { body: { technicianId: techId } })
+      if (error) throw error
+      if (data?.error) throw new Error(data.error)
+      if (data?.skipped) {
+        alert(data.skipped === 'no_technician_position' ? "Can't optimize yet — this technician hasn't shared their location today." : 'No remaining jobs today to sequence.')
+      } else {
+        await loadAll()
+      }
+    } catch (err) {
+      alert(`Couldn't optimize route: ${err.message}`)
+    } finally {
+      setOptimizingTechId(null)
+    }
+  }
+
+  // Human-click only — assembles existing evidence (checklist/photos/
+  // materials/credentials/invoice) for one job into a reviewable document.
+  // Never sends or files anything itself; see generate-compliance-package's
+  // header comment for the full boundary.
+  async function generateCompliancePackage(jobId) {
+    setGeneratingPackageForJobId(jobId)
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-compliance-package', { body: { jobId } })
+      if (error) throw error
+      if (data?.error) throw new Error(data.error)
+      await loadCompliancePackages(jobId)
+    } catch (err) {
+      alert(`Couldn't generate compliance package: ${err.message}`)
+    } finally {
+      setGeneratingPackageForJobId(null)
+    }
+  }
+
+  async function loadCompliancePackages(jobId) {
+    const { data, error } = await supabase.from('compliance_packages').select('*').eq('job_id', jobId).order('created_at', { ascending: false })
+    if (!error) setCompliancePackages(prev => ({ ...prev, [jobId]: data || [] }))
+  }
+
+  async function markCompliancePackageSent(pkgId, jobId) {
+    const sentTo = prompt('Who was this sent to? (e.g. "emailed to client", "given to WorkSafe inspector")')
+    if (sentTo === null) return // cancelled
+    const { error } = await supabase.from('compliance_packages').update({ sent_at: new Date().toISOString(), sent_to: sentTo || null }).eq('id', pkgId)
+    if (error) { alert(`Couldn't update: ${error.message}`); return }
+    await loadCompliancePackages(jobId)
+  }
+
   const techColors = ['#2D5FA8','#1D9E75','#A87C16','#8A2525','#534AB7','#185FA5']
 
   // Agent Operating System dashboard (Phase 5) — derived view state, computed
@@ -1446,6 +1588,14 @@ export default function DispatcherView() {
                     </button>
                   </div>
                 )}
+                {tech.last_seen && tech.current_lat != null && (
+                  <div style={{ marginTop: 4 }} onClick={(e) => e.stopPropagation()}>
+                    <button style={styles.techLinkBtn} disabled={optimizingTechId === tech.id} onClick={() => optimizeTechRoute(tech.id)}
+                      title="Reorders this technician's remaining jobs today by nearest-neighbor distance from their current position — a heuristic, not a guaranteed-optimal route.">
+                      {optimizingTechId === tech.id ? 'Optimizing...' : '⟳ Optimize today\u2019s route'}
+                    </button>
+                  </div>
+                )}
               </div>
             )
           })}
@@ -1581,8 +1731,15 @@ export default function DispatcherView() {
               )}
               {jobs.map(job => (
                 <div key={job.id} style={styles.jobRow}>
-                  <p style={styles.jobClient}>{job.client_name}</p>
+                  <p style={styles.jobClient}>
+                    {job.route_sequence != null && <span style={styles.repeatBadge}>STOP #{job.route_sequence}</span>} {job.client_name}
+                  </p>
                   <p style={styles.jobAddr}>{job.client_address}</p>
+                  {job.estimated_arrival_at && (
+                    <p style={{ ...styles.jobAddr, color: '#666' }}>
+                      Est. arrival: {new Date(job.estimated_arrival_at).toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit' })}
+                    </p>
+                  )}
                   <p style={styles.jobStatus(job.status)}>{job.status.toUpperCase()}</p>
                   {job.status === 'scheduled' && !job.technician_id && !job.assigned_subcontractor_id && (
                     <select style={styles.assignSelect}
@@ -1826,6 +1983,16 @@ export default function DispatcherView() {
               {leads.length > 0 && (
                 <button style={{ ...styles.addJobBtn, marginBottom: 10 }} onClick={exportLeadsCSV}>⬇ Export CSV</button>
               )}
+              {leads.some(l => l.deal_value_estimate_low != null || l.deal_value_estimate_high != null) && (
+                <div style={{ marginBottom: 14, padding: 10, background: '#0f1420', borderRadius: 8, border: '1px solid #1e293b' }}>
+                  <p style={styles.sectionLabel}>PIPELINE VALUE (from leads with an estimate entered)</p>
+                  <p style={{ color: '#1D9E75', fontSize: 15, fontWeight: 'bold', margin: '4px 0 0' }}>
+                    ${leads.reduce((s, l) => s + (Number(l.deal_value_estimate_low) || 0), 0).toLocaleString()}
+                    {' – '}
+                    ${leads.reduce((s, l) => s + (Number(l.deal_value_estimate_high) || 0), 0).toLocaleString()}
+                  </p>
+                </div>
+              )}
               {leads.map(lead => (
                 <div key={lead.id} style={styles.leadRow}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -1842,13 +2009,79 @@ export default function DispatcherView() {
                   <p style={styles.jobAddr}>{lead.suburb} · {lead.client_phone}</p>
                   <p style={styles.leadDesc}>{lead.job_description}</p>
                   {lead.score_reason && <p style={styles.leadReason}>{lead.score_reason}</p>}
+
+                  {/* CRM pipeline controls — a richer lens on top of status,
+                      see supabase_schema_delta_lead_crm_pipeline.sql */}
+                  <div style={{ display: 'flex', gap: 6, marginTop: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <select
+                      value={lead.pipeline_stage || 'new'}
+                      onChange={e => updateLeadPipelineStage(lead.id, e.target.value)}
+                      style={styles.pipelineStageSelect}
+                    >
+                      <option value="new">New</option>
+                      <option value="contacted">Contacted</option>
+                      <option value="discovery_call">Discovery call</option>
+                      <option value="quoted">Quoted</option>
+                      <option value="negotiating">Negotiating</option>
+                      <option value="won">Won</option>
+                      <option value="lost">Lost</option>
+                    </select>
+                    <input
+                      type="number" placeholder="Est. $ low" defaultValue={lead.deal_value_estimate_low ?? ''}
+                      onBlur={e => updateLeadDealValue(lead.id, e.target.value, lead.deal_value_estimate_high ?? '')}
+                      style={styles.dealValueInput}
+                    />
+                    <input
+                      type="number" placeholder="Est. $ high" defaultValue={lead.deal_value_estimate_high ?? ''}
+                      onBlur={e => updateLeadDealValue(lead.id, lead.deal_value_estimate_low ?? '', e.target.value)}
+                      style={styles.dealValueInput}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, marginTop: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <input
+                      type="datetime-local" defaultValue={lead.next_action_at ? lead.next_action_at.slice(0, 16) : ''}
+                      onBlur={e => updateLeadNextAction(lead.id, e.target.value ? new Date(e.target.value).toISOString() : null, lead.next_action_note ?? '')}
+                      style={styles.dealValueInput}
+                    />
+                    <input
+                      type="text" placeholder="Next action note, e.g. 'call back Thursday'" defaultValue={lead.next_action_note ?? ''}
+                      onBlur={e => updateLeadNextAction(lead.id, lead.next_action_at ?? null, e.target.value)}
+                      style={{ ...styles.dealValueInput, flex: 1, minWidth: 160 }}
+                    />
+                  </div>
+
                   <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
                     <button style={styles.leadActionPrimary} onClick={() => convertLeadToJob(lead)}>Convert to job</button>
                     {lead.status === 'new' && (
                       <button style={styles.leadActionSecondary} onClick={() => markLeadStatus(lead.id, 'contacted')}>Contacted</button>
                     )}
                     <button style={styles.leadActionSecondary} onClick={() => markLeadStatus(lead.id, 'lost')}>Lost</button>
+                    <button style={styles.leadActionSecondary} onClick={() => toggleLeadActivity(lead.id)}>
+                      {expandedLeadId === lead.id ? 'Hide timeline' : 'Timeline'}
+                    </button>
                   </div>
+
+                  {expandedLeadId === lead.id && (
+                    <div style={{ marginTop: 8, padding: 10, background: '#0f1420', borderRadius: 8, border: '1px solid #1e293b' }}>
+                      <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                        <input
+                          type="text" placeholder="Log a note or call..." value={newLeadNote}
+                          onChange={e => setNewLeadNote(e.target.value)}
+                          style={{ ...styles.dealValueInput, flex: 1 }}
+                        />
+                        <button style={styles.leadActionSecondary} onClick={() => logLeadNote(lead.id)}>Add</button>
+                      </div>
+                      {(leadActivities[lead.id] || []).length === 0 && (
+                        <p style={{ color: '#444', fontSize: 12 }}>No activity logged yet</p>
+                      )}
+                      {(leadActivities[lead.id] || []).map(a => (
+                        <div key={a.id} style={{ padding: '4px 0', borderBottom: '1px solid #1e293b' }}>
+                          <p style={{ color: '#9aa5b1', fontSize: 12, margin: 0 }}>{a.body}</p>
+                          <p style={{ color: '#444', fontSize: 10, margin: 0 }}>{a.created_by} · {timeAgo(a.created_at)}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
               {leads.length === 0 && <p style={{ color: '#444', fontSize: 13 }}>No open leads</p>}
@@ -1999,6 +2232,37 @@ export default function DispatcherView() {
                       >
                         {resendingReferralId === inv.id ? 'Sending...' : 'Resend'}
                       </button>
+                    </div>
+                  )}
+
+                  {inv.job_id && inv.status !== 'void' && (
+                    <div style={{ marginTop: 6 }}>
+                      <button
+                        style={styles.leadActionSecondary}
+                        disabled={generatingPackageForJobId === inv.job_id}
+                        onClick={() => generateCompliancePackage(inv.job_id)}
+                        title="Assembles this job's checklist, photos, materials used, technician credentials and invoice into one document for you to review and send on — never sent or filed automatically."
+                      >
+                        {generatingPackageForJobId === inv.job_id ? 'Generating...' : '📋 Generate compliance package'}
+                      </button>
+                      {' '}
+                      <button style={styles.leadActionSecondary} onClick={() => loadCompliancePackages(inv.job_id)}>
+                        View packages{compliancePackages[inv.job_id] ? ` (${compliancePackages[inv.job_id].length})` : ''}
+                      </button>
+                      {(compliancePackages[inv.job_id] || []).map(pkg => (
+                        <div key={pkg.id} style={{ marginTop: 6, padding: 8, background: '#0f1420', borderRadius: 8, border: '1px solid #1e293b' }}>
+                          <p style={{ color: '#9aa5b1', fontSize: 12, margin: '0 0 4px' }}>{pkg.summary}</p>
+                          <p style={{ color: '#444', fontSize: 11, margin: 0 }}>
+                            Generated {new Date(pkg.created_at).toLocaleString('en-AU')}
+                            {pkg.sent_at ? ` · Sent ${new Date(pkg.sent_at).toLocaleDateString('en-AU')}${pkg.sent_to ? ` (${pkg.sent_to})` : ''}` : ''}
+                          </p>
+                          {!pkg.sent_at && (
+                            <button style={{ ...styles.leadActionSecondary, marginTop: 4 }} onClick={() => markCompliancePackageSent(pkg.id, inv.job_id)}>
+                              Mark sent
+                            </button>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -2430,7 +2694,9 @@ export default function DispatcherView() {
             }}
           />
 
-          {/* Technician markers */}
+          {/* Technician markers — scale up + glow while a job pin is being
+              dragged near them, as a drop-target hint for the drag-to-assign
+              gesture below. */}
           {technicians.map((tech, i) => tech.current_lat && (
             <Marker
               key={tech.id}
@@ -2441,17 +2707,44 @@ export default function DispatcherView() {
             >
               <div style={{
                 ...styles.marker,
-                background: techColors[i % techColors.length]
+                background: techColors[i % techColors.length],
+                transform: dragHoverTechId === tech.id ? 'scale(1.35)' : 'scale(1)',
+                boxShadow: dragHoverTechId === tech.id ? '0 0 0 4px rgba(29,158,117,0.5)' : styles.marker.boxShadow,
+                transition: 'transform 0.1s ease',
               }}>
                 {tech.name.charAt(0).toUpperCase()}
               </div>
             </Marker>
           ))}
 
-          {/* Job markers */}
+          {/* Job markers — draggable: drop one onto a nearby technician to
+              reassign that job (handleJobPinDrop). The pin snaps back to the
+              job's real client_lat/lng afterwards since we never persist the
+              drop coordinates, only use them to pick the nearest technician. */}
           {jobs.filter(j => j.client_lat).map(job => (
-            <Marker key={job.id} latitude={job.client_lat} longitude={job.client_lng} anchor="bottom">
-              <div style={styles.jobMarker}>📍</div>
+            <Marker
+              key={job.id}
+              latitude={job.client_lat}
+              longitude={job.client_lng}
+              anchor="bottom"
+              draggable
+              onDragStart={() => setDraggingJobId(job.id)}
+              onDrag={e => {
+                let nearest = null
+                let nearestKm = Infinity
+                for (const tech of technicians) {
+                  if (tech.current_lat == null || tech.current_lng == null) continue
+                  const km = haversineKm(e.lngLat.lat, e.lngLat.lng, tech.current_lat, tech.current_lng)
+                  if (km < nearestKm) { nearestKm = km; nearest = tech }
+                }
+                setDragHoverTechId(nearest && nearestKm <= DRAG_ASSIGN_RADIUS_KM ? nearest.id : null)
+              }}
+              onDragEnd={e => handleJobPinDrop(job, e.lngLat)}
+            >
+              <div
+                style={{ ...styles.jobMarker, cursor: 'grab', opacity: draggingJobId === job.id ? 0.6 : 1, fontSize: draggingJobId === job.id ? 26 : styles.jobMarker.fontSize }}
+                title="Drag onto a technician to reassign"
+              >📍</div>
             </Marker>
           ))}
 
@@ -3494,6 +3787,8 @@ const styles = {
   agentStatLabel: { color: '#666', fontSize: 10, letterSpacing: 0.5, textTransform: 'uppercase', margin: 0 },
   leadActionPrimary: { flex: 1, background: '#1D9E75', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 0', fontSize: 12, fontWeight: 'bold', cursor: 'pointer' },
   leadActionSecondary: { background: 'transparent', color: '#888', border: '1px solid #1e293b', borderRadius: 8, padding: '6px 10px', fontSize: 12, cursor: 'pointer' },
+  pipelineStageSelect: { background: '#0f1420', color: '#ccc', border: '1px solid #1e293b', borderRadius: 6, padding: '5px 8px', fontSize: 12 },
+  dealValueInput: { background: '#0f1420', color: '#ccc', border: '1px solid #1e293b', borderRadius: 6, padding: '5px 8px', fontSize: 12, width: 110 },
   marker: { width: 36, height: 36, borderRadius: '50%', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: 14, border: '2px solid #fff', cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.5)' },
   jobMarker: { fontSize: 20, cursor: 'pointer' },
   modalOverlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999 },

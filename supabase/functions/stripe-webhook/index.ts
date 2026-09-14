@@ -12,7 +12,10 @@
 // Webhooks:
 //   URL: https://YOUR_PROJECT_REF.supabase.co/functions/v1/stripe-webhook
 //   Events to send: checkout.session.completed, customer.subscription.deleted,
-//                    invoice.payment_failed, invoice.payment_succeeded
+//                    invoice.payment_failed, invoice.payment_succeeded,
+//                    payment_intent.succeeded (needed only if the optional
+//                    "Pay now" invoice flow — create-invoice-payment-intent —
+//                    is used; see supabase_schema_delta_invoice_payments.sql)
 // Copy the signing secret into Supabase secrets as STRIPE_WEBHOOK_SECRET.
 //
 // Run supabase_schema_delta_payment_failed.sql once before relying on the
@@ -173,6 +176,26 @@ serve(async (req: Request) => {
             .update({ payment_failed_at: null })
             .eq('stripe_sub_id', subId)
           if (error) console.error('Failed to clear payment_failed_at:', error.message)
+        }
+        break
+      }
+
+      case 'payment_intent.succeeded': {
+        // A client paid a one-off invoice via the "Pay now" flow
+        // (create-invoice-payment-intent). Mark the matching invoice paid —
+        // this is the automated counterpart to DispatcherView's existing
+        // manual "Mark Paid" button, which remains untouched and is still
+        // how every invoice gets marked paid unless a business turns this
+        // optional flow on.
+        const pi = event.data.object as Stripe.PaymentIntent
+        const invoiceId = pi.metadata?.invoice_id
+        if (invoiceId) {
+          const { error } = await supabaseAdmin
+            .from('invoices')
+            .update({ status: 'paid', paid_at: new Date().toISOString(), payment_method: 'stripe_card' })
+            .eq('id', invoiceId)
+            .eq('stripe_payment_intent_id', pi.id)
+          if (error) console.error('Failed to mark invoice paid from payment_intent.succeeded:', error.message)
         }
         break
       }
