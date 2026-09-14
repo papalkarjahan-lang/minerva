@@ -658,6 +658,18 @@ that's missing, and only when something actually tries it. The
 `corrective_actions` find made this worth checking everywhere at once
 instead of table-by-table as gaps happen to get noticed.
 
+## Added 2026-09-14: public `/contact` marketing page
+
+New standalone, unauthenticated `/contact` page (distinct from the
+in-app `ContactSupportModal.jsx`) inserts into `support_requests` with
+`business_id: null`, same shape/columns as the existing modal. No new
+policy or grant needed — `support_requests` already has an anon INSERT
+policy (`with check (true)`) and base grant from
+`supabase_schema_delta_support_requests.sql`. SELECT on this table stays
+`admin_users`-only (pass 1, above), so a contact-page submitter cannot
+read back other people's messages. Same trust tier as every other
+anon-insert-only table in this doc.
+
 ## Added 2026-09-08: embeddable widget (`public/widget.js`)
 
 New surface: a client can now paste `<script src=".../widget.js"
