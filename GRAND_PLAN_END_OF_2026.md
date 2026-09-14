@@ -101,11 +101,73 @@ already-tight 16-week plan.
 
 ---
 
-## 4. The single most important correction this update makes
+## 4. What we will likely actually have by Dec 31, 2026 — a scenario projection
+
+This is the direct answer to "what will we likely have," split by segment
+because the two tracks now convert on genuinely different timelines — and
+that difference is real, already-built product behavior, not a new pitch
+angle:
+
+**Why the solo/small-business segment now converts faster, concretely.**
+Checked `Onboarding.jsx` + `create-checkout-session` directly: a solo trader
+or small business can go from the marketing site to a live Stripe Checkout
+session with a 7-day trial in one sitting — no manual approval, no waiting
+for a call, no human in the loop before the trial starts. This already
+existed before this round's tier work; what this round added is the
+positioning (`/pricing`'s size guide, "Solo" framing, `/features`) that
+tells a one-van operator this product is for them at all. The **enterprise
+track has no such shortcut** — `big_account_targets` stays a fully manual,
+human-reviewed pipeline by design (per the standing "no autonomous outbound
+to third parties" boundary), so a big account still runs the same 4-12+ week
+real B2B cycle `MINERVA_200K_PLAN.md` already documents. Removing signup
+friction changes how fast an *already-interested* solo/small prospect becomes
+a paying trial — it does not change cold-email reply rates (3-9%,
+unchanged, no real data yet to move this) or invent a faster enterprise
+cycle.
+
+**No real conversion data exists yet to calibrate this precisely** (0
+outreach sent, 0 signups, per Section 1) — the scenarios below are reasoned
+projections built on the existing benchmark math in `MINERVA_200K_PLAN.md`
+and `THREE_200K_STRETCH_PLANS.md`, split by segment, not new data. Treat
+them as planning ranges, not commitments.
+
+| Scenario | Solo/small self-serve signups (Starter/Standard, 1-10 techs) | Growing-team upgrades (Standard/Pro, 10-30 techs) | Big-account closes (Enterprise track) | Exit MRR (Dec 31) | Total cash collected in 2026 |
+|---|---|---|---|---|---|
+| **Low** | 3-5 | 0 | 0 | ~$150-500 | ~$1-4K |
+| **Base** | 8-14 | 0-1 | 0 | ~$800-2,200 | ~$5-15K |
+| **High** | 15-20 | 1-2 | 1 (small multi-van pilot, not a full FM/council contract) | ~$2,500-6,000 + pilot value | ~$15-25K |
+
+**How this maps to the existing honest range:** the Low-Base-High bands above
+sit inside, not beyond, the $5-25K collected / up-to-$10-30K-exit-MRR range
+`MINERVA_200K_PLAN.md` already established — this section breaks that same
+range down by segment and names the mechanism (self-serve speed for
+solo/small; a fully manual, slow cycle for enterprise) rather than moving
+the range itself. The one honest addition: because solo/small conversion no
+longer waits on a manual step, the realistic **path** to the Base/High
+columns is real outreach volume sent soon, not a longer sales process per
+signup — the constraint is entirely "has anyone been contacted yet"
+(currently: no), not product friction.
+
+**What would have to be true for High:** a first outreach batch sent within
+the next 1-2 weeks (not yet done — see Section 5), `RESEND_API_KEY` set,
+sustained weekly sends through December, and at least one of the 18 stalled
+big-account targets reaching a real conversation soon enough for a small
+pilot (not a full contract) to close before Dec 31. None of these are
+currently true as of 2026-09-15.
+
+**What "clients" honestly means in this projection:** counts and segments,
+not names. There are no real signed clients today (Section 1). Any specific
+company named in this document is a research target, not a customer, and
+will stay that way in every future update until a real subscription exists
+in `businesses` with a tier other than test data.
+
+---
+
+## 5. The single most important correction this update makes
 
 Every previous planning document assumed outreach would already be moving
 by now. It isn't. The concrete, unblocked, zero-cost-to-attempt next actions
-are:
+are (same list Section 4 points to for reaching its High scenario):
 
 1. **Load a first real prospect batch.** `parse-prospect-text` and
    `draft-outreach-batch` are live and tested — `outreach_prospects` being
@@ -131,7 +193,7 @@ update.
 
 ---
 
-## 5. What this document deliberately does not do
+## 6. What this document deliberately does not do
 
 - Does not invent a client list. The only companies named anywhere in this
   plan are the 18 real researched targets already in `big_account_targets`,
