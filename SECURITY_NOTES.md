@@ -658,6 +658,37 @@ that's missing, and only when something actually tries it. The
 `corrective_actions` find made this worth checking everywhere at once
 instead of table-by-table as gaps happen to get noticed.
 
+## Added 2026-09-14: public `/enterprise` inbound lead form — new anon INSERT on `big_account_targets`
+
+`big_account_targets` (added 2026-09-10) was operator-only end to end: every
+row entered by hand in `AdminConsole.jsx`'s "Big Accounts" tab, no public
+writer at all. The new `/enterprise` marketing page lets a multi-van fleet,
+FM company, council, or strata manager self-submit a lead directly, so this
+adds a narrowly-scoped second INSERT policy
+(`supabase_schema_delta_enterprise_inbound.sql`) rather than opening the
+table up generally:
+
+- SELECT/UPDATE stay admin-only, completely unchanged — a public submitter
+  can never read this table back, including their own row.
+- The new policy's `with check` forces `stage = 'researching'` and blocks
+  `next_action`/`next_action_date` from being set on insert — the two
+  fields that represent the operator's own internal working state. A
+  public submission can create a new row but can never fast-forward the
+  pipeline stage or inject fake internal notes-to-self.
+- No DELETE grant added for anyone (there wasn't one before this either —
+  confirmed live, cleanup of test rows during this change required a
+  temporary `grant delete ... to service_role`, immediately revoked after).
+- Live-tested before shipping: a legitimate anon insert (no `stage`
+  specified) succeeds; the same insert with `stage: 'closed_won'` is
+  correctly rejected by the RLS policy itself (`42501`, row-level security
+  violation, not a grant error); anon SELECT is still a hard permission
+  error (no grant exists), same as before — never returns data.
+
+No auto-reply or automated proposal is triggered by this form — a real
+person reviews and follows up by hand, same as every other row in this
+pipeline. The page's copy is written to never imply a response-time SLA,
+since none exists in code.
+
 ## Added 2026-09-14: public `/contact` marketing page
 
 New standalone, unauthenticated `/contact` page (distinct from the

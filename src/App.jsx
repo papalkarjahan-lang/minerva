@@ -32,6 +32,7 @@ const CaseStudy = lazy(() => import('./pages/CaseStudy'))
 const ProposalView = lazy(() => import('./pages/ProposalView'))
 const Features = lazy(() => import('./pages/Features'))
 const Pricing = lazy(() => import('./pages/Pricing'))
+const Enterprise = lazy(() => import('./pages/Enterprise'))
 const About = lazy(() => import('./pages/About'))
 const Contact = lazy(() => import('./pages/Contact'))
 const Blog = lazy(() => import('./pages/Blog'))
@@ -60,6 +61,7 @@ export default function App() {
         <Route path="/refund-policy" element={<RefundPolicy />} />
         <Route path="/features" element={<Features />} />
         <Route path="/pricing" element={<Pricing />} />
+        <Route path="/enterprise" element={<Enterprise />} />
         <Route path="/about" element={<About />} />
         <Route path="/contact" element={<Contact />} />
         <Route path="/blog" element={<Blog />} />

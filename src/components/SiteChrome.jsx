@@ -10,6 +10,7 @@ import { Link } from 'react-router-dom'
 const NAV_LINKS = [
   ['/features', 'Features'],
   ['/pricing', 'Pricing'],
+  ['/enterprise', 'Enterprise'],
   ['/blog', 'Blog'],
   ['/about', 'About'],
 ]
@@ -49,6 +50,7 @@ export function SiteFooter() {
       <p style={{ margin: 0 }}>
         <Link to="/features" style={{ color: '#666', textDecoration: 'none', margin: '0 10px' }}>Features</Link>
         <Link to="/pricing" style={{ color: '#666', textDecoration: 'none', margin: '0 10px' }}>Pricing</Link>
+        <Link to="/enterprise" style={{ color: '#666', textDecoration: 'none', margin: '0 10px' }}>Enterprise</Link>
         <Link to="/blog" style={{ color: '#666', textDecoration: 'none', margin: '0 10px' }}>Blog</Link>
         <Link to="/about" style={{ color: '#666', textDecoration: 'none', margin: '0 10px' }}>About</Link>
         <Link to="/contact" style={{ color: '#666', textDecoration: 'none', margin: '0 10px' }}>Contact</Link>

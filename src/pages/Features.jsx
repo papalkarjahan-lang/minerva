@@ -41,6 +41,16 @@ const SECTIONS = [
       ['🔁', 'Referral nudges', 'A single low-pressure referral-code text is sent to happy clients after a paid invoice — not a spam campaign.'],
     ],
   },
+  {
+    title: 'Multi-site & Enterprise (Industrial sector)',
+    items: [
+      ['🛰️', 'Asset telemetry & geofencing', 'Track engine hours, maintenance intervals, and geofenced site zones for equipment, not just people.'],
+      ['📍', 'Multi-day site tracking', 'Sites carry their own scope of work with arrival/departure check-ins, for jobs that run over multiple days.'],
+      ['⚠️', 'Safety incident tracking', 'Log and acknowledge on-site safety incidents by severity.'],
+      ['📦', 'Consumables reorder alerts', 'Get flagged before on-site stock runs out.'],
+      ['📑', 'Client verification packages', 'Assemble evidence packages for client and compliance handoff.'],
+    ],
+  },
 ]
 
 export default function Features() {
@@ -76,8 +86,11 @@ export default function Features() {
         <Link to="/pricing" style={{ display: 'inline-block', background: '#1D9E75', color: '#fff', textDecoration: 'none', padding: '16px 44px', borderRadius: 12, fontSize: 16, fontWeight: 'bold', marginRight: 12 }}>
           See pricing
         </Link>
-        <Link to="/start" style={{ display: 'inline-block', background: 'transparent', color: '#fff', textDecoration: 'none', padding: '16px 44px', borderRadius: 12, fontSize: 16, fontWeight: 'bold', border: '1px solid #2D5FA8' }}>
+        <Link to="/start" style={{ display: 'inline-block', background: 'transparent', color: '#fff', textDecoration: 'none', padding: '16px 44px', borderRadius: 12, fontSize: 16, fontWeight: 'bold', border: '1px solid #2D5FA8', marginRight: 12 }}>
           Start free trial
+        </Link>
+        <Link to="/enterprise" style={{ display: 'inline-block', color: '#888', textDecoration: 'none', padding: '16px 12px', fontSize: 14 }}>
+          Running a fleet? →
         </Link>
       </div>
 

@@ -17,6 +17,10 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://minervaops.com.au/enterprise</loc>
+    <priority>0.7</priority>
+  </url>
+  <url>
     <loc>https://minervaops.com.au/about</loc>
     <priority>0.5</priority>
   </url>
