@@ -602,6 +602,62 @@ across every RLS-enabled table (not just the ones touched so far) to see
 if any other table has the same silent-grant-gap bug `corrective_actions`
 had.
 
+## Fixed 2026-09-14: missing base GRANTs on `roi_proposals` / `big_account_targets` / `outreach_prospects` — same bug class, worse blast radius
+
+Pass 5's `corrective_actions` discovery (missing `anon`/`authenticated`
+grant) raised an obvious question: is that a one-off, or a bug class? Ran
+a systematic query cross-referencing every RLS policy's (role, command)
+against `information_schema.role_table_grants` for every RLS-enabled
+table, independent of any list. Found 3 more tables with the same class
+of gap — but this time on `service_role`, the key every backend edge
+function trusts completely, not just `anon`. Confirmed live: a direct
+`service_role` REST call to SELECT `outreach_prospects` or
+`big_account_targets` returned a 403 `permission denied`, not data.
+
+Confirmed via grep of the real callers:
+
+- **`roi_proposals`**: `generate-roi-proposal` does
+  `.insert({...}).select().single()` via `service_role` — needed INSERT
+  *and* SELECT (the chained `.select()` triggers an implicit RETURNING
+  under the caller's own role), neither ever granted. Separately,
+  `AdminConsole.jsx`'s pipeline view reads this table as a real logged-in
+  `authenticated` session, which also had zero grant (only `anon`, for
+  the public `ProposalView.jsx` link, was ever granted). Net effect:
+  proposal generation has been silently failing since this table was
+  created, and the admin console's proposal column has been erroring for
+  any logged-in admin the whole time.
+- **`big_account_targets`**: `generate-roi-proposal` also reads
+  (`.select('stage')`) and updates (auto-advance to `proposal_sent`) this
+  table via `service_role` — neither was ever granted, so the pipeline
+  auto-advance has silently never worked.
+- **`outreach_prospects`**: `parse-prospect-text`, `draft-outreach-batch`,
+  `followup-outreach`, and `send-outreach-batch` all need
+  SELECT/INSERT/UPDATE via `service_role` — none were ever granted, so
+  Minerva's own outreach engine (see "Added 2026-09-10" above) has been
+  completely non-functional at the database layer since creation,
+  independent of RLS policy correctness, with no error visible anywhere
+  except inside each cron function's own invocation logs.
+
+Fixed via `supabase_schema_delta_service_role_grants_fix.sql`. None of
+these are security regressions — `anon` access is unaffected either way
+(`roi_proposals`' anon SELECT was already correctly scoped;
+`big_account_targets`/`outreach_prospects` were never anon-reachable at
+all, confirmed by grep, so no anon grant was added). This purely restores
+the backend's own trusted access to its own tables. Live-tested the exact
+failure mode after fixing: a real `service_role`
+`insert({...}).select().single()` against `roi_proposals` (matching
+`generate-roi-proposal`'s exact call shape) now succeeds and returns the
+row; test row deleted immediately after (via a temporary DELETE grant,
+revoked again right after cleanup, since no real code path ever deletes
+from this table).
+
+**Lesson**: a missing base GRANT is invisible to RLS policy review,
+`pg_policies` inspection, or an OPTIONS smoke test — it only ever
+surfaces as a runtime 403 on the exact table/role/command combination
+that's missing, and only when something actually tries it. The
+`corrective_actions` find made this worth checking everywhere at once
+instead of table-by-table as gaps happen to get noticed.
+
 ## Added 2026-09-08: embeddable widget (`public/widget.js`)
 
 New surface: a client can now paste `<script src=".../widget.js"
