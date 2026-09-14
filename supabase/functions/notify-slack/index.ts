@@ -1,7 +1,8 @@
 // Supabase Edge Function: notify-slack
 // Generic Slack notifier used by other functions/agents (ai-intake-chat,
 // nurture-stale-leads, chase-unpaid-invoices, auto-assign-technician,
-// daily-digest) to post an alert into a business's own Slack workspace.
+// daily-digest, and ~10 others) to post an alert into a business's own
+// Slack workspace.
 // Deploy with: supabase functions deploy notify-slack
 //
 // This function takes a businessId, looks up that business's
@@ -13,6 +14,25 @@
 // Called internally by other edge functions (server-to-server), so this
 // is deployed WITHOUT --no-verify-jwt like the rest of the internal
 // functions — callers pass Authorization: Bearer <anon key>.
+//
+// Formatting (2026-09-14): every caller still just sends plain
+// {businessId, text} — nothing upstream changed. This function now turns
+// that into a proper Slack Block Kit message instead of a flat text blob:
+//   - a header block showing which agent raised it (parsed from the
+//     existing "<emoji> *Name*: ..." convention every caller already uses)
+//   - the message body as a section block (mrkdwn, so existing *bold*
+//     markup keeps working unchanged)
+//   - a context block with a Slack-native localized timestamp
+//     (<!date^...>, renders in each viewer's own timezone) and a
+//     "Minerva" byline
+//   - a colored side-bar (via `attachments`) — red for emergencies/safety,
+//     amber for warnings, green for money/wins, Slack's own aubergine
+//     purple as the default — so people can eyeball urgency in the
+//     channel sidebar without opening the message
+//   - an "Open Dispatcher" button (only if APP_URL is configured) linking
+//     straight to that business's dispatcher view
+// `text` is still sent as the top-level fallback string (Slack requires
+// this for push notifications and screen readers when blocks are used).
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
@@ -20,6 +40,35 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 interface NotifyPayload {
   businessId: string
   text: string
+}
+
+const RED = '#e01e5a'      // Slack's own "danger" red
+const AMBER = '#ecb22e'    // Slack's own "warning" yellow
+const GREEN = '#2eb67d'    // Slack's own "success" green
+const AUBERGINE = '#4a154b' // Slack's own brand purple — default/neutral
+
+const URGENT_EMOJIS = ['🚨', '⚠️', '👻']
+const POSITIVE_EMOJIS = ['💰', '🤝', '📈', '✅']
+
+function colorFor(leadingEmoji: string | null): string {
+  if (!leadingEmoji) return AUBERGINE
+  if (URGENT_EMOJIS.includes(leadingEmoji)) return leadingEmoji === '🚨' ? RED : AMBER
+  if (POSITIVE_EMOJIS.includes(leadingEmoji)) return GREEN
+  return AUBERGINE
+}
+
+// Every existing caller writes text in the shape "<emoji> *AgentName*: body"
+// (see e.g. notify-slack call sites in track-consumables, detect-idle-assets,
+// sequence-handoffs). Parse that out so it can become a real header block
+// instead of just more inline text — falls back gracefully to a generic
+// "Minerva" header for the few callers (nurture-stale-leads, winback-lost-
+// leads, check-credential-expiry) that just forward a caller-built string.
+function parseAgentMessage(text: string): { emoji: string | null; agent: string | null; body: string } {
+  const match = text.match(/^(\S+)\s+\*([^*]+)\*:\s*([\s\S]*)$/)
+  if (match) {
+    return { emoji: match[1], agent: match[2], body: match[3] }
+  }
+  return { emoji: null, agent: null, body: text }
 }
 
 serve(async (req: Request) => {
@@ -54,10 +103,57 @@ serve(async (req: Request) => {
       })
     }
 
+    const { emoji, agent, body } = parseAgentMessage(text)
+    const headerText = agent ? `${emoji ? emoji + ' ' : ''}${agent}` : '🔔 Minerva'
+    const nowUnix = Math.floor(Date.now() / 1000)
+
+    const blocks: Record<string, unknown>[] = [
+      {
+        type: 'header',
+        text: { type: 'plain_text', text: headerText.slice(0, 150), emoji: true },
+      },
+      {
+        type: 'section',
+        text: { type: 'mrkdwn', text: body },
+      },
+      {
+        type: 'context',
+        elements: [
+          {
+            type: 'mrkdwn',
+            text: `Minerva  •  <!date^${nowUnix}^{date_short_pretty} at {time}|just now>`,
+          },
+        ],
+      },
+    ]
+
+    const appUrl = Deno.env.get('APP_URL')
+    if (appUrl) {
+      blocks.push({
+        type: 'actions',
+        elements: [
+          {
+            type: 'button',
+            text: { type: 'plain_text', text: 'Open Dispatcher', emoji: true },
+            url: `${appUrl}/dispatch/${businessId}`,
+            action_id: 'open_dispatcher',
+          },
+        ],
+      })
+    }
+
     const slackRes = await fetch(business.slack_webhook_url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({
+        text, // fallback for notifications/screen readers
+        attachments: [
+          {
+            color: colorFor(emoji),
+            blocks,
+          },
+        ],
+      }),
     })
 
     if (!slackRes.ok) {
