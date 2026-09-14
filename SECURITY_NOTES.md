@@ -424,12 +424,82 @@ deciding this, not assumed. `technician_credentials`, `job_assignments`,
 and `inventory_items` are NOT read by any of those three pages, so their
 SELECT was scoped down too (owner or the technician themselves).
 
-**Still open, same as pass 2**: `leads`, `checklist_templates`,
-`businesses`, `roi_proposals`, all `industrial_*` tables — SELECT on all
-of these is still anon-wide for the same public/anonymous-reader reasons
-as above (intake widget, onboarding, quote/proposal links), not yet
-audited table-by-table for a write-scoping pass the way the technician
-tables just were.
+## Fixed 2026-09-14: RLS read/write-scoping, pass 4
+
+Closed the "still open" list right above, now that technician auth
+(pass 3) exists to lean on. Confirmed every call site by grep before
+writing `supabase_schema_delta_rls_scoping_v3.sql` — nothing assumed.
+
+- **`checklist_templates`**: SELECT was anon `using (true))`; now
+  owner-or-technician (business-scoped — this table has no job_id, so
+  it's checked against `technicians.business_id`, not a specific job).
+  INSERT/UPDATE (DispatcherView's checklist setup) are owner-only.
+  Technician reads now run under the real session from pass 3, not a
+  bare PIN match — confirmed the technician-side fetch in
+  `TechnicianView.jsx` happens after `verifyOtp()`, so `auth.uid()` is
+  already present by the time it runs.
+- **`leads`**: SELECT/UPDATE were anon `using (true)`; now owner-only
+  (DispatcherView is the only browser reader/writer of either). INSERT
+  stays anon — `TrackingView.jsx`'s client-rebooking flow
+  (unguessable job-id link, no login) is a real, intentional public
+  writer, same reasoning as `checklist_photos`/`invoices` in pass 3.
+- **`businesses`**: UPDATE was anon `using (true)` (a prior fix,
+  `businesses_update_policy.sql`, to unblock owner/admin features that
+  were silently no-op'ing). Now: `owner_user_id = auth.uid()`, OR a
+  one-time claim (`owner_user_id is null` and the logged-in user's JWT
+  email matches `contact_email` — this is `RequireBusinessAuth.jsx`'s
+  existing pilot-business auto-claim, now enforced instead of merely
+  trusted), OR `admin_users` membership (AdminConsole's tier override,
+  same pattern as `agent_functions` in pass 2). SELECT/INSERT
+  deliberately untouched — `IntakeAssistant.jsx`/`SuccessPage.jsx` read a
+  business by unguessable id pre-login, `Onboarding.jsx` inserts one at
+  signup pre-login. Every edge function that writes `businesses` already
+  used service_role, so this changes nothing for background jobs.
+- **8 `industrial_*` tables** (`industrial_assets`,
+  `asset_telemetry_events`, `industrial_leads`, `site_projects`,
+  `site_checkins`, `safety_incidents`, `consumables_items`,
+  `client_verification_packages`): each had one blanket
+  `anon all ... using (true) with check (true)` policy. Confirmed by
+  grep that `IndustrialDispatcherView.jsx` (owner-authenticated, same
+  `RequireBusinessAuth` wrapper as DispatcherView) is the only browser
+  reader/writer of any of them — no public page reads these by
+  unguessable link. All 8 now use a single owner-only `for all` policy.
+  `monitor-asset-telemetry`/`harvest-industrial-leads` (the real external
+  ingestion endpoints) already run on service_role + a shared
+  `X-Ingestion-Key` header, unaffected. Every other writer (idle-asset
+  detection, safety-hazard detection, lead enrichment, etc.) was already
+  service_role too.
+- **`roi_proposals`**: checked live via `pg_policies` rather than
+  trusting the `.sql` delta files — it only ever had a SELECT policy
+  (anon, unguessable link; every write is `generate-roi-proposal`,
+  service_role). Nothing to change.
+
+**Bug caught by live-testing this delta before shipping it**: the new
+`businesses` UPDATE policy's `admin_users` EXISTS check threw
+`permission denied for table admin_users` for the plain `anon` role
+instead of cleanly denying, because pass 1 had only ever granted
+`admin_users` SELECT to `authenticated` (every prior table that
+referenced it was already authenticated-only, so `anon` never hit that
+branch). Fixed by also granting `admin_users` SELECT to `anon` — safe,
+since `admin_users`' own row policy (`auth.uid() = user_id`) still
+returns zero rows for a logged-out request either way; this only turns
+an error into a clean deny.
+
+Live-tested end-to-end before and after the fix: real owner-email claim
+on the one live pilot business succeeded; the same request replayed with
+a bare anon key (no session) and with a mismatched-email authenticated
+user were both cleanly denied (empty array, no error); `leads`
+SELECT/`industrial_assets` SELECT with a bare anon key returned empty;
+`leads` INSERT with a bare anon key still succeeds exactly as
+`TrackingView.jsx` calls it (no `.select()` chained, so it uses
+`return=minimal` — confirmed this doesn't hit the new owner-only SELECT
+policy on the returned row, which only surfaces if a caller explicitly
+asks for the row back). All test rows/sessions created for this were
+deleted immediately after; the one live business row was reverted to its
+original `name`.
+
+Nothing left open from the original pass-1/2/3 lists — every table
+flagged across all three passes has now been through this audit.
 
 ## Added 2026-09-08: embeddable widget (`public/widget.js`)
 
