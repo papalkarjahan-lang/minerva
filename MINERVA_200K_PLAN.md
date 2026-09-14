@@ -99,6 +99,15 @@ yet a live claim — it needs Twilio's own number-verification step (the same
 bank-account-gated blocker as the SMS upgrade) before any real business can
 turn it on.
 
+**Status update (2026-09-15) — see `GRAND_PLAN_END_OF_2026.md` for the full
+current-figures correction.** Live-queried that day: 0 real paying
+businesses, 0 revenue, all 18 big-account targets still untouched at
+`stage='researching'`, 0 prospects loaded into the outreach engine, 0 ROI
+proposals sent. The tooling below is built and tested; none of it has been
+pointed at a real prospect yet. A public `/enterprise` inbound lead page and
+a Solo/small/growing/fleet/enterprise size-tier framing (over the same 3 real
+Stripe tiers — no new price created) also shipped 2026-09-14/15.
+
 ---
 
 ## Part 3 — The two parallel tracks, week by week

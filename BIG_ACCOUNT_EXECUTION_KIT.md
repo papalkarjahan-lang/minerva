@@ -10,6 +10,12 @@ below is sourced; see the bottom of each section.
 **Use this alongside `BIG_CONTRACTS_PLAYBOOK.md`** (the target types and
 market math) and the Big Accounts tab (the tracker).
 
+**Added 2026-09-15:** a public `/enterprise` page now also feeds
+`big_account_targets` directly (anon insert, forced to `stage='researching'`,
+same as any hand-entered target — see `SECURITY_NOTES.md`). Zero submissions
+so far. Treat any real inbound lead from it exactly like a hand-researched
+target — same discovery script below, no different treatment.
+
 ---
 
 ## 1. Who you're actually selling to (the buying committee)
