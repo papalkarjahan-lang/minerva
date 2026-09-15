@@ -1,0 +1,142 @@
+/* ==========================================================================
+   Shared interactive design system for Minerva's public marketing pages
+   (LandingPage, Features, Enterprise, About). Same brand colors as the rest
+   of the site (green #1D9E75, blue #2D5FA8, background #050811) — this
+   file only adds motion/interaction on top of the existing palette.
+   ========================================================================== */
+
+/* ---------------------------------------------------------------- reveal --
+   Sections fade/slide up the first time they cross into view. */
+.lp-reveal {
+  opacity: 0;
+  transform: translateY(22px);
+  transition: opacity .7s cubic-bezier(.16,1,.3,1), transform .7s cubic-bezier(.16,1,.3,1);
+}
+.lp-reveal.lp-in {
+  opacity: 1;
+  transform: none;
+}
+
+/* ------------------------------------------------------------------ pill --
+   Small "live" status pill used above hero/section headlines. */
+.lp-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 16px;
+  border-radius: 100px;
+  background: rgba(29, 158, 117, .12);
+  border: 1px solid rgba(29, 158, 117, .35);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  color: #4ee6b3;
+  margin-bottom: 24px;
+}
+.lp-pill i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #4ee6b3;
+  animation: lp-blip 2s infinite;
+}
+@keyframes lp-blip { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+
+/* --------------------------------------------------------------- buttons --
+   Magnetic on hover (JS sets transform via utils/interactions.js). */
+.lp-cta-primary {
+  display: inline-block;
+  background: #1D9E75;
+  color: #fff;
+  text-decoration: none;
+  padding: 18px 44px;
+  border-radius: 14px;
+  font-size: 18px;
+  font-weight: bold;
+  transition: box-shadow .22s cubic-bezier(.16,1,.3,1);
+  will-change: transform;
+}
+.lp-cta-primary:hover {
+  box-shadow: 0 10px 30px rgba(29, 158, 117, .35);
+}
+.lp-cta-ghost {
+  display: inline-block;
+  color: #fff;
+  text-decoration: none;
+  padding: 18px 32px;
+  border-radius: 14px;
+  font-size: 16px;
+  font-weight: 600;
+  border: 1px solid #2a3a55;
+  transition: border-color .22s cubic-bezier(.16,1,.3,1);
+  will-change: transform;
+}
+.lp-cta-ghost:hover {
+  border-color: #4a9eff;
+}
+/* Smaller variant for secondary in-page CTAs (Features/Enterprise). */
+.lp-cta-primary.lp-cta-sm, .lp-cta-ghost.lp-cta-sm {
+  padding: 14px 30px;
+  font-size: 15px;
+  border-radius: 10px;
+}
+
+/* ------------------------------------------------------------------ card --
+   Cursor-reactive spotlight glow + 3D tilt (JS sets --mx/--my + transform
+   via utils/interactions.js). Used for feature/capability/pricing cards. */
+.lp-card {
+  position: relative;
+  background: #0a0f1d;
+  border-radius: 16px;
+  padding: 26px;
+  border: 1px solid #1e293b;
+  transition: border-color .25s, box-shadow .25s;
+  will-change: transform;
+}
+.lp-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(circle at var(--mx, 50%) var(--my, 50%), rgba(45, 95, 168, .18), transparent 60%);
+  opacity: 0;
+  transition: opacity .3s;
+  pointer-events: none;
+}
+.lp-card:hover {
+  border-color: #2D5FA8;
+  box-shadow: 0 16px 40px rgba(45, 95, 168, .18);
+}
+.lp-card:hover::before {
+  opacity: 1;
+}
+
+/* ------------------------------------------------------------- kinetic line -
+   Word-by-word reveal for a single editorial statement, triggered on
+   scroll into view. */
+.lp-kinetic {
+  font-size: clamp(26px, 3.6vw, 40px);
+  font-weight: 800;
+  line-height: 1.35;
+  text-align: center;
+  margin: 0;
+}
+.lp-kinetic-word {
+  display: inline-block;
+  color: #38425a;
+  transform: translateY(6px);
+  transition: color .5s ease, transform .5s ease;
+}
+.lp-kinetic.lp-go .lp-kinetic-word {
+  color: #fff;
+  transform: none;
+}
+
+/* -------------------------------------------------------------- form focus -
+   Consistent glow-on-focus for text inputs on pages with a real lead form
+   (Enterprise, Contact) — purely cosmetic, no behavior change. */
+.lp-input:focus {
+  outline: none;
+  border-color: #1D9E75 !important;
+  box-shadow: 0 0 0 3px rgba(29, 158, 117, .18);
+}

@@ -1,6 +1,9 @@
 import { Link } from 'react-router-dom'
 import { useEffect, useRef, useState } from 'react'
 import { SiteNav, SiteFooter } from '../components/SiteChrome'
+import { useReveal, Reveal } from '../hooks/useReveal'
+import { spotlightMove, magneticMove, magneticLeave, cardMove, cardLeave } from '../utils/interactions'
+import '../styles/interactive.css'
 import './LandingPage.css'
 
 const FAQS = [
@@ -43,57 +46,6 @@ const STORY_BEATS = [
   { k: '08:31 · NOTIFY', c: 'warn', a: 'Client gets a text', b: 'Automatic ETA + live tracking link once the van is close — your team never sends it manually.' },
   { k: '09:02 · DONE', c: 'ok', a: 'Job marked complete', b: 'Timestamped, on the record, ready for invoicing.' },
 ]
-
-function useReveal() {
-  const ref = useRef(null)
-  const [shown, setShown] = useState(false)
-  useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    const obs = new IntersectionObserver(([entry]) => {
-      if (entry.isIntersecting) { setShown(true); obs.disconnect() }
-    }, { threshold: 0.15 })
-    obs.observe(el)
-    return () => obs.disconnect()
-  }, [])
-  return [ref, shown]
-}
-
-function Reveal({ children, style }) {
-  const [ref, shown] = useReveal()
-  return (
-    <div ref={ref} className={`lp-reveal ${shown ? 'lp-in' : ''}`} style={style}>
-      {children}
-    </div>
-  )
-}
-
-// Cursor-reactive radial glow (Mapbox/Awwwards "spotlight card" trick) —
-// mutates a CSS var directly via the DOM instead of React state, so it
-// doesn't trigger a re-render on every mouse pixel.
-function spotlightMove(e) {
-  const r = e.currentTarget.getBoundingClientRect()
-  e.currentTarget.style.setProperty('--mx', `${((e.clientX - r.left) / r.width) * 100}%`)
-  e.currentTarget.style.setProperty('--my', `${((e.clientY - r.top) / r.height) * 100}%`)
-}
-
-// Magnetic buttons — nudge toward the cursor on hover, snap back on leave.
-function magneticMove(e) {
-  const r = e.currentTarget.getBoundingClientRect()
-  const mx = (e.clientX - r.left - r.width / 2) * 0.25
-  const my = (e.clientY - r.top - r.height / 2) * 0.25
-  e.currentTarget.style.transform = `translate(${mx}px, ${my - 2}px)`
-}
-function magneticLeave(e) { e.currentTarget.style.transform = '' }
-
-// Subtle 3D tilt on hover for feature/pricing cards.
-function tiltMove(e) {
-  const r = e.currentTarget.getBoundingClientRect()
-  const px = (e.clientX - r.left) / r.width - 0.5
-  const py = (e.clientY - r.top) / r.height - 0.5
-  e.currentTarget.style.transform = `perspective(700px) rotateX(${py * -6}deg) rotateY(${px * 6}deg) translateY(-4px)`
-}
-function tiltLeave(e) { e.currentTarget.style.transform = '' }
 
 // Canvas-drawn street grid with three vans drifting along fixed routes and
 // a house marker. Purely illustrative (labeled below it) — never claimed
@@ -390,7 +342,7 @@ export default function LandingPage() {
       <div style={{ maxWidth: 800, margin: '0 auto 100px', padding: '0 24px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 24 }}>
         {FEATURES.map(([icon, title, desc], i) => (
           <Reveal key={title} style={{ transitionDelay: `${i * 90}ms` }}>
-            <div className="lp-card" onMouseMove={(e) => { spotlightMove(e); tiltMove(e) }} onMouseLeave={tiltLeave}>
+            <div className="lp-card" onMouseMove={cardMove} onMouseLeave={cardLeave}>
               <p style={{ fontSize: 28, margin: '0 0 12px' }}>{icon}</p>
               <p style={{ color: '#fff', fontWeight: 'bold', fontSize: 16, margin: '0 0 8px' }}>{title}</p>
               <p style={{ color: '#666', fontSize: 14, margin: 0, lineHeight: 1.6 }}>{desc}</p>
@@ -414,8 +366,8 @@ export default function LandingPage() {
             <div
               key={name}
               className={`lp-price-card ${recommended ? 'lp-recommended' : ''}`}
-              onMouseMove={(e) => { spotlightMove(e); tiltMove(e) }}
-              onMouseLeave={tiltLeave}
+              onMouseMove={cardMove}
+              onMouseLeave={cardLeave}
             >
               {recommended && <span className="lp-price-badge">MOST POPULAR</span>}
               <p style={{ color: '#fff', fontWeight: 'bold', fontSize: 18, margin: '8px 0 4px' }}>{name}</p>

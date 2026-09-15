@@ -1,5 +1,8 @@
 import { Link } from 'react-router-dom'
 import { SiteNav, SiteFooter } from '../components/SiteChrome'
+import { Reveal } from '../hooks/useReveal'
+import { cardMove, cardLeave, magneticMove, magneticLeave } from '../utils/interactions'
+import '../styles/interactive.css'
 
 // Every item below is a real, shipped capability — cross-checked against
 // LandingPage.jsx's pricing tiers and features grid rather than invented
@@ -58,41 +61,46 @@ export default function Features() {
     <div style={{ fontFamily: 'Arial, sans-serif', background: '#050811', minHeight: '100vh', color: '#fff' }}>
       <SiteNav />
 
-      <div style={{ maxWidth: 680, margin: '0 auto', textAlign: 'center', padding: '70px 24px 50px' }}>
+      <Reveal style={{ maxWidth: 680, margin: '0 auto', textAlign: 'center', padding: '70px 24px 50px' }}>
+        <span className="lp-pill"><i />EVERY REAL CAPABILITY, NO FLUFF</span>
         <h1 style={{ fontSize: 42, fontWeight: 'bold', lineHeight: 1.2, margin: '0 0 16px' }}>Everything you need to run the field.</h1>
         <p style={{ fontSize: 18, color: '#aaa', margin: 0, lineHeight: 1.6 }}>
           No app install for technicians or clients. Set up in about 20 minutes.
         </p>
-      </div>
+      </Reveal>
 
       <div style={{ maxWidth: 900, margin: '0 auto 40px', padding: '0 24px' }}>
-        {SECTIONS.map(section => (
+        {SECTIONS.map((section, si) => (
           <div key={section.title} style={{ marginBottom: 48 }}>
-            <h2 style={{ fontSize: 22, fontWeight: 'bold', margin: '0 0 20px', color: '#1D9E75' }}>{section.title}</h2>
+            <Reveal>
+              <h2 style={{ fontSize: 22, fontWeight: 'bold', margin: '0 0 20px', color: '#1D9E75' }}>{section.title}</h2>
+            </Reveal>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 20 }}>
-              {section.items.map(([icon, title, desc]) => (
-                <div key={title} style={{ background: '#0a0f1d', borderRadius: 16, padding: 22, border: '1px solid #1e293b' }}>
-                  <p style={{ fontSize: 26, margin: '0 0 10px' }}>{icon}</p>
-                  <p style={{ color: '#fff', fontWeight: 'bold', fontSize: 15, margin: '0 0 8px' }}>{title}</p>
-                  <p style={{ color: '#666', fontSize: 13, margin: 0, lineHeight: 1.6 }}>{desc}</p>
-                </div>
+              {section.items.map(([icon, title, desc], i) => (
+                <Reveal key={title} style={{ transitionDelay: `${(si * 60 + i * 70) % 400}ms` }}>
+                  <div className="lp-card" onMouseMove={cardMove} onMouseLeave={cardLeave}>
+                    <p style={{ fontSize: 26, margin: '0 0 10px' }}>{icon}</p>
+                    <p style={{ color: '#fff', fontWeight: 'bold', fontSize: 15, margin: '0 0 8px' }}>{title}</p>
+                    <p style={{ color: '#666', fontSize: 13, margin: 0, lineHeight: 1.6 }}>{desc}</p>
+                  </div>
+                </Reveal>
               ))}
             </div>
           </div>
         ))}
       </div>
 
-      <div style={{ maxWidth: 680, margin: '0 auto 80px', padding: '0 24px', textAlign: 'center' }}>
-        <Link to="/pricing" style={{ display: 'inline-block', background: '#1D9E75', color: '#fff', textDecoration: 'none', padding: '16px 44px', borderRadius: 12, fontSize: 16, fontWeight: 'bold', marginRight: 12 }}>
+      <Reveal style={{ maxWidth: 680, margin: '0 auto 80px', padding: '0 24px', textAlign: 'center' }}>
+        <Link to="/pricing" className="lp-cta-primary lp-cta-sm" style={{ marginRight: 12 }} onMouseMove={magneticMove} onMouseLeave={magneticLeave}>
           See pricing
         </Link>
-        <Link to="/start" style={{ display: 'inline-block', background: 'transparent', color: '#fff', textDecoration: 'none', padding: '16px 44px', borderRadius: 12, fontSize: 16, fontWeight: 'bold', border: '1px solid #2D5FA8', marginRight: 12 }}>
+        <Link to="/start" className="lp-cta-ghost lp-cta-sm" style={{ marginRight: 12 }} onMouseMove={magneticMove} onMouseLeave={magneticLeave}>
           Start free trial
         </Link>
         <Link to="/enterprise" style={{ display: 'inline-block', color: '#888', textDecoration: 'none', padding: '16px 12px', fontSize: 14 }}>
           Running a fleet? →
         </Link>
-      </div>
+      </Reveal>
 
       <SiteFooter />
     </div>
