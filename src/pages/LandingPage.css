@@ -1,0 +1,485 @@
+/* ==========================================================================
+   MINERVA landing page
+   Same brand colors as the rest of the site (green #1D9E75, blue #2D5FA8,
+   background #050811) — this file only adds motion and interaction on top
+   of the existing palette, it doesn't introduce a new visual language.
+   ========================================================================== */
+
+.lp {
+  font-family: Arial, sans-serif;
+  background: #050811;
+  min-height: 100vh;
+  color: #fff;
+  position: relative;
+}
+
+/* Faint film-grain texture over the whole page for a less flat, more
+   premium dark-mode feel. Fixed + pointer-events:none so it never blocks
+   clicks and never affects layout/stacking of real content. */
+.lp::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: .035;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+}
+
+/* ---------------------------------------------------------------- reveal --
+   Sections fade/slide up the first time they cross into view. Cheap,
+   tasteful, and — unlike a video — costs nothing to maintain. */
+.lp-reveal {
+  opacity: 0;
+  transform: translateY(22px);
+  transition: opacity .7s cubic-bezier(.16,1,.3,1), transform .7s cubic-bezier(.16,1,.3,1);
+}
+.lp-reveal.lp-in {
+  opacity: 1;
+  transform: none;
+}
+
+/* ------------------------------------------------------------------ hero --
+   Staggered word-by-word headline reveal on load. */
+.lp-h1 {
+  font-size: clamp(38px, 5vw, 56px);
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -.5px;
+  margin: 0 0 20px;
+}
+.lp-hero-word {
+  display: inline-block;
+  opacity: 0;
+  transform: translateY(16px);
+  transition: opacity .6s cubic-bezier(.16,1,.3,1), transform .6s cubic-bezier(.16,1,.3,1);
+}
+.lp-hero.lp-go .lp-hero-word {
+  opacity: 1;
+  transform: none;
+}
+.lp-grad {
+  background: linear-gradient(90deg, #4ee6b3, #1D9E75 60%, #2D5FA8);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.lp-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 16px;
+  border-radius: 100px;
+  background: rgba(29, 158, 117, .12);
+  border: 1px solid rgba(29, 158, 117, .35);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  color: #4ee6b3;
+  margin-bottom: 24px;
+}
+.lp-pill i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #4ee6b3;
+  animation: lp-blip 2s infinite;
+}
+@keyframes lp-blip { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+
+.lp-cta-primary {
+  display: inline-block;
+  background: #1D9E75;
+  color: #fff;
+  text-decoration: none;
+  padding: 18px 44px;
+  border-radius: 14px;
+  font-size: 18px;
+  font-weight: bold;
+  transition: box-shadow .22s cubic-bezier(.16,1,.3,1);
+  will-change: transform;
+}
+.lp-cta-primary:hover {
+  box-shadow: 0 10px 30px rgba(29, 158, 117, .35);
+}
+.lp-cta-ghost {
+  display: inline-block;
+  color: #fff;
+  text-decoration: none;
+  padding: 18px 32px;
+  border-radius: 14px;
+  font-size: 16px;
+  font-weight: 600;
+  border: 1px solid #2a3a55;
+  transition: border-color .22s cubic-bezier(.16,1,.3,1);
+  will-change: transform;
+}
+.lp-cta-ghost:hover {
+  border-color: #4a9eff;
+}
+
+/* -------------------------------------------------------------- marquee --
+   Infinite-scrolling row of the trades the product actually serves — an
+   honest stand-in for a customer-logo strip (no fabricated logos/counts). */
+.lp-marquee {
+  overflow: hidden;
+  border-top: 1px solid #16213a;
+  border-bottom: 1px solid #16213a;
+  padding: 16px 0;
+  margin: 10px 0 70px;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+}
+.lp-marquee-track {
+  display: flex;
+  gap: 48px;
+  width: max-content;
+  animation: lp-marquee-scroll 22s linear infinite;
+}
+.lp-marquee-track span {
+  color: #4a5568;
+  font-size: 13px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  font-weight: 700;
+  white-space: nowrap;
+}
+@keyframes lp-marquee-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+/* --------------------------------------------------------------- live map -
+   Canvas-drawn, animated van-tracking visualization. Explicitly illustrative
+   (labeled as such below/on it) — not a claimed product screenshot. */
+.lp-map-wrap {
+  position: relative;
+  border-radius: 20px;
+  border: 1px solid #1e293b;
+  background: #0a0f1d;
+  overflow: hidden;
+  height: 360px;
+}
+.lp-map-wrap--teaser { height: 320px; }
+.lp-map-wrap--big { width: min(720px, 92vw); height: min(420px, 58vh); margin: 0 auto; }
+.lp-map-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: crosshair;
+}
+.lp-map-teaser-tag {
+  position: absolute;
+  bottom: 14px;
+  right: 14px;
+  background: rgba(5, 8, 17, .85);
+  border: 1px solid #1e293b;
+  color: #667;
+  font-size: 10.5px;
+  letter-spacing: .5px;
+  text-transform: uppercase;
+  padding: 5px 10px;
+  border-radius: 100px;
+}
+.lp-beat {
+  position: absolute;
+  left: 24px;
+  bottom: 24px;
+  z-index: 3;
+  width: min(320px, 70%);
+  background: rgba(5, 8, 17, .92);
+  backdrop-filter: blur(12px);
+  border: 1px solid #1e293b;
+  border-radius: 14px;
+  padding: 16px 20px;
+  transition: opacity .35s ease;
+}
+.lp-beat .k {
+  font-size: 11px;
+  letter-spacing: 1.6px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+}
+.lp-beat .k.ok { color: #4ee6b3; }
+.lp-beat .k.warn { color: #f5c26b; }
+.lp-beat .a {
+  font-size: 16px;
+  font-weight: bold;
+  margin-bottom: 5px;
+  color: #fff;
+}
+.lp-beat .b {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #99a3b0;
+  margin: 0;
+}
+.lp-beat-dots {
+  display: flex;
+  gap: 6px;
+  position: absolute;
+  top: 20px;
+  left: 24px;
+  z-index: 3;
+}
+.lp-beat-dots i {
+  width: 22px;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255,255,255,.14);
+  transition: background .3s;
+}
+.lp-beat-dots i.on { background: #1D9E75; }
+
+/* Cursor-reactive spotlight glow behind the hero teaser map — the same
+   "spotlight card" trick Mapbox uses on its product cards. */
+.lp-hero-glow {
+  position: relative;
+  overflow: hidden;
+  border-radius: 20px;
+}
+.lp-hero-glow::before {
+  content: '';
+  position: absolute;
+  inset: -12%;
+  pointer-events: none;
+  background: radial-gradient(circle at var(--mx, 30%) var(--my, 20%), rgba(29, 158, 117, .16), transparent 55%);
+  z-index: 0;
+}
+.lp-hero-glow .lp-map-wrap { position: relative; z-index: 1; }
+
+/* --------------------------------------------------------- scroll story --
+   The map pins in the viewport while the page scrolls underneath it, and
+   the active beat is driven by scroll progress rather than a timer. */
+.lp-scrollstory {
+  position: relative;
+}
+.lp-scrollstory-pin {
+  position: sticky;
+  top: 70px;
+  height: calc(100vh - 110px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+}
+.lp-scrollstory-kicker {
+  color: #556;
+  font-size: 12.5px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  font-weight: 700;
+  margin: 0;
+}
+.lp-scrollstory-hint {
+  color: #445;
+  font-size: 12px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin: 0;
+}
+
+/* ----------------------------------------------------------------- stats --
+   Four honest, countable facts with a count-up animation on reveal. */
+.lp-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 24px;
+  text-align: center;
+}
+.lp-stat-n {
+  display: block;
+  font-size: 40px;
+  font-weight: 800;
+  color: #4ee6b3;
+  letter-spacing: -.5px;
+}
+.lp-stat-label {
+  color: #8892a0;
+  font-size: 13px;
+  margin: 6px 0 0;
+}
+
+/* --------------------------------------------------------------- sms proof -
+   A miniature phone mockup showing the exact client-side text sequence,
+   directly on the landing page — not a separate demo you have to click to. */
+.lp-phone {
+  max-width: 300px;
+  margin: 0 auto;
+  background: #0a0f1d;
+  border: 1px solid #1e293b;
+  border-radius: 28px;
+  padding: 22px 18px;
+}
+.lp-sms {
+  background: #16233a;
+  border-radius: 14px;
+  padding: 12px 16px;
+  margin-bottom: 10px;
+  font-size: 13.5px;
+  color: #dfe7ee;
+  line-height: 1.5;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity .5s ease, transform .5s ease;
+}
+.lp-sms.lp-shown {
+  opacity: 1;
+  transform: none;
+}
+.lp-sms b { color: #4ee6b3; }
+
+/* ------------------------------------------------------------- kinetic line -
+   Word-by-word editorial statement, same mechanic as the hero headline but
+   triggered on scroll into view instead of on load. */
+.lp-kinetic {
+  font-size: clamp(26px, 3.6vw, 40px);
+  font-weight: 800;
+  line-height: 1.35;
+  text-align: center;
+  margin: 0;
+}
+.lp-kinetic-word {
+  display: inline-block;
+  color: #38425a;
+  transform: translateY(6px);
+  transition: color .5s ease, transform .5s ease;
+}
+.lp-kinetic.lp-go .lp-kinetic-word {
+  color: #fff;
+  transform: none;
+}
+
+/* --------------------------------------------------------------------- faq -
+   Real accordion — click to expand, not a wall of always-open text. */
+.lp-faq-item {
+  background: #0a0f1d;
+  border-radius: 14px;
+  border: 1px solid #1e293b;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+.lp-faq-q {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 18px 22px;
+  color: #fff;
+  font-weight: bold;
+  font-size: 15px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+}
+.lp-faq-q .x {
+  color: #1D9E75;
+  font-size: 20px;
+  transition: transform .25s ease;
+  flex-shrink: 0;
+  margin-left: 12px;
+}
+.lp-faq-item.lp-open .lp-faq-q .x { transform: rotate(45deg); }
+.lp-faq-a {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height .3s ease;
+}
+.lp-faq-item.lp-open .lp-faq-a { max-height: 200px; }
+.lp-faq-a p {
+  padding: 0 22px 18px;
+  margin: 0;
+  color: #888;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* ------------------------------------------------------- features/pricing -
+   Cards tilt toward the cursor and get a spotlight glow on hover, instead
+   of sitting flat. */
+.lp-card, .lp-price-card {
+  position: relative;
+  background: #0a0f1d;
+  border-radius: 16px;
+  padding: 26px;
+  border: 1px solid #1e293b;
+  transition: border-color .25s, box-shadow .25s;
+  will-change: transform;
+}
+.lp-card::before, .lp-price-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(circle at var(--mx, 50%) var(--my, 50%), rgba(45, 95, 168, .18), transparent 60%);
+  opacity: 0;
+  transition: opacity .3s;
+  pointer-events: none;
+}
+.lp-card:hover, .lp-price-card:hover {
+  border-color: #2D5FA8;
+  box-shadow: 0 16px 40px rgba(45, 95, 168, .18);
+}
+.lp-card:hover::before, .lp-price-card:hover::before {
+  opacity: 1;
+}
+
+.lp-price-card {
+  border-radius: 18px;
+  padding: 28px 24px;
+}
+.lp-price-card.lp-recommended {
+  border-color: #1D9E75;
+}
+.lp-price-card.lp-recommended::before {
+  background: radial-gradient(circle at var(--mx, 50%) var(--my, 50%), rgba(29, 158, 117, .22), transparent 60%);
+}
+.lp-price-card:hover {
+  box-shadow: 0 16px 40px rgba(29, 158, 117, .18);
+}
+.lp-price-badge {
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1D9E75;
+  color: #fff;
+  font-size: 11px;
+  font-weight: bold;
+  letter-spacing: .5px;
+  padding: 4px 14px;
+  border-radius: 100px;
+  z-index: 2;
+}
+
+/* ------------------------------------------------------------- final band -
+   Subtle animated glow sweep behind the last CTA, so the page ends on
+   motion rather than a flat stop. */
+.lp-final-band {
+  position: relative;
+  text-align: center;
+  padding: 90px 24px;
+  overflow: hidden;
+}
+.lp-final-band::before {
+  content: '';
+  position: absolute;
+  inset: -50% -20%;
+  background: radial-gradient(circle at 50% 50%, rgba(29,158,117,.14), transparent 60%);
+  animation: lp-drift 8s ease-in-out infinite alternate;
+}
+@keyframes lp-drift {
+  from { transform: translateX(-4%); }
+  to { transform: translateX(4%); }
+}
+
+@media (max-width: 640px) {
+  .lp-map-wrap { height: 280px; }
+  .lp-map-wrap--big { height: 320px; }
+  .lp-beat { width: 85%; }
+  .lp-scrollstory-pin { top: 60px; height: calc(100vh - 90px); }
+}
