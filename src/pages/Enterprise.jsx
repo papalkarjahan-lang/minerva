@@ -102,32 +102,32 @@ export default function Enterprise() {
         </p>
 
         {sent ? (
-          <div style={{ background: '#0a0f1d', border: '1px solid #1e293b', borderRadius: 16, padding: 32, textAlign: 'center' }}>
+          <div role="status" style={{ background: '#0a0f1d', border: '1px solid #1e293b', borderRadius: 16, padding: 32, textAlign: 'center' }}>
             <p style={{ color: '#1D9E75', fontSize: 16, margin: 0 }}>Thanks — we'll be in touch.</p>
           </div>
         ) : (
           <form onSubmit={handleSubmit} style={{ background: '#0a0f1d', border: '1px solid #1e293b', borderRadius: 16, padding: 28 }}>
-            <input required placeholder="Company name" value={companyName} onChange={e => setCompanyName(e.target.value)} className="lp-input"
+            <input aria-label="Company name" required placeholder="Company name" value={companyName} onChange={e => setCompanyName(e.target.value)} className="lp-input"
               style={{ width: '100%', boxSizing: 'border-box', background: '#050811', border: '1px solid #1e293b', borderRadius: 8, color: '#fff', padding: '12px 14px', fontSize: 14, marginBottom: 12 }} />
-            <select value={companyType} onChange={e => setCompanyType(e.target.value)} className="lp-input"
+            <select aria-label="Company type" value={companyType} onChange={e => setCompanyType(e.target.value)} className="lp-input"
               style={{ width: '100%', boxSizing: 'border-box', background: '#050811', border: '1px solid #1e293b', borderRadius: 8, color: '#fff', padding: '12px 14px', fontSize: 14, marginBottom: 12 }}>
               {COMPANY_TYPES.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
             </select>
-            <input placeholder="Your name" value={contactName} onChange={e => setContactName(e.target.value)} className="lp-input"
+            <input aria-label="Your name" placeholder="Your name" value={contactName} onChange={e => setContactName(e.target.value)} className="lp-input"
               style={{ width: '100%', boxSizing: 'border-box', background: '#050811', border: '1px solid #1e293b', borderRadius: 8, color: '#fff', padding: '12px 14px', fontSize: 14, marginBottom: 12 }} />
-            <input placeholder="Email" type="email" value={contactEmail} onChange={e => setContactEmail(e.target.value)} className="lp-input"
+            <input aria-label="Email" placeholder="Email" type="email" value={contactEmail} onChange={e => setContactEmail(e.target.value)} className="lp-input"
               style={{ width: '100%', boxSizing: 'border-box', background: '#050811', border: '1px solid #1e293b', borderRadius: 8, color: '#fff', padding: '12px 14px', fontSize: 14, marginBottom: 12 }} />
-            <input placeholder="Phone (optional)" value={contactPhone} onChange={e => setContactPhone(e.target.value)} className="lp-input"
+            <input aria-label="Phone (optional)" placeholder="Phone (optional)" value={contactPhone} onChange={e => setContactPhone(e.target.value)} className="lp-input"
               style={{ width: '100%', boxSizing: 'border-box', background: '#050811', border: '1px solid #1e293b', borderRadius: 8, color: '#fff', padding: '12px 14px', fontSize: 14, marginBottom: 12 }} />
             <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
-              <input placeholder="Fleet size (# technicians)" type="number" min="1" value={fleetSize} onChange={e => setFleetSize(e.target.value)} className="lp-input"
+              <input aria-label="Fleet size (number of technicians)" placeholder="Fleet size (# technicians)" type="number" min="1" value={fleetSize} onChange={e => setFleetSize(e.target.value)} className="lp-input"
                 style={{ flex: 1, boxSizing: 'border-box', background: '#050811', border: '1px solid #1e293b', borderRadius: 8, color: '#fff', padding: '12px 14px', fontSize: 14 }} />
-              <input placeholder="Region" value={region} onChange={e => setRegion(e.target.value)} className="lp-input"
+              <input aria-label="Region" placeholder="Region" value={region} onChange={e => setRegion(e.target.value)} className="lp-input"
                 style={{ flex: 1, boxSizing: 'border-box', background: '#050811', border: '1px solid #1e293b', borderRadius: 8, color: '#fff', padding: '12px 14px', fontSize: 14 }} />
             </div>
-            <textarea placeholder="Anything else we should know? (optional)" rows={3} value={notes} onChange={e => setNotes(e.target.value)} className="lp-input"
+            <textarea aria-label="Anything else we should know? (optional)" placeholder="Anything else we should know? (optional)" rows={3} value={notes} onChange={e => setNotes(e.target.value)} className="lp-input"
               style={{ width: '100%', boxSizing: 'border-box', background: '#050811', border: '1px solid #1e293b', borderRadius: 8, color: '#fff', padding: '12px 14px', fontSize: 14, marginBottom: 14, fontFamily: 'inherit', resize: 'vertical' }} />
-            {error && <p style={{ color: '#e07a7a', fontSize: 13, marginBottom: 14 }}>{error}</p>}
+            {error && <p role="alert" style={{ color: '#e07a7a', fontSize: 13, marginBottom: 14 }}>{error}</p>}
             <button type="submit" disabled={sending} style={{ width: '100%', background: '#1D9E75', color: '#fff', border: 'none', borderRadius: 10, padding: '14px 0', fontSize: 15, fontWeight: 'bold', cursor: sending ? 'default' : 'pointer', opacity: sending ? 0.6 : 1 }}>
               {sending ? 'Sending...' : 'Talk to our team'}
             </button>

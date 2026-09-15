@@ -46,18 +46,18 @@ export default function Contact() {
         </p>
 
         {sent ? (
-          <div style={{ background: '#0a0f1d', border: '1px solid #1e293b', borderRadius: 16, padding: 32, textAlign: 'center' }}>
+          <div role="status" style={{ background: '#0a0f1d', border: '1px solid #1e293b', borderRadius: 16, padding: 32, textAlign: 'center' }}>
             <p style={{ color: '#1D9E75', fontSize: 16, margin: 0 }}>Sent — we'll get back to you shortly.</p>
           </div>
         ) : (
           <form onSubmit={handleSubmit} style={{ background: '#0a0f1d', border: '1px solid #1e293b', borderRadius: 16, padding: 28 }}>
-            <input placeholder="Your name" value={name} onChange={e => setName(e.target.value)}
+            <input aria-label="Your name" placeholder="Your name" value={name} onChange={e => setName(e.target.value)}
               style={{ width: '100%', boxSizing: 'border-box', background: '#050811', border: '1px solid #1e293b', borderRadius: 8, color: '#fff', padding: '12px 14px', fontSize: 14, marginBottom: 12 }} />
-            <input placeholder="Email or phone (so we can reply)" value={contact} onChange={e => setContact(e.target.value)}
+            <input aria-label="Email or phone" placeholder="Email or phone (so we can reply)" value={contact} onChange={e => setContact(e.target.value)}
               style={{ width: '100%', boxSizing: 'border-box', background: '#050811', border: '1px solid #1e293b', borderRadius: 8, color: '#fff', padding: '12px 14px', fontSize: 14, marginBottom: 12 }} />
-            <textarea required placeholder="What's up?" rows={5} value={message} onChange={e => setMessage(e.target.value)}
+            <textarea aria-label="Your message" required placeholder="What's up?" rows={5} value={message} onChange={e => setMessage(e.target.value)}
               style={{ width: '100%', boxSizing: 'border-box', background: '#050811', border: '1px solid #1e293b', borderRadius: 8, color: '#fff', padding: '12px 14px', fontSize: 14, marginBottom: 14, fontFamily: 'inherit', resize: 'vertical' }} />
-            {error && <p style={{ color: '#e07a7a', fontSize: 13, marginBottom: 14 }}>{error}</p>}
+            {error && <p role="alert" style={{ color: '#e07a7a', fontSize: 13, marginBottom: 14 }}>{error}</p>}
             <button type="submit" disabled={sending} style={{ width: '100%', background: '#1D9E75', color: '#fff', border: 'none', borderRadius: 10, padding: '14px 0', fontSize: 15, fontWeight: 'bold', cursor: sending ? 'default' : 'pointer', opacity: sending ? 0.6 : 1 }}>
               {sending ? 'Sending...' : 'Send message'}
             </button>
