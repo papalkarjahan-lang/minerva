@@ -76,7 +76,7 @@ Last note. We're onboarding a small number of plumbing businesses as
 founding customers right now, before this opens up more broadly — the
 pitch is simple: it kills the "where are you" calls in the first week.
 
-Want to see it live on your own phone? 2 minutes, no signup: [demo link].
+Want to see it live on your own phone? 2 minutes, no signup: https://minervaops.com.au/demo.
 If not, no hard feelings.
 
 [Your name] / [Your mobile]
@@ -179,7 +179,7 @@ Subject: last one — [Business Name]
 Hi [First name],
 
 Last note. Here's the 2-minute self-serve demo — open it on any Android
-phone nearby and watch it work: [demo link]. If not useful right now, no
+phone nearby and watch it work: https://minervaops.com.au/demo. If not useful right now, no
 hard feelings.
 
 [Your name] / [Your mobile]
@@ -281,7 +281,7 @@ Subject: last one — [Business Name]
 Hi [First name],
 
 Last note. Here's what the locked-out customer actually sees on their
-phone once you dispatch someone: [demo link]. Worth 2 minutes. If not, no
+phone once you dispatch someone: https://minervaops.com.au/demo. Worth 2 minutes. If not, no
 hard feelings.
 
 [Your name] / [Your mobile]
@@ -331,7 +331,7 @@ Hi [First name],
 
 Last note. We're onboarding a small number of pest control businesses as
 founding customers right now — happy to send a 2-minute self-serve demo:
-[demo link].
+https://minervaops.com.au/demo.
 
 [Your name] / [Your mobile]
 
@@ -378,7 +378,7 @@ Subject: last one — [Business Name]
 Hi [First name],
 
 Last note. Here's a 2-minute self-serve demo of the service-confirmation
-text your clients would get: [demo link]. If not useful right now, no hard
+text your clients would get: https://minervaops.com.au/demo. If not useful right now, no hard
 feelings.
 
 [Your name] / [Your mobile]
@@ -482,7 +482,7 @@ Hi [First name],
 
 Last note from me. If proving site history to a client is ever a manual
 reconstruction job for your team, this is a 20-minute conversation, not a
-sales pitch. Here's a self-serve demo if that's easier: [demo link]. If
+sales pitch. Here's a self-serve demo if that's easier: https://minervaops.com.au/demo. If
 not useful right now, no hard feelings.
 
 [Your name] / [Your mobile]

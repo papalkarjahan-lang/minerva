@@ -226,7 +226,7 @@ customer before you've even arrived, and to have a clean record on hand
 if a job's ever disputed.
 
 No pressure at all — happy to send a 2-minute self-serve demo if that's
-easier than a call: [demo link].
+easier than a call: https://minervaops.com.au/demo.
 
 [your name]
 [phone]
