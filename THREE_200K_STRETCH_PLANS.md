@@ -40,6 +40,36 @@ perfectly:**
    closing this way is a single signature adding $30-60K, which is a much
    higher-odds path than needing dozens of smaller deals to overperform
    simultaneously.
+
+   **Updated 2026-09-15 with a real generated number, not an estimate:**
+   ran `generate-roi-proposal` against the 7 named targets that already
+   have a researched fleet size (Ken Hall Plumbers, Twin Electrics &
+   Plumbing, A. Abbott Locksmiths, Mr Splash Plumbing, CLASS Locksmiths,
+   M.A.S.S. Electrics, Multisparx) — this only creates a shareable
+   `/proposal/:id` page for you to personally send/present; it does not
+   contact anyone and does not advance any pipeline stage (deliberately
+   called without `bigAccountTargetId` so `big_account_targets.stage`
+   stays honestly at `researching` until you actually present one). Real
+   output at standard per-tech pricing (conservative 15% fuel-savings
+   estimate, $89/tech/mo bulk-deal midpoint):
+
+   | Target | Fleet | Est. monthly Minerva cost | Est. annualized |
+   |---|---|---|---|
+   | **Ken Hall Plumbers** | 122 | **$10,858/mo** | **~$130K/yr** |
+   | Twin Electrics & Plumbing | 30 | $2,670/mo | ~$32K/yr |
+   | Mr Splash Plumbing | 15 | $1,335/mo | ~$16K/yr |
+   | A. Abbott Locksmiths | 18 | $1,602/mo | ~$19K/yr |
+   | CLASS Locksmiths | 10 | $890/mo | ~$11K/yr |
+   | M.A.S.S. Electrics | 9 | $801/mo | ~$10K/yr |
+   | Multisparx | 7 | $623/mo | ~$7K/yr |
+
+   Ken Hall Plumbers alone, at full standard pricing, is worth more than
+   the entire Plan-2 ceiling on its own — it is the single highest-
+   leverage account in the whole pipeline and the most concrete version
+   of lever #1. This is still 0% likely to close itself: the proposal
+   page exists now, but nobody has been contacted yet (still true as of
+   this update — see `GRAND_PLAN_END_OF_2026.md` §1). Sending/presenting
+   it is the one step only you can take.
 2. **Paid customer acquisition to scale self-serve signups beyond what
    free cold-outreach volume can produce.** `launch-ad-campaign` already
    exists in the codebase and is real, but running it means spending the
