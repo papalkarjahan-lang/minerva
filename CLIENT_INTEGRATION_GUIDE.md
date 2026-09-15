@@ -15,7 +15,7 @@ Two options, both point at the same guided intake flow (it asks about the
 job, triages it, and texts your team the qualified lead):
 
 **Option A — a link (zero setup).** Your dispatch console's post-signup
-screen gives you a URL like `https://minervaops.com.au/intake/<your-id>`.
+screen gives you a URL like `https://minerva-green.vercel.app/intake/<your-id>`.
 Paste it into your website's "Contact Us" button, your Google Business
 profile, or an SMS auto-reply.
 
@@ -23,7 +23,7 @@ profile, or an SMS auto-reply.
 line before your site's closing `</body>` tag:
 
 ```html
-<script src="https://minervaops.com.au/widget.js" data-business-id="your-id" async></script>
+<script src="https://minerva-green.vercel.app/widget.js" data-business-id="your-id" async></script>
 ```
 
 This works on Wix, Squarespace, WordPress, Shopify, or any site builder

@@ -2,7 +2,7 @@
  * Minerva embeddable lead-intake widget.
  *
  * Usage (paste into any client website, anywhere before </body>):
- *   <script src="https://minervaops.com.au/widget.js" data-business-id="YOUR-BUSINESS-ID" async></script>
+ *   <script src="https://minerva-green.vercel.app/widget.js" data-business-id="YOUR-BUSINESS-ID" async></script>
  *
  * What it does: renders a small floating chat bubble in the corner of the
  * host page. Clicking it opens an iframe pointing at this business's own

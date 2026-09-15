@@ -38,7 +38,7 @@ record for every callout. For a business built on trust, it's a way to
 make that trust visible before you've even arrived.
 
 No pressure — here's a 60-second self-serve demo, no signup:
-https://minervaops.com.au/demo
+https://minerva-green.vercel.app/demo
 
 [your name] / [phone]
 
@@ -65,7 +65,7 @@ does the client find out someone's actually on the way?
 I build Minerva — a live map of every van for instant dispatch decisions,
 plus an automatic ETA text to the client. If that 1-2hr window is already
 easy for you to hit, this probably isn't news you need — but if dispatch
-is still a few phone calls, worth a 10-minute look: https://minervaops.com.au/demo
+is still a few phone calls, worth a 10-minute look: https://minerva-green.vercel.app/demo
 
 [your name] / [phone]
 
@@ -92,7 +92,7 @@ client the moment someone's 15 minutes out, so your team isn't fielding
 "where is he" calls all day. 20 minutes to set up, no app download.
 
 See exactly what the client receives, 60 seconds, no signup:
-https://minervaops.com.au/demo
+https://minerva-green.vercel.app/demo
 
 Worth a 10-minute look this week?
 
@@ -119,7 +119,7 @@ I build Minerva — live GPS tracking of your vans plus an automatic
 small, cheap way to make an already-strong reputation visible before
 you've even arrived on site.
 
-No pressure — 60-second self-serve demo: https://minervaops.com.au/demo
+No pressure — 60-second self-serve demo: https://minerva-green.vercel.app/demo
 
 [your name] / [phone]
 
@@ -142,7 +142,7 @@ location and compliance records (vehicle checks, licence expiry)?
 
 If it's mostly manual right now, I'd like to put together the actual
 numbers for a fleet your size — no cost, no obligation. Happy to jump on
-a 15-minute call, or if a quick look is easier first: https://minervaops.com.au/demo
+a 15-minute call, or if a quick look is easier first: https://minerva-green.vercel.app/demo
 
 [your name] / [phone]
 
@@ -162,7 +162,7 @@ Australia — could you share roughly how many technicians/vans you run
 nationally, and how location/compliance tracking is currently handled?
 
 If useful, I'll put together real numbers for your fleet specifically —
-no cost, no obligation: https://minervaops.com.au/demo
+no cost, no obligation: https://minerva-green.vercel.app/demo
 
 [your name] / [phone]
 
@@ -236,7 +236,7 @@ roughly how many licensed technicians are you running day-to-day, and how
 is dispatch/location tracking currently handled?
 
 If it's mostly manual, happy to put together real numbers for a team your
-size — no cost, no obligation: https://minervaops.com.au/demo
+size — no cost, no obligation: https://minerva-green.vercel.app/demo
 
 [your name] / [phone]
 
@@ -286,7 +286,7 @@ technician's ETA instead of calling to ask, plus a timestamped record for
 every job. For a reputation like yours, it's a way to make that trust
 visible before you've even arrived.
 
-60-second self-serve demo, no signup: https://minervaops.com.au/demo
+60-second self-serve demo, no signup: https://minerva-green.vercel.app/demo
 
 [your name] / [phone]
 
@@ -311,7 +311,7 @@ watch their technician's ETA, plus a timestamped job record for every
 callout. For a 60-year reputation like yours, it's a way to make that
 trust visible before you've even arrived.
 
-60-second demo: https://minervaops.com.au/demo
+60-second demo: https://minerva-green.vercel.app/demo
 
 [your name] / [phone]
 

@@ -2,7 +2,7 @@
 
 Use this when you don't have a phone number, when a call goes to voicemail, or as a
 warm-up before calling. Send from a real inbox tied to a domain (not a free gmail) once
-you have minervaops.com.au (or similar) live — deliverability is much better from a
+you have minerva-green.vercel.app (or similar) live — deliverability is much better from a
 domain that matches your website.
 
 Send Tue–Thu, 7:30–8:30am local time (before their workday starts, when owners check
@@ -36,7 +36,7 @@ browser. Worth a 10-minute screen share this week?
 
 [Your name]
 [Your mobile]
-minervaops.com.au
+minerva-green.vercel.app
 
 ---
 

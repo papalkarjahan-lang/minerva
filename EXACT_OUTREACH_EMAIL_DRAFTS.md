@@ -46,7 +46,7 @@ thing this fixes.
 20 minutes to set up on your team's phones, no app download. Worth a
 10-minute screen share this week?
 
-[Your name] / [Your mobile] / minervaops.com.au
+[Your name] / [Your mobile] / minerva-green.vercel.app
 
 **Email 2 — Day 3**
 Subject: re: [Business Name]'s ETA calls
@@ -76,7 +76,7 @@ Last note. We're onboarding a small number of plumbing businesses as
 founding customers right now, before this opens up more broadly — the
 pitch is simple: it kills the "where are you" calls in the first week.
 
-Want to see it live on your own phone? 2 minutes, no signup: https://minervaops.com.au/demo.
+Want to see it live on your own phone? 2 minutes, no signup: https://minerva-green.vercel.app/demo.
 If not, no hard feelings.
 
 [Your name] / [Your mobile]
@@ -99,7 +99,7 @@ automatic text when someone's on the way.
 20 minutes to set up, works on iOS and Android identically. Worth a
 10-minute look this week?
 
-[Your name] / [Your mobile] / minervaops.com.au
+[Your name] / [Your mobile] / minerva-green.vercel.app
 
 **Email 2 — Day 3**
 Subject: re: [Business Name] dispatch
@@ -151,7 +151,7 @@ map.
 I can show your whole team on it in about 10 minutes, live on a screen
 share. Worth a look?
 
-[Your name] / [Your mobile] / minervaops.com.au
+[Your name] / [Your mobile] / minerva-green.vercel.app
 
 **Email 2 — Day 3**
 Subject: re: [Business Name] — the Android thing
@@ -179,7 +179,7 @@ Subject: last one — [Business Name]
 Hi [First name],
 
 Last note. Here's the 2-minute self-serve demo — open it on any Android
-phone nearby and watch it work: https://minervaops.com.au/demo. If not useful right now, no
+phone nearby and watch it work: https://minerva-green.vercel.app/demo. If not useful right now, no
 hard feelings.
 
 [Your name] / [Your mobile]
@@ -201,7 +201,7 @@ a confirmation. Timesheets build themselves.
 
 Worth a 10-minute screen share this week?
 
-[Your name] / [Your mobile] / minervaops.com.au
+[Your name] / [Your mobile] / minerva-green.vercel.app
 
 **Email 2 — Day 3**
 Subject: re: [Business Name] — proof of service
@@ -254,7 +254,7 @@ of ringing to ask.
 
 Worth a 10-minute screen share this week?
 
-[Your name] / [Your mobile] / minervaops.com.au
+[Your name] / [Your mobile] / minerva-green.vercel.app
 
 **Email 2 — Day 3**
 Subject: re: [Business Name] — the tracking link
@@ -281,7 +281,7 @@ Subject: last one — [Business Name]
 Hi [First name],
 
 Last note. Here's what the locked-out customer actually sees on their
-phone once you dispatch someone: https://minervaops.com.au/demo. Worth 2 minutes. If not, no
+phone once you dispatch someone: https://minerva-green.vercel.app/demo. Worth 2 minutes. If not, no
 hard feelings.
 
 [Your name] / [Your mobile]
@@ -303,7 +303,7 @@ minutes away — nobody on your team has to do it manually.
 
 Worth a 10-minute demo this week?
 
-[Your name] / [Your mobile] / minervaops.com.au
+[Your name] / [Your mobile] / minerva-green.vercel.app
 
 **Email 2 — Day 3**
 Subject: re: [Business Name] — missed appointments
@@ -331,7 +331,7 @@ Hi [First name],
 
 Last note. We're onboarding a small number of pest control businesses as
 founding customers right now — happy to send a 2-minute self-serve demo:
-https://minervaops.com.au/demo.
+https://minerva-green.vercel.app/demo.
 
 [Your name] / [Your mobile]
 
@@ -351,7 +351,7 @@ time confirmed by GPS — your tech doesn't do anything extra.
 
 Worth 10 minutes to see it?
 
-[Your name] / [Your mobile] / minervaops.com.au
+[Your name] / [Your mobile] / minerva-green.vercel.app
 
 **Email 2 — Day 3**
 Subject: re: [Business Name] — service confirmations
@@ -378,7 +378,7 @@ Subject: last one — [Business Name]
 Hi [First name],
 
 Last note. Here's a 2-minute self-serve demo of the service-confirmation
-text your clients would get: https://minervaops.com.au/demo. If not useful right now, no hard
+text your clients would get: https://minerva-green.vercel.app/demo. If not useful right now, no hard
 feelings.
 
 [Your name] / [Your mobile]
@@ -412,7 +412,7 @@ I'll move your client list and technician setup across for free — one
 session, you do nothing except confirm the details. Want to jump on a
 quick call?
 
-[Your name] / [Your mobile] / minervaops.com.au
+[Your name] / [Your mobile] / minerva-green.vercel.app
 
 **Follow-up — Day 3 (only if no reply)**
 Subject: re: your [Competitor] post
@@ -450,7 +450,7 @@ of you reconstructing it from someone's phone photos.
 
 Worth 20 minutes to see it?
 
-[Your name] / [Your mobile] / minervaops.com.au
+[Your name] / [Your mobile] / minerva-green.vercel.app
 
 **Email 2 — Day 4 (industrial cycle is slower — extra day before following up)**
 Subject: re: proving what happened on site
@@ -482,7 +482,7 @@ Hi [First name],
 
 Last note from me. If proving site history to a client is ever a manual
 reconstruction job for your team, this is a 20-minute conversation, not a
-sales pitch. Here's a self-serve demo if that's easier: https://minervaops.com.au/demo. If
+sales pitch. Here's a self-serve demo if that's easier: https://minerva-green.vercel.app/demo. If
 not useful right now, no hard feelings.
 
 [Your name] / [Your mobile]
