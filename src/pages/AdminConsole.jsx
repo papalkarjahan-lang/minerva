@@ -44,6 +44,14 @@ export default function AdminConsole() {
   const [bigAccounts, setBigAccounts] = useState([])
   const [newTarget, setNewTarget] = useState({ company_name: '', company_type: 'multi_van', contact_name: '', contact_title: '', contact_email: '', contact_phone: '', estimated_fleet_size: '', region: '' })
   const [bigAccountBusy, setBigAccountBusy] = useState(null)
+  // Batch-review throughput helpers — nothing here changes WHO decides what
+  // sends: bulk actions only ever act on rows the operator has explicitly
+  // checked, and only ever move status to 'approved'/'closed_lost', the
+  // exact same two transitions the single-card buttons already made. The
+  // real send step is still the separate, unaffected "Send approved" button,
+  // still filtered server-side to status='approved' in send-outreach-batch.
+  const [selectedIds, setSelectedIds] = useState(new Set())
+  const [expandedIds, setExpandedIds] = useState(new Set())
 
   useEffect(() => {
     let cancelled = false
@@ -264,6 +272,57 @@ export default function AdminConsole() {
     loadProspects()
   }
 
+  function toggleSelect(id) {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  function toggleExpand(id) {
+    setExpandedIds(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  function selectAllDrafted() {
+    setSelectedIds(new Set(prospects.filter(p => p.status === 'drafted').map(p => p.id)))
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set())
+  }
+
+  // Bulk-approve — same rule as the single-card "Approve for sending"
+  // button: only ever touches rows currently at status='drafted'. A row
+  // the operator edited but never saved isn't silently approved with the
+  // stale draft — edited-but-unsaved rows are simply skipped, same
+  // guard the single card already applies via its own `dirty` check.
+  async function approveSelected() {
+    const ids = prospects.filter(p => selectedIds.has(p.id) && p.status === 'drafted').map(p => p.id)
+    if (ids.length === 0) { alert('No selected prospects are in a drafted, ready-to-approve state.'); return }
+    if (!window.confirm(`Approve ${ids.length} drafted email(s) for sending? This does not send them yet — you still click "Send approved" separately.`)) return
+    setOutreachBusy(true)
+    await supabase.from('outreach_prospects').update({ status: 'approved' }).in('id', ids)
+    setOutreachBusy(false)
+    clearSelection()
+    loadProspects()
+  }
+
+  async function discardSelected() {
+    const ids = prospects.filter(p => selectedIds.has(p.id) && p.status !== 'closed_lost').map(p => p.id)
+    if (ids.length === 0) { alert('Nothing selected to discard.'); return }
+    if (!window.confirm(`Discard ${ids.length} selected prospect(s)?`)) return
+    setOutreachBusy(true)
+    await supabase.from('outreach_prospects').update({ status: 'closed_lost' }).in('id', ids)
+    setOutreachBusy(false)
+    clearSelection()
+    loadProspects()
+  }
+
   async function sendApproved() {
     const approvedCount = prospects.filter(p => p.status === 'approved').length
     if (approvedCount === 0) { alert('No approved prospects to send.'); return }
@@ -450,6 +509,32 @@ export default function AdminConsole() {
             {prospects.filter(p => ['drafted', 'approved'].includes(p.status)).length === 0 && (
               <p style={{ color: '#888' }}>No drafts waiting on review right now.</p>
             )}
+
+            {prospects.filter(p => p.status === 'drafted').length > 0 && (
+              <div style={{ ...cardStyle, maxWidth: 'none', textAlign: 'left', marginBottom: 14, padding: '10px 16px', display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                <button onClick={selectAllDrafted} style={{ background: 'none', border: '1px solid #1e293b', color: '#8fd0e8', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 12 }}>
+                  Select all drafted ({prospects.filter(p => p.status === 'drafted').length})
+                </button>
+                {selectedIds.size > 0 && (
+                  <>
+                    <span style={{ color: '#888', fontSize: 12 }}>{selectedIds.size} selected</span>
+                    <button onClick={approveSelected} disabled={outreachBusy} style={{ background: '#1D9E75', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', cursor: outreachBusy ? 'default' : 'pointer', fontSize: 12, opacity: outreachBusy ? 0.6 : 1 }}>
+                      Approve selected
+                    </button>
+                    <button onClick={discardSelected} disabled={outreachBusy} style={{ background: 'none', border: '1px solid #1e293b', color: '#888', borderRadius: 8, padding: '6px 14px', cursor: outreachBusy ? 'default' : 'pointer', fontSize: 12 }}>
+                      Discard selected
+                    </button>
+                    <button onClick={clearSelection} style={{ background: 'none', border: 'none', color: '#666', cursor: 'pointer', fontSize: 12, textDecoration: 'underline' }}>
+                      Clear
+                    </button>
+                  </>
+                )}
+                <span style={{ color: '#555', fontSize: 11, marginLeft: 'auto' }}>
+                  Tip: skim each collapsed card below, expand only the ones you want to edit, then check the ones that look good and approve as a batch.
+                </span>
+              </div>
+            )}
+
             {prospects.filter(p => ['drafted', 'approved'].includes(p.status)).map(p => (
               <ProspectCard
                 key={p.id}
@@ -461,6 +546,10 @@ export default function AdminConsole() {
                 onGenerateProposal={generateProposal}
                 proposalId={proposalLinks[p.id]}
                 roiBusy={roiBusyId === p.id}
+                selected={selectedIds.has(p.id)}
+                onToggleSelect={() => toggleSelect(p.id)}
+                expanded={expandedIds.has(p.id)}
+                onToggleExpand={() => toggleExpand(p.id)}
               />
             ))}
 
@@ -523,31 +612,55 @@ export default function AdminConsole() {
   )
 }
 
-function ProspectCard({ prospect: p, onSaveDraft, onApprove, onReject, savingId, onGenerateProposal, proposalId, roiBusy }) {
+function ProspectCard({ prospect: p, onSaveDraft, onApprove, onReject, savingId, onGenerateProposal, proposalId, roiBusy, selected, onToggleSelect, expanded, onToggleExpand }) {
   const [subject, setSubject] = useState(p.draft_subject || '')
   const [body, setBody] = useState(p.draft_body || '')
   const [fleetSize, setFleetSize] = useState('')
   const dirty = subject !== (p.draft_subject || '') || body !== (p.draft_body || '')
 
   return (
-    <div style={{ ...cardStyle, maxWidth: 'none', textAlign: 'left', marginBottom: 14, border: p.status === 'approved' ? '1px solid #1D9E75' : cardStyle.border }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-        <strong style={{ color: '#fff' }}>{p.company_name}{p.followup_stage > 0 ? ` (follow-up #${p.followup_stage})` : ''}</strong>
+    <div style={{ ...cardStyle, maxWidth: 'none', textAlign: 'left', marginBottom: 14, border: p.status === 'approved' ? '1px solid #1D9E75' : (selected ? '1px solid #2D5FA8' : cardStyle.border) }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          {p.status === 'drafted' && (
+            <input type="checkbox" checked={!!selected} onChange={onToggleSelect} style={{ width: 16, height: 16, cursor: 'pointer' }} />
+          )}
+          <strong style={{ color: '#fff' }}>{p.company_name}{p.followup_stage > 0 ? ` (follow-up #${p.followup_stage})` : ''}</strong>
+        </div>
         <span style={{ color: p.status === 'approved' ? '#1D9E75' : '#8fd0e8', fontSize: 12, textTransform: 'uppercase' }}>{p.status}</span>
       </div>
       <p style={{ color: '#888', fontSize: 12, margin: '0 0 10px' }}>
         {p.contact_name || 'unknown contact'} · {p.contact_email || 'no email on file'} · {p.trade_type || 'unknown trade'}{p.city ? ` · ${p.city}` : ''}
       </p>
-      <input
-        value={subject}
-        onChange={e => setSubject(e.target.value)}
-        style={{ width: '100%', background: '#0a0f1d', color: '#fff', border: '1px solid #1e293b', borderRadius: 6, padding: 8, marginBottom: 8, fontSize: 13 }}
-      />
-      <textarea
-        value={body}
-        onChange={e => setBody(e.target.value)}
-        style={{ width: '100%', minHeight: 120, background: '#0a0f1d', color: '#ccc', border: '1px solid #1e293b', borderRadius: 6, padding: 8, fontSize: 13, whiteSpace: 'pre-wrap' }}
-      />
+
+      {!expanded && (
+        <div onClick={onToggleExpand} style={{ cursor: 'pointer', background: '#0a0f1d', border: '1px solid #1e293b', borderRadius: 6, padding: 10 }}>
+          <p style={{ color: '#fff', fontSize: 13, margin: '0 0 4px', fontWeight: 'bold' }}>{subject || '(no subject)'}</p>
+          <p style={{ color: '#666', fontSize: 12, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {(body || '(no body)').replace(/\s+/g, ' ')}
+          </p>
+          <p style={{ color: '#2D5FA8', fontSize: 11, margin: '6px 0 0' }}>Click to expand & edit →</p>
+        </div>
+      )}
+
+      {expanded && (
+        <>
+          <input
+            value={subject}
+            onChange={e => setSubject(e.target.value)}
+            style={{ width: '100%', background: '#0a0f1d', color: '#fff', border: '1px solid #1e293b', borderRadius: 6, padding: 8, marginBottom: 8, fontSize: 13 }}
+          />
+          <textarea
+            value={body}
+            onChange={e => setBody(e.target.value)}
+            style={{ width: '100%', minHeight: 120, background: '#0a0f1d', color: '#ccc', border: '1px solid #1e293b', borderRadius: 6, padding: 8, fontSize: 13, whiteSpace: 'pre-wrap' }}
+          />
+          <button onClick={onToggleExpand} style={{ background: 'none', border: 'none', color: '#2D5FA8', cursor: 'pointer', fontSize: 11, marginTop: 6, padding: 0 }}>
+            ← Collapse
+          </button>
+        </>
+      )}
+
       <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
         {dirty && (
           <button onClick={() => onSaveDraft(p.id, subject, body)} disabled={savingId === p.id} style={{ background: '#2D5FA8', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13 }}>
