@@ -57,6 +57,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { formatAuPhone } from "../_shared/sms.ts"
+import { runTemplateVoiceIntake, applyRepeatClientBoost, clampScore, type IntakeResult } from "./logic.ts"
 
 const supabaseAdmin = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -70,28 +71,6 @@ interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
 }
-
-interface IntakeResult {
-  reply: string
-  lead_captured: boolean
-  lead: {
-    name: string
-    urgency: string
-    job_description: string
-    suburb: string
-    score: number
-    score_reason: string
-    estimated_value_tier: string
-  } | null
-}
-
-const EMERGENCY_KEYWORDS = [
-  'emergency', 'urgent', 'asap', 'right now', 'burst', 'flooding', 'flood',
-  'no power', 'no water', 'gas smell', 'gas leak', 'sparking', 'smoke',
-  'leaking everywhere', 'locked out', "can't wait", 'cannot wait', 'now please',
-]
-const HIGH_VALUE_KEYWORDS = ['renovation', 'renovate', 'install', 'installation', 'replace', 'full', 'whole', 'new system', 'rewire', 'regas']
-const LOW_VALUE_KEYWORDS = ['quick', 'small', 'minor', 'quote only', 'just a', 'tap', 'leaky tap']
 
 function escapeXml(str: string) {
   return str
@@ -125,63 +104,6 @@ async function isValidTwilioSignature(req: Request, form: FormData): Promise<boo
   const signatureBuffer = await crypto.subtle.sign('HMAC', cryptoKey, new TextEncoder().encode(data))
   const computedSignature = btoa(String.fromCharCode(...new Uint8Array(signatureBuffer)))
   return computedSignature === twilioSignature
-}
-
-// Deterministic, non-AI phone flow used whenever ANTHROPIC_API_KEY isn't
-// configured. Only 4 fields (name, urgency, suburb, job_description) since
-// the caller's phone number is already known from Caller ID — one field
-// shorter than ai-intake-chat's text version, which has no equivalent of
-// caller ID. Every question is a plain string, every judgement a simple
-// keyword check — same honesty boundary as ai-intake-chat's template path.
-function runTemplateVoiceIntake(business: { name: string }, userTurns: string[]): IntakeResult {
-  const bizName = business.name
-  const answered = userTurns.length
-
-  if (answered === 0) {
-    return { reply: `Thanks for calling ${bizName}. What can we help you with today?`, lead_captured: false, lead: null }
-  }
-
-  const jobDescription = userTurns[0]
-
-  if (answered === 1) {
-    return { reply: `Got it. Is this urgent right now, like an active leak or a safety issue, or can it wait for a normal booking?`, lead_captured: false, lead: null }
-  }
-
-  const urgencyAnswer = userTurns[1].toLowerCase()
-  const isEmergency = EMERGENCY_KEYWORDS.some(kw => urgencyAnswer.includes(kw)) || /\burgent\b|\bemergency\b/.test(urgencyAnswer)
-  const urgency = isEmergency ? 'emergency' : 'routine'
-
-  if (answered === 2) {
-    return { reply: `Understood. Can I grab your name?`, lead_captured: false, lead: null }
-  }
-
-  const name = userTurns[2]
-
-  if (answered === 3) {
-    return { reply: `Thanks ${name.split(' ')[0] || name}. And which suburb are you in?`, lead_captured: false, lead: null }
-  }
-
-  const suburb = userTurns[3]
-
-  const combinedText = `${jobDescription} ${urgencyAnswer}`.toLowerCase()
-  const isHighValue = HIGH_VALUE_KEYWORDS.some(kw => combinedText.includes(kw))
-  const isLowValue = !isHighValue && LOW_VALUE_KEYWORDS.some(kw => combinedText.includes(kw))
-  const estimatedValueTier = isHighValue ? 'high' : isLowValue ? 'low' : 'medium'
-
-  let score = isEmergency ? 75 : 50
-  if (jobDescription.length > 40) score += 10
-  if (isHighValue) score += 10
-  score = Math.max(0, Math.min(100, score))
-
-  return {
-    reply: `Thanks ${name.split(' ')[0] || name} — that's everything I need. Someone from ${bizName} will be in touch shortly${isEmergency ? ', treating this as urgent' : ''}. Have a good day.`,
-    lead_captured: true,
-    lead: {
-      name, urgency, job_description: jobDescription, suburb,
-      score, score_reason: `Template voice intake: ${urgency}${isHighValue ? ', high-value keywords' : ''}.`,
-      estimated_value_tier: estimatedValueTier,
-    },
-  }
 }
 
 async function getClaudeReply(
@@ -398,7 +320,7 @@ serve(async (req: Request) => {
     // leads everywhere else in the app.
     if (businessId && business) {
       const { name, urgency, job_description, suburb } = parsed.lead
-      let score = Math.max(0, Math.min(100, Number(parsed.lead.score) || 0))
+      let score = clampScore(Number(parsed.lead.score) || 0)
       let scoreReason = parsed.lead.score_reason || ''
       const phone = from || null
 
@@ -411,10 +333,7 @@ serve(async (req: Request) => {
             .eq('business_id', businessId).eq('client_phone', phone),
         ])
         isRepeatClient = (priorLeads ?? 0) > 0 || (priorJobs ?? 0) > 0
-        if (isRepeatClient) {
-          score = Math.min(100, score + 15)
-          scoreReason = scoreReason ? `${scoreReason} Returning client (+15).` : 'Returning client.'
-        }
+        ;({ score, scoreReason } = applyRepeatClientBoost(score, scoreReason, isRepeatClient))
       }
 
       await supabaseAdmin.from('leads').insert({

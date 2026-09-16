@@ -30,11 +30,9 @@ export interface IntakeResult {
   lead: TemplateLead | null
 }
 
-export const EMERGENCY_KEYWORDS = [
-  'emergency', 'urgent', 'asap', 'right now', 'burst', 'flooding', 'flood',
-  'no power', 'no water', 'gas smell', 'gas leak', 'sparking', 'smoke',
-  'leaking everywhere', 'locked out', "can't wait", 'cannot wait', 'now please',
-]
+import { clampScore, detectEmergency, detectValueTier, applyRepeatClientBoost as sharedApplyRepeatClientBoost } from "../_shared/leadTriage.ts"
+export { clampScore, detectEmergency, detectValueTier }
+
 // Matches the exact format generateReferralCode() produces
 // (send-referral-code-sms/index.ts): always exactly 6 characters, drawn
 // from an alphabet that excludes 0/O/1/I to avoid visual confusion. A
@@ -44,32 +42,6 @@ export const EMERGENCY_KEYWORDS = [
 // code, producing false-positive captures. Constraining to the real
 // generation alphabet at exactly 6 characters all but eliminates that.
 export const REFERRAL_CODE_PATTERN = /\b[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}\b/
-export const HIGH_VALUE_KEYWORDS = ['renovation', 'renovate', 'install', 'installation', 'replace', 'full', 'whole', 'new system', 'rewire', 'regas']
-export const LOW_VALUE_KEYWORDS = ['quick', 'small', 'minor', 'quote only', 'just a', 'tap', 'leaky tap']
-
-// Clamp a score into the valid 0-100 range — shared by both the template
-// path and the post-Claude repeat-client boost.
-export function clampScore(n: number): number {
-  return Math.max(0, Math.min(100, n))
-}
-
-// A negated phrase ("not urgent", "no rush", "can wait") must win over a
-// bare keyword match — the original version of this check matched
-// "urgent" as a plain substring/word regardless of a preceding negation,
-// so a customer explicitly saying their job is NOT urgent was
-// misclassified as an emergency.
-const NEGATED_URGENCY_PATTERN = /\bnot\s+(that\s+|really\s+)?urgent\b|\bnot\s+an?\s+emergency\b|\bisn'?t\s+urgent\b|\bno\s+rush\b|\bno\s+emergency\b|\bcan\s+wait\b|\bcould\s+wait\b/i
-
-export function detectEmergency(urgencyAnswer: string): boolean {
-  if (NEGATED_URGENCY_PATTERN.test(urgencyAnswer)) return false
-  return EMERGENCY_KEYWORDS.some(kw => urgencyAnswer.includes(kw)) || /\burgent\b|\bemergency\b/.test(urgencyAnswer)
-}
-
-export function detectValueTier(combinedText: string): 'low' | 'medium' | 'high' {
-  const isHighValue = HIGH_VALUE_KEYWORDS.some(kw => combinedText.includes(kw))
-  const isLowValue = !isHighValue && LOW_VALUE_KEYWORDS.some(kw => combinedText.includes(kw))
-  return isHighValue ? 'high' : isLowValue ? 'low' : 'medium'
-}
 
 export function computeTemplateScore(isEmergency: boolean, jobDescriptionLength: number, isHighValue: boolean): number {
   let score = isEmergency ? 75 : 50
@@ -166,15 +138,9 @@ export function runTemplateIntake(business: { name: string; trade_type?: string 
   }
 }
 
-// Repeat-client scoring boost applied after either intake path (template or
-// Claude) — a known client is a warmer lead than a stranger, so it earns a
-// deterministic boost on top of the content-based score.
-export function applyRepeatClientBoost(score: number, scoreReason: string, isRepeatClient: boolean): { score: number; scoreReason: string } {
-  if (!isRepeatClient) return { score, scoreReason }
-  const boosted = Math.min(100, score + 15)
-  const reason = scoreReason ? `${scoreReason} Returning client (+15).` : 'Returning client.'
-  return { score: boosted, scoreReason: reason }
-}
+// Re-exported from _shared/leadTriage.ts (also used by voice-intake-agent)
+// so existing imports of this function from ai-intake-chat/logic.ts keep working.
+export const applyRepeatClientBoost = sharedApplyRepeatClientBoost
 
 // Same untrusted-public-input treatment for every UTM field — cap length
 // and drop anything empty, rather than trusting whatever a URL's query
