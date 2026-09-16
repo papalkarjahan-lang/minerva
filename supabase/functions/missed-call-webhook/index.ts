@@ -41,6 +41,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { buildMissedCallSmsMessage } from "../_shared/sms.ts"
 
 const supabaseAdmin = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -122,7 +123,7 @@ serve(async (req: Request) => {
         const TWILIO_FROM = to || Deno.env.get('TWILIO_PHONE_NUMBER')
 
         if (TWILIO_SID && TWILIO_TOKEN && TWILIO_FROM) {
-          const message = `Thanks for calling ${businessName}! We missed you - reply here or call back and we'll help book your job.`
+          const message = buildMissedCallSmsMessage(businessName)
           const smsResponse = await fetch(
             `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json`,
             {

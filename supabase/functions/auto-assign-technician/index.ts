@@ -69,37 +69,28 @@
 // a licence they don't hold is a compliance/safety risk, not a fairness
 // optimization. If this empties the pool, behaves exactly like "nobody
 // free" today (falls through to the subcontractor fallback, then to
-// no_technician_available). HONESTY NOTE: the subcontractor fallback path
-// does NOT check this — no credential data exists for subcontractors in
-// this build, so a subcontractor is only ever a fallback for capacity, not
-// yet a credential-checked one.
+// no_technician_available) — UNLESS a credential was required (see next
+// paragraph).
+//
+// Credential-required jobs skip the subcontractor fallback entirely (fixed
+// 2026-09-16): no credential data exists for subcontractors in this build,
+// so there was previously no way to verify a fallback subcontractor held
+// the required licence — meaning a job that explicitly required one could
+// silently auto-dispatch an unverified subcontractor anyway, once no
+// employed technician was free. That's a compliance/safety gap, not a
+// capacity-fairness one, so it gets the same hard-exclude treatment as the
+// technician filter above: if required_credential_name is set, the
+// subcontractor pool is skipped outright and the job falls through to
+// no_technician_available for a human to route, instead of ever guessing.
+//
+// Pure scoring/filtering logic lives in ./logic.ts so it can be unit tested
+// without a database or the Deno runtime — this file just wires that logic
+// up to real Supabase reads/writes.
 // Deploy with: supabase functions deploy auto-assign-technician
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
-
-// Soft tiebreak weight — see comment above. 2km per recent emergency job
-// is enough to swing a choice between two techs who are within a couple
-// of km of each other, without overriding a genuinely much-nearer tech.
-const EMERGENCY_TIEBREAK_KM = 2
-
-// Fatigue tiebreak — see header comment. A normal full-time week is ~40hrs;
-// only hours beyond that add penalty, at a rate small enough that a truly
-// nearer technician still wins the job outright.
-const FATIGUE_BASELINE_HOURS = 40
-const FATIGUE_TIEBREAK_KM_PER_HOUR = 0.15
-
-function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 6371
-  const dLat = (lat2 - lat1) * Math.PI / 180
-  const dLng = (lng2 - lng1) * Math.PI / 180
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1 * Math.PI / 180) *
-    Math.cos(lat2 * Math.PI / 180) *
-    Math.sin(dLng / 2) ** 2
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-}
+import { filterQualifiedTechnicians, pickNearestTechnician, pickNearestSubcontractor, isBeyondMaxKm } from "./logic.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -182,14 +173,17 @@ serve(async (req: Request) => {
         .eq('credential_name', job.required_credential_name)
         .gte('expiry_date', today)
       const qualifiedIds = new Set((validCreds || []).map(c => c.technician_id))
-      free = free.filter(t => qualifiedIds.has(t.id))
+      free = filterQualifiedTechnicians(free, qualifiedIds)
     }
 
     if (free.length === 0) {
       // No employed technician free — fall back to the subcontractor pool
       // before giving up entirely (only if the business's add-on is
-      // actually active — see comment above).
-      const { data: subs } = subcontractorPoolActive ? await supabase
+      // actually active — see comment above). Skipped entirely when a
+      // credential is required, since subcontractors have no credential
+      // data to verify against (see header comment) — falling through
+      // straight to no_technician_available instead of ever guessing.
+      const { data: subs } = (subcontractorPoolActive && !job.required_credential_name) ? await supabase
         .from('subcontractors')
         .select('id, name, current_lat, current_lng')
         .eq('business_id', job.business_id)
@@ -205,18 +199,9 @@ serve(async (req: Request) => {
         })
       }
 
-      let nearestSub = subs[0]
-      let nearestSubDist = null
-      if (job.client_lat != null && job.client_lng != null) {
-        let bestDist = Infinity
-        for (const s of subs) {
-          const d = haversineKm(job.client_lat, job.client_lng, s.current_lat, s.current_lng)
-          if (d < bestDist) { bestDist = d; nearestSub = s }
-        }
-        nearestSubDist = bestDist
-      }
+      const { nearest: nearestSub, nearestDist: nearestSubDist } = pickNearestSubcontractor(subs, job.client_lat, job.client_lng)
 
-      if (maxKm != null && nearestSubDist != null && nearestSubDist > maxKm) {
+      if (isBeyondMaxKm(maxKm, nearestSubDist)) {
         supabase.rpc('record_agent_run', { fn_name: 'auto-assign-technician', status: 'ok' }).then(() => {}, () => {})
         return new Response(JSON.stringify({ success: true, skipped: 'nearest_beyond_max_km' }), {
           status: 200,
@@ -224,37 +209,25 @@ serve(async (req: Request) => {
         })
       }
 
-      await supabase.from('jobs').update({ assigned_subcontractor_id: nearestSub.id }).eq('id', job.id)
+      await supabase.from('jobs').update({ assigned_subcontractor_id: nearestSub!.id }).eq('id', job.id)
       await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
         body: JSON.stringify({
           businessId: job.business_id,
-          text: `🚚 No technician was free — auto-dispatched subcontractor *${nearestSub.name}* to job for *${job.client_name || 'client'}*.`,
+          text: `🚚 No technician was free — auto-dispatched subcontractor *${nearestSub!.name}* to job for *${job.client_name || 'client'}*.`,
         }),
       }).catch(() => {})
       supabase.rpc('record_agent_run', { fn_name: 'auto-assign-technician', status: 'ok' }).then(() => {}, () => {})
-      return new Response(JSON.stringify({ success: true, assigned_subcontractor_to: nearestSub.id }), {
+      return new Response(JSON.stringify({ success: true, assigned_subcontractor_to: nearestSub!.id }), {
         status: 200,
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
       })
     }
 
-    let nearest = free[0]
-    let nearestDist = null
-    if (job.client_lat != null && job.client_lng != null) {
-      let bestScore = Infinity
-      for (const t of free) {
-        const d = haversineKm(job.client_lat, job.client_lng, t.current_lat, t.current_lng)
-        const fatigueHoursOverBaseline = Math.max(0, (t.rolling_week_hours || 0) - FATIGUE_BASELINE_HOURS)
-        const score = d
-          + (t.rolling_emergency_job_count || 0) * EMERGENCY_TIEBREAK_KM
-          + fatigueHoursOverBaseline * FATIGUE_TIEBREAK_KM_PER_HOUR
-        if (score < bestScore) { bestScore = score; nearest = t; nearestDist = d }
-      }
-    }
+    const { nearest, nearestDist } = pickNearestTechnician(free, job.client_lat, job.client_lng)
 
-    if (maxKm != null && nearestDist != null && nearestDist > maxKm) {
+    if (isBeyondMaxKm(maxKm, nearestDist)) {
       supabase.rpc('record_agent_run', { fn_name: 'auto-assign-technician', status: 'ok' }).then(() => {}, () => {})
       return new Response(JSON.stringify({ success: true, skipped: 'nearest_beyond_max_km' }), {
         status: 200,
@@ -262,13 +235,13 @@ serve(async (req: Request) => {
       })
     }
 
-    await supabase.from('jobs').update({ technician_id: nearest.id }).eq('id', job.id)
-    await supabase.from('technicians').update({ current_job_id: job.id }).eq('id', nearest.id)
+    await supabase.from('jobs').update({ technician_id: nearest!.id }).eq('id', job.id)
+    await supabase.from('technicians').update({ current_job_id: job.id }).eq('id', nearest!.id)
 
     await fetch(`${supabaseUrl}/functions/v1/send-job-assignment-sms`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
-      body: JSON.stringify({ jobId: job.id, technicianId: nearest.id }),
+      body: JSON.stringify({ jobId: job.id, technicianId: nearest!.id }),
     }).catch(() => {})
 
     await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
@@ -276,13 +249,13 @@ serve(async (req: Request) => {
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
       body: JSON.stringify({
         businessId: job.business_id,
-        text: `🚚 Auto-dispatched *${nearest.name}* to job for *${job.client_name || 'client'}*.`,
+        text: `🚚 Auto-dispatched *${nearest!.name}* to job for *${job.client_name || 'client'}*.`,
       }),
     }).catch(() => {})
 
     supabase.rpc('record_agent_run', { fn_name: 'auto-assign-technician', status: 'ok' }).then(() => {}, () => {})
 
-    return new Response(JSON.stringify({ success: true, assigned_to: nearest.id }), {
+    return new Response(JSON.stringify({ success: true, assigned_to: nearest!.id }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     })

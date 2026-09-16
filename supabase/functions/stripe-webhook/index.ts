@@ -37,6 +37,14 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import Stripe from "https://esm.sh/stripe@14?target=deno"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import {
+  planCheckoutSessionCompleted,
+  planSubscriptionDeleted,
+  planInvoicePaymentFailed,
+  planInvoicePaymentSucceeded,
+  planPaymentIntentSucceeded,
+  shouldAlertOperator,
+} from "./logic.ts"
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, {
   apiVersion: '2023-10-16',
@@ -69,39 +77,39 @@ serve(async (req: Request) => {
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session
-        const businessId = session.metadata?.business_id
-        if (businessId && session.customer && session.subscription) {
-          // Also fetch the subscription item id — sync-technician-billing needs
-          // it to update billed quantity later, and it isn't on the session object.
-          let subItemId: string | null = null
+
+        // Also fetch the subscription item id — sync-technician-billing needs
+        // it to update billed quantity later, and it isn't on the session
+        // object. This is the one part of this branch that needs its own
+        // Stripe API call, so it stays here rather than in the pure planner.
+        let subItemId: string | null = null
+        if (session.metadata?.business_id && session.customer && session.subscription) {
           try {
             const sub = await stripe.subscriptions.retrieve(session.subscription as string)
             subItemId = sub.items.data[0]?.id ?? null
           } catch (err) {
             console.error('Failed to retrieve subscription for item id:', err.message)
           }
+        }
 
+        const plan = planCheckoutSessionCompleted(session, subItemId)
+        if (plan) {
           const { error } = await supabaseAdmin
             .from('businesses')
-            .update({
-              stripe_customer_id: session.customer as string,
-              stripe_sub_id: session.subscription as string,
-              stripe_sub_item_id: subItemId,
-            })
-            .eq('id', businessId)
+            .update(plan.update)
+            .eq('id', plan.businessId)
           if (error) console.error('Failed to save Stripe IDs:', error.message)
 
           // Best-effort welcome email — send-email no-ops cleanly if
           // RESEND_API_KEY isn't configured, so this never blocks the
           // webhook's real job (saving the Stripe IDs above).
-          const contactEmail = session.customer_details?.email
-          if (contactEmail) {
-            const { data: biz } = await supabaseAdmin.from('businesses').select('name').eq('id', businessId).maybeSingle()
+          if (plan.welcomeEmailTo) {
+            const { data: biz } = await supabaseAdmin.from('businesses').select('name').eq('id', plan.businessId).maybeSingle()
             fetch(`${Deno.env.get('SUPABASE_URL')!}/functions/v1/send-email`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!}` },
               body: JSON.stringify({
-                to: contactEmail,
+                to: plan.welcomeEmailTo,
                 subject: `You're live on Minerva`,
                 html: `<p>Hi${biz?.name ? ' ' + biz.name : ''},</p><p>Your Minerva trial has started. Your 7-day free trial runs from today, and your card will be billed automatically when it ends unless you cancel first from your billing settings.</p><p>— The Minerva team</p>`,
               }),
@@ -112,14 +120,16 @@ serve(async (req: Request) => {
       }
 
       case 'customer.subscription.deleted': {
-        const subscription = event.data.object as Stripe.Subscription
         // Mark the business as cancelled so the dispatcher app can show a
         // "trial/subscription ended" state instead of silently continuing.
-        const { error } = await supabaseAdmin
-          .from('businesses')
-          .update({ subscription_tier: 'cancelled' })
-          .eq('stripe_sub_id', subscription.id)
-        if (error) console.error('Failed to mark subscription cancelled:', error.message)
+        const plan = planSubscriptionDeleted(event.data.object as Stripe.Subscription)
+        if (plan) {
+          const { error } = await supabaseAdmin
+            .from('businesses')
+            .update(plan.update)
+            .eq('stripe_sub_id', plan.subscriptionId)
+          if (error) console.error('Failed to mark subscription cancelled:', error.message)
+        }
         break
       }
 
@@ -131,13 +141,12 @@ serve(async (req: Request) => {
         // eventually gives up and fires customer.subscription.deleted above.
         // Record it now so the dispatcher app can warn the owner immediately
         // instead of leaving them unaware their card was declined.
-        const invoice = event.data.object as Stripe.Invoice
-        const subId = invoice.subscription as string | null
-        if (subId) {
+        const plan = planInvoicePaymentFailed(event.data.object as Stripe.Invoice, new Date().toISOString())
+        if (plan) {
           const { data: biz, error } = await supabaseAdmin
             .from('businesses')
-            .update({ payment_failed_at: new Date().toISOString() })
-            .eq('stripe_sub_id', subId)
+            .update(plan.update)
+            .eq('stripe_sub_id', plan.subscriptionId)
             .select('id, name')
             .maybeSingle()
           if (error) console.error('Failed to record payment_failed_at:', error.message)
@@ -148,14 +157,14 @@ serve(async (req: Request) => {
           // Minerva surfacing it to the person who'd actually want to know.
           // No-ops cleanly if OPERATOR_EMAIL isn't set (see send-email).
           const operatorEmail = Deno.env.get('OPERATOR_EMAIL')
-          if (operatorEmail) {
+          if (shouldAlertOperator(operatorEmail)) {
             fetch(`${Deno.env.get('SUPABASE_URL')!}/functions/v1/send-email`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!}` },
               body: JSON.stringify({
                 to: operatorEmail,
-                subject: `[Minerva] Payment failed — ${biz?.name || subId}`,
-                html: `<p>A Stripe charge for <strong>${biz?.name || 'a business'}</strong> (subscription ${subId}) failed. Stripe will retry automatically per its dunning schedule — no action needed unless it keeps failing. Check the dispatcher app's billing warning or the Stripe dashboard for details.</p>`,
+                subject: `[Minerva] Payment failed — ${biz?.name || plan.subscriptionId}`,
+                html: `<p>A Stripe charge for <strong>${biz?.name || 'a business'}</strong> (subscription ${plan.subscriptionId}) failed. Stripe will retry automatically per its dunning schedule — no action needed unless it keeps failing. Check the dispatcher app's billing warning or the Stripe dashboard for details.</p>`,
               }),
             }).catch(err => console.error('stripe-webhook: operator payment-failed alert failed', err))
           }
@@ -168,13 +177,12 @@ serve(async (req: Request) => {
         // through and the subscription is healthy again, or this is the
         // very first invoice on a fresh subscription (payment_failed_at is
         // already null then, so this is a harmless no-op in that case).
-        const invoice = event.data.object as Stripe.Invoice
-        const subId = invoice.subscription as string | null
-        if (subId) {
+        const plan = planInvoicePaymentSucceeded(event.data.object as Stripe.Invoice)
+        if (plan) {
           const { error } = await supabaseAdmin
             .from('businesses')
-            .update({ payment_failed_at: null })
-            .eq('stripe_sub_id', subId)
+            .update(plan.update)
+            .eq('stripe_sub_id', plan.subscriptionId)
           if (error) console.error('Failed to clear payment_failed_at:', error.message)
         }
         break
@@ -187,14 +195,13 @@ serve(async (req: Request) => {
         // manual "Mark Paid" button, which remains untouched and is still
         // how every invoice gets marked paid unless a business turns this
         // optional flow on.
-        const pi = event.data.object as Stripe.PaymentIntent
-        const invoiceId = pi.metadata?.invoice_id
-        if (invoiceId) {
+        const plan = planPaymentIntentSucceeded(event.data.object as Stripe.PaymentIntent, new Date().toISOString())
+        if (plan) {
           const { error } = await supabaseAdmin
             .from('invoices')
-            .update({ status: 'paid', paid_at: new Date().toISOString(), payment_method: 'stripe_card' })
-            .eq('id', invoiceId)
-            .eq('stripe_payment_intent_id', pi.id)
+            .update(plan.update)
+            .eq('id', plan.invoiceId)
+            .eq('stripe_payment_intent_id', plan.paymentIntentId)
           if (error) console.error('Failed to mark invoice paid from payment_intent.succeeded:', error.message)
         }
         break

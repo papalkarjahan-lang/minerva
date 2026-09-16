@@ -18,6 +18,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { formatAuPhone, buildJobAssignmentMessage, buildJobReassignmentMessage } from "../_shared/sms.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -48,15 +49,6 @@ serve(async (req: Request) => {
     const when = job.scheduled_time
       ? new Date(job.scheduled_time).toLocaleString('en-AU', { weekday: 'short', hour: 'numeric', minute: '2-digit', day: 'numeric', month: 'short' })
       : 'ASAP'
-    const urgencyTag = job.urgency === 'emergency' ? ' [EMERGENCY]' : ''
-
-    function formatPhone(raw: string) {
-      let p = raw.replace(/\s/g, '')
-      if (p.startsWith('0')) p = '+61' + p.slice(1)
-      if (!p.startsWith('+')) p = '+61' + p
-      return p
-    }
-
     async function sendSms(to: string, body: string) {
       const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json`, {
         method: 'POST',
@@ -75,8 +67,8 @@ serve(async (req: Request) => {
     const { data: newTech } = await supabase.from('technicians').select('phone, name').eq('id', technicianId).maybeSingle()
     if (newTech?.phone) {
       try {
-        await sendSms(formatPhone(newTech.phone),
-          `Hi ${newTech.name || ''}, new job assigned${urgencyTag} from ${bizName}: ${job.client_name || 'Client'} at ${job.client_address || 'address on file'}, ${when}. Open Minerva to view details.`.trim())
+        await sendSms(formatAuPhone(newTech.phone),
+          buildJobAssignmentMessage({ techName: newTech.name, businessName: bizName, clientName: job.client_name, clientAddress: job.client_address, when, isEmergency: job.urgency === 'emergency' }))
         results.newTechnician = 'sent'
       } catch (err) {
         console.error('send-job-assignment-sms: new technician send failed', err)
@@ -90,8 +82,8 @@ serve(async (req: Request) => {
       const { data: prevTech } = await supabase.from('technicians').select('phone, name').eq('id', previousTechnicianId).maybeSingle()
       if (prevTech?.phone) {
         try {
-          await sendSms(formatPhone(prevTech.phone),
-            `Hi ${prevTech.name || ''}, your job at ${job.client_address || 'the scheduled address'} has been reassigned to someone else. If you're already on the way, contact your dispatcher.`)
+          await sendSms(formatAuPhone(prevTech.phone),
+            buildJobReassignmentMessage({ techName: prevTech.name, clientAddress: job.client_address }))
           results.previousTechnician = 'sent'
         } catch (err) {
           console.error('send-job-assignment-sms: previous technician send failed', err)

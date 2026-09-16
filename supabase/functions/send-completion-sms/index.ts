@@ -9,6 +9,7 @@
 //   TWILIO_PHONE_NUMBER  (your Twilio AU number, format: +61412345678)
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { formatAuPhone, buildCompletionMessage } from "../_shared/sms.ts"
 
 interface SMSPayload {
   clientPhone: string
@@ -35,13 +36,8 @@ serve(async (req: Request) => {
       })
     }
 
-    // Format phone number to E.164 for Twilio
-    // Converts 0412345678 -> +61412345678
-    let phone = clientPhone.replace(/\s/g, '')
-    if (phone.startsWith('0')) phone = '+61' + phone.slice(1)
-    if (!phone.startsWith('+')) phone = '+61' + phone
-
-    const message = `Hi ${clientName}, ${techName} from ${businessName} has completed your job. Thank you for choosing us!`
+    const phone = formatAuPhone(clientPhone)
+    const message = buildCompletionMessage({ clientName, techName, businessName })
 
     const TWILIO_SID = Deno.env.get('TWILIO_ACCOUNT_SID')
     const TWILIO_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN')
