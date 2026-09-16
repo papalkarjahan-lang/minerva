@@ -24,6 +24,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { formatAuPhone } from "../_shared/sms.ts"
 
 // Same alphabet/approach as src/utils.js generatePin()/generateReferralCode()
 // — reimplemented here since edge functions can't import from src/.
@@ -89,9 +90,7 @@ serve(async (req: Request) => {
 
     let smsOk = false
     if (TWILIO_SID && TWILIO_TOKEN && TWILIO_FROM) {
-      let phone = invoice.client_phone.replace(/\s/g, '')
-      if (phone.startsWith('0')) phone = '+61' + phone.slice(1)
-      if (!phone.startsWith('+')) phone = '+61' + phone
+      const phone = formatAuPhone(invoice.client_phone)
 
       const message = `Thanks for your business, ${invoice.client_name || ''}! If you know anyone who needs ${bizName}, give them your code ${code} — just mention it when they get in touch.`.trim()
 

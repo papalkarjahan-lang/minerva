@@ -21,6 +21,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { formatAuPhone } from "../_shared/sms.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -62,9 +63,7 @@ serve(async (req: Request) => {
 
       let smsOk = false
       if (TWILIO_SID && TWILIO_TOKEN && TWILIO_FROM) {
-        let phone = inv.client_phone.replace(/\s/g, '')
-        if (phone.startsWith('0')) phone = '+61' + phone.slice(1)
-        if (!phone.startsWith('+')) phone = '+61' + phone
+        const phone = formatAuPhone(inv.client_phone)
 
         const amount = Number(inv.total).toFixed(2)
         const fallbackMessage = `Hi ${inv.client_name || ''}, this is a friendly reminder that your invoice from ${bizName} for $${amount} is still unpaid. View it here: ${link}`.trim()

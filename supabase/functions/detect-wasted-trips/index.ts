@@ -27,6 +27,8 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { formatAuPhone } from "../_shared/sms.ts"
+import { wasOnSite, groupJobsByTechnicianDate, findOverloadedGroups } from "./logic.ts"
 
 const ARRIVAL_RADIUS_KM = 0.15 // ~150 metres
 const MIN_DWELL_MINUTES = 15
@@ -76,8 +78,7 @@ serve(async (req: Request) => {
       if (pingErr) { console.error('detect-wasted-trips: location fetch failed', pingErr); continue }
       if (!pings || pings.length === 0) continue
 
-      const wasOnSite = pings.some(p => haversineKm(p.lat, p.lng, job.client_lat!, job.client_lng!) <= ARRIVAL_RADIUS_KM)
-      if (!wasOnSite) continue
+      if (!wasOnSite(pings, job.client_lat!, job.client_lng!, ARRIVAL_RADIUS_KM)) continue
 
       const detectedAt = new Date().toISOString()
       await supabase.from('jobs').update({ no_show_detected_at: detectedAt }).eq('id', job.id)
@@ -153,18 +154,9 @@ serve(async (req: Request) => {
     if (upcomingErr) {
       console.error('detect-wasted-trips: overload check job fetch failed', upcomingErr)
     } else {
-      const byTechDate: Record<string, { businessId: string; technicianId: string; date: string; count: number }> = {}
-      for (const j of upcomingJobs || []) {
-        if (!j.scheduled_time || !j.technician_id) continue
-        const date = j.scheduled_time.slice(0, 10)
-        const key = `${j.technician_id}|${date}`
-        if (!byTechDate[key]) byTechDate[key] = { businessId: j.business_id, technicianId: j.technician_id, date, count: 0 }
-        byTechDate[key].count++
-      }
+      const overloaded = findOverloadedGroups(groupJobsByTechnicianDate(upcomingJobs || []), OVERLOAD_JOB_THRESHOLD)
 
-      for (const { businessId, technicianId, date, count } of Object.values(byTechDate)) {
-        if (count <= OVERLOAD_JOB_THRESHOLD) continue
-
+      for (const { businessId, technicianId, date, count } of overloaded) {
         const { data: tech } = await supabase
           .from('technicians')
           .select('id, name, overload_alert_date')
@@ -208,20 +200,6 @@ serve(async (req: Request) => {
   }
 })
 
-// Re-implemented inline (edge functions are deployed individually and
-// can't import from src/) — same formula as src/utils.js haversineKm.
-function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 6371
-  const dLat = (lat2 - lat1) * Math.PI / 180
-  const dLng = (lng2 - lng1) * Math.PI / 180
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1 * Math.PI / 180) *
-    Math.cos(lat2 * Math.PI / 180) *
-    Math.sin(dLng / 2) ** 2
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-}
-
 async function sendSms(
   twilio: { sid?: string; token?: string; from?: string },
   rawPhone: string,
@@ -229,9 +207,7 @@ async function sendSms(
 ): Promise<boolean> {
   if (!twilio.sid || !twilio.token || !twilio.from) return false
 
-  let phone = rawPhone.replace(/\s/g, '')
-  if (phone.startsWith('0')) phone = '+61' + phone.slice(1)
-  if (!phone.startsWith('+')) phone = '+61' + phone
+  const phone = formatAuPhone(rawPhone)
 
   const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${twilio.sid}/Messages.json`, {
     method: 'POST',

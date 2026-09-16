@@ -3,6 +3,7 @@
 // Deploy with: supabase functions deploy send-setup-sms
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { formatAuPhone } from "../_shared/sms.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -19,9 +20,7 @@ serve(async (req: Request) => {
       })
     }
 
-    let formattedPhone = phone.replace(/\s/g, '')
-    if (formattedPhone.startsWith('0')) formattedPhone = '+61' + formattedPhone.slice(1)
-    if (!formattedPhone.startsWith('+')) formattedPhone = '+61' + formattedPhone
+    const formattedPhone = formatAuPhone(phone)
 
     const message = `Hi ${name}, you've been added to ${businessName}'s Minerva tracking system.\n\nOpen this link on your phone to start tracking:\n${techUrl}\n\nYou'll need to allow location access when prompted. Any issues, reply to this message.`
 

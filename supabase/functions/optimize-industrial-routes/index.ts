@@ -10,6 +10,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { findNearestAsset } from "./logic.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -44,14 +45,9 @@ serve(async (req: Request) => {
 
       if (!candidates || candidates.length === 0) continue
 
-      let best: any = null
-      let bestDist = Infinity
-      for (const a of candidates) {
-        if (a.current_lat == null || a.current_lng == null || site.site_lat == null || site.site_lng == null) continue
-        const d = haversineMeters(a.current_lat, a.current_lng, site.site_lat, site.site_lng)
-        if (d < bestDist) { bestDist = d; best = a }
-      }
-      if (!best) continue
+      const nearest = findNearestAsset(candidates, site.site_lat, site.site_lng)
+      if (!nearest) continue
+      const { asset: best, distanceMeters: bestDist } = nearest
 
       await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
         method: 'POST',
@@ -78,12 +74,3 @@ serve(async (req: Request) => {
     })
   }
 })
-
-function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371000
-  const toRad = (d: number) => d * Math.PI / 180
-  const dLat = toRad(lat2 - lat1)
-  const dLon = toRad(lon2 - lon1)
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-}

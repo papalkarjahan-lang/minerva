@@ -17,6 +17,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { formatAuPhone } from "../_shared/sms.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -75,9 +76,7 @@ serve(async (req: Request) => {
       const bizName = (job as any).businesses?.name || 'us'
       let smsOk = false
       if (TWILIO_SID && TWILIO_TOKEN && TWILIO_FROM) {
-        let phone = job.client_phone.replace(/\s/g, '')
-        if (phone.startsWith('0')) phone = '+61' + phone.slice(1)
-        if (!phone.startsWith('+')) phone = '+61' + phone
+        const phone = formatAuPhone(job.client_phone)
 
         const fallbackMessage = `Hi ${job.client_name || ''}, it's been a little while since ${bizName} last helped you out — just checking in, let us know if you need anything.`.trim()
         const message = anthropicKey

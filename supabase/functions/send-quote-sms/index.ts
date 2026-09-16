@@ -9,6 +9,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { formatAuPhone } from "../_shared/sms.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -63,9 +64,7 @@ serve(async (req: Request) => {
     if (claimErr) throw claimErr
     if (!claimed || claimed.length === 0) throw new Error('Quote already being sent — refusing to send twice')
 
-    let phone = quote.client_phone.replace(/\s/g, '')
-    if (phone.startsWith('0')) phone = '+61' + phone.slice(1)
-    if (!phone.startsWith('+')) phone = '+61' + phone
+    const phone = formatAuPhone(quote.client_phone)
 
     const bizName = (quote as any).businesses?.name || 'the business'
     const link = `${APP_URL}/quote/${quote.id}`

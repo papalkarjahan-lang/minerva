@@ -12,6 +12,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { formatAuPhone } from "../_shared/sms.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -68,9 +69,7 @@ serve(async (req: Request) => {
       if (TWILIO_SID && TWILIO_TOKEN && TWILIO_FROM) {
         for (const r of recipients) {
           if (!r.phone) { failed++; continue }
-          let phone = r.phone.replace(/\s/g, '')
-          if (phone.startsWith('0')) phone = '+61' + phone.slice(1)
-          if (!phone.startsWith('+')) phone = '+61' + phone
+          const phone = formatAuPhone(r.phone)
 
           const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json`, {
             method: 'POST',

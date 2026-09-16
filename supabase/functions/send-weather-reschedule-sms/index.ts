@@ -12,6 +12,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { formatAuPhone } from "../_shared/sms.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -61,9 +62,7 @@ serve(async (req: Request) => {
 
     const message = `Hi ${job.client_name || ''}, tomorrow's forecast isn't looking great for your scheduled job (${draft.forecast_summary || 'weather risk flagged'}) and we'd rather reschedule than have it cut short or unsafe. Reply here or give us a call to pick a new time.`.trim()
 
-    let phone = job.client_phone.replace(/\s/g, '')
-    if (phone.startsWith('0')) phone = '+61' + phone.slice(1)
-    if (!phone.startsWith('+')) phone = '+61' + phone
+    const phone = formatAuPhone(job.client_phone)
 
     const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json`, {
       method: 'POST',

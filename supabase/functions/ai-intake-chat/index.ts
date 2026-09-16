@@ -26,6 +26,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { formatAuPhone } from "../_shared/sms.ts"
 
 interface ChatMessage {
   role: 'user' | 'assistant'
@@ -387,9 +388,7 @@ if not yet captured}`
       const TWILIO_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN')
       const TWILIO_FROM = Deno.env.get('TWILIO_PHONE_NUMBER')
       if (TWILIO_SID && TWILIO_TOKEN && TWILIO_FROM && business.contact_phone) {
-        let toPhone = business.contact_phone.replace(/\s/g, '')
-        if (toPhone.startsWith('0')) toPhone = '+61' + toPhone.slice(1)
-        if (!toPhone.startsWith('+')) toPhone = '+61' + toPhone
+        const toPhone = formatAuPhone(business.contact_phone)
 
         const urgencyTag = urgency === 'emergency' ? '🚨 EMERGENCY' : 'New lead'
         const repeatTag = isRepeatClient ? ' (returning client)' : ''
