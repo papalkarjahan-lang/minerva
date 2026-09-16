@@ -33,6 +33,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { matchesCondition } from "./logic.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -141,26 +142,6 @@ async function runWorkflowsFor(
   }
 
   return { evaluated: (workflows || []).length, ran, skipped }
-}
-
-function matchesCondition(
-  payload: Record<string, any>,
-  field: string | null,
-  op: string | null,
-  value: string | null
-): boolean {
-  if (!field || !op) return true // no condition set = always match
-  const actual = payload?.[field]
-  if (actual === undefined || actual === null) return false
-
-  switch (op) {
-    case 'eq': return String(actual) === String(value)
-    case 'neq': return String(actual) !== String(value)
-    case 'gt': return Number(actual) > Number(value)
-    case 'lt': return Number(actual) < Number(value)
-    case 'contains': return String(actual).toLowerCase().includes(String(value || '').toLowerCase())
-    default: return true
-  }
 }
 
 async function logRun(supabase: any, workflowId: string, businessId: string, event: string, status: string, detail: string) {
