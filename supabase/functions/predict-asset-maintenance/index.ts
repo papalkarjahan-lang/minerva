@@ -17,6 +17,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { projectMaintenance } from "./logic.ts"
 
 const LOOKBACK_DAYS = 14
 const PREDICT_WINDOW_DAYS = 7
@@ -75,19 +76,9 @@ serve(async (req: Request) => {
 
       const first = pings[0]
       const last = pings[pings.length - 1]
-      const hoursElapsedDays = (new Date(last.created_at).getTime() - new Date(first.created_at).getTime()) / (24 * 60 * 60 * 1000)
-      if (hoursElapsedDays <= 0) continue
-
-      const engineHoursDelta = (last.engine_hours || 0) - (first.engine_hours || 0)
-      if (engineHoursDelta <= 0) continue // idle or reading error, no usage trend to project
-
-      const dailyRate = engineHoursDelta / hoursElapsedDays
-      const dueAt = (asset.last_maintenance_at_hours || 0) + (asset.maintenance_interval_hours || 250)
-      const hoursRemaining = dueAt - (last.engine_hours || asset.engine_hours || 0)
-      if (hoursRemaining <= 0) continue // already past due — monitor-asset-telemetry's reactive check owns this case
-
-      const daysUntilDue = hoursRemaining / dailyRate
-      if (daysUntilDue > PREDICT_WINDOW_DAYS) continue // not close enough yet
+      const prediction = projectMaintenance(first, last, asset.engine_hours, asset.last_maintenance_at_hours, asset.maintenance_interval_hours, PREDICT_WINDOW_DAYS)
+      if (!prediction) continue
+      const { dailyRate, roundedDays } = prediction
 
       // Throttle: skip if we already predicted this within the suppress window
       const { data: recentPrediction } = await supabase.from('asset_telemetry_events')
@@ -98,7 +89,6 @@ serve(async (req: Request) => {
         .limit(1)
       if (recentPrediction && recentPrediction.length > 0) continue
 
-      const roundedDays = Math.max(1, Math.round(daysUntilDue))
       await supabase.from('asset_telemetry_events').insert({
         asset_id: asset.id, business_id: asset.business_id, event_type: 'maintenance_predicted',
         engine_hours: last.engine_hours,

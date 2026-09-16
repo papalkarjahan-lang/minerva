@@ -25,6 +25,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { computeCarbonEstimate } from "./logic.ts"
 
 // kg CO2-e per km, average city/highway — placeholder static reference,
 // see header note. 'light_commercial' covers the typical trade-business
@@ -84,26 +85,16 @@ serve(async (req: Request) => {
 
     let estimatesCreated = 0
     for (const [, jobsForTech] of byTech) {
-      if (jobsForTech.length < 2) continue // need at least 2 stops to have a "transit" distance to estimate
+      const estimate = computeCarbonEstimate(jobsForTech as { client_lat: number; client_lng: number }[], VEHICLE_FACTORS.light_commercial)
+      if (!estimate) continue // fewer than 2 stops, or zero distance between them
 
-      let totalKm = 0
-      for (let i = 1; i < jobsForTech.length; i++) {
-        const a = jobsForTech[i - 1]
-        const b = jobsForTech[i]
-        totalKm += haversineKm(a.client_lat!, a.client_lng!, b.client_lat!, b.client_lng!)
-      }
-      if (totalKm <= 0) continue
-
-      const factor = VEHICLE_FACTORS.light_commercial
-      const estimatedKg = totalKm * factor
       const lastJob = jobsForTech[jobsForTech.length - 1]
-
       await supabase.from('carbon_estimates').insert({
         business_id: lastJob.business_id,
         job_id: lastJob.id,
-        distance_km: Math.round(totalKm * 100) / 100,
+        distance_km: estimate.distanceKm,
         vehicle_type: 'light_commercial',
-        estimated_kg_co2e: Math.round(estimatedKg * 100) / 100,
+        estimated_kg_co2e: estimate.estimatedKgCo2e,
         factor_basis: FACTOR_BASIS,
       })
       estimatesCreated++
@@ -126,12 +117,3 @@ serve(async (req: Request) => {
     })
   }
 })
-
-function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371
-  const toRad = (d: number) => d * Math.PI / 180
-  const dLat = toRad(lat2 - lat1)
-  const dLon = toRad(lon2 - lon1)
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-}

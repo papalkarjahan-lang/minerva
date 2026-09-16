@@ -29,6 +29,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { planRoute } from "./logic.ts"
 
 // Assumed average travel speed for chained ETA estimates — a deliberately
 // conservative urban/suburban trade-vehicle average, not a routing-API
@@ -40,18 +41,6 @@ const AVG_SPEED_KMH = 40
 // anywhere else. A rough default; a business with real average job
 // duration data could tune this later, but no such data is aggregated yet.
 const DEFAULT_STOP_MINUTES = 30
-
-function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 6371
-  const dLat = (lat2 - lat1) * Math.PI / 180
-  const dLng = (lng2 - lng1) * Math.PI / 180
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1 * Math.PI / 180) *
-    Math.cos(lat2 * Math.PI / 180) *
-    Math.sin(dLng / 2) ** 2
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-}
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -114,40 +103,25 @@ serve(async (req: Request) => {
       })
     }
 
-    // Nearest-neighbor chain from the technician's current position.
-    const unvisited = [...remaining]
-    let currentLat = tech.current_lat
-    let currentLng = tech.current_lng
-    let cursor = new Date()
-    const ordered: { id: string; distanceKm: number }[] = []
-
-    while (unvisited.length > 0) {
-      let bestIdx = 0
-      let bestDist = Infinity
-      for (let i = 0; i < unvisited.length; i++) {
-        const d = haversineKm(currentLat, currentLng, unvisited[i].client_lat, unvisited[i].client_lng)
-        if (d < bestDist) { bestDist = d; bestIdx = i }
-      }
-      const next = unvisited.splice(bestIdx, 1)[0]
-      ordered.push({ id: next.id, distanceKm: bestDist })
-      currentLat = next.client_lat
-      currentLng = next.client_lng
-    }
-
-    // Chain estimated arrival times using AVG_SPEED_KMH travel + a fixed
+    // Nearest-neighbor chain from the technician's current position, with
+    // estimated arrival times chained using AVG_SPEED_KMH travel + a fixed
     // per-stop dwell time — see header comment for the honest caveat on
     // both assumptions.
-    let updated = 0
-    for (let i = 0; i < ordered.length; i++) {
-      const travelMinutes = (ordered[i].distanceKm / AVG_SPEED_KMH) * 60
-      cursor = new Date(cursor.getTime() + travelMinutes * 60000)
-      const estimatedArrival = cursor.toISOString()
-      cursor = new Date(cursor.getTime() + DEFAULT_STOP_MINUTES * 60000)
+    const ordered = planRoute(
+      tech.current_lat,
+      tech.current_lng,
+      remaining as { id: string; client_lat: number; client_lng: number }[],
+      new Date(),
+      AVG_SPEED_KMH,
+      DEFAULT_STOP_MINUTES
+    )
 
+    let updated = 0
+    for (const stop of ordered) {
       await supabase.from('jobs').update({
-        route_sequence: i + 1,
-        estimated_arrival_at: estimatedArrival,
-      }).eq('id', ordered[i].id)
+        route_sequence: stop.sequence,
+        estimated_arrival_at: stop.estimatedArrival,
+      }).eq('id', stop.id)
       updated++
     }
 
