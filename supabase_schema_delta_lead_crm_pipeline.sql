@@ -51,6 +51,19 @@ create index if not exists idx_lead_activities_lead on lead_activities (lead_id,
 
 grant select, insert on lead_activities to anon, authenticated, service_role;
 
+-- Every other table in this schema enables RLS with matching anon
+-- policies (the app's security model is unguessable-link trust, not
+-- per-tenant RLS isolation — see LEADS comment in supabase_schema.sql).
+-- This table was missing that RLS enable/policy pair even though the
+-- grant above already implies the same "anon" access — adding it for
+-- consistency with every other table, matching its select+insert-only
+-- grant (no update/delete policy, since none is granted).
+alter table lead_activities enable row level security;
+create policy "anon select lead_activities" on lead_activities
+  for select using (true);
+create policy "anon insert lead_activities" on lead_activities
+  for insert with check (true);
+
 -- Auto-log a stage_change activity row whenever pipeline_stage actually
 -- changes, so the timeline is complete even if a dispatcher only ever
 -- uses the stage dropdown and never types a manual note — matches how
