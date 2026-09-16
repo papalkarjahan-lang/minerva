@@ -26,10 +26,12 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
-
-const CONSERVATIVE_FUEL_SAVINGS_RATE = 0.15
-const ESTIMATED_FUEL_SPEND_PER_VEHICLE_MONTHLY = 1200
-const MINERVA_PER_TECH_MONTHLY_ESTIMATE = 89 // mid-tier estimate for a bulk/negotiated multi-tech deal
+import {
+  computeMonthlyFuelSpend,
+  computeFuelSavings,
+  computeMinervaMonthlyCost,
+  isEligibleForProposalStageAdvance,
+} from "./logic.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -49,13 +51,9 @@ serve(async (req: Request) => {
       })
     }
 
-    const monthlyFuelSpend = avgMonthlyFuelSpend && avgMonthlyFuelSpend > 0
-      ? avgMonthlyFuelSpend
-      : fleetSize * ESTIMATED_FUEL_SPEND_PER_VEHICLE_MONTHLY
-
-    const estimatedMonthlyFuelSavings = Math.round(monthlyFuelSpend * CONSERVATIVE_FUEL_SAVINGS_RATE)
-    const estimatedAnnualFuelSavings = estimatedMonthlyFuelSavings * 12
-    const estimatedMinervaMonthlyCost = Math.round(fleetSize * MINERVA_PER_TECH_MONTHLY_ESTIMATE)
+    const monthlyFuelSpend = computeMonthlyFuelSpend(fleetSize, avgMonthlyFuelSpend)
+    const { monthly: estimatedMonthlyFuelSavings, annual: estimatedAnnualFuelSavings } = computeFuelSavings(monthlyFuelSpend)
+    const estimatedMinervaMonthlyCost = computeMinervaMonthlyCost(fleetSize)
 
     const { data: proposal, error } = await supabase.from('roi_proposals').insert({
       prospect_id: prospectId || null,
@@ -77,7 +75,7 @@ serve(async (req: Request) => {
     // this can't accidentally undo manual stage-tracking done later.
     if (bigAccountTargetId) {
       const { data: target } = await supabase.from('big_account_targets').select('stage').eq('id', bigAccountTargetId).single()
-      if (target && ['researching', 'contacted', 'discovery_call'].includes(target.stage)) {
+      if (isEligibleForProposalStageAdvance(target?.stage)) {
         await supabase.from('big_account_targets')
           .update({ stage: 'proposal_sent', updated_at: new Date().toISOString() })
           .eq('id', bigAccountTargetId)

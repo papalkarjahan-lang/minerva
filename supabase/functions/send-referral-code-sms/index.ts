@@ -25,17 +25,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { formatAuPhone } from "../_shared/sms.ts"
-
-// Same alphabet/approach as src/utils.js generatePin()/generateReferralCode()
-// — reimplemented here since edge functions can't import from src/.
-const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789' // no 0/O/1/I
-function generateReferralCode(): string {
-  const bytes = new Uint8Array(6)
-  crypto.getRandomValues(bytes)
-  let code = ''
-  for (let i = 0; i < 6; i++) code += CODE_ALPHABET[bytes[i] % CODE_ALPHABET.length]
-  return code
-}
+import { generateReferralCode } from "./logic.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {

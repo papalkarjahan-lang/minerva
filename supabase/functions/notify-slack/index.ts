@@ -36,39 +36,11 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { colorFor, parseAgentMessage } from "./logic.ts"
 
 interface NotifyPayload {
   businessId: string
   text: string
-}
-
-const RED = '#e01e5a'      // Slack's own "danger" red
-const AMBER = '#ecb22e'    // Slack's own "warning" yellow
-const GREEN = '#2eb67d'    // Slack's own "success" green
-const AUBERGINE = '#4a154b' // Slack's own brand purple — default/neutral
-
-const URGENT_EMOJIS = ['🚨', '⚠️', '👻']
-const POSITIVE_EMOJIS = ['💰', '🤝', '📈', '✅']
-
-function colorFor(leadingEmoji: string | null): string {
-  if (!leadingEmoji) return AUBERGINE
-  if (URGENT_EMOJIS.includes(leadingEmoji)) return leadingEmoji === '🚨' ? RED : AMBER
-  if (POSITIVE_EMOJIS.includes(leadingEmoji)) return GREEN
-  return AUBERGINE
-}
-
-// Every existing caller writes text in the shape "<emoji> *AgentName*: body"
-// (see e.g. notify-slack call sites in track-consumables, detect-idle-assets,
-// sequence-handoffs). Parse that out so it can become a real header block
-// instead of just more inline text — falls back gracefully to a generic
-// "Minerva" header for the few callers (nurture-stale-leads, winback-lost-
-// leads, check-credential-expiry) that just forward a caller-built string.
-function parseAgentMessage(text: string): { emoji: string | null; agent: string | null; body: string } {
-  const match = text.match(/^(\S+)\s+\*([^*]+)\*:\s*([\s\S]*)$/)
-  if (match) {
-    return { emoji: match[1], agent: match[2], body: match[3] }
-  }
-  return { emoji: null, agent: null, body: text }
 }
 
 serve(async (req: Request) => {

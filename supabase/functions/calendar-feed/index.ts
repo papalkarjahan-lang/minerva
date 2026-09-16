@@ -15,19 +15,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
-
-function icsEscape(text: string): string {
-  return String(text || '')
-    .replace(/\\/g, '\\\\')
-    .replace(/;/g, '\\;')
-    .replace(/,/g, '\\,')
-    .replace(/\n/g, '\\n')
-}
-
-function toIcsDate(dateStr: string): string {
-  // ICS wants UTC timestamps as YYYYMMDDTHHMMSSZ
-  return new Date(dateStr).toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z'
-}
+import { icsEscape, toIcsDate } from "./logic.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
