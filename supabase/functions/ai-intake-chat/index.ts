@@ -172,10 +172,8 @@ serve(async (req: Request) => {
     }
     // Cost-abuse guard: this is a public, unauthenticated endpoint
     // (/intake/:businessId) that spends real Anthropic API money per call.
-    // There's no per-IP/per-business request-rate limiter yet (would need a
-    // new DB table + migration to track it reliably across edge-function
-    // cold starts — not added speculatively here), but an oversized payload
-    // is a cheap, immediate multiplier on that cost, so cap it outright.
+    // An oversized payload is a cheap, immediate multiplier on that cost,
+    // so cap it outright.
     if (messages.length > 40 || messages.some(m => typeof m?.content !== 'string' || m.content.length > 2000)) {
       return new Response(JSON.stringify({ error: 'Message too long or conversation too long for this widget.' }), {
         status: 400,
@@ -186,6 +184,25 @@ serve(async (req: Request) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
+
+    // Per-business request-rate limiter (2026-09-16) — see
+    // supabase_schema_delta_rate_limits.sql. A legitimate chat session is
+    // nowhere near 30 messages in 10 minutes; this exists purely to cap a
+    // script hammering this endpoint into runaway Anthropic spend for one
+    // business, not to constrain a real conversation.
+    const { data: withinLimit, error: rlErr } = await supabase.rpc('check_rate_limit', {
+      p_key: `intake:${businessId}`,
+      p_window_seconds: 600,
+      p_max_requests: 30,
+    })
+    if (rlErr) {
+      console.error('ai-intake-chat: rate limit check failed, allowing request through', rlErr)
+    } else if (withinLimit === false) {
+      return new Response(JSON.stringify({ error: 'Too many requests — please try again in a few minutes.' }), {
+        status: 429,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
 
     const { data: business, error: bizErr } = await supabase
       .from('businesses')

@@ -58,6 +58,21 @@ serve(async (req: Request) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
+    // Per-job/invoice request-rate limiter (2026-09-16), same mechanism and
+    // reasoning as ai-intake-chat — see supabase_schema_delta_rate_limits.sql.
+    const { data: withinLimit, error: rlErr } = await supabase.rpc('check_rate_limit', {
+      p_key: `support:${jobId || invoiceId}`,
+      p_window_seconds: 600,
+      p_max_requests: 30,
+    })
+    if (rlErr) {
+      console.error('client-support-chat: rate limit check failed, allowing request through', rlErr)
+    } else if (withinLimit === false) {
+      return new Response(JSON.stringify({ error: 'Too many requests — please try again in a few minutes.' }), {
+        status: 429, headers: { 'Content-Type': 'application/json', ...corsHeaders },
+      })
+    }
+
     // Fetch exactly the one record the caller has the id for, plus its
     // business's public contact info — nothing else, and never a list.
     let job: Record<string, unknown> | null = null

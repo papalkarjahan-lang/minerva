@@ -325,6 +325,26 @@ serve(async (req: Request) => {
       // Brand-new call: create the session row now so every later turn has
       // something to append to.
       if (noInputRetries === 0) {
+        // Per-business call-rate limiter (2026-09-16), checked only at
+        // call-start (never mid-call) — see
+        // supabase_schema_delta_rate_limits.sql. Twilio itself is the
+        // gate on most abuse here (a caller needs a real phone line), but
+        // this caps the worst case of an auto-dialer hammering one
+        // business's number into runaway Anthropic/Twilio spend.
+        if (businessId) {
+          const { data: withinLimit, error: rlErr } = await supabaseAdmin.rpc('check_rate_limit', {
+            p_key: `voice:${businessId}`,
+            p_window_seconds: 3600,
+            p_max_requests: 30,
+          })
+          if (rlErr) {
+            console.error('voice-intake-agent: rate limit check failed, allowing call through', rlErr)
+          } else if (withinLimit === false) {
+            return new Response(sayAndHangupTwiml(`Sorry, ${businessName} is receiving a high volume of calls right now. Please try again shortly or send a text.`), {
+              status: 200, headers: { 'Content-Type': 'text/xml' },
+            })
+          }
+        }
         await supabaseAdmin.from('voice_call_sessions').upsert({
           business_id: businessId, call_sid: callSid, from_phone: from || null, messages: [],
         }, { onConflict: 'call_sid' })
