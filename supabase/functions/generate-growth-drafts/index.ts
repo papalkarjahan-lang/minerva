@@ -33,6 +33,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { extractSuburb, rankSuburbsByJobCount } from "../_shared/suburbs.ts"
 
 const CLAUDE_MODEL = 'claude-opus-4-6'
 
@@ -80,13 +81,7 @@ serve(async (req: Request) => {
         .eq('status', 'complete')
         .gte('completed_at', ninetyDaysAgo)
 
-      const suburbCounts: Record<string, number> = {}
-      for (const j of recentJobs || []) {
-        const suburb = (j.client_address || '').split(',').pop()?.trim() || j.client_address
-        if (!suburb) continue
-        suburbCounts[suburb] = (suburbCounts[suburb] || 0) + 1
-      }
-      const rankedSuburbs = Object.entries(suburbCounts).sort((a, b) => b[1] - a[1])
+      const rankedSuburbs = rankSuburbsByJobCount(recentJobs || [])
       const topSuburb = rankedSuburbs[0]
 
       // Audience-opportunity insight (Marketing agent, added Phase 3) — no
@@ -137,7 +132,7 @@ serve(async (req: Request) => {
         .maybeSingle()
 
       if (latestForecast?.trend_address) {
-        const trendSuburb = latestForecast.trend_address.split(',').pop()?.trim() || latestForecast.trend_address
+        const trendSuburb = extractSuburb(latestForecast.trend_address) || latestForecast.trend_address
 
         const { count: priorTrendDraftCount } = await supabase
           .from('marketing_drafts')

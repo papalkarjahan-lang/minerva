@@ -26,6 +26,8 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { computeInvoiceStats, isQuietDay } from "./logic.ts"
+import { rankSuburbsByJobCount } from "../_shared/suburbs.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -75,23 +77,10 @@ serve(async (req: Request) => {
           .gte('reminder_count', 3).is('escalation_flagged_at', null),
       ])
 
-      // Exclude voided invoices from every total below — a voided invoice
-      // was created by mistake, so counting it toward "invoiced" or the
-      // average would overstate real revenue activity for the day.
-      const liveInvoices = (invoices || []).filter(i => i.status !== 'void')
       const jobsDone = completedJobs?.length || 0
       const leadsIn = newLeads?.length || 0
-      const invoiced = liveInvoices.reduce((sum, i) => sum + Number(i.total || 0), 0)
-      const unpaid = liveInvoices.filter(i => i.status === 'unpaid').reduce((sum, i) => sum + Number(i.total || 0), 0)
-      const avgInvoice = liveInvoices.length > 0 ? invoiced / liveInvoices.length : 0
-
-      const suburbCounts: Record<string, number> = {}
-      for (const j of completedJobs || []) {
-        const suburb = (j.client_address || '').split(',').pop()?.trim()
-        if (!suburb) continue
-        suburbCounts[suburb] = (suburbCounts[suburb] || 0) + 1
-      }
-      const topSuburb = Object.entries(suburbCounts).sort((a, b) => b[1] - a[1])[0]
+      const { invoiced, unpaid, avgInvoice } = computeInvoiceStats(invoices || [])
+      const topSuburb = rankSuburbsByJobCount(completedJobs || [])[0]
 
       const pendingDraftsCount = pendingDrafts?.length || 0
       const lowStockCount = lowStockItems?.length || 0
@@ -99,8 +88,7 @@ serve(async (req: Request) => {
       const stuckInvoicesCount = stuckInvoices?.length || 0
 
       // Skip a genuinely quiet day — no point pinging an empty digest.
-      if (jobsDone === 0 && leadsIn === 0 && invoiced === 0 && pendingDraftsCount === 0 &&
-          lowStockCount === 0 && silentLeadsCount === 0 && stuckInvoicesCount === 0) continue
+      if (isQuietDay({ jobsDone, leadsIn, invoiced, pendingDraftsCount, lowStockCount, silentLeadsCount, stuckInvoicesCount })) continue
 
       // "Morning Meeting" format: grouped like reports from named departments
       // instead of one flat block, so it reads as a standup, not a log dump.
