@@ -20,6 +20,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { checkGeofence, isMaintenanceDue } from "./logic.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -74,8 +75,8 @@ serve(async (req: Request) => {
     if (asset.geofence_site_id && lat != null && lng != null) {
       const { data: site } = await supabase.from('site_projects').select('site_lat, site_lng, geofence_radius_m').eq('id', asset.geofence_site_id).maybeSingle()
       if (site?.site_lat != null && site?.site_lng != null) {
-        const distanceM = haversineMeters(lat, lng, site.site_lat, site.site_lng)
-        if (distanceM > (site.geofence_radius_m || 200)) {
+        const { breached, distanceMeters: distanceM } = checkGeofence(lat, lng, site.site_lat, site.site_lng, site.geofence_radius_m)
+        if (breached) {
           await supabase.from('asset_telemetry_events').insert({
             asset_id: assetId, business_id: asset.business_id, event_type: 'geofence_breach',
             lat, lng, detail: `${Math.round(distanceM)}m outside assigned site geofence`,
@@ -88,8 +89,7 @@ serve(async (req: Request) => {
 
     // Maintenance threshold check
     if (engineHours != null) {
-      const dueAt = (asset.last_maintenance_at_hours || 0) + (asset.maintenance_interval_hours || 250)
-      if (engineHours >= dueAt) {
+      if (isMaintenanceDue(engineHours, asset.last_maintenance_at_hours, asset.maintenance_interval_hours)) {
         await supabase.from('asset_telemetry_events').insert({
           asset_id: assetId, business_id: asset.business_id, event_type: 'maintenance_due',
           engine_hours: engineHours, detail: `${engineHours}h reached, interval ${asset.maintenance_interval_hours}h`,
@@ -116,15 +116,6 @@ serve(async (req: Request) => {
     })
   }
 })
-
-function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371000
-  const toRad = (d: number) => d * Math.PI / 180
-  const dLat = toRad(lat2 - lat1)
-  const dLon = toRad(lon2 - lon1)
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-}
 
 async function notify(supabaseUrl: string, supabaseServiceKey: string, businessId: string, text: string) {
   await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
