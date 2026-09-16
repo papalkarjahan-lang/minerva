@@ -34,6 +34,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { parseReviewResponse, shouldMarkJobVerified } from "./logic.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -109,15 +110,13 @@ serve(async (req: Request) => {
         .select('verification_status')
         .eq('job_id', jobId)
       if (!jobPhotos || jobPhotos.length === 0) continue
-      const stillPending = jobPhotos.some(p => p.verification_status === 'pending')
-      const anyFlagged = jobPhotos.some(p => p.verification_status === 'flagged')
-      // 'unavailable' (missing API key, API error, or unparseable response)
-      // means a photo was never actually reviewed — must block the badge the
-      // same as 'pending' does, otherwise InvoiceView/DispatcherView show
-      // real clients "✓ AI-verified: completion photos were checked" for
-      // photos nothing ever actually checked (fixed 2026-09-08).
-      const anyUnavailable = jobPhotos.some(p => p.verification_status === 'unavailable')
-      if (stillPending || anyFlagged || anyUnavailable) continue
+      // A job is only "AI-verified" once every attached photo is 'pass' —
+      // 'pending' (not yet reviewed), 'flagged', and 'unavailable' (missing
+      // API key, API error, or unparseable response — never actually
+      // reviewed) all block the badge, otherwise InvoiceView/DispatcherView
+      // would show real clients "✓ AI-verified" for photos nothing ever
+      // actually checked (fixed 2026-09-08).
+      if (!shouldMarkJobVerified(jobPhotos.map(p => p.verification_status))) continue
 
       const { data: job } = await supabase.from('jobs').select('id, ai_verified_at').eq('id', jobId).maybeSingle()
       if (!job || job.ai_verified_at) continue
@@ -180,16 +179,12 @@ async function reviewPhoto(
     if (!res.ok) return { status: 'unavailable', notes: `AI review unavailable (HTTP ${res.status}) — photo not AI-reviewed.` }
     const data = await res.json()
     const text: string = data?.content?.[0]?.text || ''
-    const statusMatch = text.match(/STATUS:\s*(pass|flagged)/i)
-    const notesMatch = text.match(/NOTES:\s*(.+)/i)
     // A 2xx response whose text doesn't match the expected format is a parse
     // failure, not a verification result — same "must not silently look like
     // pass" rule as the !res.ok and network-error branches above (fixed
     // 2026-09-08; this used to default to 'pass' here, which could mark an
     // actually-unreviewed photo as AI-verified).
-    const status = statusMatch ? (statusMatch[1].toLowerCase() as 'pass' | 'flagged') : 'unavailable'
-    const notes = notesMatch ? notesMatch[1].trim() : (statusMatch ? text.trim().slice(0, 200) : `AI review response didn't match expected format — photo not AI-reviewed. Raw: ${text.trim().slice(0, 150)}`)
-    return { status, notes }
+    return parseReviewResponse(text)
   } catch (err) {
     // Network error / thrown exception — same reasoning as the !res.ok
     // branch: this is not a verification result, so it must not be 'pass'.
