@@ -21,6 +21,13 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import Stripe from "https://esm.sh/stripe@14?target=deno"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import {
+  computeLocalQuantity,
+  isMismatch,
+  buildMismatchSlackMessage,
+  buildMismatchFallbackSummary,
+  buildReasoningPrompt,
+} from "./logic.ts"
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, {
   apiVersion: '2023-10-16',
@@ -90,7 +97,7 @@ serve(async (req: Request) => {
         .eq('is_active', true)
         .not('last_seen', 'is', null)
 
-      const localQuantity = Math.max(1, count ?? 1)
+      const localQuantity = computeLocalQuantity(count ?? null)
 
       let stripeQuantity: number | null = null
       try {
@@ -101,22 +108,22 @@ serve(async (req: Request) => {
         continue
       }
 
-      if (stripeQuantity !== null && stripeQuantity !== localQuantity) {
+      if (isMismatch(stripeQuantity, localQuantity)) {
         mismatches++
         await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/notify-slack`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}` },
           body: JSON.stringify({
             businessId: biz.id,
-            text: `⚠️ Billing drift detected for *${biz.name}*: Stripe is billing ${stripeQuantity} technician(s), but ${localQuantity} are actually connected. Worth a manual check.`,
+            text: buildMismatchSlackMessage(biz.name, stripeQuantity as number, localQuantity),
           }),
         }).catch(() => {})
 
-        const fallbackSummary = `Stripe billing count (${stripeQuantity}) does not match locally connected technicians (${localQuantity}) for ${biz.name}.`
+        const fallbackSummary = buildMismatchFallbackSummary(biz.name, stripeQuantity as number, localQuantity)
         const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY')
         const summary = anthropicKey
           ? await draftReasoning(anthropicKey,
-              `A home-services SaaS reconciles Stripe subscription seat counts against locally-connected technicians daily. For business "${biz.name}", Stripe is currently billing ${stripeQuantity} technician seat(s), but only ${localQuantity} technician(s) are actually connected locally (Stripe ${stripeQuantity > localQuantity ? 'higher' : 'lower'} than local by ${Math.abs(stripeQuantity - localQuantity)}). Give your single best-guess, one sentence, plain-English explanation of the most likely cause — e.g. a missed technician deactivation, a double-counted GPS ping inflating the local count, or a Stripe-side seat change that hasn't synced locally yet. Reply with ONLY that one sentence, no preamble.`,
+              buildReasoningPrompt(biz.name, stripeQuantity as number, localQuantity),
               fallbackSummary)
           : fallbackSummary
 
