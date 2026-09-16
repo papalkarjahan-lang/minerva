@@ -19,6 +19,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { computeThresholds, evaluateCredential } from "./logic.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -37,10 +38,7 @@ serve(async (req: Request) => {
     }
 
     const now = new Date()
-    const in30 = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-    const in14 = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-    const in7 = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
-    const in3 = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+    const thresholds = computeThresholds(now)
 
     const { data: credentials, error } = await supabase
       .from('technician_credentials')
@@ -52,9 +50,16 @@ serve(async (req: Request) => {
     for (const cred of credentials || []) {
       const tech = (cred as any).technicians
       const techName = tech?.name || 'a technician'
+      const evalResult = evaluateCredential({
+        expiryDate: cred.expiry_date,
+        warning30SentAt: cred.warning_30_sent_at,
+        warning14SentAt: cred.warning_14_sent_at,
+        warning7SentAt: cred.warning_7_sent_at,
+        hasCurrentJob: !!tech?.current_job_id,
+      }, thresholds)
 
       // 30-day threshold
-      if (!cred.warning_30_sent_at && cred.expiry_date <= in30 && cred.expiry_date > in14) {
+      if (evalResult.should30) {
         await notifySlack(supabaseUrl, supabaseServiceKey, cred.business_id,
           `📋 *${techName}*'s ${cred.credential_name || 'credential'} expires ${cred.expiry_date} (30 days away).`)
         await supabase.from('technician_credentials').update({ warning_30_sent_at: new Date().toISOString() }).eq('id', cred.id)
@@ -64,7 +69,7 @@ serve(async (req: Request) => {
           `A dispatcher for a home-services business just got a 30-day heads-up that technician "${techName}"'s credential "${cred.credential_name || 'credential'}" expires on ${cred.expiry_date}. Give one short, practical sentence on what to check or do first at this early stage.`)
       }
       // 14-day threshold
-      if (!cred.warning_14_sent_at && cred.expiry_date <= in14 && cred.expiry_date > in7) {
+      if (evalResult.should14) {
         await notifySlack(supabaseUrl, supabaseServiceKey, cred.business_id,
           `📋 *${techName}*'s ${cred.credential_name || 'credential'} expires ${cred.expiry_date} (14 days away).`)
         await supabase.from('technician_credentials').update({ warning_14_sent_at: new Date().toISOString() }).eq('id', cred.id)
@@ -74,7 +79,7 @@ serve(async (req: Request) => {
           `A dispatcher for a home-services business just got a 14-day warning that technician "${techName}"'s credential "${cred.credential_name || 'credential'}" expires on ${cred.expiry_date}. Give one short, practical sentence on what to check or do first now that the window is closing.`)
       }
       // 7-day threshold
-      if (!cred.warning_7_sent_at && cred.expiry_date <= in7) {
+      if (evalResult.should7) {
         await notifySlack(supabaseUrl, supabaseServiceKey, cred.business_id,
           `📋 *${techName}*'s ${cred.credential_name || 'credential'} expires ${cred.expiry_date} (7 days or less).`)
         await supabase.from('technician_credentials').update({ warning_7_sent_at: new Date().toISOString() }).eq('id', cred.id)
@@ -85,14 +90,13 @@ serve(async (req: Request) => {
       }
 
       // Urgent: expired-or-expiring-within-3-days AND currently on a job.
-      if (cred.expiry_date <= in3 && tech?.current_job_id) {
-        const expired = cred.expiry_date < now.toISOString().slice(0, 10)
+      if (evalResult.urgent) {
         await notifySlack(supabaseUrl, supabaseServiceKey, cred.business_id,
-          `🚨 *${techName}* is currently on a job with ${expired ? 'an EXPIRED' : 'a credential expiring within 3 days'}: ${cred.credential_name || 'credential'} (expiry ${cred.expiry_date}). Worth a same-day check.`)
+          `🚨 *${techName}* is currently on a job with ${evalResult.expired ? 'an EXPIRED' : 'a credential expiring within 3 days'}: ${cred.credential_name || 'credential'} (expiry ${cred.expiry_date}). Worth a same-day check.`)
         urgentPings++
         await writeCredentialInsight(supabase, anthropicKey, cred, techName,
-          `${techName} is currently on a job with ${expired ? 'an EXPIRED' : 'a credential expiring within 3 days'} (${cred.credential_name || 'credential'}, expiry ${cred.expiry_date}) — worth a same-day check.`,
-          `A dispatcher for a home-services business just got an urgent alert: technician "${techName}" is CURRENTLY assigned to a job while their credential "${cred.credential_name || 'credential'}" is ${expired ? 'already EXPIRED' : 'expiring within 3 days'} (expiry ${cred.expiry_date}). Give one short, practical sentence on the single most useful same-day action.`)
+          `${techName} is currently on a job with ${evalResult.expired ? 'an EXPIRED' : 'a credential expiring within 3 days'} (${cred.credential_name || 'credential'}, expiry ${cred.expiry_date}) — worth a same-day check.`,
+          `A dispatcher for a home-services business just got an urgent alert: technician "${techName}" is CURRENTLY assigned to a job while their credential "${cred.credential_name || 'credential'}" is ${evalResult.expired ? 'already EXPIRED' : 'expiring within 3 days'} (expiry ${cred.expiry_date}). Give one short, practical sentence on the single most useful same-day action.`)
       }
     }
 

@@ -47,6 +47,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { evaluateFunctionHealth } from "./logic.ts"
 
 // Hand-maintained cadence map (minutes) for functions on a known cron
 // schedule — see supabase_schema.sql / supabase_schema_delta_agent_cron.sql
@@ -79,14 +80,6 @@ const CADENCE_MINUTES: Record<string, number> = {
   'followup-outreach': 24 * 60,
 }
 
-// Buffer multiplier so normal cron jitter / a slightly-late run doesn't
-// false-positive — a function is only "stale" once it's overdue by this
-// many multiples of its own cadence, with a minimum floor so fast (15min)
-// cadences aren't flagged over trivial delays either.
-const STALE_MULTIPLIER = 3
-const STALE_FLOOR_MINUTES = 30
-const ERROR_COUNT_THRESHOLD = 5
-
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' } })
@@ -112,35 +105,19 @@ serve(async (req: Request) => {
       checked++
 
       const cadenceMinutes = CADENCE_MINUTES[fn.name]
-      const lastRunMs = fn.last_run_at ? new Date(fn.last_run_at).getTime() : null
+      const health = evaluateFunctionHealth({
+        lastRunAt: fn.last_run_at,
+        errorCount: fn.error_count,
+        lastHealthAlertAt: fn.last_health_alert_at,
+        cadenceMinutes,
+      }, now)
 
-      let isStale = false
-      if (cadenceMinutes) {
-        const staleThresholdMs = Math.max(cadenceMinutes * STALE_MULTIPLIER, STALE_FLOOR_MINUTES) * 60 * 1000
-        isStale = lastRunMs === null || (now - lastRunMs) > staleThresholdMs
-      }
-
-      const isErrorHeavy = (fn.error_count ?? 0) >= ERROR_COUNT_THRESHOLD
-
-      if (!isStale && !isErrorHeavy) continue
+      if (!health.unhealthy) continue
       unhealthy++
 
-      // Dedup: only alert if we've never alerted before, or the function
-      // has run again since our last alert (a "new" occurrence of the
-      // unhealthy condition, not the same unresolved one we already flagged).
-      const lastAlertMs = fn.last_health_alert_at ? new Date(fn.last_health_alert_at).getTime() : null
-      const situationChanged = lastAlertMs === null || (lastRunMs !== null && lastRunMs > lastAlertMs)
-      if (!situationChanged) continue
+      if (!health.situationChanged) continue
 
-      const reasons: string[] = []
-      if (isStale) {
-        reasons.push(lastRunMs === null
-          ? 'has never recorded a run'
-          : `last ran ${Math.round((now - lastRunMs) / 60000)} min ago (expected every ${cadenceMinutes} min)`)
-      }
-      if (isErrorHeavy) reasons.push(`error_count=${fn.error_count} (threshold ${ERROR_COUNT_THRESHOLD})`)
-
-      const summary = `Agent function "${fn.name}" (${fn.agent}) looks unhealthy: ${reasons.join('; ')}.`
+      const summary = `Agent function "${fn.name}" (${fn.agent}) looks unhealthy: ${health.reasons.join('; ')}.`
       console.error('test-agent-health:', summary)
 
       await supabase.from('agent_insights').insert({

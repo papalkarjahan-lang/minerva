@@ -26,10 +26,9 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { bucketJobsByAddress, findBestTrendingAddress, MIN_RECENT_COUNT } from "./logic.ts"
 
 const LOOKBACK_DAYS = 28 // 4 weekly buckets
-const MIN_RECENT_COUNT = 3 // don't flag noise from 1-2 jobs
-const TREND_RATIO = 1.3 // recent 2wk avg must be >= 1.3x older 2wk avg
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -71,29 +70,8 @@ serve(async (req: Request) => {
       if (!jobs || jobs.length < MIN_RECENT_COUNT) continue
 
       const now = Date.now()
-      const twoWeeksMs = 14 * 24 * 60 * 60 * 1000
-      const recentCutoff = now - twoWeeksMs
-
-      // address -> { recent: count, older: count }
-      const buckets: Record<string, { recent: number; older: number }> = {}
-      for (const job of jobs) {
-        const addr = (job.client_address || '').trim()
-        if (!addr) continue
-        const t = new Date(job.created_at).getTime()
-        if (!buckets[addr]) buckets[addr] = { recent: 0, older: 0 }
-        if (t >= recentCutoff) buckets[addr].recent++
-        else buckets[addr].older++
-      }
-
-      let best: { addr: string; recent: number; older: number; ratio: number } | null = null
-      for (const [addr, counts] of Object.entries(buckets)) {
-        if (counts.recent < MIN_RECENT_COUNT) continue
-        const olderAvg = Math.max(counts.older, 1) // avoid div-by-zero, treat 0 older as 1 for a conservative ratio
-        const ratio = counts.recent / olderAvg
-        if (ratio >= TREND_RATIO && (!best || ratio > best.ratio)) {
-          best = { addr, recent: counts.recent, older: counts.older, ratio }
-        }
-      }
+      const buckets = bucketJobsByAddress(jobs, now)
+      const best = findBestTrendingAddress(buckets)
 
       if (best) {
         await supabase.from('agent_insights').insert({

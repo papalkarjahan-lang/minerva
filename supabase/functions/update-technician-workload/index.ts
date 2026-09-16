@@ -24,9 +24,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
-
-const BURNOUT_HOURS_THRESHOLD = 55 // hours in the trailing 7 days
-const RE_ALERT_DAYS = 7
+import { computeRollingWeekHours, shouldFlagBurnout, BURNOUT_HOURS_THRESHOLD } from "./logic.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -66,18 +64,7 @@ serve(async (req: Request) => {
         .order('recorded_at', { ascending: true })
       if (locErr) { console.error('update-technician-workload: locations fetch failed', locErr); continue }
 
-      const byDay: Record<string, { min: number; max: number }> = {}
-      for (const loc of locations || []) {
-        const t = new Date(loc.recorded_at).getTime()
-        const day = loc.recorded_at.slice(0, 10)
-        if (!byDay[day]) byDay[day] = { min: t, max: t }
-        else { byDay[day].min = Math.min(byDay[day].min, t); byDay[day].max = Math.max(byDay[day].max, t) }
-      }
-      let totalHours = 0
-      for (const day in byDay) {
-        totalHours += (byDay[day].max - byDay[day].min) / (1000 * 60 * 60)
-      }
-      totalHours = Math.round(totalHours * 10) / 10
+      const totalHours = computeRollingWeekHours(locations || [])
 
       const { count: emergencyCount } = await supabase
         .from('jobs')
@@ -92,10 +79,7 @@ serve(async (req: Request) => {
       }).eq('id', tech.id)
       updated++
 
-      const alreadyFlaggedRecently = tech.burnout_flag_sent_at
-        && (Date.now() - new Date(tech.burnout_flag_sent_at).getTime()) < RE_ALERT_DAYS * 24 * 60 * 60 * 1000
-
-      if (totalHours >= BURNOUT_HOURS_THRESHOLD && !alreadyFlaggedRecently) {
+      if (shouldFlagBurnout(totalHours, tech.burnout_flag_sent_at)) {
         await notifySlack(supabaseUrl, supabaseServiceKey, tech.business_id,
           `⚠️ *${tech.name}* has logged an estimated ${totalHours}h over the last 7 days (threshold ${BURNOUT_HOURS_THRESHOLD}h) — might be worth checking in or spreading the roster out a bit. (Internal note — not sent to the technician.)`)
         await supabase.from('technicians').update({ burnout_flag_sent_at: new Date().toISOString() }).eq('id', tech.id)

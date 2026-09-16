@@ -27,10 +27,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
-
-const RAIN_PROB_THRESHOLD = 70 // %
-const WIND_THRESHOLD_KMH = 60
-const HEAT_THRESHOLD_C = 40
+import { evaluateForecastRisk } from "./logic.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -83,9 +80,7 @@ serve(async (req: Request) => {
           const forecast = await fetchForecast(job.client_lat!, job.client_lng!, tomorrowDateStr)
           if (!forecast) continue
 
-          const risky = forecast.rainProb >= RAIN_PROB_THRESHOLD
-            || forecast.windKmh >= WIND_THRESHOLD_KMH
-            || forecast.maxTempC >= HEAT_THRESHOLD_C
+          const { risky, reasons } = evaluateForecastRisk(forecast)
 
           if (!risky) {
             // Not risky today, but mark checked so we don't re-hit the API for
@@ -95,10 +90,6 @@ serve(async (req: Request) => {
             continue
           }
 
-          const reasons: string[] = []
-          if (forecast.rainProb >= RAIN_PROB_THRESHOLD) reasons.push(`${forecast.rainProb}% chance of rain`)
-          if (forecast.windKmh >= WIND_THRESHOLD_KMH) reasons.push(`wind up to ${Math.round(forecast.windKmh)} km/h`)
-          if (forecast.maxTempC >= HEAT_THRESHOLD_C) reasons.push(`forecast high of ${Math.round(forecast.maxTempC)}°C`)
           const summary = `Tomorrow (${tomorrowDateStr}): ${reasons.join(', ')}.`
 
           await supabase.from('weather_reschedule_drafts').insert({
