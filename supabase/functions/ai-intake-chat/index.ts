@@ -27,11 +27,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { formatAuPhone } from "../_shared/sms.ts"
-
-interface ChatMessage {
-  role: 'user' | 'assistant'
-  content: string
-}
+import { runTemplateIntake, applyRepeatClientBoost, cleanUtm, clampScore, type ChatMessage, type IntakeResult } from "./logic.ts"
 
 interface ChatPayload {
   businessId: string
@@ -41,122 +37,7 @@ interface ChatPayload {
   utmCampaign?: string
 }
 
-interface IntakeResult {
-  reply: string
-  lead_captured: boolean
-  lead: {
-    name: string
-    phone: string
-    suburb: string
-    urgency: string
-    job_description: string
-    score: number
-    score_reason: string
-    estimated_value_tier: string
-    referral_code: string | null
-  } | null
-}
-
 const CLAUDE_MODEL = 'claude-opus-4-6'
-
-const EMERGENCY_KEYWORDS = [
-  'emergency', 'urgent', 'asap', 'right now', 'burst', 'flooding', 'flood',
-  'no power', 'no water', 'gas smell', 'gas leak', 'sparking', 'smoke',
-  'leaking everywhere', 'locked out', "can't wait", 'cannot wait', 'now please',
-]
-const REFERRAL_CODE_PATTERN = /\b[A-Z0-9]{4,10}\b/
-const HIGH_VALUE_KEYWORDS = ['renovation', 'renovate', 'install', 'installation', 'replace', 'full', 'whole', 'new system', 'rewire', 'regas']
-const LOW_VALUE_KEYWORDS = ['quick', 'small', 'minor', 'quote only', 'just a', 'tap', 'leaky tap']
-
-// Deterministic, non-AI intake flow used whenever ANTHROPIC_API_KEY isn't
-// configured. Walks the same five required fields in a fixed order:
-// job_description -> urgency -> name -> phone -> suburb. Every question is
-// a plain string, not model-generated, and every judgement call below is a
-// simple keyword/heuristic check rather than free-text understanding — this
-// is deliberately narrower than the Claude path, not a hidden re-implementation
-// of it. Scoring and lead persistence downstream treat both paths identically.
-function runTemplateIntake(business: { name: string; trade_type?: string | null; city?: string | null }, messages: ChatMessage[]): IntakeResult {
-  // Only real user turns count as answers — the widget's static greeting
-  // (if present as a leading assistant message) isn't an answer to anything.
-  const userMessages = messages.filter(m => m.role === 'user').map(m => m.content.trim()).filter(Boolean)
-  const answered = userMessages.length
-
-  // Opportunistic referral code scan across every user message (same rule
-  // as the Claude path: never asked for, only captured if volunteered).
-  let referralCode: string | null = null
-  for (const msg of userMessages) {
-    if (/referr|mate said|friend said|code/i.test(msg)) {
-      const match = msg.toUpperCase().match(REFERRAL_CODE_PATTERN)
-      if (match) { referralCode = match[0]; break }
-    }
-  }
-
-  const bizName = business.name
-
-  if (answered === 0) {
-    return { reply: `Thanks for reaching out to ${bizName}! What can we help you with today?`, lead_captured: false, lead: null }
-  }
-
-  const jobDescription = userMessages[0]
-
-  if (answered === 1) {
-    return {
-      reply: `Got it. Is this urgent right now (e.g. active leak, no power, safety issue) or can it wait for a normal scheduled visit?`,
-      lead_captured: false,
-      lead: null,
-    }
-  }
-
-  const urgencyAnswer = userMessages[1].toLowerCase()
-  const isEmergency = EMERGENCY_KEYWORDS.some(kw => urgencyAnswer.includes(kw)) || /\burgent\b|\bemergency\b/.test(urgencyAnswer)
-  const urgency = isEmergency ? 'emergency' : 'routine'
-
-  if (answered === 2) {
-    return { reply: `Understood. Can I grab your name?`, lead_captured: false, lead: null }
-  }
-
-  const name = userMessages[2]
-
-  if (answered === 3) {
-    return { reply: `Thanks ${name.split(' ')[0] || name}. What's the best phone number to reach you on?`, lead_captured: false, lead: null }
-  }
-
-  const phone = userMessages[3].replace(/[^\d+ ]/g, '').trim()
-
-  if (answered === 4) {
-    return { reply: `And which suburb are you in?`, lead_captured: false, lead: null }
-  }
-
-  const suburb = userMessages[4]
-
-  // Fifth answer received: all five fields present, capture the lead.
-  const combinedText = `${jobDescription} ${urgencyAnswer}`.toLowerCase()
-  const isHighValue = HIGH_VALUE_KEYWORDS.some(kw => combinedText.includes(kw))
-  const isLowValue = !isHighValue && LOW_VALUE_KEYWORDS.some(kw => combinedText.includes(kw))
-  const estimatedValueTier = isHighValue ? 'high' : isLowValue ? 'low' : 'medium'
-
-  let score = isEmergency ? 75 : 50
-  if (jobDescription.length > 60) score += 10
-  if (isHighValue) score += 10
-  score = Math.max(0, Math.min(100, score))
-  const scoreReason = `Template intake: ${urgency}${isHighValue ? ', high-value keywords in description' : ''}.`
-
-  return {
-    reply: `Thanks ${name.split(' ')[0] || name} — that's everything I need. Someone from ${bizName} will be in touch shortly${isEmergency ? ', treating this as urgent' : ''}.`,
-    lead_captured: true,
-    lead: {
-      name,
-      phone,
-      suburb,
-      urgency,
-      job_description: jobDescription,
-      score,
-      score_reason: scoreReason,
-      estimated_value_tier: estimatedValueTier,
-      referral_code: referralCode,
-    },
-  }
-}
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -315,7 +196,7 @@ if not yet captured}`
     // On capture: persist the lead and notify the business, best-effort.
     if (parsed.lead_captured && parsed.lead) {
       const { name, phone, suburb, urgency, job_description } = parsed.lead
-      let score = Math.max(0, Math.min(100, Number(parsed.lead.score) || 0))
+      let score = clampScore(Number(parsed.lead.score) || 0)
       let scoreReason = parsed.lead.score_reason || ''
 
       // Duplicate/repeat-client detection: has this phone number contacted
@@ -331,10 +212,7 @@ if not yet captured}`
             .eq('business_id', businessId).eq('client_phone', phone),
         ])
         isRepeatClient = (priorLeads ?? 0) > 0 || (priorJobs ?? 0) > 0
-        if (isRepeatClient) {
-          score = Math.min(100, score + 15)
-          scoreReason = scoreReason ? `${scoreReason} Returning client (+15).` : 'Returning client.'
-        }
+        ;({ score, scoreReason } = applyRepeatClientBoost(score, scoreReason, isRepeatClient))
       }
 
       // Referral code (opportunistic, see system prompt): only trust it if
@@ -353,11 +231,6 @@ if not yet captured}`
           .maybeSingle()
         if (matchedInvoice) referredByCode = rawCode
       }
-
-      // Attribution: same untrusted-public-input treatment as everything
-      // else on this endpoint — cap length and drop anything empty, rather
-      // than trusting whatever a URL's query string happened to contain.
-      const cleanUtm = (v?: string) => (typeof v === 'string' && v.trim()) ? v.trim().slice(0, 100) : null
 
       await supabase.from('leads').insert({
         business_id: businessId,
