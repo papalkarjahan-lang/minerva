@@ -18,6 +18,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { formatAuPhone } from "../_shared/sms.ts"
+import { isPlainDraftUsable } from "../_shared/smsDraft.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -160,7 +161,7 @@ async function draftCheckinSms(
     if (!res.ok) return fallback
     const data = await res.json()
     const text: string = (data?.content?.[0]?.text || '').trim()
-    if (!text || text.length > 300) return fallback
+    if (!isPlainDraftUsable(text, 300)) return fallback
     return text
   } catch (err) {
     console.error('retention-checkin: draft failed', err)

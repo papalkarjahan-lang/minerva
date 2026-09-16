@@ -22,6 +22,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { formatAuPhone } from "../_shared/sms.ts"
+import { computeDaysOverdue, summarizeJobDescription, selectTonePrompt, isDraftUsable } from "./logic.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -68,11 +69,9 @@ serve(async (req: Request) => {
         const amount = Number(inv.total).toFixed(2)
         const fallbackMessage = `Hi ${inv.client_name || ''}, this is a friendly reminder that your invoice from ${bizName} for $${amount} is still unpaid. View it here: ${link}`.trim()
 
-        const daysOverdue = Math.floor((Date.now() - new Date(inv.created_at).getTime()) / (24 * 60 * 60 * 1000))
+        const daysOverdue = computeDaysOverdue(inv.created_at)
         const priorReminders = inv.reminder_count || 0
-        const jobDescription = Array.isArray((inv as any).line_items)
-          ? (inv as any).line_items.map((li: any) => li?.description).filter(Boolean).join(', ')
-          : ''
+        const jobDescription = summarizeJobDescription((inv as any).line_items)
 
         const message = anthropicKey
           ? await draftReminderSms(anthropicKey, {
@@ -165,11 +164,7 @@ async function draftReminderSms(
   fallback: string
 ): Promise<string> {
   try {
-    const tonePrompt = ctx.priorReminders >= 2
-      ? 'This is at least the 3rd reminder — the tone should be firmer and more direct (still polite, no threats), making clear payment is now overdue.'
-      : ctx.priorReminders === 1
-      ? 'This is the 2nd reminder — a bit more direct than a first nudge, but still friendly.'
-      : 'This is the first reminder — keep it light and friendly, assume they just forgot.'
+    const tonePrompt = selectTonePrompt(ctx.priorReminders)
 
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -191,8 +186,7 @@ async function draftReminderSms(
     if (!res.ok) return fallback
     const data = await res.json()
     const text: string = (data?.content?.[0]?.text || '').trim()
-    if (!text || text.length > 320) return fallback
-    if (!text.includes(ctx.link) || !text.includes(ctx.amount)) return fallback
+    if (!isDraftUsable(text, ctx.link, ctx.amount)) return fallback
     return text
   } catch (err) {
     console.error('chase-unpaid-invoices: draft failed', err)
