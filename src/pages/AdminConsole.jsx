@@ -40,6 +40,9 @@ export default function AdminConsole() {
   const [pasteBusy, setPasteBusy] = useState(false)
   const [pasteStatus, setPasteStatus] = useState('')
   const [proposalLinks, setProposalLinks] = useState({})
+  const [unsubEmail, setUnsubEmail] = useState('')
+  const [unsubBusy, setUnsubBusy] = useState(false)
+  const [unsubStatus, setUnsubStatus] = useState('')
   const [roiBusyId, setRoiBusyId] = useState(null)
   const [bigAccounts, setBigAccounts] = useState([])
   const [newTarget, setNewTarget] = useState({ company_name: '', company_type: 'multi_van', contact_name: '', contact_title: '', contact_email: '', contact_phone: '', estimated_fleet_size: '', region: '' })
@@ -323,6 +326,32 @@ export default function AdminConsole() {
     loadProspects()
   }
 
+  // Manual opt-out entry point — there's no inbound-email-reply-parsing
+  // webhook in this codebase, so when a prospect replies "unsubscribe" to
+  // a sent email, a human records it here by email address. Matches on
+  // contact_email regardless of current status (a reply can come in
+  // whether the prospect is 'sent', 'replied', or mid-followup), and this
+  // unsubscribed_at is checked by draft-outreach-batch, followup-outreach,
+  // and send-outreach-batch before any of them will touch that prospect
+  // again — see supabase_schema_delta_outreach_unsubscribe.sql.
+  async function markUnsubscribed() {
+    const email = unsubEmail.trim().toLowerCase()
+    if (!email) return
+    setUnsubBusy(true)
+    setUnsubStatus('')
+    const { data, error } = await supabase
+      .from('outreach_prospects')
+      .update({ unsubscribed_at: new Date().toISOString() })
+      .ilike('contact_email', email)
+      .select('id, company_name')
+    setUnsubBusy(false)
+    if (error) { setUnsubStatus(`Error: ${error.message}`); return }
+    if (!data || data.length === 0) { setUnsubStatus('No prospect found with that email.'); return }
+    setUnsubStatus(`Marked unsubscribed: ${data.map(d => d.company_name).join(', ')}`)
+    setUnsubEmail('')
+    loadProspects()
+  }
+
   async function sendApproved() {
     const approvedCount = prospects.filter(p => p.status === 'approved').length
     if (approvedCount === 0) { alert('No approved prospects to send.'); return }
@@ -554,8 +583,26 @@ export default function AdminConsole() {
             ))}
 
             <p style={{ color: '#555', fontSize: 12, marginTop: 24 }}>
-              {prospects.filter(p => p.status === 'sent').length} sent · {prospects.filter(p => p.status === 'replied' || p.replied_at).length} replied · {prospects.filter(p => p.status === 'closed_won').length} closed won · {prospects.filter(p => p.status === 'closed_lost').length} closed lost
+              {prospects.filter(p => p.status === 'sent').length} sent · {prospects.filter(p => p.status === 'replied' || p.replied_at).length} replied · {prospects.filter(p => p.status === 'closed_won').length} closed won · {prospects.filter(p => p.status === 'closed_lost').length} closed lost · {prospects.filter(p => p.unsubscribed_at).length} unsubscribed
             </p>
+
+            <div style={{ ...cardStyle, maxWidth: 'none', textAlign: 'left', marginTop: 14, padding: '12px 16px' }}>
+              <p style={{ color: '#fff', fontWeight: 'bold', margin: '0 0 6px', fontSize: 13 }}>Record an unsubscribe reply</p>
+              <p style={{ color: '#888', fontSize: 12, margin: '0 0 10px' }}>
+                No inbound-reply parsing exists yet — if a prospect replies "unsubscribe" to an email, enter their
+                address here so draft-outreach-batch, followup-outreach, and send-outreach-batch all stop touching them for good.
+              </p>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                <input
+                  type="email" placeholder="prospect@company.com" value={unsubEmail} onChange={e => setUnsubEmail(e.target.value)}
+                  style={{ ...inputStyle, width: 240 }}
+                />
+                <button onClick={markUnsubscribed} disabled={unsubBusy || !unsubEmail.trim()} style={{ background: '#8A2525', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', cursor: unsubBusy ? 'default' : 'pointer', fontSize: 13, opacity: unsubBusy ? 0.6 : 1 }}>
+                  {unsubBusy ? 'Working...' : 'Mark unsubscribed'}
+                </button>
+                {unsubStatus && <span style={{ color: '#8fd0e8', fontSize: 12 }}>{unsubStatus}</span>}
+              </div>
+            </div>
           </div>
         )}
 

@@ -20,6 +20,12 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
 const STAGE_DAYS = [3, 7, 14] // stage 1 = 3 days after sent_at, stage 2 = 7 days after stage-1 followup, stage 3 = 14 days after stage-2
 
+// Spam Act 2003 (Cth) opt-out line — see draft-outreach-batch/index.ts for
+// the full rationale. A prospect who replied "unsubscribe" gets marked via
+// unsubscribed_at in the admin console; this function must never draft a
+// further follow-up for them.
+const UNSUBSCRIBE_LINE = "\n\nIf you'd rather not hear from us again, just reply \"unsubscribe\" and we'll stop emailing you — no more follow-ups.\n\n— The Minerva team, sent by Minerva (Antikythera / Krios AI)"
+
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' } })
@@ -36,6 +42,7 @@ serve(async (req: Request) => {
       .select('*')
       .eq('status', 'sent')
       .is('replied_at', null)
+      .is('unsubscribed_at', null)
     if (error) throw error
 
     let drafted = 0, closedLost = 0
@@ -62,6 +69,8 @@ serve(async (req: Request) => {
       } else {
         ({ subject, body: bodyText } = fallbackFollowup(p, stage + 1))
       }
+
+      if (!bodyText.includes('unsubscribe')) bodyText += UNSUBSCRIBE_LINE
 
       await supabase.from('outreach_prospects').update({
         draft_subject: subject,
@@ -103,7 +112,7 @@ async function draftFollowup(apiKey: string, p: any, stage: number): Promise<{ s
         max_tokens: 300,
         messages: [{
           role: 'user',
-          content: `Write a brief, polite follow-up (#${stage} of 3) cold-email follow-up to ${p.company_name} (${p.trade_type || 'trade business'}), referencing that this is a follow-up to a prior unanswered email about Minerva (a GPS dispatch/tracking SaaS). Under 60 words, no guilt-tripping, one soft ask (a 7-day free trial or a quick call), sign off "The Minerva team". Reply with ONLY valid JSON: {"subject": string, "body": string}.`,
+          content: `Write a brief, polite follow-up (#${stage} of 3) cold-email follow-up to ${p.company_name} (${p.trade_type || 'trade business'}), referencing that this is a follow-up to a prior unanswered email about Minerva (a GPS dispatch/tracking SaaS). Under 60 words, no guilt-tripping, one soft ask (a 7-day free trial or a quick call), sign off "The Minerva team". End with a line telling them they can reply "unsubscribe" to stop hearing from us. Reply with ONLY valid JSON: {"subject": string, "body": string}.`,
         }],
       }),
     })

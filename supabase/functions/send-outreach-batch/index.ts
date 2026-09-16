@@ -31,8 +31,11 @@ serve(async (req: Request) => {
     const body = await req.json().catch(() => ({}))
     const prospectIds: string[] | undefined = Array.isArray(body.prospectIds) ? body.prospectIds : undefined
 
-    // Hard gate: only ever reads rows already marked 'approved' by a human.
-    let query = supabase.from('outreach_prospects').select('*').eq('status', 'approved')
+    // Hard gate: only ever reads rows already marked 'approved' by a human,
+    // and never a prospect who has asked to be unsubscribed (Spam Act 2003
+    // compliance — defense-in-depth alongside the skip in draft-outreach-batch/
+    // followup-outreach, in case a row was approved before being marked out).
+    let query = supabase.from('outreach_prospects').select('*').eq('status', 'approved').is('unsubscribed_at', null)
     if (prospectIds) query = query.in('id', prospectIds)
     const { data: prospects, error } = await query
     if (error) throw error

@@ -42,6 +42,14 @@ const REAL_FEATURES = `
 - $49-$119 AUD per technician per month, 7-day free trial, ~20 minute setup, no app install
 `.trim()
 
+// Spam Act 2003 (Cth) requires every commercial electronic message to carry
+// a functional unsubscribe facility and accurate sender ID. There's no
+// reply-parsing webhook in this codebase, so "reply" is the honest
+// mechanism — a human then flips outreach_prospects.unsubscribed_at via the
+// admin console's "Mark unsubscribed" control, which send-outreach-batch
+// and followup-outreach both check before ever touching a row again.
+const UNSUBSCRIBE_LINE = "\n\nIf you'd rather not hear from us again, just reply \"unsubscribe\" and we'll stop emailing you — no more follow-ups.\n\n— The Minerva team, sent by Minerva (Antikythera / Krios AI)"
+
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' } })
@@ -56,7 +64,7 @@ serve(async (req: Request) => {
     const body = await req.json().catch(() => ({}))
     const prospectIds: string[] | undefined = Array.isArray(body.prospectIds) ? body.prospectIds : undefined
 
-    let query = supabase.from('outreach_prospects').select('*')
+    let query = supabase.from('outreach_prospects').select('*').is('unsubscribed_at', null)
     query = prospectIds ? query.in('id', prospectIds) : query.eq('status', 'new')
     const { data: prospects, error } = await query
     if (error) throw error
@@ -80,6 +88,8 @@ serve(async (req: Request) => {
       } else {
         ;({ subject, body: bodyText } = fallbackTemplate(p))
       }
+
+      if (!bodyText.includes('unsubscribe')) bodyText += UNSUBSCRIBE_LINE
 
       await supabase.from('outreach_prospects').update({
         draft_subject: subject,
@@ -138,7 +148,7 @@ Source/context: ${p.source || 'unknown'}
 ONLY mention these real, currently-shipped Minerva features — do not invent or imply anything else exists:
 ${REAL_FEATURES}
 
-Rules: under 120 words, no hype/superlatives, one clear ask (a 10-minute call or a free trial), sign off as "The Minerva team". Reply with ONLY valid JSON: {"subject": string, "body": string}. No markdown, no prose outside the JSON.`,
+Rules: under 120 words, no hype/superlatives, one clear ask (a 10-minute call or a free trial), sign off as "The Minerva team". End the body with a line telling them they can reply "unsubscribe" to stop hearing from us. Reply with ONLY valid JSON: {"subject": string, "body": string}. No markdown, no prose outside the JSON.`,
         }],
       }),
     })
