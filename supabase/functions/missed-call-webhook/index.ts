@@ -105,18 +105,30 @@ serve(async (req: Request) => {
     // Look up the business by its Twilio number using the service_role key
     // (no anon SELECT policy exposes twilio_number for this — see notes above).
     let businessName = 'us'
+    let businessId: string | null = null
     if (to) {
       const { data: biz } = await supabaseAdmin
         .from('businesses')
-        .select('name')
+        .select('id, name')
         .eq('twilio_number', to)
         .maybeSingle()
       if (biz?.name) businessName = biz.name
+      if (biz?.id) businessId = biz.id
     }
+
+    // Registered in agent_functions (kill-switch row exists) but neither
+    // the switch nor health was ever actually checked/reported — same
+    // "seeded but not wired up" gap already found and fixed for
+    // sync-technician-billing/followup-outreach this round. A silently
+    // failing auto-text-back is a real lost-lead risk (a missed call that
+    // never gets the promised follow-up text, with nothing anywhere to
+    // show it happened), not just a cosmetic gap.
+    const { data: fnState } = await supabaseAdmin.from('agent_functions').select('enabled').eq('name', 'missed-call-webhook').maybeSingle()
+    const smsEnabled = fnState?.enabled !== false
 
     // Fire the outbound "we missed you" SMS to the caller, best-effort.
     // A failure here shouldn't stop us returning valid TwiML to Twilio.
-    if (from) {
+    if (from && smsEnabled) {
       try {
         const TWILIO_SID = Deno.env.get('TWILIO_ACCOUNT_SID')
         const TWILIO_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN')
@@ -138,12 +150,29 @@ serve(async (req: Request) => {
           const smsResult = await smsResponse.json()
           if (smsResult.error_code) {
             console.error(`missed-call-webhook: Twilio SMS error ${smsResult.error_code}: ${smsResult.message}`)
+            await supabaseAdmin.rpc('record_agent_run', { fn_name: 'missed-call-webhook', status: 'error', error_msg: `Twilio error ${smsResult.error_code}: ${smsResult.message}` })
+          } else {
+            await supabaseAdmin.rpc('record_agent_run', { fn_name: 'missed-call-webhook', status: 'ok' })
           }
         } else {
           console.error('missed-call-webhook: Twilio credentials not configured in Supabase secrets')
+          await supabaseAdmin.rpc('record_agent_run', { fn_name: 'missed-call-webhook', status: 'error', error_msg: 'Twilio credentials not configured' })
         }
       } catch (smsErr) {
         console.error('missed-call-webhook: failed to send auto-reply SMS:', smsErr)
+        try {
+          await supabaseAdmin.rpc('record_agent_run', { fn_name: 'missed-call-webhook', status: 'error', error_msg: smsErr.message })
+        } catch (_) { /* never let health tracking break the call response */ }
+        if (businessId) {
+          fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/notify-slack`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}` },
+            body: JSON.stringify({
+              businessId,
+              text: `⚠️ *Missed-call auto-text failed*: a caller (${from || 'unknown number'}) who missed your call did not receive the automatic follow-up text (${smsErr.message || 'unknown error'}). You may want to call them back directly.`,
+            }),
+          }).catch(() => {})
+        }
       }
     }
 

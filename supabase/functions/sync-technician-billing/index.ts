@@ -43,8 +43,25 @@ serve(async (req: Request) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
+  // Parsed once up front (rather than re-reading req.json() in the catch
+  // block below, which would throw — a Request body can only be consumed
+  // once) so the failure-alerting path still knows which business to
+  // notify even if something below throws.
+  let businessId: string | undefined
   try {
-    const { businessId } = await req.json()
+    // Registered in agent_functions (kill-switch row exists) but never
+    // actually checked it or reported health — same "seeded but not wired
+    // up" gap already fixed once for 5 other functions in
+    // supabase_schema_delta_operational_fixes.sql, found again here.
+    const { data: fnState } = await supabaseAdmin.from('agent_functions').select('enabled').eq('name', 'sync-technician-billing').maybeSingle()
+    if (fnState?.enabled === false) {
+      return new Response(JSON.stringify({ success: true, skipped: true, reason: 'disabled via agent_functions.enabled' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders },
+      })
+    }
+
+    ;({ businessId } = await req.json())
     if (!businessId) {
       return new Response(JSON.stringify({ error: 'Missing businessId' }), {
         status: 400,
@@ -92,6 +109,7 @@ serve(async (req: Request) => {
       proration_behavior: 'always_invoice',
     })
 
+    await supabaseAdmin.rpc('record_agent_run', { fn_name: 'sync-technician-billing', status: 'ok' })
     return new Response(JSON.stringify({ quantity: item.quantity }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', ...corsHeaders },
@@ -99,6 +117,32 @@ serve(async (req: Request) => {
 
   } catch (err) {
     console.error('sync-technician-billing error:', err)
+    try {
+      await supabaseAdmin.rpc('record_agent_run', { fn_name: 'sync-technician-billing', status: 'error', error_msg: err.message })
+    } catch (_) { /* never let health tracking break the actual error response */ }
+
+    // This function is fire-and-forget from TechnicianView.jsx (a failed
+    // sync must never block GPS tracking), so a caught error here would
+    // otherwise be invisible everywhere — no cron cadence to go stale on
+    // (test-agent-health can't catch it), no frontend caller reading the
+    // response. A wrong Stripe subscription quantity is a real, silent
+    // revenue-impacting bug (business under/over-billed for technician
+    // seats), so it's worth a best-effort Slack alert on that one
+    // business, same fire-and-forget pattern every other background
+    // function in this codebase already uses via notify-slack.
+    try {
+      if (businessId) {
+        fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/notify-slack`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}` },
+          body: JSON.stringify({
+            businessId,
+            text: `⚠️ *Billing sync failed*: technician subscription quantity could not be updated (${err.message || 'unknown error'}). Your Stripe billing may be out of sync with your active technician count until this is retried.`,
+          }),
+        }).catch(() => {})
+      }
+    } catch { /* best-effort only, never let alerting mask the real error */ }
+
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
       headers: { 'Content-Type': 'application/json', ...corsHeaders },

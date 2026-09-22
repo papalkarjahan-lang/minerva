@@ -37,6 +37,19 @@ serve(async (req: Request) => {
     const supabase = createClient(supabaseUrl, serviceRoleKey)
     const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY')
 
+    // Was deployed+scheduled without ever being registered in
+    // agent_functions — see supabase_schema_delta_followup_outreach_agent_registration.sql
+    // for the backfill and the same bug class it was previously found under
+    // in supabase_schema_delta_operational_fixes.sql. Kill-switch + health
+    // tracking only work once a row actually exists.
+    const { data: fnState } = await supabase.from('agent_functions').select('enabled').eq('name', 'followup-outreach').maybeSingle()
+    if (fnState?.enabled === false) {
+      return new Response(JSON.stringify({ success: true, skipped: true, reason: 'disabled via agent_functions.enabled' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+
     const { data: sentProspects, error } = await supabase
       .from('outreach_prospects')
       .select('*')
@@ -81,12 +94,17 @@ serve(async (req: Request) => {
       drafted++
     }
 
+    await supabase.rpc('record_agent_run', { fn_name: 'followup-outreach', status: 'ok' })
     return new Response(JSON.stringify({ success: true, drafted, closedLost }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     })
   } catch (err) {
     console.error('followup-outreach error:', err)
+    try {
+      const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+      await supabase.rpc('record_agent_run', { fn_name: 'followup-outreach', status: 'error', error_msg: err.message })
+    } catch (_) { /* never let health tracking break the actual error response */ }
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
