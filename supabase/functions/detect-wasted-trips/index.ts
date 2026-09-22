@@ -27,8 +27,9 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
-import { formatAuPhone } from "../_shared/sms.ts"
 import { wasOnSite, groupJobsByTechnicianDate, findOverloadedGroups } from "./logic.ts"
+import { sendTwilioSms } from "../_shared/twilioSms.ts"
+import { notifySlack } from "../_shared/notifySlack.ts"
 
 const ARRIVAL_RADIUS_KM = 0.15 // ~150 metres
 const MIN_DWELL_MINUTES = 15
@@ -87,7 +88,7 @@ serve(async (req: Request) => {
       const bizName = (job as any).businesses?.name || 'the business'
       if (job.client_phone) {
         const message = `Hi ${job.client_name || ''}, this is ${bizName} — our technician was on-site for your job but we weren't able to get it started. No charge for the trip. Reply here or call us to reschedule at a time that works.`.trim()
-        const smsOk = await sendSms(twilio, job.client_phone, message)
+        const smsOk = await sendTwilioSms(twilio, job.client_phone, message, 'detect-wasted-trips')
         if (smsOk) await supabase.from('jobs').update({ no_show_reschedule_sms_sent_at: detectedAt }).eq('id', job.id)
       }
 
@@ -100,8 +101,9 @@ serve(async (req: Request) => {
       if (job.technician_id) {
         const { data: tech } = await supabase.from('technicians').select('phone, name').eq('id', job.technician_id).maybeSingle()
         if (tech?.phone) {
-          await sendSms(twilio, tech.phone,
-            `Hi ${tech.name || ''}, we've logged your visit to ${job.client_name || 'this job'} as a no-show/never-started and texted the client to reschedule — no need to keep waiting on-site or follow up yourself.`.trim())
+          await sendTwilioSms(twilio, tech.phone,
+            `Hi ${tech.name || ''}, we've logged your visit to ${job.client_name || 'this job'} as a no-show/never-started and texted the client to reschedule — no need to keep waiting on-site or follow up yourself.`.trim(),
+            'detect-wasted-trips')
             .catch(() => {})
         }
       }
@@ -199,34 +201,3 @@ serve(async (req: Request) => {
     })
   }
 })
-
-async function sendSms(
-  twilio: { sid?: string; token?: string; from?: string },
-  rawPhone: string,
-  message: string
-): Promise<boolean> {
-  if (!twilio.sid || !twilio.token || !twilio.from) return false
-
-  const phone = formatAuPhone(rawPhone)
-
-  const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${twilio.sid}/Messages.json`, {
-    method: 'POST',
-    headers: {
-      'Authorization': 'Basic ' + btoa(`${twilio.sid}:${twilio.token}`),
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: new URLSearchParams({ To: phone, From: twilio.from, Body: message }).toString(),
-  }).catch(err => { console.error('detect-wasted-trips: SMS failed', err); return null })
-
-  if (!res) return false
-  const result = await res.json().catch(() => ({}))
-  return !result.error_code
-}
-
-async function notifySlack(supabaseUrl: string, supabaseServiceKey: string, businessId: string, text: string) {
-  await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
-    body: JSON.stringify({ businessId, text }),
-  }).catch(() => {})
-}

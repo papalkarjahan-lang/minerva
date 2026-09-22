@@ -21,8 +21,8 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
-import { formatAuPhone } from "../_shared/sms.ts"
 import { computeDaysOverdue, summarizeJobDescription, selectTonePrompt, isDraftUsable } from "./logic.ts"
+import { sendTwilioSms } from "../_shared/twilioSms.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -39,9 +39,11 @@ serve(async (req: Request) => {
       return new Response(JSON.stringify({ success: true, skipped: true, reason: 'disabled via agent_functions.enabled' }), { status: 200, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } })
     }
 
-    const TWILIO_SID = Deno.env.get('TWILIO_ACCOUNT_SID')
-    const TWILIO_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN')
-    const TWILIO_FROM = Deno.env.get('TWILIO_PHONE_NUMBER')
+    const twilio = {
+      sid: Deno.env.get('TWILIO_ACCOUNT_SID'),
+      token: Deno.env.get('TWILIO_AUTH_TOKEN'),
+      from: Deno.env.get('TWILIO_PHONE_NUMBER'),
+    }
     const APP_URL = Deno.env.get('APP_URL') || ''
     const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY')
 
@@ -62,44 +64,27 @@ serve(async (req: Request) => {
       const bizName = (inv as any).businesses?.name || 'the business'
       const link = `${APP_URL}/invoice/${inv.id}`
 
-      let smsOk = false
-      if (TWILIO_SID && TWILIO_TOKEN && TWILIO_FROM) {
-        const phone = formatAuPhone(inv.client_phone)
+      const amount = Number(inv.total).toFixed(2)
+      const fallbackMessage = `Hi ${inv.client_name || ''}, this is a friendly reminder that your invoice from ${bizName} for $${amount} is still unpaid. View it here: ${link}`.trim()
 
-        const amount = Number(inv.total).toFixed(2)
-        const fallbackMessage = `Hi ${inv.client_name || ''}, this is a friendly reminder that your invoice from ${bizName} for $${amount} is still unpaid. View it here: ${link}`.trim()
+      const daysOverdue = computeDaysOverdue(inv.created_at)
+      const priorReminders = inv.reminder_count || 0
+      const jobDescription = summarizeJobDescription((inv as any).line_items)
 
-        const daysOverdue = computeDaysOverdue(inv.created_at)
-        const priorReminders = inv.reminder_count || 0
-        const jobDescription = summarizeJobDescription((inv as any).line_items)
+      const message = anthropicKey
+        ? await draftReminderSms(anthropicKey, {
+            clientName: inv.client_name || '',
+            businessName: bizName,
+            amount,
+            link,
+            daysOverdue,
+            priorReminders,
+            jobDescription,
+            exampleTemplate: fallbackMessage,
+          }, fallbackMessage)
+        : fallbackMessage
 
-        const message = anthropicKey
-          ? await draftReminderSms(anthropicKey, {
-              clientName: inv.client_name || '',
-              businessName: bizName,
-              amount,
-              link,
-              daysOverdue,
-              priorReminders,
-              jobDescription,
-              exampleTemplate: fallbackMessage,
-            }, fallbackMessage)
-          : fallbackMessage
-
-        const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json`, {
-          method: 'POST',
-          headers: {
-            'Authorization': 'Basic ' + btoa(`${TWILIO_SID}:${TWILIO_TOKEN}`),
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          body: new URLSearchParams({ To: phone, From: TWILIO_FROM, Body: message }).toString(),
-        }).catch(err => { console.error('chase-unpaid-invoices: SMS failed', err); return null })
-
-        if (res) {
-          const result = await res.json().catch(() => ({}))
-          smsOk = !result.error_code
-        }
-      }
+      const smsOk = await sendTwilioSms(twilio, inv.client_phone, message, 'chase-unpaid-invoices')
 
       // Only advance the 3-day throttle on an actual successful send — the
       // query above re-fetches anything with reminder_sent_at null/stale, so
