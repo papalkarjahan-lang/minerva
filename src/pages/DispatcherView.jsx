@@ -29,6 +29,7 @@ export default function DispatcherView() {
   const [leadAttribution, setLeadAttribution] = useState([]) // from lead_attribution_summary view — which channel is actually converting
   const [expandedLeadId, setExpandedLeadId] = useState(null) // which lead's activity timeline is open, if any
   const [leadActivities, setLeadActivities] = useState({}) // leadId -> lead_activities[] loaded on demand
+  const [leadActivitySummary, setLeadActivitySummary] = useState({}) // leadId -> { count, lastAt }, loaded upfront for every visible lead so the list itself shows engagement momentum without expanding each one
   const [newLeadNote, setNewLeadNote] = useState('')
   const [optimizingTechId, setOptimizingTechId] = useState(null)
   const [generatingPackageForJobId, setGeneratingPackageForJobId] = useState(null)
@@ -90,6 +91,7 @@ export default function DispatcherView() {
   const [jobCorrectiveActions, setJobCorrectiveActions] = useState({}) // job_id -> corrective_actions rows (source_type='checklist_photo'), fetched lazily
   const [jobMaterials, setJobMaterials] = useState({}) // job_id -> job_materials rows, fetched lazily
   const [jobIncidents, setJobIncidents] = useState({}) // job_id -> technician_incidents rows, fetched lazily
+  const [jobDetailsLoading, setJobDetailsLoading] = useState({}) // job_id -> true while the lazy fetches above are in flight, so "No materials recorded" etc. isn't shown before we actually know
   const [incidentDraft, setIncidentDraft] = useState({ category: 'note', description: '' })
   const [showSettingsModal, setShowSettingsModal] = useState(false)
   const [showSupportModal, setShowSupportModal] = useState(false)
@@ -208,6 +210,32 @@ export default function DispatcherView() {
       .in('status', ['new', 'contacted', 'quoted'])
       .order('score', { ascending: false, nullsFirst: false })
     setLeads(leadList || [])
+
+    // Activity-count/last-touched summary per lead, computed client-side
+    // from a single query so the list itself shows engagement momentum —
+    // previously only visible after clicking "Timeline" on each lead one
+    // at a time.
+    const leadIds = (leadList || []).map(l => l.id)
+    if (leadIds.length > 0) {
+      const { data: activityRows, error: activityErr } = await supabase
+        .from('lead_activities')
+        .select('lead_id, created_at')
+        .in('lead_id', leadIds)
+      if (activityErr) console.error('lead_activities summary fetch failed', activityErr)
+      const summary = {}
+      for (const row of activityRows || []) {
+        const existing = summary[row.lead_id]
+        if (!existing) {
+          summary[row.lead_id] = { count: 1, lastAt: row.created_at }
+        } else {
+          existing.count++
+          if (row.created_at > existing.lastAt) existing.lastAt = row.created_at
+        }
+      }
+      setLeadActivitySummary(summary)
+    } else {
+      setLeadActivitySummary({})
+    }
 
     // Recently lost leads, so a dispatcher can see whether winback-lost-leads
     // has already sent its one-touch re-engagement SMS (previously that flag
@@ -397,6 +425,8 @@ export default function DispatcherView() {
   async function toggleJobDetails(jobId) {
     if (expandedJobId === jobId) { setExpandedJobId(null); return }
     setExpandedJobId(jobId)
+    const alreadyLoaded = jobPhotos[jobId] && jobMaterials[jobId] && jobIncidents[jobId]
+    if (!alreadyLoaded) setJobDetailsLoading(prev => ({ ...prev, [jobId]: true }))
     if (!jobPhotos[jobId]) {
       const { data, error } = await supabase
         .from('checklist_photos')
@@ -439,6 +469,7 @@ export default function DispatcherView() {
       if (error) console.error('technician_incidents fetch failed', error)
       setJobIncidents(prev => ({ ...prev, [jobId]: data || [] }))
     }
+    setJobDetailsLoading(prev => ({ ...prev, [jobId]: false }))
   }
 
   // Crew Coordination accountability log — dispatcher-side quick-add for a
@@ -1883,7 +1914,9 @@ export default function DispatcherView() {
                               ))}
                             </div>
                           )}
-                          {(jobMaterials[job.id] || []).length > 0 ? (
+                          {jobDetailsLoading[job.id] ? (
+                            <p style={{ color: '#444', fontSize: 11 }}>Loading materials…</p>
+                          ) : (jobMaterials[job.id] || []).length > 0 ? (
                             (jobMaterials[job.id]).map(m => (
                               <p key={m.id} style={{ color: '#8899a6', fontSize: 12, margin: '0 0 2px' }}>
                                 Used: {m.quantity_used}x {m.item_name}
@@ -1894,7 +1927,9 @@ export default function DispatcherView() {
                           )}
                           <div style={{ marginTop: 10, borderTop: '1px solid #1e293b', paddingTop: 8 }}>
                             <p style={{ color: '#555', fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', margin: '0 0 6px' }}>Incident Log</p>
-                            {(jobIncidents[job.id] || []).length > 0 ? (
+                            {jobDetailsLoading[job.id] ? (
+                              <p style={{ color: '#444', fontSize: 11, margin: '0 0 6px' }}>Loading incidents…</p>
+                            ) : (jobIncidents[job.id] || []).length > 0 ? (
                               jobIncidents[job.id].map(inc => (
                                 <p key={inc.id} style={{ color: '#8899a6', fontSize: 12, margin: '0 0 4px' }}>
                                   <span style={styles.incidentBadge(inc.category)}>{(inc.category || 'note').toUpperCase()}</span>
@@ -2009,6 +2044,14 @@ export default function DispatcherView() {
                   <p style={styles.jobAddr}>{lead.suburb} · {lead.client_phone}</p>
                   <p style={styles.leadDesc}>{lead.job_description}</p>
                   {lead.score_reason && <p style={styles.leadReason}>{lead.score_reason}</p>}
+                  {leadActivitySummary[lead.id] ? (
+                    <p style={{ color: '#555', fontSize: 11, margin: '2px 0 0' }}>
+                      {leadActivitySummary[lead.id].count} note{leadActivitySummary[lead.id].count === 1 ? '' : 's'}
+                      {' · last activity '}{timeAgo(leadActivitySummary[lead.id].lastAt)}
+                    </p>
+                  ) : (
+                    <p style={{ color: '#3a3f4a', fontSize: 11, margin: '2px 0 0' }}>No activity logged yet</p>
+                  )}
 
                   {/* CRM pipeline controls — a richer lens on top of status,
                       see supabase_schema_delta_lead_crm_pipeline.sql */}
@@ -2622,7 +2665,10 @@ export default function DispatcherView() {
               {agentFunctions.length === 0 && <p style={{ color: '#444', fontSize: 13 }}>No agent functions recorded yet</p>}
 
               {/* Recent cross-agent insights feed */}
-              <p style={{ ...styles.sectionLabel, marginTop: 16 }}>RECENT INSIGHTS (last 7 days)</p>
+              <p style={{ ...styles.sectionLabel, marginTop: 16 }}>
+                RECENT INSIGHTS (last 7 days)
+                {agentInsightsCount > agentInsights.length ? ` — showing ${agentInsights.length} of ${agentInsightsCount}` : ''}
+              </p>
               {agentInsights.map(insight => (
                 <div key={insight.id} style={styles.jobRow}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
