@@ -31,6 +31,7 @@ export default function IndustrialDispatcherView() {
   const [assetEvents, setAssetEvents] = useState({}) // asset_id -> asset_telemetry_events rows, fetched lazily
   const [expandedSiteId, setExpandedSiteId] = useState(null)
   const [siteCheckins, setSiteCheckins] = useState({}) // site_id -> site_checkins rows, fetched lazily
+  const [ingestionKeyCopied, setIngestionKeyCopied] = useState(false)
 
   useEffect(() => { loadAll() }, [businessId])
 
@@ -114,6 +115,18 @@ export default function IndustrialDispatcherView() {
       if (error) console.error('site_checkins fetch failed', error)
       setSiteCheckins(prev => ({ ...prev, [siteId]: data || [] }))
     }
+  }
+
+  // businesses.ingestion_key (see supabase_schema_delta_industrial.sql) is the
+  // per-business shared secret that monitor-asset-telemetry/harvest-industrial-leads
+  // require in the X-Ingestion-Key header before accepting any external data —
+  // without a way to see the actual value here, this business's telemetry
+  // hardware/integration vendor would have no way to ever obtain it.
+  function copyIngestionKey() {
+    if (!business?.ingestion_key) return
+    navigator.clipboard.writeText(business.ingestion_key)
+    setIngestionKeyCopied(true)
+    setTimeout(() => setIngestionKeyCopied(false), 2000)
   }
 
   async function addLead(e) {
@@ -278,6 +291,11 @@ export default function IndustrialDispatcherView() {
                 update your card to avoid a lapse.
               </p>
             </div>
+          )}
+          {business?.ingestion_key && (
+            <button type="button" onClick={copyIngestionKey} style={{ ...styles.smallBtn, marginBottom: 12 }}>
+              {ingestionKeyCopied ? 'Copied!' : '🔑 Copy telemetry ingestion key'}
+            </button>
           )}
         </div>
         <div style={styles.tabRow}>
