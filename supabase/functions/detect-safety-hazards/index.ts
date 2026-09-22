@@ -17,6 +17,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { hasHumanMachineOverlap } from "./logic.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -47,22 +48,12 @@ serve(async (req: Request) => {
       // task_complete are task-level progress markers, not site-presence
       // signals — sequence-handoffs and package-client-verification both
       // treat 'task_complete' as "finished a task" with no implication the
-      // person/process has left the site. Previously this map also cleared
+      // person/process has left the site. Previously this logic also cleared
       // presence on task_complete, which meant a technician who finished a
       // task but hadn't departed yet silently dropped off the "on site"
       // registry — a real proximity hazard with an automated process could
-      // go undetected. (Fixed 2026-09-07.)
-      const openByPerson = new Map<string, string>() // person_name -> role, while "on site"
-      for (const c of checkins || []) {
-        const key = c.person_name || c.id
-        if (c.checkin_type === 'arrival' || c.checkin_type === 'task_start') openByPerson.set(key, c.role)
-        if (c.checkin_type === 'departure') openByPerson.delete(key)
-      }
-
-      const roles = Array.from(openByPerson.values())
-      const hasHuman = roles.includes('human_technician')
-      const hasMachine = roles.includes('automated_process')
-      if (!hasHuman || !hasMachine) continue
+      // go undetected. (Fixed 2026-09-07 — see logic.ts/logic.test.ts.)
+      if (!hasHumanMachineOverlap(checkins || [])) continue
 
       // Avoid re-flagging the same still-open overlap every 15 min.
       const { data: existing } = await supabase.from('safety_incidents')
