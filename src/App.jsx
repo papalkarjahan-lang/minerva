@@ -38,6 +38,7 @@ const About = lazy(() => import('./pages/About'))
 const Contact = lazy(() => import('./pages/Contact'))
 const Blog = lazy(() => import('./pages/Blog'))
 const BlogPost = lazy(() => import('./pages/BlogPost'))
+const NotFound = lazy(() => import('./pages/NotFound'))
 
 function RouteLoadingFallback() {
   return (
@@ -121,6 +122,11 @@ export default function App() {
             admin console's Outreach tab, shared personally by the
             operator, never sent automatically. URL: /proposal/:proposalId */}
         <Route path="/proposal/:proposalId" element={<ProposalView />} />
+
+        {/* Catch-all — any URL that doesn't match a route above.
+            Previously missing entirely, so an unmatched URL rendered a
+            blank page (see NotFound.jsx header comment). Must stay last. */}
+        <Route path="*" element={<NotFound />} />
       </Routes>
       </Suspense>
     </BrowserRouter>
