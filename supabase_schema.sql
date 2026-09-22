@@ -309,6 +309,8 @@ create table marketing_drafts (
   platform              text default 'meta',
   recipients            jsonb, -- [{name, phone}] — only populated for outreach_sms drafts
   external_campaign_id  text, -- set once launched, the Meta campaign id
+  delivered_count       integer, -- outreach_sms only: successful sends, set by send-growth-message
+  failed_count          integer, -- outreach_sms only: failed sends (e.g. bad numbers), set by send-growth-message
   error                 text, -- set if launch/send failed, shown in the Marketing tab
   quality_notes         text, -- one-line explanation from the automated quality-review pass
                                -- (see generate-growth-drafts) of why the copy passed review —

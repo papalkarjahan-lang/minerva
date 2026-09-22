@@ -2323,6 +2323,11 @@ export default function DispatcherView() {
                       {draft.target_suburb ? `${draft.target_suburb} · ${draft.target_radius_km}km radius · ` : ''}
                       ${draft.daily_budget}/day
                     </p>
+                  ) : draft.status === 'sent' && (draft.delivered_count != null || draft.failed_count != null) ? (
+                    <p style={styles.jobAddr}>
+                      Sent to {draft.delivered_count ?? 0} of {(draft.recipients || []).length} recipient(s)
+                      {draft.failed_count > 0 ? ` · ${draft.failed_count} failed (bad number?)` : ''}
+                    </p>
                   ) : (
                     <p style={styles.jobAddr}>{(draft.recipients || []).length} recipient(s)</p>
                   )}

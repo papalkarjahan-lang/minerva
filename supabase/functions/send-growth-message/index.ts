@@ -88,6 +88,8 @@ serve(async (req: Request) => {
     await supabase.from('marketing_drafts').update({
       status: 'sent',
       reviewed_at: new Date().toISOString(),
+      delivered_count: sent,
+      failed_count: failed,
     }).eq('id', draftId)
 
     await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
