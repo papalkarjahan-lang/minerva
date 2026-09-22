@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
+import { useDocumentMeta } from '../hooks/useDocumentMeta'
 
 // Business owner login — Supabase Auth magic link (signInWithOtp), no
 // password to manage or leak. Requires no new external service (unlike the
@@ -9,6 +10,7 @@ import { supabase } from '../supabaseClient'
 // (the default). See supabase_schema_delta_owner_auth.sql and
 // RequireBusinessAuth.jsx for the rest of this auth gate.
 export default function Login() {
+  useDocumentMeta({ title: 'Log in' })
   const [email, setEmail] = useState('')
   const [sent, setSent] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -44,6 +46,7 @@ export default function Login() {
             <input
               type="email"
               required
+              aria-label="Email address"
               placeholder="you@business.com"
               value={email}
               onChange={e => setEmail(e.target.value)}

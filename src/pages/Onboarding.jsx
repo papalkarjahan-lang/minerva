@@ -155,26 +155,26 @@ export default function Onboarding() {
               ['Your mobile', 'contact_phone', 'tel'],
             ].map(([label, field, type]) => (
               <div key={field} style={styles.fieldGroup}>
-                <label style={styles.label}>{label}</label>
-                <input type={type} value={biz[field]} onChange={updateBiz(field)}
+                <label htmlFor={`onboarding-${field}`} style={styles.label}>{label}</label>
+                <input id={`onboarding-${field}`} type={type} value={biz[field]} onChange={updateBiz(field)}
                   required style={styles.input} />
               </div>
             ))}
             <div style={styles.fieldGroup}>
-              <label style={styles.label}>{sector === 'industrial' ? 'Primary equipment / service focus' : 'Trade type'}</label>
+              <label htmlFor="onboarding-trade_type" style={styles.label}>{sector === 'industrial' ? 'Primary equipment / service focus' : 'Trade type'}</label>
               {sector === 'industrial' ? (
-                <input type="text" placeholder="e.g. Crane hire, earthmoving, industrial electrical"
+                <input id="onboarding-trade_type" type="text" placeholder="e.g. Crane hire, earthmoving, industrial electrical"
                   value={biz.trade_type} onChange={updateBiz('trade_type')} style={styles.input} />
               ) : (
-                <select value={biz.trade_type} onChange={updateBiz('trade_type')} style={styles.select}>
+                <select id="onboarding-trade_type" value={biz.trade_type} onChange={updateBiz('trade_type')} style={styles.select}>
                   <option value="">Select...</option>
                   {TRADE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               )}
             </div>
             <div style={styles.fieldGroup}>
-              <label style={styles.label}>City</label>
-              <select value={biz.city} onChange={updateBiz('city')} style={styles.select}>
+              <label htmlFor="onboarding-city" style={styles.label}>City</label>
+              <select id="onboarding-city" value={biz.city} onChange={updateBiz('city')} style={styles.select}>
                 <option value="">Select...</option>
                 {CITIES.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
@@ -209,9 +209,9 @@ export default function Onboarding() {
             <p style={styles.helpText}>Add each technician's name and mobile number. They'll receive a setup text.</p>
             {techs.map((tech, i) => (
               <div key={i} style={styles.techInputRow}>
-                <input placeholder="Name" value={tech.name} onChange={updateTech(i, 'name')}
+                <input aria-label={`Technician ${i + 1} name`} placeholder="Name" value={tech.name} onChange={updateTech(i, 'name')}
                   style={{ ...styles.input, flex: 1 }} />
-                <input placeholder="Mobile (04xx...)" value={tech.phone} onChange={updateTech(i, 'phone')}
+                <input aria-label={`Technician ${i + 1} mobile number`} placeholder="Mobile (04xx...)" value={tech.phone} onChange={updateTech(i, 'phone')}
                   type="tel" style={{ ...styles.input, flex: 1 }} />
                 {techs.length > 1 && (
                   <button onClick={() => removeTech(i)} style={styles.removeBtn}>✕</button>
