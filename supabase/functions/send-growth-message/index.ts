@@ -12,7 +12,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
-import { formatAuPhone } from "../_shared/sms.ts"
+import { sendTwilioSms } from "../_shared/twilioSms.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -67,26 +67,12 @@ serve(async (req: Request) => {
 
     try {
       if (TWILIO_SID && TWILIO_TOKEN && TWILIO_FROM) {
+        const twilio = { sid: TWILIO_SID, token: TWILIO_TOKEN, from: TWILIO_FROM }
         for (const r of recipients) {
           if (!r.phone) { failed++; continue }
-          const phone = formatAuPhone(r.phone)
-
-          const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json`, {
-            method: 'POST',
-            headers: {
-              'Authorization': 'Basic ' + btoa(`${TWILIO_SID}:${TWILIO_TOKEN}`),
-              'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: new URLSearchParams({ To: phone, From: TWILIO_FROM, Body: draft.body_text }).toString(),
-          }).catch(err => { console.error('send-growth-message: SMS failed', err); return null })
-
-          if (res) {
-            const result = await res.json().catch(() => ({}))
-            if (!result.error_code) sent++
-            else failed++
-          } else {
-            failed++
-          }
+          const smsOk = await sendTwilioSms(twilio, r.phone, draft.body_text, 'send-growth-message')
+          if (smsOk) sent++
+          else failed++
         }
       } else {
         throw new Error('Twilio secrets not configured')
