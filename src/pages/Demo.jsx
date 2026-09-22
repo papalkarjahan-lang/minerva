@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { SiteNav, SiteFooter } from '../components/SiteChrome'
+import { useDocumentMeta } from '../hooks/useDocumentMeta'
 
 // Public, no-signup, no-login "watch it work" page. Built 2026-09-15 to
 // close a real gap: dozens of already-written outreach email drafts
@@ -13,6 +14,7 @@ import { SiteNav, SiteFooter } from '../components/SiteChrome'
 // data — honest by construction, matches SALES_CLAIMS_ACCURACY_NOTE.md:
 // nothing here claims to be a real job, real customer, or real SMS send.
 export default function Demo() {
+  useDocumentMeta({ title: 'Demo', description: 'Watch it work in 60 seconds, no signup — see what your client sees the moment your technician is on the way.' })
   return (
     <div style={{ fontFamily: 'Arial, sans-serif', background: '#050811', minHeight: '100vh', color: '#fff' }}>
       <SiteNav />

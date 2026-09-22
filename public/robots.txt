@@ -11,4 +11,4 @@ Disallow: /client/
 Disallow: /intake/
 Disallow: /tech
 
-Sitemap: https://minervaops.com.au/sitemap.xml
+Sitemap: https://minerva-green.vercel.app/sitemap.xml

@@ -1,8 +1,10 @@
 import { Link } from 'react-router-dom'
 import { SiteNav, SiteFooter } from '../components/SiteChrome'
 import { BLOG_POSTS } from '../blogPosts'
+import { useDocumentMeta } from '../hooks/useDocumentMeta'
 
 export default function Blog() {
+  useDocumentMeta({ title: 'Blog', description: 'Notes on running a field-service business, for the people who run one.' })
   return (
     <div style={{ fontFamily: 'Arial, sans-serif', background: '#050811', minHeight: '100vh', color: '#fff' }}>
       <SiteNav />

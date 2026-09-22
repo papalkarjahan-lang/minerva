@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { SiteNav, SiteFooter } from '../components/SiteChrome'
 import { Reveal } from '../hooks/useReveal'
+import { useDocumentMeta } from '../hooks/useDocumentMeta'
 import { cardMove, cardLeave, magneticMove, magneticLeave } from '../utils/interactions'
 import '../styles/interactive.css'
 
@@ -57,6 +58,7 @@ const SECTIONS = [
 ]
 
 export default function Features() {
+  useDocumentMeta({ title: 'Features', description: 'Live GPS tracking, automatic client ETA texts, dispatch scheduling, and lead intake — every feature Minerva ships, in one place.' })
   return (
     <div style={{ fontFamily: 'Arial, sans-serif', background: '#050811', minHeight: '100vh', color: '#fff' }}>
       <SiteNav />

@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { SiteNav, SiteFooter } from '../components/SiteChrome'
+import { useDocumentMeta } from '../hooks/useDocumentMeta'
 
 // Same 3 real Stripe-backed tiers as LandingPage.jsx's inline pricing block
 // (kept in sync by hand, both are small static arrays) — Starter/Standard/
@@ -34,6 +35,7 @@ const PRICING_FAQS = [
 ]
 
 export default function Pricing() {
+  useDocumentMeta({ title: 'Pricing', description: 'Starter, Standard, and Pro plans billed per technician per month — live GPS tracking and automated client SMS for trade businesses.' })
   return (
     <div style={{ fontFamily: 'Arial, sans-serif', background: '#050811', minHeight: '100vh', color: '#fff' }}>
       <SiteNav />

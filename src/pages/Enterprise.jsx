@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { SiteNav, SiteFooter } from '../components/SiteChrome'
 import { Reveal } from '../hooks/useReveal'
+import { useDocumentMeta } from '../hooks/useDocumentMeta'
 import { cardMove, cardLeave } from '../utils/interactions'
 import '../styles/interactive.css'
 
@@ -39,6 +40,7 @@ const CAPABILITIES = [
 ]
 
 export default function Enterprise() {
+  useDocumentMeta({ title: 'Enterprise', description: 'Multi-van fleets, facilities management, councils, and strata — asset tracking, site check-ins, and safety compliance built on Minerva.' })
   const [companyName, setCompanyName] = useState('')
   const [companyType, setCompanyType] = useState('multi_van')
   const [contactName, setContactName] = useState('')

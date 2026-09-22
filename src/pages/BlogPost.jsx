@@ -1,10 +1,13 @@
 import { Link, useParams } from 'react-router-dom'
 import { SiteNav, SiteFooter } from '../components/SiteChrome'
 import { BLOG_POSTS } from '../blogPosts'
+import { useDocumentMeta } from '../hooks/useDocumentMeta'
 
 export default function BlogPost() {
   const { slug } = useParams()
   const post = BLOG_POSTS.find(p => p.slug === slug)
+
+  useDocumentMeta({ title: post?.title, description: post?.excerpt })
 
   return (
     <div style={{ fontFamily: 'Arial, sans-serif', background: '#050811', minHeight: '100vh', color: '#fff' }}>

@@ -12,14 +12,22 @@
     <meta property="og:title" content="Minerva — Know where every technician is, right now." />
     <meta property="og:description" content="Live map tracking and automated client SMS for trade businesses. Works on every phone. Set up in 20 minutes." />
     <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://minervaops.com.au" />
-    <meta property="og:image" content="https://minervaops.com.au/og-image.png" />
+    <!-- minervaops.com.au is NOT actually registered yet (confirmed via
+         auDA whois — see memory) — the real live site is the Vercel URL
+         below. Pointing og:url/og:image/canonical at an unregistered
+         domain would make link previews and search results point at a
+         domain that returns nothing. Update these (and robots.txt's
+         Sitemap line, and sitemap.xml) to the real custom domain once
+         it's actually registered and DNS is pointed at Vercel. -->
+    <meta property="og:url" content="https://minerva-green.vercel.app" />
+    <meta property="og:image" content="https://minerva-green.vercel.app/og-image.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Minerva — Know where every technician is, right now." />
     <meta name="twitter:description" content="Live map tracking and automated client SMS for trade businesses. Works on every phone. Set up in 20 minutes." />
-    <meta name="twitter:image" content="https://minervaops.com.au/og-image.png" />
+    <meta name="twitter:image" content="https://minerva-green.vercel.app/og-image.png" />
+    <link rel="canonical" href="https://minerva-green.vercel.app/" />
     <!-- JSON-LD structured data — only real, factual fields (name, url,
          description, the 3 real pricing tiers from LandingPage.jsx/Pricing.jsx).
          Deliberately no aggregateRating/review fields: no real reviews exist
@@ -31,7 +39,7 @@
         "@context": "https://schema.org",
         "@type": "SoftwareApplication",
         "name": "Minerva",
-        "url": "https://minervaops.com.au",
+        "url": "https://minerva-green.vercel.app",
         "description": "Live map tracking and automated client SMS for trade businesses. Works on every phone. Set up in 20 minutes.",
         "applicationCategory": "BusinessApplication",
         "operatingSystem": "Any (web-based)",

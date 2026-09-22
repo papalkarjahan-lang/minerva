@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { SiteNav, SiteFooter } from '../components/SiteChrome'
 import { Reveal } from '../hooks/useReveal'
 import { magneticMove, magneticLeave } from '../utils/interactions'
+import { useDocumentMeta } from '../hooks/useDocumentMeta'
 import '../styles/interactive.css'
 
 // Deliberately honest and minimal. No fabricated founding story, team
@@ -10,6 +11,7 @@ import '../styles/interactive.css'
 // company details (ABN, address, founders) become available, add them
 // here explicitly rather than inventing placeholders.
 export default function About() {
+  useDocumentMeta({ title: 'About', description: 'Why Minerva exists: too much of running a field-service business still runs on phone calls a live map and an automatic text should answer.' })
   return (
     <div style={{ fontFamily: 'Arial, sans-serif', background: '#050811', minHeight: '100vh', color: '#fff' }}>
       <SiteNav />

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { supabase } from '../supabaseClient'
 import { classifyPriority } from '../utils'
 import { SiteNav, SiteFooter } from '../components/SiteChrome'
+import { useDocumentMeta } from '../hooks/useDocumentMeta'
 
 // Public /contact page for prospects and existing customers, unauthenticated.
 // Writes to support_requests using the exact same shape as
@@ -12,6 +13,7 @@ import { SiteNav, SiteFooter } from '../components/SiteChrome'
 // scoped to a business yet (that's the point of a marketing-site contact
 // form vs. the in-app support modal).
 export default function Contact() {
+  useDocumentMeta({ title: 'Contact', description: 'Get in touch with the Minerva team — questions about setup, pricing, or your trade business.' })
   const [name, setName] = useState('')
   const [contact, setContact] = useState('')
   const [message, setMessage] = useState('')
