@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { useDocumentMeta } from '../hooks/useDocumentMeta'
 
 // Refund & Cancellation Policy — reflects the actual billing mechanics in
 // this codebase: 7-day Stripe trial, per-technician monthly subscription,
@@ -7,6 +8,7 @@ import { Link } from 'react-router-dom'
 // checked against Australian Consumer Law's mandatory guarantees before
 // relying on it commercially.
 export default function RefundPolicy() {
+  useDocumentMeta({ title: 'Refund & Cancellation Policy' })
   return (
     <div style={pageStyle}>
       <div style={containerStyle}>

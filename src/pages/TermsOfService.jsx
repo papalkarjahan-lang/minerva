@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { useDocumentMeta } from '../hooks/useDocumentMeta'
 
 // Terms of Service — drafted from the actual product behaviour in this
 // codebase (Stripe subscription billing, GPS tracking, SMS, AI features,
@@ -9,6 +10,7 @@ import { Link } from 'react-router-dom'
 // sections, which have mandatory-guarantee implications this draft only
 // gestures at).
 export default function TermsOfService() {
+  useDocumentMeta({ title: 'Terms of Service' })
   return (
     <div style={pageStyle}>
       <div style={containerStyle}>

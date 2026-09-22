@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { useDocumentMeta } from '../hooks/useDocumentMeta'
 
 // Privacy Policy — drafted from the actual data flows in this codebase
 // (see SECURITY_NOTES.md for the underlying technical detail). NOT
@@ -9,6 +10,7 @@ import { Link } from 'react-router-dom'
 // privacy-law review before relying on it, and confirm whether the
 // Australian Privacy Act's APPs apply to your business's turnover/activities.
 export default function PrivacyPolicy() {
+  useDocumentMeta({ title: 'Privacy Policy' })
   return (
     <div style={pageStyle}>
       <div style={containerStyle}>
