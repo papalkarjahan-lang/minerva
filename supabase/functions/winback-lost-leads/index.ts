@@ -21,6 +21,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { isPlainDraftUsable } from "../_shared/smsDraft.ts"
 import { sendTwilioSms } from "../_shared/twilioSms.ts"
 import { notifySlack } from "../_shared/notifySlack.ts"
+import { draftSmsWithClaude } from "../_shared/claudeDraft.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -113,31 +114,6 @@ async function draftWinbackSms(
   ctx: { clientName: string; businessName: string; jobDescription: string; urgency: string; exampleTemplate: string },
   fallback: string
 ): Promise<string> {
-  try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'claude-opus-4-6',
-        max_tokens: 150,
-        messages: [{
-          role: 'user',
-          content: `You are drafting a one-time win-back SMS for a home-services business to a lead who was marked 'lost' about 2 weeks ago. Lead name: "${ctx.clientName || 'unknown'}". Business name: "${ctx.businessName}". ${ctx.jobDescription ? `Their original request was: "${ctx.jobDescription}".` : ''} Urgency at the time: "${ctx.urgency}". Style example (match this tone, length, and low-pressure feel exactly — no exclamation marks, no sales pressure, no emoji): "${ctx.exampleTemplate}". Write ONE short SMS (under 300 characters) in the same warm, no-pressure, "no worries either way" voice. Reply with ONLY the SMS text, no quotes, no preamble.`,
-        }],
-      }),
-    })
-
-    if (!res.ok) return fallback
-    const data = await res.json()
-    const text: string = (data?.content?.[0]?.text || '').trim()
-    if (!isPlainDraftUsable(text, 300)) return fallback
-    return text
-  } catch (err) {
-    console.error('winback-lost-leads: draft failed', err)
-    return fallback
-  }
+  const prompt = `You are drafting a one-time win-back SMS for a home-services business to a lead who was marked 'lost' about 2 weeks ago. Lead name: "${ctx.clientName || 'unknown'}". Business name: "${ctx.businessName}". ${ctx.jobDescription ? `Their original request was: "${ctx.jobDescription}".` : ''} Urgency at the time: "${ctx.urgency}". Style example (match this tone, length, and low-pressure feel exactly — no exclamation marks, no sales pressure, no emoji): "${ctx.exampleTemplate}". Write ONE short SMS (under 300 characters) in the same warm, no-pressure, "no worries either way" voice. Reply with ONLY the SMS text, no quotes, no preamble.`
+  return draftSmsWithClaude(apiKey, prompt, fallback, (text) => isPlainDraftUsable(text, 300), 'winback-lost-leads')
 }

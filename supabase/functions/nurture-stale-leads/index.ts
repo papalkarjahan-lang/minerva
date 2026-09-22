@@ -29,6 +29,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { isPlainDraftUsable } from "../_shared/smsDraft.ts"
 import { sendTwilioSms } from "../_shared/twilioSms.ts"
 import { notifySlack } from "../_shared/notifySlack.ts"
+import { draftSmsWithClaude } from "../_shared/claudeDraft.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -164,31 +165,6 @@ async function draftNurtureSms(
   ctx: { touch: '1st' | '2nd'; clientName: string; businessName: string; urgency: string; exampleTemplate: string },
   fallback: string
 ): Promise<string> {
-  try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'claude-opus-4-6',
-        max_tokens: 150,
-        messages: [{
-          role: 'user',
-          content: `You are drafting the ${ctx.touch} nurture SMS a home-services business sends to a lead who hasn't been contacted yet. Lead name: "${ctx.clientName || 'unknown'}". Business name: "${ctx.businessName}". Lead urgency: "${ctx.urgency}". Style example (match this tone, length, and directness exactly — no exclamation marks, no sales pressure, no emoji): "${ctx.exampleTemplate}". Write ONE short SMS (under 300 characters) in the same warm, non-pushy, plain-English voice as the example. Reply with ONLY the SMS text, no quotes, no preamble, no explanation.`,
-        }],
-      }),
-    })
-
-    if (!res.ok) return fallback
-    const data = await res.json()
-    const text: string = (data?.content?.[0]?.text || '').trim()
-    if (!isPlainDraftUsable(text, 300)) return fallback
-    return text
-  } catch (err) {
-    console.error('nurture-stale-leads: draft failed', err)
-    return fallback
-  }
+  const prompt = `You are drafting the ${ctx.touch} nurture SMS a home-services business sends to a lead who hasn't been contacted yet. Lead name: "${ctx.clientName || 'unknown'}". Business name: "${ctx.businessName}". Lead urgency: "${ctx.urgency}". Style example (match this tone, length, and directness exactly — no exclamation marks, no sales pressure, no emoji): "${ctx.exampleTemplate}". Write ONE short SMS (under 300 characters) in the same warm, non-pushy, plain-English voice as the example. Reply with ONLY the SMS text, no quotes, no preamble, no explanation.`
+  return draftSmsWithClaude(apiKey, prompt, fallback, (text) => isPlainDraftUsable(text, 300), 'nurture-stale-leads')
 }

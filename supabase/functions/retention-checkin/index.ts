@@ -19,6 +19,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { isPlainDraftUsable } from "../_shared/smsDraft.ts"
 import { sendTwilioSms } from "../_shared/twilioSms.ts"
+import { draftSmsWithClaude } from "../_shared/claudeDraft.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -125,31 +126,6 @@ async function draftCheckinSms(
   ctx: { clientName: string; businessName: string; lastJobNotes: string; completedAt: string; exampleTemplate: string },
   fallback: string
 ): Promise<string> {
-  try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'claude-opus-4-6',
-        max_tokens: 150,
-        messages: [{
-          role: 'user',
-          content: `You are drafting a low-pressure retention check-in SMS for a home-services business. Client name: "${ctx.clientName || 'unknown'}". Business name: "${ctx.businessName}". Their last completed job was on ${ctx.completedAt}${ctx.lastJobNotes ? `, notes from that job: "${ctx.lastJobNotes}"` : ''}. Style example (match this tone, length, and low-pressure feel exactly — no exclamation marks, no sales pitch, no emoji): "${ctx.exampleTemplate}". Write ONE short SMS (under 300 characters) in the same warm, low-pressure voice. Reply with ONLY the SMS text, no quotes, no preamble.`,
-        }],
-      }),
-    })
-
-    if (!res.ok) return fallback
-    const data = await res.json()
-    const text: string = (data?.content?.[0]?.text || '').trim()
-    if (!isPlainDraftUsable(text, 300)) return fallback
-    return text
-  } catch (err) {
-    console.error('retention-checkin: draft failed', err)
-    return fallback
-  }
+  const prompt = `You are drafting a low-pressure retention check-in SMS for a home-services business. Client name: "${ctx.clientName || 'unknown'}". Business name: "${ctx.businessName}". Their last completed job was on ${ctx.completedAt}${ctx.lastJobNotes ? `, notes from that job: "${ctx.lastJobNotes}"` : ''}. Style example (match this tone, length, and low-pressure feel exactly — no exclamation marks, no sales pitch, no emoji): "${ctx.exampleTemplate}". Write ONE short SMS (under 300 characters) in the same warm, low-pressure voice. Reply with ONLY the SMS text, no quotes, no preamble.`
+  return draftSmsWithClaude(apiKey, prompt, fallback, (text) => isPlainDraftUsable(text, 300), 'retention-checkin')
 }

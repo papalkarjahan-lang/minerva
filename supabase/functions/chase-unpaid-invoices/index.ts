@@ -23,6 +23,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { computeDaysOverdue, summarizeJobDescription, selectTonePrompt, isDraftUsable } from "./logic.ts"
 import { sendTwilioSms } from "../_shared/twilioSms.ts"
+import { draftSmsWithClaude } from "../_shared/claudeDraft.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -148,33 +149,7 @@ async function draftReminderSms(
   },
   fallback: string
 ): Promise<string> {
-  try {
-    const tonePrompt = selectTonePrompt(ctx.priorReminders)
-
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'claude-opus-4-6',
-        max_tokens: 150,
-        messages: [{
-          role: 'user',
-          content: `You are drafting a payment-reminder SMS for a home-services business. Client name: "${ctx.clientName || 'unknown'}". Business name: "${ctx.businessName}". Invoice amount: $${ctx.amount}. Invoice link (must appear verbatim, unmodified, exactly once): ${ctx.link}. Days overdue: ${ctx.daysOverdue}. Prior reminders already sent for this invoice: ${ctx.priorReminders}. ${ctx.jobDescription ? `Job was for: ${ctx.jobDescription}.` : ''} ${tonePrompt} Style example (match length and plain-English directness): "${ctx.exampleTemplate}". Write ONE short SMS (under 320 characters) that includes the exact dollar amount "$${ctx.amount}" and the exact link "${ctx.link}" verbatim. Reply with ONLY the SMS text, no quotes, no preamble.`,
-        }],
-      }),
-    })
-
-    if (!res.ok) return fallback
-    const data = await res.json()
-    const text: string = (data?.content?.[0]?.text || '').trim()
-    if (!isDraftUsable(text, ctx.link, ctx.amount)) return fallback
-    return text
-  } catch (err) {
-    console.error('chase-unpaid-invoices: draft failed', err)
-    return fallback
-  }
+  const tonePrompt = selectTonePrompt(ctx.priorReminders)
+  const prompt = `You are drafting a payment-reminder SMS for a home-services business. Client name: "${ctx.clientName || 'unknown'}". Business name: "${ctx.businessName}". Invoice amount: $${ctx.amount}. Invoice link (must appear verbatim, unmodified, exactly once): ${ctx.link}. Days overdue: ${ctx.daysOverdue}. Prior reminders already sent for this invoice: ${ctx.priorReminders}. ${ctx.jobDescription ? `Job was for: ${ctx.jobDescription}.` : ''} ${tonePrompt} Style example (match length and plain-English directness): "${ctx.exampleTemplate}". Write ONE short SMS (under 320 characters) that includes the exact dollar amount "$${ctx.amount}" and the exact link "${ctx.link}" verbatim. Reply with ONLY the SMS text, no quotes, no preamble.`
+  return draftSmsWithClaude(apiKey, prompt, fallback, (text) => isDraftUsable(text, ctx.link, ctx.amount), 'chase-unpaid-invoices')
 }
