@@ -76,6 +76,7 @@ export default function DispatcherView() {
   const [metaAccessTokenInput, setMetaAccessTokenInput] = useState('')
   const [metaAdAccountIdInput, setMetaAdAccountIdInput] = useState('')
   const [metaPageIdInput, setMetaPageIdInput] = useState('')
+  const [twilioNumberInput, setTwilioNumberInput] = useState('')
   const [checklistTemplate, setChecklistTemplate] = useState(null) // Pro tier only
   const [showChecklistModal, setShowChecklistModal] = useState(false)
   const [onboardingTemplate, setOnboardingTemplate] = useState(null) // Pro tier only
@@ -185,6 +186,7 @@ export default function DispatcherView() {
     setMetaAccessTokenInput(biz?.meta_access_token || '')
     setMetaAdAccountIdInput(biz?.meta_ad_account_id || '')
     setMetaPageIdInput(biz?.meta_page_id || '')
+    setTwilioNumberInput(biz?.twilio_number || '')
     setWeatherTradesInput((biz?.weather_sensitive_trade_types || []).join(', '))
     if (biz?.city) await setMapCenter(biz.city)
 
@@ -1008,9 +1010,9 @@ export default function DispatcherView() {
     if (error || data?.error) alert(`Couldn't resend the text: ${data?.error || error.message}. You can still copy their setup link directly.`)
   }
 
-  async function saveSettings({ slackWebhookUrl, autoDispatchEnabled, autoDispatchMaxKm, metaAccessToken, metaAdAccountId, metaPageId, weatherSensitiveTradeTypes, googleReviewLink }) {
+  async function saveSettings({ slackWebhookUrl, autoDispatchEnabled, autoDispatchMaxKm, metaAccessToken, metaAdAccountId, metaPageId, weatherSensitiveTradeTypes, googleReviewLink, twilioNumber }) {
     setSavingSettings(true)
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('businesses')
       .update({
         slack_webhook_url: slackWebhookUrl || null,
@@ -1021,10 +1023,19 @@ export default function DispatcherView() {
         meta_page_id: metaPageId || null,
         weather_sensitive_trade_types: weatherSensitiveTradeTypes && weatherSensitiveTradeTypes.length ? weatherSensitiveTradeTypes : null,
         google_review_link: googleReviewLink || null,
+        twilio_number: twilioNumber || null,
       })
       .eq('id', businessId)
       .select()
       .single()
+    // twilio_number has a unique constraint (supabase_schema_delta_twilio_number_unique.sql)
+    // — surface a collision instead of silently keeping the old value, since
+    // this field otherwise has no other validation feedback anywhere in the UI.
+    if (error) {
+      alert(error.code === '23505'
+        ? 'That Twilio number is already connected to another Minerva business — check for a typo, or a duplicate signup.'
+        : `Couldn't save settings: ${error.message}`)
+    }
     if (data) setBusiness(data)
     setSavingSettings(false)
   }
@@ -2996,6 +3007,8 @@ export default function DispatcherView() {
           setMetaAdAccountIdInput={setMetaAdAccountIdInput}
           metaPageIdInput={metaPageIdInput}
           setMetaPageIdInput={setMetaPageIdInput}
+          twilioNumberInput={twilioNumberInput}
+          setTwilioNumberInput={setTwilioNumberInput}
           weatherTradesInput={weatherTradesInput}
           setWeatherTradesInput={setWeatherTradesInput}
           saving={savingSettings}
@@ -3490,6 +3503,7 @@ function SettingsModal({
   metaAccessTokenInput, setMetaAccessTokenInput,
   metaAdAccountIdInput, setMetaAdAccountIdInput,
   metaPageIdInput, setMetaPageIdInput,
+  twilioNumberInput, setTwilioNumberInput,
   weatherTradesInput, setWeatherTradesInput,
   saving, onSave, calendarLinkCopied, onCopyCalendarLink, onClose,
 }) {
@@ -3507,6 +3521,7 @@ function SettingsModal({
       metaPageId: metaPageIdInput.trim(),
       weatherSensitiveTradeTypes: weatherTradesInput.split(',').map(t => t.trim()).filter(Boolean),
       googleReviewLink: googleReviewLinkInput.trim(),
+      twilioNumber: twilioNumberInput.trim(),
     })
     onClose()
   }
@@ -3588,6 +3603,23 @@ function SettingsModal({
                 </p>
               </>
             )}
+          </div>
+
+          <div style={{ marginBottom: 14 }}>
+            <label style={styles.inputLabel}>Your Twilio number (optional)</label>
+            <input
+              type="text"
+              value={twilioNumberInput}
+              onChange={e => setTwilioNumberInput(e.target.value)}
+              style={styles.input}
+              placeholder="+61412345678"
+            />
+            <p style={{ color: '#888', fontSize: 12, margin: '6px 0 0' }}>
+              E.164 format (country code, no spaces or brackets). Set this once you've bought a
+              Twilio number so missed-call-to-SMS auto-reply and the voice intake agent can match
+              inbound calls back to your business. Must be unique — if another business already
+              has this number connected, saving will fail.
+            </p>
           </div>
 
           <div style={{ marginBottom: 14 }}>
