@@ -26,8 +26,9 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
-import { formatAuPhone } from "../_shared/sms.ts"
 import { isPlainDraftUsable } from "../_shared/smsDraft.ts"
+import { sendTwilioSms } from "../_shared/twilioSms.ts"
+import { notifySlack } from "../_shared/notifySlack.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -79,7 +80,7 @@ serve(async (req: Request) => {
           }, fallbackMessage)
         : fallbackMessage
 
-      const smsOk = await sendSms(twilio, lead.client_phone, message)
+      const smsOk = await sendTwilioSms(twilio, lead.client_phone, message, 'nurture-stale-leads')
 
       // Mark as nurtured regardless of SMS success, so we don't retry-storm
       // a lead with a bad phone number every hour.
@@ -117,7 +118,7 @@ serve(async (req: Request) => {
           }, fallbackMessage)
         : fallbackMessage
 
-      const smsOk = await sendSms(twilio, lead.client_phone, message)
+      const smsOk = await sendTwilioSms(twilio, lead.client_phone, message, 'nurture-stale-leads')
 
       await supabase.from('leads').update({ second_nurture_sent_at: new Date().toISOString() }).eq('id', lead.id)
       if (smsOk) sentSecond++
@@ -190,35 +191,4 @@ async function draftNurtureSms(
     console.error('nurture-stale-leads: draft failed', err)
     return fallback
   }
-}
-
-async function sendSms(
-  twilio: { sid?: string; token?: string; from?: string },
-  rawPhone: string,
-  message: string
-): Promise<boolean> {
-  if (!twilio.sid || !twilio.token || !twilio.from) return false
-
-  const phone = formatAuPhone(rawPhone)
-
-  const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${twilio.sid}/Messages.json`, {
-    method: 'POST',
-    headers: {
-      'Authorization': 'Basic ' + btoa(`${twilio.sid}:${twilio.token}`),
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: new URLSearchParams({ To: phone, From: twilio.from, Body: message }).toString(),
-  }).catch(err => { console.error('nurture-stale-leads: SMS failed', err); return null })
-
-  if (!res) return false
-  const result = await res.json().catch(() => ({}))
-  return !result.error_code
-}
-
-async function notifySlack(supabaseUrl: string, supabaseServiceKey: string, businessId: string, text: string) {
-  await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
-    body: JSON.stringify({ businessId, text }),
-  }).catch(() => {})
 }

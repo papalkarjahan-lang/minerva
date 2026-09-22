@@ -17,8 +17,8 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
-import { formatAuPhone } from "../_shared/sms.ts"
 import { isPlainDraftUsable } from "../_shared/smsDraft.ts"
+import { sendTwilioSms } from "../_shared/twilioSms.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -35,9 +35,11 @@ serve(async (req: Request) => {
       return new Response(JSON.stringify({ success: true, skipped: true, reason: 'disabled via agent_functions.enabled' }), { status: 200, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } })
     }
 
-    const TWILIO_SID = Deno.env.get('TWILIO_ACCOUNT_SID')
-    const TWILIO_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN')
-    const TWILIO_FROM = Deno.env.get('TWILIO_PHONE_NUMBER')
+    const twilio = {
+      sid: Deno.env.get('TWILIO_ACCOUNT_SID'),
+      token: Deno.env.get('TWILIO_AUTH_TOKEN'),
+      from: Deno.env.get('TWILIO_PHONE_NUMBER'),
+    }
     const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY')
 
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
@@ -75,35 +77,18 @@ serve(async (req: Request) => {
       }
 
       const bizName = (job as any).businesses?.name || 'us'
-      let smsOk = false
-      if (TWILIO_SID && TWILIO_TOKEN && TWILIO_FROM) {
-        const phone = formatAuPhone(job.client_phone)
+      const fallbackMessage = `Hi ${job.client_name || ''}, it's been a little while since ${bizName} last helped you out — just checking in, let us know if you need anything.`.trim()
+      const message = anthropicKey
+        ? await draftCheckinSms(anthropicKey, {
+            clientName: job.client_name || '',
+            businessName: bizName,
+            lastJobNotes: job.notes || '',
+            completedAt: job.completed_at,
+            exampleTemplate: fallbackMessage,
+          }, fallbackMessage)
+        : fallbackMessage
 
-        const fallbackMessage = `Hi ${job.client_name || ''}, it's been a little while since ${bizName} last helped you out — just checking in, let us know if you need anything.`.trim()
-        const message = anthropicKey
-          ? await draftCheckinSms(anthropicKey, {
-              clientName: job.client_name || '',
-              businessName: bizName,
-              lastJobNotes: job.notes || '',
-              completedAt: job.completed_at,
-              exampleTemplate: fallbackMessage,
-            }, fallbackMessage)
-          : fallbackMessage
-
-        const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json`, {
-          method: 'POST',
-          headers: {
-            'Authorization': 'Basic ' + btoa(`${TWILIO_SID}:${TWILIO_TOKEN}`),
-            'Content-Type': 'application/x-www-form-urlencoded',
-          },
-          body: new URLSearchParams({ To: phone, From: TWILIO_FROM, Body: message }).toString(),
-        }).catch(err => { console.error('retention-checkin: SMS failed', err); return null })
-
-        if (res) {
-          const result = await res.json().catch(() => ({}))
-          smsOk = !result.error_code
-        }
-      }
+      const smsOk = await sendTwilioSms(twilio, job.client_phone, message, 'retention-checkin')
 
       await supabase.from('jobs').update({ retention_sent_at: new Date().toISOString() }).eq('id', job.id)
       if (smsOk) sent++
