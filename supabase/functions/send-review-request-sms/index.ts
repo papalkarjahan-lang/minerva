@@ -12,6 +12,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { formatAuPhone, buildReviewRequestMessage } from "../_shared/sms.ts"
+import { isAddonActive } from "../_shared/maxAddons.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -34,9 +35,7 @@ serve(async (req: Request) => {
     // Minerva Max: review_loop is a paid add-on — defense in depth
     // alongside the frontend gate (see src/maxAddons.js / DispatcherView's
     // "Request Review" button), in case this is ever called directly.
-    const addonActive = business?.max_addons?.review_loop === true ||
-      (business?.max_addon_trials?.review_loop?.ends_at && new Date(business.max_addon_trials.review_loop.ends_at).getTime() > Date.now())
-    if (!addonActive) {
+    if (!isAddonActive(business, 'review_loop')) {
       return new Response(JSON.stringify({ error: 'Review Request Loop is a Minerva Max add-on — enable it from the MAX tab first.' }), {
         status: 403,
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },

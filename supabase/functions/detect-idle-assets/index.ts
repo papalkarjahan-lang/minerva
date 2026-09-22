@@ -10,6 +10,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { isAddonActive } from "../_shared/maxAddons.ts"
 
 const IDLE_THRESHOLD_DAYS = 14
 const RENOTIFY_SUPPRESS_DAYS = 7 // don't re-flag the same still-idle asset every single day
@@ -49,9 +50,7 @@ serve(async (req: Request) => {
     const { data: businesses } = await supabase.from('businesses').select('id, max_addons, max_addon_trials')
     const addonActive = (bizId: string, key: string) => {
       const biz = (businesses || []).find((b: any) => b.id === bizId)
-      if (biz?.max_addons?.[key] === true) return true
-      const trial = biz?.max_addon_trials?.[key]
-      return !!trial?.ends_at && new Date(trial.ends_at).getTime() > Date.now()
+      return isAddonActive(biz, key)
     }
 
     const candidates = [...(neverPinged || []), ...(stalePinged || [])].filter(a => addonActive((a as any).business_id, 'asset_intelligence'))

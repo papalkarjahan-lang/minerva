@@ -18,6 +18,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { projectMaintenance } from "./logic.ts"
+import { isAddonActive } from "../_shared/maxAddons.ts"
 
 const LOOKBACK_DAYS = 14
 const PREDICT_WINDOW_DAYS = 7
@@ -49,9 +50,7 @@ serve(async (req: Request) => {
     const { data: businesses } = await supabase.from('businesses').select('id, max_addons, max_addon_trials')
     const addonActive = (bizId: string, key: string) => {
       const biz = (businesses || []).find((b: any) => b.id === bizId)
-      if (biz?.max_addons?.[key] === true) return true
-      const trial = biz?.max_addon_trials?.[key]
-      return !!trial?.ends_at && new Date(trial.ends_at).getTime() > Date.now()
+      return isAddonActive(biz, key)
     }
 
     const lookbackSince = new Date(Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString()

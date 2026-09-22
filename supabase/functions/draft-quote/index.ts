@@ -17,6 +17,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { isAddonActive } from "../_shared/maxAddons.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -36,9 +37,7 @@ serve(async (req: Request) => {
     // the frontend gate (DispatcherView's Quotes tab), in case this is ever
     // called directly. Mirrors src/maxAddons.js's hasAddon() logic.
     const { data: biz } = await supabase.from('businesses').select('max_addons, max_addon_trials').eq('id', businessId).maybeSingle()
-    const addonActive = biz?.max_addons?.ai_quotes === true ||
-      (biz?.max_addon_trials?.ai_quotes?.ends_at && new Date(biz.max_addon_trials.ai_quotes.ends_at).getTime() > Date.now())
-    if (!addonActive) {
+    if (!isAddonActive(biz, 'ai_quotes')) {
       return new Response(JSON.stringify({ error: 'AI Quote Drafting is a Minerva Max add-on — enable it from the MAX tab first.' }), {
         status: 403,
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },

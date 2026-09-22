@@ -24,6 +24,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { isAddonActive } from "../_shared/maxAddons.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -83,9 +84,7 @@ serve(async (req: Request) => {
 
   // Minerva Max: xero_sync is a paid add-on — defense in depth alongside
   // the frontend gate (Settings only shows "Connect Xero" once enabled).
-  const addonActive = biz?.max_addons?.xero_sync === true ||
-    (biz?.max_addon_trials?.xero_sync?.ends_at && new Date(biz.max_addon_trials.xero_sync.ends_at).getTime() > Date.now())
-  if (!addonActive) {
+  if (!isAddonActive(biz, 'xero_sync')) {
     return new Response(JSON.stringify({ error: 'Xero Sync is a Minerva Max add-on — enable it from the MAX tab first.' }), {
       status: 403,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },

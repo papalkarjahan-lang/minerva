@@ -91,6 +91,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { filterQualifiedTechnicians, pickNearestTechnician, pickNearestSubcontractor, isBeyondMaxKm } from "./logic.ts"
+import { isAddonActive } from "../_shared/maxAddons.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -142,8 +143,7 @@ serve(async (req: Request) => {
     // subcontractor rows being created without it, but a business that let
     // an active trial/subscription lapse could still have old subcontractor
     // rows sitting in the table, so this fallback needs its own check too.
-    const subcontractorPoolActive = business?.max_addons?.subcontractor_pool === true ||
-      (business?.max_addon_trials?.subcontractor_pool?.ends_at && new Date(business.max_addon_trials.subcontractor_pool.ends_at).getTime() > Date.now())
+    const subcontractorPoolActive = isAddonActive(business, 'subcontractor_pool')
 
     if (!business?.auto_dispatch_enabled) {
       supabase.rpc('record_agent_run', { fn_name: 'auto-assign-technician', status: 'ok' }).then(() => {}, () => {})

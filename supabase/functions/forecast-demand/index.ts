@@ -27,6 +27,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { bucketJobsByAddress, findBestTrendingAddress, MIN_RECENT_COUNT } from "./logic.ts"
+import { isAddonActive } from "../_shared/maxAddons.ts"
 
 const LOOKBACK_DAYS = 28 // 4 weekly buckets
 
@@ -49,17 +50,12 @@ serve(async (req: Request) => {
     // trend scan for businesses that have it enabled or are trialing it.
     // See src/maxAddons.js for the frontend equivalent of this check.
     const { data: businesses } = await supabase.from('businesses').select('id, max_addons, max_addon_trials')
-    const addonActive = (biz: any, key: string) => {
-      if (biz?.max_addons?.[key] === true) return true
-      const trial = biz?.max_addon_trials?.[key]
-      return !!trial?.ends_at && new Date(trial.ends_at).getTime() > Date.now()
-    }
 
     const cutoff = new Date(Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString()
     let flagged = 0
 
     for (const biz of businesses || []) {
-      if (!addonActive(biz, 'demand_forecast')) continue
+      if (!isAddonActive(biz, 'demand_forecast')) continue
       const { data: jobs } = await supabase
         .from('jobs')
         .select('client_address, created_at')

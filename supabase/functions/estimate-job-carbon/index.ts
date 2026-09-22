@@ -26,6 +26,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { computeCarbonEstimate } from "./logic.ts"
+import { isAddonActive } from "../_shared/maxAddons.ts"
 
 // kg CO2-e per km, average city/highway — placeholder static reference,
 // see header note. 'light_commercial' covers the typical trade-business
@@ -57,10 +58,7 @@ serve(async (req: Request) => {
     // so the cron never computes/writes estimates for non-paying businesses.
     const { data: allBiz } = await supabase.from('businesses').select('id, max_addons, max_addon_trials')
     const activeBizIds = new Set(
-      (allBiz || []).filter((b: any) =>
-        b.max_addons?.carbon_estimate === true ||
-        (b.max_addon_trials?.carbon_estimate?.ends_at && new Date(b.max_addon_trials.carbon_estimate.ends_at).getTime() > Date.now())
-      ).map((b: any) => b.id)
+      (allBiz || []).filter((b: any) => isAddonActive(b, 'carbon_estimate')).map((b: any) => b.id)
     )
 
     const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
