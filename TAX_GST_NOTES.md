@@ -67,7 +67,10 @@ credentials only you can obtain:
 1. Go to `developer.xero.com`, sign in with (or create) your own Xero
    account, and register a free developer app.
 2. Xero gives you a `XERO_CLIENT_ID` and `XERO_CLIENT_SECRET`.
-3. Set those as Supabase secrets (`supabase secrets set XERO_CLIENT_ID=... XERO_CLIENT_SECRET=...`).
+3. Paste those to Claude in chat and it'll set `XERO_CLIENT_ID` /
+   `XERO_CLIENT_SECRET` as Supabase secrets via the Management API (this
+   project has no linked Supabase CLI, so this never goes through
+   `supabase secrets set` directly).
 4. "Connect Xero" in Settings will then work — it currently just shows a
    setup message because those secrets aren't set.
 

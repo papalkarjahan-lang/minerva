@@ -82,6 +82,13 @@ npm run dev
 
 ## Deploy Supabase Edge Functions
 
+Note: this specific project has never had a linked/logged-in Supabase CLI
+in its dev environment — every secret and function deploy here has
+actually gone through the raw Management API instead (paste the value to
+Claude in chat, or see `minerva_supabase_function_deploy_method.md`). The
+CLI steps below are the standard path if you're setting this up somewhere
+with a working `supabase login`/`supabase link`.
+
 Install the Supabase CLI first:
 ```bash
 npm install -g supabase
