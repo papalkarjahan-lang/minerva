@@ -117,13 +117,25 @@ serve(async (req: Request) => {
       // problem immediately instead of masking it with a plausible-looking
       // dead URL.
       const APP_URL = Deno.env.get('APP_URL') || ''
+      // Tag the link with UTM params so a lead captured via this ad is
+      // attributed correctly — IntakeAssistant.jsx reads utm_source/medium/
+      // campaign straight off its own URL and passes them through to
+      // ai-intake-chat, which already stores them on the leads row
+      // (utm_source/utm_medium/utm_campaign columns). Without these, every
+      // lead from a paid ad would land indistinguishable from organic/direct
+      // traffic despite the schema fully supporting the attribution.
+      const utmParams = new URLSearchParams({
+        utm_source: draft.platform || 'meta',
+        utm_medium: 'paid_social',
+        utm_campaign: (draft.headline || 'ad').toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 60),
+      })
       const creative = await metaPost(`${adAccountId}/adcreatives`, token, {
         name: `Minerva creative — ${draft.headline}`,
         object_story_spec: {
           page_id: pageId,
           link_data: {
             message: draft.body_text,
-            link: `${APP_URL}/intake/${draft.business_id}`,
+            link: `${APP_URL}/intake/${draft.business_id}?${utmParams.toString()}`,
             name: draft.headline,
           },
         },
