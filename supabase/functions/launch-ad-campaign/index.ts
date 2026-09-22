@@ -101,13 +101,29 @@ serve(async (req: Request) => {
       })
 
       // 3. Creative
+      // Link destination: this business's own hosted lead-intake page
+      // (IntakeAssistant.jsx, /intake/:businessId) — there's no "website"
+      // column on businesses to link to instead, and that page is exactly
+      // "embedded/linked from the business's own website to triage inbound
+      // leads" per its own header comment, so it's the correct landing page
+      // for a lead-gen ad run on this business's behalf. Previously
+      // fell back to the hardcoded 'https://minervaops.com.au' if APP_URL
+      // wasn't set — that domain is NOT registered (confirmed via whois),
+      // so an unset APP_URL would have silently launched a real ad, on a
+      // client's real ad spend, linking to a domain that resolves to
+      // nothing. Empty-string fallback instead, matching the pattern
+      // already used by send-quote-sms/chase-unpaid-invoices for the same
+      // APP_URL var — a broken relative link surfaces the missing-config
+      // problem immediately instead of masking it with a plausible-looking
+      // dead URL.
+      const APP_URL = Deno.env.get('APP_URL') || ''
       const creative = await metaPost(`${adAccountId}/adcreatives`, token, {
         name: `Minerva creative — ${draft.headline}`,
         object_story_spec: {
           page_id: pageId,
           link_data: {
             message: draft.body_text,
-            link: Deno.env.get('APP_URL') || 'https://minervaops.com.au',
+            link: `${APP_URL}/intake/${draft.business_id}`,
             name: draft.headline,
           },
         },

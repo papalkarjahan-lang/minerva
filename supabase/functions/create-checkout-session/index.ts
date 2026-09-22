@@ -7,7 +7,7 @@
 //   STRIPE_PRICE_ID_STARTER       (price ID for $49/tech/month Starter plan)
 //   STRIPE_PRICE_ID_STD           (price ID for $79/tech/month Standard plan)
 //   STRIPE_PRICE_ID_PRO           (price ID for $119/tech/month Pro plan)
-//   APP_URL                       (your production URL, e.g. https://minervaops.com.au)
+//   APP_URL                       (your production URL, e.g. https://minerva-green.vercel.app)
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 
