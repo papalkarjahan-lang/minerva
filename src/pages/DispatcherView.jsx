@@ -1498,6 +1498,19 @@ export default function DispatcherView() {
     count: agentFunctions.filter(f => f.agent === agent).length,
     notYetBuilt: NOT_YET_BUILT_AGENTS.includes(agent),
   }))
+  // Gentle recency decay for DISPLAY ORDER ONLY — mirrors
+  // _shared/leadTriage.ts's applyRecencyDecay (-10 flat once 7+ days have
+  // passed since the more recent of creation or last logged activity).
+  // Never writes to the stored `score`/`score_reason` columns; a lead
+  // that sat untouched for a week just sinks below fresher leads of
+  // similar value in this list, it isn't marked as a worse lead.
+  const effectiveLeadScore = (lead) => {
+    const lastTouch = leadActivitySummary[lead.id]?.lastAt || lead.created_at
+    const daysSinceLastTouch = (Date.now() - new Date(lastTouch).getTime()) / (24 * 60 * 60 * 1000)
+    const base = lead.score ?? 0
+    return daysSinceLastTouch >= 7 ? Math.max(0, base - 10) : base
+  }
+  const sortedLeadsForDisplay = [...leads].sort((a, b) => effectiveLeadScore(b) - effectiveLeadScore(a))
   const isUnhealthyFn = (fn) => fn.error_count >= 5 || fn.last_status === 'error'
   const unhealthyAgentFunctions = agentFunctions.filter(isUnhealthyFn)
   const sortedAgentFunctions = [...agentFunctions].sort((a, b) => {
@@ -2028,11 +2041,14 @@ export default function DispatcherView() {
                   </p>
                 </div>
               )}
-              {leads.map(lead => (
+              {sortedLeadsForDisplay.map(lead => {
+                const effScore = effectiveLeadScore(lead)
+                const isAging = effScore !== (lead.score ?? 0)
+                return (
                 <div key={lead.id} style={styles.leadRow}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <p style={styles.jobClient}>{lead.client_name || 'Unnamed'}</p>
-                    <span style={styles.scoreBadge(lead.score)}>{lead.score ?? '–'}</span>
+                    <span style={styles.scoreBadge(effScore)}>{effScore ?? '–'}</span>
                   </div>
                   <div style={{ display: 'flex', gap: 6, margin: '2px 0 4px' }}>
                     <span style={styles.urgencyBadge(lead.urgency)}>{(lead.urgency || 'routine').toUpperCase()}</span>
@@ -2040,6 +2056,7 @@ export default function DispatcherView() {
                     {lead.estimated_value_tier && (
                       <span style={styles.repeatBadge}>{lead.estimated_value_tier.toUpperCase()} VALUE</span>
                     )}
+                    {isAging && <span style={styles.repeatBadge}>AGING (-10)</span>}
                   </div>
                   <p style={styles.jobAddr}>{lead.suburb} · {lead.client_phone}</p>
                   <p style={styles.leadDesc}>{lead.job_description}</p>
@@ -2126,7 +2143,7 @@ export default function DispatcherView() {
                     </div>
                   )}
                 </div>
-              ))}
+              )})}
               {leads.length === 0 && <p style={{ color: '#444', fontSize: 13 }}>No open leads</p>}
 
               {lostLeads.length > 0 && (
