@@ -31,11 +31,10 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { isChatRequestTooLarge, trimToFirstUserMessage, buildFallbackReply, ChatMessage } from "./logic.ts"
 
 const CLAUDE_MODEL = 'claude-opus-4-6'
 const corsHeaders = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' }
-
-interface ChatMessage { role: 'user' | 'assistant'; content: string }
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
@@ -48,7 +47,7 @@ serve(async (req: Request) => {
       })
     }
     // Same cost-abuse guard as ai-intake-chat — public, unauthenticated endpoint.
-    if (messages.length > 40 || messages.some(m => typeof m?.content !== 'string' || m.content.length > 2000)) {
+    if (isChatRequestTooLarge(messages)) {
       return new Response(JSON.stringify({ error: 'Message too long or conversation too long for this widget.' }), {
         status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders },
       })
@@ -140,18 +139,16 @@ serve(async (req: Request) => {
       // Deterministic fallback: state the real facts plainly, take no
       // free-text question into account. Honest about the limitation
       // rather than pretending to converse.
-      const parts: string[] = []
-      if (job) {
-        parts.push(`Job status: ${job.status}.`)
-        if (job.technicians && (job.technicians as { name?: string }).name) parts.push(`Technician: ${(job.technicians as { name: string }).name}.`)
-        if (job.estimated_arrival_at) parts.push(`Estimated arrival: ${new Date(job.estimated_arrival_at as string).toLocaleString('en-AU')}.`)
-        else if (job.scheduled_time) parts.push(`Scheduled: ${new Date(job.scheduled_time as string).toLocaleString('en-AU')}.`)
-      }
-      if (invoice) {
-        parts.push(`Invoice total: $${Number(invoice.total).toFixed(2)}, status: ${invoice.status}.`)
-      }
-      parts.push(`For anything else, please contact ${business.name}${business.contact_phone ? ' on ' + business.contact_phone : ''} directly.`)
-      reply = parts.join(' ')
+      reply = buildFallbackReply(
+        { name: business.name as string, contactPhone: business.contact_phone as string | null },
+        job ? {
+          status: job.status as string,
+          technicianName: (job as { technicians?: { name?: string } }).technicians?.name || null,
+          estimatedArrivalAt: job.estimated_arrival_at as string | null,
+          scheduledTime: job.scheduled_time as string | null,
+        } : null,
+        invoice ? { total: invoice.total as number, status: invoice.status as string } : null,
+      )
     } else {
       const systemPrompt = `You are a customer-service assistant for ${business.name}. You are answering questions from a client about ONE specific job and/or invoice they already have a link to. Here are the only real facts you know — never invent, guess, or assume anything beyond this:
 
@@ -165,8 +162,7 @@ Rules:
 
 Respond with ONLY a JSON object, no markdown fences: {"reply": "<your reply>"}`
 
-      let apiMessages = messages
-      while (apiMessages.length && apiMessages[0].role !== 'user') apiMessages = apiMessages.slice(1)
+      const apiMessages = trimToFirstUserMessage(messages)
 
       const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
