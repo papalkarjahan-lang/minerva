@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { haversineKm, generatePin, generateReferralCode, timeAgo, insertTechniciansWithPinRetry, classifyPriority } from './utils'
+import { haversineKm, generatePin, generateReferralCode, timeAgo, insertTechniciansWithPinRetry, classifyPriority, normalizeAddressForGeocoding, pickBestGeocodeFeature } from './utils'
 
 describe('haversineKm', () => {
   it('returns 0 for identical points', () => {
@@ -104,6 +104,44 @@ describe('insertTechniciansWithPinRetry', () => {
     expect(data).toBeNull()
     expect(error.code).toBe('23503')
     expect(attempts).toBe(1)
+  })
+})
+
+describe('normalizeAddressForGeocoding', () => {
+  it('collapses repeated whitespace', () => {
+    expect(normalizeAddressForGeocoding('123   Main St,   Sydney')).toBe('123 Main St, Sydney')
+  })
+
+  it('trims leading/trailing whitespace', () => {
+    expect(normalizeAddressForGeocoding('  123 Main St  ')).toBe('123 Main St')
+  })
+
+  it('returns an empty string for null/undefined', () => {
+    expect(normalizeAddressForGeocoding(null)).toBe('')
+    expect(normalizeAddressForGeocoding(undefined)).toBe('')
+  })
+})
+
+describe('pickBestGeocodeFeature', () => {
+  it('returns null for empty/missing features', () => {
+    expect(pickBestGeocodeFeature([])).toBeNull()
+    expect(pickBestGeocodeFeature(null)).toBeNull()
+    expect(pickBestGeocodeFeature(undefined)).toBeNull()
+  })
+
+  it('returns the top feature when relevance is high', () => {
+    const features = [{ relevance: 1, center: [151.2, -33.8] }]
+    expect(pickBestGeocodeFeature(features)).toBe(features[0])
+  })
+
+  it('rejects the top feature when relevance is below the threshold', () => {
+    const features = [{ relevance: 0.3, center: [151.2, -33.8] }]
+    expect(pickBestGeocodeFeature(features)).toBeNull()
+  })
+
+  it('accepts a feature with no relevance field (treats as trusted)', () => {
+    const features = [{ center: [151.2, -33.8] }]
+    expect(pickBestGeocodeFeature(features)).toBe(features[0])
   })
 })
 

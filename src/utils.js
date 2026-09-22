@@ -16,20 +16,52 @@ export function haversineKm(lat1, lng1, lat2, lng2) {
 }
 
 // ============================================================
+// NORMALIZE ADDRESS FOR GEOCODING
+// Collapses repeated/irregular whitespace before sending to Mapbox, so
+// near-duplicate input ("123  Main St,  Sydney" vs "123 Main St, Sydney")
+// doesn't produce inconsistent geocoding results for what's really the
+// same address.
+// ============================================================
+export function normalizeAddressForGeocoding(address) {
+  return String(address || '').replace(/\s+/g, ' ').trim()
+}
+
+// ============================================================
+// PICK BEST GEOCODE FEATURE
+// Mapbox orders features by relevance (0-1) but doesn't guarantee the top
+// result is a good match — a vague or malformed address (e.g. a typo, or
+// just a suburb typed into the full street-address field) can still
+// return a low-relevance match instead of no match. Since client_lat/
+// client_lng feeds route optimization, ETA distance calcs, and the
+// weather-risk check downstream, silently accepting a low-confidence
+// match would quietly corrupt all of those. Rejecting below a threshold
+// converts that into the existing "could not geocode" error path instead.
+// ============================================================
+const MIN_GEOCODE_RELEVANCE = 0.5
+export function pickBestGeocodeFeature(features) {
+  if (!features || features.length === 0) return null
+  const best = features[0]
+  if (typeof best.relevance === 'number' && best.relevance < MIN_GEOCODE_RELEVANCE) return null
+  return best
+}
+
+// ============================================================
 // GEOCODE ADDRESS -> { lat, lng }
 // Converts a street address string into coordinates using Mapbox.
 // Call this when a job is created so client_lat/client_lng are set.
 // ============================================================
 export async function geocodeAddress(address) {
   const token = import.meta.env.VITE_MAPBOX_TOKEN
-  const encoded = encodeURIComponent(address)
+  const normalized = normalizeAddressForGeocoding(address)
+  const encoded = encodeURIComponent(normalized)
   const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encoded}.json?country=AU&access_token=${token}`
   const res = await fetch(url)
   const data = await res.json()
-  if (!data.features || data.features.length === 0) {
+  const feature = pickBestGeocodeFeature(data.features)
+  if (!feature) {
     throw new Error(`Could not geocode address: ${address}`)
   }
-  const [lng, lat] = data.features[0].center
+  const [lng, lat] = feature.center
   return { lat, lng }
 }
 
