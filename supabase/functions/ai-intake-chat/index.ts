@@ -23,6 +23,15 @@
 //   TWILIO_ACCOUNT_SID    (same as other SMS functions; optional — lead
 //   TWILIO_AUTH_TOKEN      capture still succeeds without SMS if unset)
 //   TWILIO_PHONE_NUMBER
+//
+// Health/kill-switch wiring added 2026-09-23: this was registered in
+// agent_functions but never actually checked `enabled` or called
+// `record_agent_run` — a real prospective client hitting a broken/disabled
+// widget was 100% invisible. Same bug class as the sync-technician-billing/
+// followup-outreach fix from 2026-09-22. Since this is a public-facing
+// widget, disabling it returns a graceful chat reply (200, leadCaptured:
+// false) rather than a raw error, consistent with missed-call-webhook's
+// treatment of the other inbound customer-facing capture path.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
@@ -44,7 +53,16 @@ serve(async (req: Request) => {
     return new Response('ok', { headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' } })
   }
 
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+  const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+  const supabase = createClient(supabaseUrl, supabaseServiceKey)
+
   try {
+    const { data: fnState } = await supabase.from('agent_functions').select('enabled').eq('name', 'ai-intake-chat').maybeSingle()
+    if (fnState?.enabled === false) {
+      return new Response(JSON.stringify({ reply: "Sorry, our online intake assistant is temporarily unavailable — please call us directly and we'll help you right away.", leadCaptured: false, skipped: true, reason: 'disabled via agent_functions.enabled' }), { status: 200, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } })
+    }
+
     const { businessId, messages, utmSource, utmMedium, utmCampaign }: ChatPayload = await req.json()
     if (!businessId || !Array.isArray(messages) || messages.length === 0) {
       return new Response(JSON.stringify({ error: 'Missing businessId or messages' }), {
@@ -62,10 +80,6 @@ serve(async (req: Request) => {
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
       })
     }
-
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
     // Per-business request-rate limiter (2026-09-16) — see
     // supabase_schema_delta_rate_limits.sql. A legitimate chat session is
@@ -289,6 +303,8 @@ if not yet captured}`
       }).catch(err => console.error('ai-intake-chat: Slack notify failed', err))
     }
 
+    supabase.rpc('record_agent_run', { fn_name: 'ai-intake-chat', status: 'ok' }).then(() => {}, () => {})
+
     return new Response(JSON.stringify({ reply: parsed.reply, leadCaptured: !!parsed.lead_captured }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
@@ -296,6 +312,9 @@ if not yet captured}`
 
   } catch (err) {
     console.error('ai-intake-chat error:', err)
+    try {
+      supabase.rpc('record_agent_run', { fn_name: 'ai-intake-chat', status: 'error', error_msg: err.message }).then(() => {}, () => {})
+    } catch (_) { /* never let health tracking break the actual error response */ }
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },

@@ -1501,6 +1501,15 @@ export default function DispatcherView() {
   // always safe (worst case: an immediate 200 no-op). That comment was
   // stale relative to the code; verified by reading each function's
   // handler directly before adding them below.
+  //
+  // 2026-09-23: added the 6 SMS senders, notify-slack, ai-intake-chat,
+  // calendar-feed, and package-client-verification — these were all
+  // registered in agent_functions but had no real enabled-check wired up
+  // until today's fix (see each function's own header comment). Deliberately
+  // NOT adding stripe-webhook or create-checkout-session here: both now call
+  // record_agent_run for visibility, but neither got an enabled-check —
+  // silently dropping real Stripe events, or silently blocking all new
+  // signups, is too risky to expose as a one-click toggle.
   const KILL_SWITCH_GATED_FUNCTIONS = [
     'chase-unpaid-invoices', 'check-inventory-levels', 'check-weather-risk',
     'detect-wasted-trips', 'generate-growth-drafts', 'nurture-stale-leads',
@@ -1515,7 +1524,10 @@ export default function DispatcherView() {
     'auto-assign-technician', 'launch-ad-campaign', 'send-growth-message',
     'industrial-conductor', 'enrich-industrial-leads', 'harvest-industrial-leads',
     'monitor-asset-telemetry', 'missed-call-webhook', 'optimize-daily-route',
-    'sync-technician-billing',
+    'sync-technician-billing', 'send-completion-sms', 'send-eta-sms',
+    'send-invoice-sms', 'send-setup-sms', 'send-referral-code-sms',
+    'send-weather-reschedule-sms', 'notify-slack', 'ai-intake-chat',
+    'calendar-feed', 'package-client-verification',
   ]
   const agentGroupCounts = AGENT_GROUPS.map(agent => ({
     agent,

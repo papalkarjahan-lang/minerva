@@ -8,8 +8,18 @@
 //   STRIPE_PRICE_ID_STD           (price ID for $79/tech/month Standard plan)
 //   STRIPE_PRICE_ID_PRO           (price ID for $119/tech/month Pro plan)
 //   APP_URL                       (your production URL, e.g. https://minerva-green.vercel.app)
+//
+// Health wiring added 2026-09-23: this was registered in agent_functions
+// but never called record_agent_run — a failure here (a real prospective
+// business unable to sign up) was 100% invisible, same bug class as the
+// sync-technician-billing/followup-outreach fix from 2026-09-22.
+// Deliberately NOT given an `enabled`-check like most other gated
+// functions: this is the top-of-funnel signup flow — disabling it would
+// silently block ALL new business signups with no clear operational
+// benefit.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
 const corsHeaders = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' }
 
@@ -17,6 +27,8 @@ serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
+
+  const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
 
   try {
     const { businessId, businessName, contactEmail, techCount, tier } = await req.json()
@@ -72,6 +84,8 @@ serve(async (req: Request) => {
       throw new Error(session.error.message)
     }
 
+    supabase.rpc('record_agent_run', { fn_name: 'create-checkout-session', status: 'ok' }).then(() => {}, () => {})
+
     return new Response(JSON.stringify({ sessionUrl: session.url }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', ...corsHeaders }
@@ -79,6 +93,9 @@ serve(async (req: Request) => {
 
   } catch (err) {
     console.error('create-checkout-session error:', err)
+    try {
+      supabase.rpc('record_agent_run', { fn_name: 'create-checkout-session', status: 'error', error_msg: err.message }).then(() => {}, () => {})
+    } catch (_) { /* never let health tracking break the actual error response */ }
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
       headers: { 'Content-Type': 'application/json', ...corsHeaders }

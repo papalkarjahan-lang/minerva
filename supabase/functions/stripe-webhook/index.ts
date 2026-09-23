@@ -33,6 +33,14 @@
 //   OPERATOR_EMAIL (optional — your own email. If set, a failed payment
 //                    sends you a heads-up via send-email; if unset, this
 //                    step is a no-op, same as RESEND_API_KEY being unset)
+//
+// Health wiring added 2026-09-23: this was registered in agent_functions
+// but never called record_agent_run — a failure here (real Stripe money
+// events silently dropped) was 100% invisible, same bug class as the
+// sync-technician-billing/followup-outreach fix from 2026-09-22.
+// Deliberately NOT given an `enabled`-check like most other gated
+// functions: silently dropping real Stripe financial events with no
+// UI-exposed use case for pausing this specific webhook is too risky.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import Stripe from "https://esm.sh/stripe@14?target=deno"
@@ -212,9 +220,14 @@ serve(async (req: Request) => {
         break
     }
 
+    supabaseAdmin.rpc('record_agent_run', { fn_name: 'stripe-webhook', status: 'ok' }).then(() => {}, () => {})
+
     return new Response(JSON.stringify({ received: true }), { status: 200 })
   } catch (err) {
     console.error('stripe-webhook handler error:', err)
+    try {
+      supabaseAdmin.rpc('record_agent_run', { fn_name: 'stripe-webhook', status: 'error', error_msg: err.message }).then(() => {}, () => {})
+    } catch (_) { /* never let health tracking break the actual error response */ }
     return new Response(JSON.stringify({ error: err.message }), { status: 500 })
   }
 })

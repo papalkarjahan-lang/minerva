@@ -21,6 +21,11 @@
 // been told about some other way), but the SMS *send* is retryable — if
 // it fails, this flag is set so DispatcherView can offer a manual resend
 // of the SAME code, mirroring invoices.client_sms_failed's pattern.
+//
+// Health/kill-switch wiring added 2026-09-23: this was registered in
+// agent_functions but never actually checked `enabled` or called
+// `record_agent_run` — same bug class as the sync-technician-billing/
+// followup-outreach fix from 2026-09-22.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
@@ -32,13 +37,18 @@ serve(async (req: Request) => {
     return new Response('ok', { headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' } })
   }
 
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+  const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+  const supabase = createClient(supabaseUrl, supabaseServiceKey)
+
   try {
+    const { data: fnState } = await supabase.from('agent_functions').select('enabled').eq('name', 'send-referral-code-sms').maybeSingle()
+    if (fnState?.enabled === false) {
+      return new Response(JSON.stringify({ success: true, skipped: true, reason: 'disabled via agent_functions.enabled' }), { status: 200, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } })
+    }
+
     const { invoiceId } = await req.json()
     if (!invoiceId) throw new Error('invoiceId is required')
-
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
     const { data: invoice, error } = await supabase
       .from('invoices')
@@ -115,12 +125,17 @@ serve(async (req: Request) => {
       }),
     }).catch(() => {})
 
+    supabase.rpc('record_agent_run', { fn_name: 'send-referral-code-sms', status: 'ok' }).then(() => {}, () => {})
+
     return new Response(JSON.stringify({ success: true, code, smsSent: smsOk }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     })
   } catch (err) {
     console.error('send-referral-code-sms error:', err)
+    try {
+      supabase.rpc('record_agent_run', { fn_name: 'send-referral-code-sms', status: 'error', error_msg: err.message }).then(() => {}, () => {})
+    } catch (_) { /* never let health tracking break the actual error response */ }
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },

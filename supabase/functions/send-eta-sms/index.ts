@@ -6,8 +6,16 @@
 //   TWILIO_ACCOUNT_SID
 //   TWILIO_AUTH_TOKEN
 //   TWILIO_PHONE_NUMBER  (your Twilio AU number, format: +61412345678)
+//
+// Health/kill-switch wiring added 2026-09-23: this was registered in
+// agent_functions (seeded in supabase_schema_delta_agent_infra.sql) but
+// never actually checked `enabled` or called `record_agent_run` — a
+// failed send to a real client was 100% invisible everywhere, same bug
+// class as the sync-technician-billing/followup-outreach fix from
+// 2026-09-22.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { formatAuPhone, buildEtaMessage } from "../_shared/sms.ts"
 
 interface SMSPayload {
@@ -24,7 +32,14 @@ serve(async (req: Request) => {
     return new Response('ok', { headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' } })
   }
 
+  const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+
   try {
+    const { data: fnState } = await supabase.from('agent_functions').select('enabled').eq('name', 'send-eta-sms').maybeSingle()
+    if (fnState?.enabled === false) {
+      return new Response(JSON.stringify({ success: true, skipped: true, reason: 'disabled via agent_functions.enabled' }), { status: 200, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } })
+    }
+
     const payload: SMSPayload = await req.json()
     const { clientPhone, clientName, techName, businessName, trackingUrl } = payload
 
@@ -68,6 +83,8 @@ serve(async (req: Request) => {
       throw new Error(`Twilio error ${result.error_code}: ${result.message}`)
     }
 
+    supabase.rpc('record_agent_run', { fn_name: 'send-eta-sms', status: 'ok' }).then(() => {}, () => {})
+
     return new Response(JSON.stringify({ success: true, sid: result.sid }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
@@ -75,6 +92,9 @@ serve(async (req: Request) => {
 
   } catch (err) {
     console.error('send-eta-sms error:', err)
+    try {
+      supabase.rpc('record_agent_run', { fn_name: 'send-eta-sms', status: 'error', error_msg: err.message }).then(() => {}, () => {})
+    } catch (_) { /* never let health tracking break the actual error response */ }
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }

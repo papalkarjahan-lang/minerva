@@ -6,6 +6,12 @@
 // sector's Dispute Pack — see DisputeView.jsx — same "assemble evidence
 // already in the DB" pattern, no new external data source needed).
 // Deploy with: supabase functions deploy package-client-verification
+//
+// Kill-switch wiring added 2026-09-23: this already called record_agent_run
+// but never checked agent_functions.enabled — same bug class as the
+// sync-technician-billing/followup-outreach fix from 2026-09-22, added here
+// for consistency with its human-click siblings (launch-ad-campaign,
+// send-growth-message, optimize-daily-route, sync-technician-billing).
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
@@ -15,10 +21,15 @@ serve(async (req: Request) => {
     return new Response('ok', { headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' } })
   }
 
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+  const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+  const supabase = createClient(supabaseUrl, supabaseServiceKey)
+
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const supabase = createClient(supabaseUrl, supabaseServiceKey)
+    const { data: fnState } = await supabase.from('agent_functions').select('enabled').eq('name', 'package-client-verification').maybeSingle()
+    if (fnState?.enabled === false) {
+      return new Response(JSON.stringify({ success: true, skipped: true, reason: 'disabled via agent_functions.enabled' }), { status: 200, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } })
+    }
 
     const { siteId } = await req.json()
     if (!siteId) throw new Error('siteId is required')
@@ -71,7 +82,6 @@ serve(async (req: Request) => {
   } catch (err) {
     console.error('package-client-verification error:', err)
     try {
-      const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
       supabase.rpc('record_agent_run', { fn_name: 'package-client-verification', status: 'error', error_msg: err.message }).then(() => {}, () => {})
     } catch (_) { /* best-effort only */ }
     return new Response(JSON.stringify({ error: err.message }), {

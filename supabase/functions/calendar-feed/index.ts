@@ -12,6 +12,13 @@
 // links (see SECURITY_NOTES.md). Treat this URL like a secret link.
 //
 // URL shape: /calendar-feed?businessId=<uuid>
+//
+// Health/kill-switch wiring added 2026-09-23: this was registered in
+// agent_functions but never actually checked `enabled` or called
+// `record_agent_run`. Same bug class as the sync-technician-billing/
+// followup-outreach fix from 2026-09-22. Kept the plain-text response
+// convention (not JSON) for the disabled case, since calendar apps expect
+// text/calendar or plain text here, not a JSON body.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
@@ -22,16 +29,24 @@ serve(async (req: Request) => {
     return new Response('ok', { headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' } })
   }
 
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+  const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+  const supabase = createClient(supabaseUrl, supabaseServiceKey)
+
   try {
+    const { data: fnState } = await supabase.from('agent_functions').select('enabled').eq('name', 'calendar-feed').maybeSingle()
+    if (fnState?.enabled === false) {
+      return new Response('Calendar feed temporarily unavailable', {
+        status: 200,
+        headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+
     const url = new URL(req.url)
     const businessId = url.searchParams.get('businessId')
     if (!businessId) {
       return new Response('Missing businessId', { status: 400 })
     }
-
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
     const { data: business, error: bizErr } = await supabase
       .from('businesses')
@@ -79,6 +94,8 @@ serve(async (req: Request) => {
 
     lines.push('END:VCALENDAR')
 
+    supabase.rpc('record_agent_run', { fn_name: 'calendar-feed', status: 'ok' }).then(() => {}, () => {})
+
     return new Response(lines.join('\r\n'), {
       status: 200,
       headers: {
@@ -89,6 +106,9 @@ serve(async (req: Request) => {
     })
   } catch (err) {
     console.error('calendar-feed error:', err)
+    try {
+      supabase.rpc('record_agent_run', { fn_name: 'calendar-feed', status: 'error', error_msg: err.message }).then(() => {}, () => {})
+    } catch (_) { /* never let health tracking break the actual error response */ }
     return new Response('Internal error', { status: 500 })
   }
 })
