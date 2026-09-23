@@ -82,7 +82,7 @@ export default function AdminConsole() {
   async function loadBusinesses() {
     const { data: bizRows } = await supabase
       .from('businesses')
-      .select('id, name, sector, subscription_tier, stripe_sub_id, created_at')
+      .select('id, name, sector, subscription_tier, stripe_sub_id, created_at, feature_priorities')
       .order('created_at', { ascending: false })
     if (!bizRows) return
 
@@ -427,7 +427,18 @@ export default function AdminConsole() {
             <tbody>
               {businesses.map(biz => (
                 <tr key={biz.id} style={{ borderBottom: '1px solid #131b2e' }}>
-                  <td style={tdStyle}>{biz.name}</td>
+                  <td style={tdStyle}>
+                    {biz.name}
+                    {/* Collected at signup (Onboarding.jsx "what matters most") but
+                        never surfaced anywhere until now — useful context for a
+                        follow-up call or for deciding what to highlight to this
+                        customer. */}
+                    {biz.feature_priorities?.length > 0 && (
+                      <p style={{ color: '#666', fontSize: 11, margin: '2px 0 0' }}>
+                        Wants: {biz.feature_priorities.join(', ')}
+                      </p>
+                    )}
+                  </td>
                   <td style={tdStyle}>{biz.sector || 'trade'}</td>
                   <td style={tdStyle}>
                     <select
