@@ -1,0 +1,45 @@
+-- ============================================================
+-- MINERVA — Fix: missing base GRANT on voice_call_sessions for
+-- service_role (2026-09-23, Round 38 RLS/grants audit, continued).
+--
+-- Same bug class documented in SECURITY_NOTES.md under "Fixed
+-- 2026-09-14: missing base GRANTs on roi_proposals / big_account_
+-- targets / outreach_prospects" — a table can have RLS enabled and
+-- correct policies, but still be completely unusable by service_role
+-- if the underlying GRANT was never run, since service_role bypasses
+-- RLS policy checks but NOT base table privileges.
+--
+-- Found via a systematic re-run of that same audit (cross-referencing
+-- information_schema.role_table_grants for service_role against every
+-- RLS-enabled public table) — something SECURITY_NOTES.md itself flagged
+-- as "worth doing again periodically" after the first four tables were
+-- found this way on 2026-09-14, but never re-run since, despite ~10
+-- tables added across later rounds.
+--
+-- voice_call_sessions (created alongside voice-intake-agent) never had
+-- ANY grant to service_role — confirmed live via role_table_grants
+-- (only REFERENCES/TRIGGER/TRUNCATE, the implicit ones every role gets,
+-- were present). voice-intake-agent's own header comment says it uses
+-- the service_role admin client specifically *because* this table "has
+-- no anon policy" — but the grant to let that admin client actually
+-- read/write it was never added. Every real call would 42501 on the
+-- upsert (index.ts:284), the select (index.ts:296), and the update
+-- (index.ts:319) — meaning the entire phone-intake booking flow has
+-- been non-functional at the database layer since this table was
+-- created, independent of the kill-switch/health wiring added in Round
+-- 37 (which would only ever report the resulting DB error, not avoid it).
+--
+-- rate_limit_counters and admin_users were also checked (both likewise
+-- show zero service_role grants) but confirmed NOT bugs: rate_limit_
+-- counters is only ever touched via the check_rate_limit() RPC, which
+-- is SECURITY DEFINER owned by `postgres` (runs with the owner's own
+-- privileges regardless of caller — verified live via pg_proc); admin_
+-- users is never queried directly by any service_role edge function,
+-- only referenced inside RLS USING-clause subqueries evaluated under
+-- the calling anon/authenticated role, which already has its own grant
+-- from an earlier pass.
+--
+-- Run once in the Supabase SQL Editor, or via the Management API.
+-- ============================================================
+
+grant select, insert, update on voice_call_sessions to service_role;
