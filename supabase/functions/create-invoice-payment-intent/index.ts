@@ -18,6 +18,13 @@
 // (no CLI in this project — see minerva_supabase_function_deploy_method
 // memory), verify_jwt should match create-checkout-session (this is a
 // client-facing, no-login endpoint reached from InvoiceView's public link).
+//
+// Health wiring added 2026-09-23: record_agent_run only, deliberately no
+// enabled-check — same risk-based scoping as create-checkout-session
+// (a real client payment flow; disabling it mid-flow could drop a real
+// payment attempt with no retry path for the client). Registered in
+// agent_functions for dashboard visibility only. See
+// supabase_schema_delta_agent_registration_round2.sql for the new row.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
@@ -28,6 +35,11 @@ serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
+
+  const supabase = createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+  )
 
   try {
     const { invoiceId } = await req.json()
@@ -40,11 +52,6 @@ serve(async (req: Request) => {
 
     const STRIPE_KEY = Deno.env.get('STRIPE_SECRET_KEY')
     if (!STRIPE_KEY) throw new Error('Stripe environment variables not configured')
-
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    )
 
     const { data: invoice, error: invErr } = await supabase
       .from('invoices')
@@ -116,12 +123,17 @@ serve(async (req: Request) => {
       if (updateErr) console.error('Failed to save stripe_payment_intent_id:', updateErr.message)
     }
 
+    supabase.rpc('record_agent_run', { fn_name: 'create-invoice-payment-intent', status: 'ok' }).then(() => {}, () => {})
+
     return new Response(JSON.stringify({ clientSecret }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', ...corsHeaders },
     })
   } catch (err) {
     console.error('create-invoice-payment-intent error:', err)
+    try {
+      supabase.rpc('record_agent_run', { fn_name: 'create-invoice-payment-intent', status: 'error', error_msg: err.message }).then(() => {}, () => {})
+    } catch (_) { /* never let health tracking break the actual error response */ }
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
       headers: { 'Content-Type': 'application/json', ...corsHeaders },

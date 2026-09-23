@@ -1487,7 +1487,7 @@ export default function DispatcherView() {
   // (supabase_schema_delta_operational_fixes.sql) but never added here, so
   // those functions' rows were invisible in the summary count strip below
   // even though they show up fine in the full FUNCTIONS list underneath.
-  const AGENT_GROUPS = ['outreach', 'marketing', 'scheduling', 'finance', 'core', 'system', 'environment', 'research', 'design']
+  const AGENT_GROUPS = ['outreach', 'marketing', 'scheduling', 'finance', 'core', 'system', 'environment', 'asset_intelligence', 'research', 'design']
   const NOT_YET_BUILT_AGENTS = ['research', 'design'] // per Phase 1 seed data — no rows exist for these yet
   // Only test-agent-health is genuinely excluded — it's the health monitor
   // itself (reads OTHER rows' `enabled`, disabling its own row would be
@@ -1510,6 +1510,19 @@ export default function DispatcherView() {
   // record_agent_run for visibility, but neither got an enabled-check —
   // silently dropping real Stripe events, or silently blocking all new
   // signups, is too risky to expose as a one-click toggle.
+  //
+  // 2026-09-23 (round 2): added 13 more functions found via a fresh
+  // directory-vs-agent_functions diff — these existed in code and were
+  // functionally identical to an already-gated sibling, but had NO row in
+  // agent_functions at all until today (a distinct bug class from the gap
+  // above, which was "registered but not wired"). See
+  // supabase_schema_delta_agent_registration_round2.sql. Deliberately NOT
+  // adding create-invoice-payment-intent, create-billing-portal-session,
+  // or technician-login here — all three now call record_agent_run for
+  // visibility, but same reasoning as stripe-webhook above: a real client
+  // payment flow, a real billing-management flow, and (highest risk of the
+  // three) the ONLY login path for every technician in the app are all too
+  // risky to expose as a one-click toggle.
   const KILL_SWITCH_GATED_FUNCTIONS = [
     'chase-unpaid-invoices', 'check-inventory-levels', 'check-weather-risk',
     'detect-wasted-trips', 'generate-growth-drafts', 'nurture-stale-leads',
@@ -1528,6 +1541,10 @@ export default function DispatcherView() {
     'send-invoice-sms', 'send-setup-sms', 'send-referral-code-sms',
     'send-weather-reschedule-sms', 'notify-slack', 'ai-intake-chat',
     'calendar-feed', 'package-client-verification',
+    'generate-compliance-package', 'send-job-assignment-sms', 'send-quote-sms',
+    'send-review-request-sms', 'send-outreach-batch', 'client-support-chat',
+    'voice-intake-agent', 'send-email', 'draft-quote', 'draft-outreach-batch',
+    'parse-prospect-text', 'xero-sync-invoice',
   ]
   const agentGroupCounts = AGENT_GROUPS.map(agent => ({
     agent,

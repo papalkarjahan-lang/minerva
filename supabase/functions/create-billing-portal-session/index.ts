@@ -18,6 +18,14 @@
 //   STRIPE_SECRET_KEY   (same key used by create-checkout-session / stripe-webhook)
 //   APP_URL             (same var used by create-checkout-session; portal's
 //                        "return to" link after the customer is done)
+//
+// Health wiring added 2026-09-23: record_agent_run only, deliberately no
+// enabled-check — same risk-based scoping as create-checkout-session
+// (a real billing-management flow; disabling it would block a business
+// owner's own self-serve cancel/manage attempt with no alternative path
+// besides contacting support). Registered in agent_functions for dashboard
+// visibility only. See supabase_schema_delta_agent_registration_round2.sql
+// for the new row.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
@@ -29,6 +37,11 @@ serve(async (req: Request) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
+  const supabase = createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+  )
+
   try {
     const { businessId } = await req.json()
     if (!businessId) throw new Error('businessId is required')
@@ -39,10 +52,6 @@ serve(async (req: Request) => {
       throw new Error('Stripe environment variables not configured')
     }
 
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    )
     const { data: biz, error: bizErr } = await supabase
       .from('businesses')
       .select('stripe_customer_id')
@@ -70,12 +79,17 @@ serve(async (req: Request) => {
     const session = await response.json()
     if (session.error) throw new Error(session.error.message)
 
+    supabase.rpc('record_agent_run', { fn_name: 'create-billing-portal-session', status: 'ok' }).then(() => {}, () => {})
+
     return new Response(JSON.stringify({ portalUrl: session.url }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', ...corsHeaders }
     })
   } catch (err) {
     console.error('create-billing-portal-session error:', err)
+    try {
+      supabase.rpc('record_agent_run', { fn_name: 'create-billing-portal-session', status: 'error', error_msg: err.message }).then(() => {}, () => {})
+    } catch (_) { /* never let health tracking break the actual error response */ }
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
       headers: { 'Content-Type': 'application/json', ...corsHeaders }

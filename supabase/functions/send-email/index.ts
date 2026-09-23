@@ -14,15 +14,32 @@
 // Optional secret: RESEND_FROM_EMAIL (defaults to Resend's shared onboarding
 // address, which only works for testing — set a verified sending domain
 // address here before relying on this in production).
+//
+// Kill-switch/health wiring added 2026-09-23: this is the shared choke
+// point for every transactional/outreach email in the codebase (stripe-
+// webhook's welcome email, send-outreach-batch's prospecting emails, etc.)
+// yet was never registered in agent_functions at all — found via a
+// directory-vs-agent_functions diff. See
+// supabase_schema_delta_agent_registration_round2.sql for the new row.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' } })
   }
 
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+  const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+  const supabase = createClient(supabaseUrl, supabaseServiceKey)
+
   try {
+    const { data: fnState } = await supabase.from('agent_functions').select('enabled').eq('name', 'send-email').maybeSingle()
+    if (fnState?.enabled === false) {
+      return new Response(JSON.stringify({ success: true, skipped: true, reason: 'disabled via agent_functions.enabled' }), { status: 200, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } })
+    }
+
     const { to, subject, html } = await req.json()
     if (!to || !subject || !html) {
       return new Response(JSON.stringify({ error: 'to, subject, and html are required' }), {
@@ -56,12 +73,17 @@ serve(async (req: Request) => {
       throw new Error(result?.message || `Resend API error (${res.status})`)
     }
 
+    supabase.rpc('record_agent_run', { fn_name: 'send-email', status: 'ok' }).then(() => {}, () => {})
+
     return new Response(JSON.stringify({ success: true, id: result.id }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     })
   } catch (err) {
     console.error('send-email error:', err)
+    try {
+      supabase.rpc('record_agent_run', { fn_name: 'send-email', status: 'error', error_msg: err.message }).then(() => {}, () => {})
+    } catch (_) { /* never let health tracking break the actual error response */ }
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },

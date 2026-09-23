@@ -24,6 +24,12 @@
 // review and hand-edit rather than a permanently-stuck 'new' row.
 //
 // Deploy with: supabase functions deploy draft-outreach-batch
+//
+// Kill-switch/health wiring added 2026-09-23: this was never registered in
+// agent_functions at all, despite being the same AI-drafting-with-honest-
+// fallback category as ai-intake-chat (already registered/gated) — found
+// via a directory-vs-agent_functions diff. See
+// supabase_schema_delta_agent_registration_round2.sql for the new row.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
@@ -55,10 +61,16 @@ serve(async (req: Request) => {
     return new Response('ok', { headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' } })
   }
 
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+  const supabase = createClient(supabaseUrl, serviceRoleKey)
+
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const supabase = createClient(supabaseUrl, serviceRoleKey)
+    const { data: fnState } = await supabase.from('agent_functions').select('enabled').eq('name', 'draft-outreach-batch').maybeSingle()
+    if (fnState?.enabled === false) {
+      return new Response(JSON.stringify({ success: true, skipped: true, reason: 'disabled via agent_functions.enabled' }), { status: 200, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } })
+    }
+
     const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY')
 
     const body = await req.json().catch(() => ({}))
@@ -101,12 +113,17 @@ serve(async (req: Request) => {
       if (usedAi) aiDrafted++; else fallbackUsed++
     }
 
+    supabase.rpc('record_agent_run', { fn_name: 'draft-outreach-batch', status: 'ok' }).then(() => {}, () => {})
+
     return new Response(JSON.stringify({ success: true, drafted, aiDrafted, fallbackUsed }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     })
   } catch (err) {
     console.error('draft-outreach-batch error:', err)
+    try {
+      supabase.rpc('record_agent_run', { fn_name: 'draft-outreach-batch', status: 'error', error_msg: err.message }).then(() => {}, () => {})
+    } catch (_) { /* never let health tracking break the actual error response */ }
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },

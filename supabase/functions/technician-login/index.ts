@@ -36,6 +36,14 @@
 // Deployed WITHOUT --no-verify-jwt like the rest — callers pass
 // Authorization: Bearer <anon key> (the technician has no session yet at
 // this point, so it can only ever be the anon key).
+//
+// Health wiring added 2026-09-23: record_agent_run only, deliberately no
+// enabled-check — this is the highest-risk case in this round: disabling
+// it would lock out EVERY technician from logging into the app at all
+// (worse than the financial-webhook/checkout risk case this pattern was
+// first written for). Registered in agent_functions for dashboard
+// visibility only. See supabase_schema_delta_agent_registration_round2.sql
+// for the new row.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
@@ -53,6 +61,10 @@ serve(async (req: Request) => {
     return new Response('ok', { headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' } })
   }
 
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+  const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+  const supabase = createClient(supabaseUrl, supabaseServiceKey)
+
   try {
     const { pin }: LoginPayload = await req.json()
     if (!pin || typeof pin !== 'string') {
@@ -61,10 +73,6 @@ serve(async (req: Request) => {
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
       })
     }
-
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
     const { data: tech, error: techErr } = await supabase
       .from('technicians')
@@ -113,12 +121,17 @@ serve(async (req: Request) => {
       throw new Error('Could not create technician session')
     }
 
+    supabase.rpc('record_agent_run', { fn_name: 'technician-login', status: 'ok' }).then(() => {}, () => {})
+
     return new Response(JSON.stringify({ token_hash: linkData.properties.hashed_token }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     })
   } catch (err) {
     console.error('technician-login error:', err)
+    try {
+      supabase.rpc('record_agent_run', { fn_name: 'technician-login', status: 'error', error_msg: err.message }).then(() => {}, () => {})
+    } catch (_) { /* never let health tracking break the actual error response */ }
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },

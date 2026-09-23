@@ -28,6 +28,12 @@
 // Required Supabase secrets:
 //   ANTHROPIC_API_KEY  (optional — see fallback above)
 //   SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY (auto-provided in Edge Function runtime)
+//
+// Kill-switch/health wiring added 2026-09-23: this was never registered in
+// agent_functions at all, despite being the same AI-chat-widget category as
+// ai-intake-chat (already registered/gated) — found via a
+// directory-vs-agent_functions diff. See
+// supabase_schema_delta_agent_registration_round2.sql for the new row.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
@@ -39,7 +45,18 @@ const corsHeaders = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+  const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+  const supabase = createClient(supabaseUrl, supabaseServiceKey)
+
   try {
+    const { data: fnState } = await supabase.from('agent_functions').select('enabled').eq('name', 'client-support-chat').maybeSingle()
+    if (fnState?.enabled === false) {
+      return new Response(JSON.stringify({ reply: "Sorry, this chat isn't available right now — please contact us directly." }), {
+        status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders },
+      })
+    }
+
     const { jobId, invoiceId, messages }: { jobId?: string; invoiceId?: string; messages: ChatMessage[] } = await req.json()
     if ((!jobId && !invoiceId) || !Array.isArray(messages) || messages.length === 0) {
       return new Response(JSON.stringify({ error: 'Missing jobId/invoiceId or messages' }), {
@@ -52,10 +69,6 @@ serve(async (req: Request) => {
         status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders },
       })
     }
-
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
     // Per-job/invoice request-rate limiter (2026-09-16), same mechanism and
     // reasoning as ai-intake-chat — see supabase_schema_delta_rate_limits.sql.
@@ -189,9 +202,14 @@ Respond with ONLY a JSON object, no markdown fences: {"reply": "<your reply>"}`
       }
     }
 
+    supabase.rpc('record_agent_run', { fn_name: 'client-support-chat', status: 'ok' }).then(() => {}, () => {})
+
     return new Response(JSON.stringify({ reply }), { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } })
   } catch (err) {
     console.error('client-support-chat error:', err)
+    try {
+      supabase.rpc('record_agent_run', { fn_name: 'client-support-chat', status: 'error', error_msg: err.message }).then(() => {}, () => {})
+    } catch (_) { /* never let health tracking break the actual error response */ }
     return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } })
   }
 })

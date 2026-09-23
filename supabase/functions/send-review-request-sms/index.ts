@@ -8,6 +8,12 @@
 // Requires businesses.google_review_link to be set (Settings) — returns an
 // honest 400 rather than sending a broken link if it isn't.
 // Deploy with: supabase functions deploy send-review-request-sms
+//
+// Kill-switch/health wiring added 2026-09-23: this was never registered in
+// agent_functions at all, despite being the same Sales & Marketing SMS
+// category as send-eta-sms/send-completion-sms (already registered/gated) —
+// found via a directory-vs-agent_functions diff. See
+// supabase_schema_delta_agent_registration_round2.sql for the new row.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
@@ -19,10 +25,15 @@ serve(async (req: Request) => {
     return new Response('ok', { headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' } })
   }
 
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+  const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+  const supabase = createClient(supabaseUrl, supabaseServiceKey)
+
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const supabase = createClient(supabaseUrl, supabaseServiceKey)
+    const { data: fnState } = await supabase.from('agent_functions').select('enabled').eq('name', 'send-review-request-sms').maybeSingle()
+    if (fnState?.enabled === false) {
+      return new Response(JSON.stringify({ success: true, skipped: true, reason: 'disabled via agent_functions.enabled' }), { status: 200, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } })
+    }
 
     const { invoiceId } = await req.json()
     if (!invoiceId) throw new Error('invoiceId is required')

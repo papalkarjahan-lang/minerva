@@ -20,6 +20,12 @@
 // Deploy with the multipart /functions/deploy Supabase Management API
 // (no CLI in this project — see minerva_supabase_function_deploy_method
 // memory).
+//
+// Kill-switch/health wiring added 2026-09-23: this was never registered in
+// agent_functions at all, despite being the exact trade-sector twin of
+// package-client-verification (which was already registered/gated) —
+// found via a directory-vs-agent_functions diff. See
+// supabase_schema_delta_agent_registration_round2.sql for the new row.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
@@ -29,10 +35,15 @@ serve(async (req: Request) => {
     return new Response('ok', { headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' } })
   }
 
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+  const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+  const supabase = createClient(supabaseUrl, supabaseServiceKey)
+
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const supabase = createClient(supabaseUrl, supabaseServiceKey)
+    const { data: fnState } = await supabase.from('agent_functions').select('enabled').eq('name', 'generate-compliance-package').maybeSingle()
+    if (fnState?.enabled === false) {
+      return new Response(JSON.stringify({ success: true, skipped: true, reason: 'disabled via agent_functions.enabled' }), { status: 200, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } })
+    }
 
     const { jobId } = await req.json()
     if (!jobId) throw new Error('jobId is required')
@@ -88,12 +99,17 @@ serve(async (req: Request) => {
       body: JSON.stringify({ businessId: job.business_id, text: `📋 Compliance package assembled for job ${job.client_name || jobId} — review and send it on from the Jobs tab.` }),
     }).catch(() => {})
 
+    supabase.rpc('record_agent_run', { fn_name: 'generate-compliance-package', status: 'ok' }).then(() => {}, () => {})
+
     return new Response(JSON.stringify({ success: true, packageId: pkg.id, summary }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     })
   } catch (err) {
     console.error('generate-compliance-package error:', err)
+    try {
+      supabase.rpc('record_agent_run', { fn_name: 'generate-compliance-package', status: 'error', error_msg: err.message }).then(() => {}, () => {})
+    } catch (_) { /* never let health tracking break the actual error response */ }
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },

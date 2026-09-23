@@ -53,6 +53,12 @@
 // Twilio's request-validation (X-Twilio-Signature, HMAC-SHA1) is checked
 // on every request, mirroring missed-call-webhook — see that function's
 // comment for the algorithm reference.
+//
+// Kill-switch/health wiring added 2026-09-23: this was never registered in
+// agent_functions at all, despite being the same AI-intake category as
+// ai-intake-chat (already registered/gated) — found via a
+// directory-vs-agent_functions diff. See
+// supabase_schema_delta_agent_registration_round2.sql for the new row.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
@@ -206,6 +212,13 @@ function sayAndHangupTwiml(message: string): string {
 
 serve(async (req: Request) => {
   try {
+    const { data: fnState } = await supabaseAdmin.from('agent_functions').select('enabled').eq('name', 'voice-intake-agent').maybeSingle()
+    if (fnState?.enabled === false) {
+      return new Response(sayAndHangupTwiml("Sorry, our phone booking assistant is temporarily unavailable. Please try again later or send us a text."), {
+        status: 200, headers: { 'Content-Type': 'text/xml' },
+      })
+    }
+
     const url = new URL(req.url)
     const noInputRetries = Number(url.searchParams.get('retries') || '0')
     const form = await req.formData()
@@ -392,12 +405,17 @@ serve(async (req: Request) => {
       }).catch(err => console.error('voice-intake-agent: Slack notify failed', err))
     }
 
+    supabaseAdmin.rpc('record_agent_run', { fn_name: 'voice-intake-agent', status: 'ok' }).then(() => {}, () => {})
+
     return new Response(sayAndHangupTwiml(parsed.reply), {
       status: 200, headers: { 'Content-Type': 'text/xml' },
     })
 
   } catch (err) {
     console.error('voice-intake-agent error:', err)
+    try {
+      supabaseAdmin.rpc('record_agent_run', { fn_name: 'voice-intake-agent', status: 'error', error_msg: err.message }).then(() => {}, () => {})
+    } catch (_) { /* never let health tracking break the actual error response */ }
     return new Response(sayAndHangupTwiml("Sorry, we're having a technical issue. Please try calling back shortly."), {
       status: 200, headers: { 'Content-Type': 'text/xml' },
     })
