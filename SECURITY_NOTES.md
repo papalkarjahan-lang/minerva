@@ -701,6 +701,45 @@ policy (`with check (true)`) and base grant from
 read back other people's messages. Same trust tier as every other
 anon-insert-only table in this doc.
 
+## Fixed 2026-09-23: missing base GRANT on `voice_call_sessions` — same bug class, re-running the periodic check
+
+The "worth doing again periodically" note at the end of the pass-5 grant
+discovery above hadn't been re-run since 2026-09-14, despite ~10 tables
+added in later rounds. Re-ran it: cross-referenced
+`information_schema.role_table_grants` for `service_role` against every
+RLS-enabled public table. Found `voice_call_sessions` (created alongside
+`voice-intake-agent`, a later-round phone-intake feature) had **zero**
+grant to `service_role` at all — only the implicit
+`REFERENCES`/`TRIGGER`/`TRUNCATE` every role gets. `voice-intake-agent`'s
+own header comment says it uses the service_role admin client
+specifically *because* this table has no anon policy — but the actual
+GRANT to let that client read/write it was never run. Every real call
+would `42501` on the upsert, the select, and the update inside the
+function — the entire phone-booking flow had been non-functional at the
+database layer since creation, independent of and undetectable by any
+RLS policy review, `pg_policies` inspection, or OPTIONS smoke test (same
+lesson as `corrective_actions`/`roi_proposals` above).
+
+Also checked (via the same cross-reference) `rate_limit_counters` and
+`admin_users`, both of which likewise show zero `service_role` grants —
+confirmed these are **not** bugs: `rate_limit_counters` is only ever
+touched via `check_rate_limit()`, a `SECURITY DEFINER` function owned by
+`postgres` (runs with the owner's own privileges regardless of caller,
+verified live via `pg_proc`); `admin_users` is never queried directly by
+any `service_role` edge function, only referenced inside RLS
+`USING`-clause subqueries evaluated under the calling `anon`/
+`authenticated` role, which already has its own grant from pass 1/4.
+
+Fixed via `supabase_schema_delta_voice_call_sessions_grant_fix.sql` —
+`grant select, insert, update on voice_call_sessions to service_role`
+(no `delete`, since the code never deletes from this table — matches
+its actual call shape rather than a blanket grant). Live-tested with
+real `service_role` REST calls matching the function's exact operations
+(upsert → `201`, select → `200`, update → `204`); a delete attempt
+correctly still gets `403` since it was deliberately not granted. Test
+row deleted afterward via the Management API connection (not
+`service_role`, which can't).
+
 ## Added 2026-09-08: embeddable widget (`public/widget.js`)
 
 New surface: a client can now paste `<script src=".../widget.js"
