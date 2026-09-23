@@ -17,8 +17,12 @@ smaller and more specialized than an Olympian god, usually bound to one
 task, one place, or one person. It is also, literally, the etymological
 root of the computing term **daemon**: a background process that runs
 unattended, doing one job, indefinitely. The fit is exact rather than
-decorative — Minerva's 58 autonomous edge functions *are* daemons in both
+decorative — Minerva's 69 autonomous edge functions *are* daemons in both
 senses at once. Collectively, this document calls them **the Daemones**.
+(Count last verified 2026-09-24, Round 41 — up from 58 as more functions
+were built and, separately, as a documentation-drift audit found 11 real,
+already-deployed functions that had never been added to this file at
+all — see the domain tables and dossiers below.)
 
 Names below deliberately skip the Olympian tier (Zeus, Apollo, Athena,
 Hermes, Poseidon, Hades, Aphrodite, Artemis, Ares, Hera, Demeter, Dionysus)
@@ -34,7 +38,7 @@ at random.
 ## 1. The architecture, honestly described
 
 ### One daemon, one duty
-There is no single monolithic "AI agent" in Minerva. There are 58 small,
+There is no single monolithic "AI agent" in Minerva. There are 69 small,
 single-purpose Deno edge functions, each triggered one of three ways:
 - **Cron** (`pg_cron`, cadence from every 15 min to weekly) — the majority.
 - **Event-driven** — fired by a Postgres trigger (`auto-assign-technician`)
@@ -151,6 +155,7 @@ one-time nudge per trigger — never a sequence, never a sales pitch.
 | **Nemesis** *(balance and retribution against excess)* | `update-technician-workload` | Recomputes rolling hours/emergency-job load per technician — the burnout/fair-rotation guard. |
 | **Thallo** *(a Hora, goddess of the season of blooming)* | `calendar-feed` | Serves the public, unauthenticated ICS calendar feed for Google/Apple/Outlook subscription. |
 | **Proteus** *(shape-shifting prophetic sea god)* | `run-custom-workflows` | Executes each business's own custom trigger→condition→action rules — takes whatever shape a business configures. |
+| **Poros** *(personification of resourcefulness and expedient pathfinding; father of Eros in Plato's *Symposium*)* | `optimize-daily-route` | Sequences a technician's day into a shorter drive order via a nearest-neighbor heuristic — only on a dispatcher's click, never auto-applied. |
 
 ### Leads, Intake & Client Relationships
 | Daemon | Function | Duty |
@@ -162,6 +167,8 @@ one-time nudge per trigger — never a sequence, never a sales pitch.
 | **Peitho** *(goddess of persuasion)* | `winback-lost-leads` | One re-engagement text, 14 days after a lead is marked lost — then never touches it again. |
 | **Philotes** *(goddess of friendship/affection)* | `retention-checkin` | A low-pressure "need anything else?" text to past clients who haven't returned in 30+ days. |
 | **Pheme** *(goddess of fame and report)* | `daily-digest` | Posts each business's 24-hour Slack summary, plus "silent automation" escalation flags. |
+| **Hesychia** *(minor goddess of stillness and quiet)* | `client-support-chat` | The existing-client counterpart to Phantasos's intake widget — answers only what a current client asks, read-only, never initiates. |
+| **Aoide** *(one of the three original Muses — her name means "song" or "voice")* | `voice-intake-agent` | The spoken-word counterpart to Phantasos — an AI phone receptionist that triages a caller and captures a lead. |
 
 ### Quoting, Invoicing & Billing
 | Daemon | Function | Duty |
@@ -177,6 +184,7 @@ one-time nudge per trigger — never a sequence, never a sales pitch.
 | **Themis** *(goddess of divine law and decree)* | `stripe-webhook` | Receives and records Stripe's account-of-record events onto the business row. |
 | **Charis** *(goddess of grace and gratitude)* | `send-referral-code-sms` | Texts a referral code the moment an invoice is marked paid — the "thank you, tell a friend" nudge. |
 | **Euphemia** *(goddess of praise and good report)* | `send-review-request-sms` | Texts a paid client a link asking for a public review. |
+| **Soteria** *(personification of safety and deliverance)* | `create-invoice-payment-intent` | Creates a Stripe payment intent for an invoice — safely hands off to Stripe's own hosted card element; card details never touch Minerva. |
 
 ### Growth & Marketing — human-approval gated, no exceptions
 | Daemon | Function | Duty |
@@ -185,11 +193,21 @@ one-time nudge per trigger — never a sequence, never a sales pitch.
 | **Auxesia** *(obscure growth-goddess, worshipped at Aegina)* | `launch-ad-campaign` | The one place real ad spend commits — only on a human's explicit "Approve & Launch" click. |
 | **Thelxinoe** *(an early, little-known Muse name meaning "she who charms the mind")* | `send-growth-message` | Sends an already-drafted, already-approved outreach SMS — only on a human's click. |
 
+### Sales & Outreach — human-approval gated, no exceptions
+| Daemon | Function | Duty |
+|---|---|---|
+| **Klotho** *(one of the three Fates — "the spinner," sibling to Lachesis)* | `parse-prospect-text` | Spins raw pasted/unstructured text into structured prospect rows — explicitly not a scraper. |
+| **Polymnia** *(Muse of sacred song and eloquent speech)* | `draft-outreach-batch` | Drafts persuasive, personalized cold-outreach copy at scale as *pending* rows — never sends. |
+| **Praxidike** *(obscure goddess of exacting what is due, attested by Pausanias)* | `followup-outreach` | Daily sweep drafting 3/7/14-day follow-ups on unanswered outreach, with a hard stop (`closed_lost`) after 3 tries. |
+| **Eutychia** *(personification of good fortune and successful outcome)* | `generate-roi-proposal` | Builds a shareable, cited-benchmark ROI proposal one-pager for a big-account prospect; never sends anything itself. |
+| **Iris** *(messenger goddess of the rainbow, who carries only messages already decided by others)* | `send-outreach-batch` | The only daemon that ever sends Minerva's own outbound prospecting emails — strictly gated to human-approved rows. |
+
 ### Verification, Safety & Compliance
 | Daemon | Function | Duty |
 |---|---|---|
 | **Rhadamanthus** *(one of the three Judges of the Underworld)* | `verify-checklist-photos` | AI-reviews technician checklist photos for dispute-protection evidence; never blocks the technician's own workflow. |
 | **Horkos** *(obscure god who punishes broken oaths — son of Eris)* | `check-credential-expiry` | Flags technician licence/ticket expiries at 30/14/7 days, with an urgent ping if someone's on an active job. |
+| **Minos** *(the third Judge of the Underworld, alongside Aeacus and Rhadamanthus)* | `generate-compliance-package` | The trade-sector counterpart to Aeacus's `package-client-verification` — assembles a compliance evidence package on request. |
 
 ### Inventory & Consumables
 | Daemon | Function | Duty |
@@ -244,6 +262,7 @@ one-time nudge per trigger — never a sequence, never a sales pitch.
 | **Talos** *(the mythical bronze automaton that patrolled Crete)* | `send-email` | Generic transactional email sender — a documented, honest no-op until `RESEND_API_KEY` is configured. |
 | **Aglaea** *(goddess of splendor and adornment — the fresh start of a new setup)* | `send-setup-sms` | Texts each technician their setup link the moment a business finishes onboarding. |
 | **Clio** *(Muse of history)* | `forecast-demand` | Weekly trend comparison (recent 2 weeks vs prior 2 weeks) per client address — directional signal, not a trained model. |
+| **Charon** *(the ferryman who grants passage in exchange for the one token he actually checks)* | `technician-login` | Exchanges a technician's PIN for a real Supabase Auth session, invisibly, unlocking RLS write-scoping. |
 
 ---
 
@@ -315,6 +334,13 @@ relationships would misrepresent the architecture.
   condition/action rule each business writes for it, and nothing more;
   the one daemon whose behavior isn't fixed by Minerva at all.
 
+**Poros** — *resourceful pathfinding*
+- Symbol: a route line, re-drawn shorter.
+- Nature: helpful but never presumptuous — re-sequences a technician's
+  stops into a shorter drive order with a nearest-neighbor heuristic,
+  and only on a dispatcher's explicit click; never re-routes a day on
+  its own.
+
 ### Leads, Intake & Client Relationships
 
 **Phantasos** — *the shaper of imagined things*
@@ -363,6 +389,22 @@ relationships would misrepresent the architecture.
   sibling daemons' own nudges have quietly failed to land.
 - Bond: reads outcomes of Elpis's and Poine's touches to build its
   "silent automation" flags.
+
+**Hesychia** — *stillness, kept even in conversation*
+- Symbol: a quiet room, door open.
+- Nature: narrow and literal on purpose — answers only what an
+  existing client actually asks, never volunteers a pitch or triage
+  question the way Phantasos does for a stranger.
+- Bond: the existing-client mirror of Phantasos, but read-only and
+  never captures a new lead.
+
+**Aoide** — *voice, given to a receptionist that never sleeps*
+- Symbol: a phone line, always answered.
+- Nature: the spoken twin of Phantasos — same triage instinct
+  (emergency/routine/out-of-scope), just carried by voice instead of
+  text, for a caller who never gets a busy signal.
+- Bond: writes the same lead shape Phantasos does, so Talthybius and
+  Elpis treat its captures identically.
 
 ### Quoting, Invoicing & Billing
 
@@ -433,6 +475,12 @@ relationships would misrepresent the architecture.
   honest 400, not a broken link) if the business hasn't set up a review
   link yet, rather than sending a client somewhere dead.
 
+**Soteria** — *safe deliverance, handed to someone better equipped*
+- Symbol: a locked box, passed unopened to a specialist.
+- Nature: deliberately hands off rather than holds — creates the Stripe
+  payment intent and steps aside; the card element itself is Stripe's,
+  so a real card number never reaches Minerva at all.
+
 ### Growth & Marketing — every one of these three defers to a human
 
 **Icelus** — *the vision, not yet real*
@@ -454,6 +502,44 @@ relationships would misrepresent the architecture.
 - Nature: executes, never composes — sends exactly what a human already
   read and approved in Icelus's draft; writes nothing itself.
 
+### Sales & Outreach
+
+**Klotho** — *the spinner of raw thread into structure*
+- Symbol: a tangle of text, spun into a row.
+- Nature: purely custodial, like her sibling Euryphaessa — turns
+  whatever's pasted in (an email signature, a LinkedIn blurb) into a
+  structured prospect row; invents no contact and scrapes nothing.
+- Bond: hands Polymnia a structured prospect to draft for.
+
+**Polymnia** — *eloquence, offered but never spoken aloud*
+- Symbol: a sealed letter, addressed but unstamped.
+- Nature: composes and stops — writes persuasive, personalized
+  outreach copy as a *pending* row and never, under any configuration,
+  sends it itself.
+- Bond: drafts for the same prospect Klotho just structured; only Iris
+  can act on what it writes.
+
+**Praxidike** — *what is owed, followed up on exactly as promised*
+- Symbol: a countdown, ticking down from three.
+- Nature: exacting but bounded — drafts a follow-up at day 3, day 7,
+  and day 14 of silence, then marks the prospect `closed_lost` and
+  never touches it a fourth time.
+- Bond: follows up on what Iris already sent.
+
+**Eutychia** — *good fortune, made a compelling case for*
+- Symbol: a one-pager, numbers cited.
+- Nature: persuasive through evidence, not pressure — builds a
+  shareable ROI proposal from cited benchmarks for a single big-account
+  prospect, and stops there; sending it is a human's decision entirely.
+
+**Iris** — *the messenger who carries only what's already decided*
+- Symbol: a rainbow arc, connecting two points already fixed.
+- Nature: the sole executor in this pillar — the only daemon that ever
+  sends Minerva's own outbound prospecting email, and strictly gated to
+  rows a human has already approved.
+- Bond: sends what Polymnia drafted; Praxidike follows up on what it
+  sent.
+
 ### Verification, Safety & Compliance
 
 **Rhadamanthus** — *a judge who never blocks the accused*
@@ -467,6 +553,14 @@ relationships would misrepresent the architecture.
 - Nature: calm until it isn't — a routine 30/14/7-day nudge, until a
   credentialed technician is actually on an active job with an expired
   or near-expired ticket, at which point it escalates urgency sharply.
+
+**Minos** — *the third judge, for the trade sector's own evidence*
+- Symbol: a folder, three tabs, all filled — trade-side.
+- Nature: a compiler of evidence, not an authority, exactly like his
+  fellow judge Aeacus — assembles a compliance package on request and
+  never characterizes the evidence beyond presenting it.
+- Bond: the trade-sector counterpart to Aeacus's
+  `package-client-verification`.
 
 ### Inventory & Consumables
 
@@ -652,6 +746,13 @@ relationships would misrepresent the architecture.
   explicit that it is not a trained forecasting model.
 - Bond: writes `trend_address` insights that Icelus later reads.
 
+**Charon** — *passage granted for the one token that's actually checked*
+- Symbol: a coin, checked, then a gate opening.
+- Nature: unceremonious but exact — exchanges a technician's PIN for a
+  real Supabase Auth session, invisibly, and the RLS write-scoping that
+  session unlocks is the only thing standing between this and an open
+  door.
+
 ---
 
 ## 4. What this document is *not*
@@ -661,4 +762,4 @@ that any of this mythology exists in running code, database rows, or
 customer-facing UI. It is a naming/organization layer for talking about
 the system — useful for internal discussion, onboarding, or a future
 architecture diagram — laid directly on top of the real, already-audited
-58 functions and their real, already-verified behavior.
+69 functions and their real, already-verified behavior.
