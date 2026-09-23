@@ -740,6 +740,28 @@ correctly still gets `403` since it was deliberately not granted. Test
 row deleted afterward via the Management API connection (not
 `service_role`, which can't).
 
+## Fixed 2026-09-23: unrestricted file size/type on public storage buckets
+
+`checklist-photos` and `credential-documents` (both `public: true`,
+anon-writable per "The model" above) were created with
+`file_size_limit = null` and `allowed_mime_types = null` — no
+server-side restriction at all. The `accept="image/*"` /
+`accept="image/*,application/pdf"` attributes on their upload
+`<input type="file">` elements (`TechnicianView.jsx`,
+`DispatcherView.jsx`) are browser UI hints only; a direct call to the
+Storage API using the anon key (extractable from any browser's JS
+bundle, same trust tier as everything else in this doc) could upload a
+file of any type or unbounded size, immediately servable back over a
+public URL. Set real limits matching actual usage — `checklist-photos`:
+15 MB, image MIME types only; `credential-documents`: 20 MB, images +
+`application/pdf`. Applied via
+`supabase_schema_delta_storage_bucket_limits.sql`. Live-tested with real
+anon-key REST calls: a valid JPEG still uploads (`200`); a `text/plain`
+upload now correctly gets `415 invalid_mime_type`. Not a new trust
+boundary — same "anyone with the anon key" model as always — just
+closes an unbounded-size/arbitrary-file-type exposure within that
+existing boundary.
+
 ## Added 2026-09-08: embeddable widget (`public/widget.js`)
 
 New surface: a client can now paste `<script src=".../widget.js"
