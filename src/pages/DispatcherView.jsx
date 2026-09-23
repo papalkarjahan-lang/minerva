@@ -1482,7 +1482,12 @@ export default function DispatcherView() {
   // Agent Operating System dashboard (Phase 5) — derived view state, computed
   // fresh each render from the lazily-loaded agentFunctions/agentInsights
   // state above (cheap — at most a few dozen rows).
-  const AGENT_GROUPS = ['outreach', 'marketing', 'scheduling', 'finance', 'core', 'research', 'design']
+  // 'system' (agent-council-report, test-agent-health) and 'environment'
+  // (estimate-job-carbon) were seeded in later delta files
+  // (supabase_schema_delta_operational_fixes.sql) but never added here, so
+  // those functions' rows were invisible in the summary count strip below
+  // even though they show up fine in the full FUNCTIONS list underneath.
+  const AGENT_GROUPS = ['outreach', 'marketing', 'scheduling', 'finance', 'core', 'system', 'environment', 'research', 'design']
   const NOT_YET_BUILT_AGENTS = ['research', 'design'] // per Phase 1 seed data — no rows exist for these yet
   // The truly autonomous cron-scheduled functions that check
   // agent_functions.enabled at the top of every run (added 2026-09-02;
