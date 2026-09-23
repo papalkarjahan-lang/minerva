@@ -28,6 +28,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { validateInvoiceForPayment, centsFromDollars, shouldReuseExistingPaymentIntent, buildPaymentIntentDescription } from "./logic.ts"
 
 const corsHeaders = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' }
 
@@ -60,14 +61,9 @@ serve(async (req: Request) => {
       .single()
     if (invErr || !invoice) throw new Error('Invoice not found')
 
-    if (invoice.status === 'paid') {
-      return new Response(JSON.stringify({ error: 'Invoice is already paid' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders },
-      })
-    }
-    if (!invoice.total || invoice.total <= 0) {
-      return new Response(JSON.stringify({ error: 'Invoice has no payable amount' }), {
+    const validation = validateInvoiceForPayment(invoice)
+    if (!validation.ok) {
+      return new Response(JSON.stringify({ error: validation.error }), {
         status: 400,
         headers: { 'Content-Type': 'application/json', ...corsHeaders },
       })
@@ -84,7 +80,7 @@ serve(async (req: Request) => {
         headers: { 'Authorization': `Bearer ${STRIPE_KEY}` },
       })
       const existingPi = await existing.json()
-      if (existingPi && !existingPi.error && existingPi.status !== 'succeeded' && existingPi.status !== 'canceled') {
+      if (shouldReuseExistingPaymentIntent(existingPi)) {
         clientSecret = existingPi.client_secret
       } else {
         paymentIntentId = null // fall through and create a new one below
@@ -92,14 +88,14 @@ serve(async (req: Request) => {
     }
 
     if (!clientSecret) {
-      const amountCents = Math.round(Number(invoice.total) * 100)
+      const amountCents = centsFromDollars(invoice.total)
       const params = new URLSearchParams({
         'amount': String(amountCents),
         'currency': 'aud',
         'automatic_payment_methods[enabled]': 'true',
         'metadata[invoice_id]': invoice.id,
         'metadata[business_id]': invoice.business_id,
-        'description': `Minerva invoice${invoice.client_name ? ' — ' + invoice.client_name : ''}`,
+        'description': buildPaymentIntentDescription(invoice.client_name),
       })
 
       const response = await fetch('https://api.stripe.com/v1/payment_intents', {

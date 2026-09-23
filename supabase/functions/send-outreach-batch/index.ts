@@ -24,6 +24,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { computeSentUpdates } from "./logic.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -75,12 +76,7 @@ serve(async (req: Request) => {
           continue
         }
 
-        // followup-outreach uses last_followup_sent_at (not sent_at) as the
-        // baseline for stage 2/3 timing once at least one follow-up has
-        // gone out — sent_at always stays the original first-touch time.
-        const updates: Record<string, unknown> = { status: 'sent' }
-        if (!p.sent_at) updates.sent_at = new Date().toISOString()
-        if ((p.followup_stage || 0) > 0) updates.last_followup_sent_at = new Date().toISOString()
+        const updates = computeSentUpdates(p, new Date().toISOString())
         await supabase.from('outreach_prospects').update(updates).eq('id', p.id)
         sent++
       } catch (err) {

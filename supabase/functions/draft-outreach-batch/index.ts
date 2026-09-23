@@ -33,6 +33,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { fallbackTemplate, appendUnsubscribeIfMissing } from "./logic.ts"
 
 // Only real, shipped, verified capabilities — deliberately not the full
 // aspirational pitch deck. Keeps AI-drafted claims honest by construction:
@@ -101,7 +102,7 @@ serve(async (req: Request) => {
         ;({ subject, body: bodyText } = fallbackTemplate(p))
       }
 
-      if (!bodyText.includes('unsubscribe')) bodyText += UNSUBSCRIBE_LINE
+      bodyText = appendUnsubscribeIfMissing(bodyText, UNSUBSCRIBE_LINE)
 
       await supabase.from('outreach_prospects').update({
         draft_subject: subject,
@@ -130,16 +131,6 @@ serve(async (req: Request) => {
     })
   }
 })
-
-function fallbackTemplate(p: any): { subject: string; body: string } {
-  const name = p.contact_name || 'there'
-  const trade = p.trade_type || 'trade'
-  const company = p.company_name || 'your business'
-  return {
-    subject: `Quick question for ${company}`,
-    body: `Hi ${name},\n\nI help ${trade} businesses in Australia track technicians live, auto-text customers when jobs are on the way, and sync invoices straight to Xero — no app install, about 20 minutes to set up. $49-$119/tech/month, 7-day free trial.\n\nWorth a 10-minute look for ${company}?\n\n(edit this before sending — this is the plain-template fallback, not an AI-personalized draft)`,
-  }
-}
 
 async function draftEmail(apiKey: string, p: any): Promise<{ subject: string; body: string } | null> {
   try {

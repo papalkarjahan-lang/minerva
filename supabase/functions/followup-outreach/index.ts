@@ -17,8 +17,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
-
-const STAGE_DAYS = [3, 7, 14] // stage 1 = 3 days after sent_at, stage 2 = 7 days after stage-1 followup, stage 3 = 14 days after stage-2
+import { computeFollowupDecision, fallbackFollowup } from "./logic.ts"
 
 // Spam Act 2003 (Cth) opt-out line — see draft-outreach-batch/index.ts for
 // the full rationale. A prospect who replied "unsubscribe" gets marked via
@@ -61,26 +60,22 @@ serve(async (req: Request) => {
     let drafted = 0, closedLost = 0
 
     for (const p of sentProspects || []) {
-      const stage = p.followup_stage || 0
-      if (stage >= STAGE_DAYS.length) {
+      const decision = computeFollowupDecision(p, Date.now())
+      if (decision.action === 'close_lost') {
         await supabase.from('outreach_prospects').update({ status: 'closed_lost' }).eq('id', p.id)
         closedLost++
         continue
       }
+      if (decision.action === 'wait') continue
 
-      const daysNeeded = STAGE_DAYS[stage]
-      const baseline = stage === 0 ? p.sent_at : p.last_followup_sent_at
-      if (!baseline) continue
-      const dueMs = new Date(baseline).getTime() + daysNeeded * 24 * 60 * 60 * 1000
-      if (Date.now() < dueMs) continue
-
+      const nextStage = decision.nextStage
       let subject: string, bodyText: string
       if (anthropicKey) {
-        const draft = await draftFollowup(anthropicKey, p, stage + 1)
+        const draft = await draftFollowup(anthropicKey, p, nextStage)
         if (draft) { subject = draft.subject; bodyText = draft.body }
-        else ({ subject, body: bodyText } = fallbackFollowup(p, stage + 1))
+        else ({ subject, body: bodyText } = fallbackFollowup(p, nextStage))
       } else {
-        ({ subject, body: bodyText } = fallbackFollowup(p, stage + 1))
+        ({ subject, body: bodyText } = fallbackFollowup(p, nextStage))
       }
 
       if (!bodyText.includes('unsubscribe')) bodyText += UNSUBSCRIBE_LINE
@@ -89,7 +84,7 @@ serve(async (req: Request) => {
         draft_subject: subject,
         draft_body: bodyText,
         status: 'drafted',
-        followup_stage: stage + 1,
+        followup_stage: nextStage,
       }).eq('id', p.id)
       drafted++
     }
@@ -111,14 +106,6 @@ serve(async (req: Request) => {
     })
   }
 })
-
-function fallbackFollowup(p: any, stage: number): { subject: string; body: string } {
-  const name = p.contact_name || 'there'
-  return {
-    subject: `Re: Quick question for ${p.company_name}`,
-    body: `Hi ${name},\n\nJust following up (${stage === 1 ? 'my first note' : `follow-up #${stage}`}) — happy to answer any questions or just send over a link to try it free for 7 days, no pressure either way.\n\n(edit this before sending — this is the plain-template fallback, not an AI-personalized draft)`,
-  }
-}
 
 async function draftFollowup(apiKey: string, p: any, stage: number): Promise<{ subject: string; body: string } | null> {
   try {

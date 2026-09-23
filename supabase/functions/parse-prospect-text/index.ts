@@ -26,6 +26,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { sanitizeExtractedProspects } from "./logic.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -113,17 +114,7 @@ ${text.slice(0, 8000)}`,
     if (!jsonMatch) return []
     const parsed = JSON.parse(jsonMatch[0])
     if (!Array.isArray(parsed)) return []
-    return parsed
-      .filter((r: any) => r?.company_name)
-      .slice(0, 100)
-      .map((r: any) => ({
-        company_name: String(r.company_name).slice(0, 200),
-        contact_name: r.contact_name ? String(r.contact_name).slice(0, 200) : null,
-        contact_email: r.contact_email ? String(r.contact_email).slice(0, 200) : null,
-        contact_phone: r.contact_phone ? String(r.contact_phone).slice(0, 50) : null,
-        trade_type: r.trade_type ? String(r.trade_type).slice(0, 50) : null,
-        city: r.city ? String(r.city).slice(0, 100) : null,
-      }))
+    return sanitizeExtractedProspects(parsed)
   } catch (err) {
     console.error('parse-prospect-text: extraction failed', err)
     return []
