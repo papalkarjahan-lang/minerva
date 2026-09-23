@@ -8,6 +8,15 @@
 // the business's real Google review link. If the id is invalid or the
 // business's review link was since cleared, falls back to a plain text
 // response rather than redirecting somewhere broken.
+//
+// Registered in agent_functions for dashboard visibility/health tracking
+// only (record_agent_run) — deliberately NO enabled-check, same reasoning
+// as stripe-webhook: this link was already sent to a real customer's phone
+// before this ever runs, so a kill switch could only ever turn a working
+// review link into a dead one for someone who already has it. (Fixed
+// 2026-09-23, Round 40 — this function existed with no agent_functions row
+// at all, same bug class as the earlier registration-gap rounds.)
+//
 // Deploy with: supabase functions deploy track-review-click --no-verify-jwt
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
@@ -27,12 +36,15 @@ serve(async (req: Request) => {
   const reviewLink = (reviewReq as any)?.businesses?.google_review_link
 
   if (!reviewReq || !reviewLink) {
+    supabase.rpc('record_agent_run', { fn_name: 'track-review-click', status: 'error', error_msg: 'invalid id or missing review link' }).then(() => {}, () => {})
     return new Response('This review link is no longer available.', { status: 404, headers: { 'Content-Type': 'text/plain' } })
   }
 
   if (!reviewReq.clicked_at) {
     await supabase.from('review_requests').update({ clicked_at: new Date().toISOString() }).eq('id', id)
   }
+
+  supabase.rpc('record_agent_run', { fn_name: 'track-review-click', status: 'ok' }).then(() => {}, () => {})
 
   return new Response(null, { status: 302, headers: { Location: reviewLink } })
 })

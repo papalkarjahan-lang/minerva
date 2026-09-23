@@ -1544,7 +1544,8 @@ export default function DispatcherView() {
     'generate-compliance-package', 'send-job-assignment-sms', 'send-quote-sms',
     'send-review-request-sms', 'send-outreach-batch', 'client-support-chat',
     'voice-intake-agent', 'send-email', 'draft-quote', 'draft-outreach-batch',
-    'parse-prospect-text', 'xero-sync-invoice',
+    'parse-prospect-text', 'xero-sync-invoice', 'generate-roi-proposal',
+    'xero-oauth-connect',
   ]
   const agentGroupCounts = AGENT_GROUPS.map(agent => ({
     agent,

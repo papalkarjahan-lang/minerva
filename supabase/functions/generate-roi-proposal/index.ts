@@ -22,6 +22,13 @@
 // with that framing explicitly, and this function's output should never be
 // presented to a prospect as a contractual commitment.
 //
+// Registered in agent_functions with a real enabled-check (kill-switch
+// capable, unlike stripe-webhook/xero-oauth-callback/track-review-click) —
+// this is a pure admin-triggered content-generation call with no in-flight
+// third party to strand, so disabling it mid-rollout is safe. (Fixed
+// 2026-09-23, Round 40 — this function existed with no agent_functions row
+// at all, same bug class as the earlier registration-gap rounds.)
+//
 // Deploy with: supabase functions deploy generate-roi-proposal
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
@@ -38,10 +45,18 @@ serve(async (req: Request) => {
     return new Response('ok', { headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' } })
   }
 
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+  const supabase = createClient(supabaseUrl, serviceRoleKey)
+
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const supabase = createClient(supabaseUrl, serviceRoleKey)
+    const { data: fnState } = await supabase.from('agent_functions').select('enabled').eq('name', 'generate-roi-proposal').maybeSingle()
+    if (fnState?.enabled === false) {
+      return new Response(JSON.stringify({ error: 'This feature is temporarily disabled.' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
 
     const { prospectId, bigAccountTargetId, companyName, contactName, tradeType, fleetSize, avgMonthlyFuelSpend } = await req.json()
     if (!companyName || !fleetSize || fleetSize <= 0) {
@@ -82,12 +97,15 @@ serve(async (req: Request) => {
       }
     }
 
+    supabase.rpc('record_agent_run', { fn_name: 'generate-roi-proposal', status: 'ok' }).then(() => {}, () => {})
+
     return new Response(JSON.stringify({ success: true, proposalId: proposal.id }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     })
   } catch (err) {
     console.error('generate-roi-proposal error:', err)
+    try { supabase.rpc('record_agent_run', { fn_name: 'generate-roi-proposal', status: 'error', error_msg: err.message }).then(() => {}, () => {}) } catch (_) {}
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },

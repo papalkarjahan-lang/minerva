@@ -20,6 +20,15 @@
 // protect). Without this, anyone who knows/guesses a businessId could link
 // their own Xero org to a victim business (a forged-callback CSRF risk) —
 // fixed 2026-09-08.
+//
+// Registered in agent_functions with a real enabled-check (kill-switch
+// capable, unlike xero-oauth-callback/track-review-click) — this is the
+// entry point of the flow, before the business owner has approved anything
+// on Xero's side, so disabling it just stops new connections from starting
+// rather than stranding one already in progress. (Fixed 2026-09-23, Round
+// 40 — this function existed with no agent_functions row at all, same bug
+// class as the earlier registration-gap rounds.)
+//
 // Deploy with: supabase functions deploy xero-oauth-connect --no-verify-jwt
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
@@ -35,6 +44,14 @@ serve(async (req: Request) => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
   const supabase = createClient(supabaseUrl, supabaseServiceKey)
+
+  const { data: fnState } = await supabase.from('agent_functions').select('enabled').eq('name', 'xero-oauth-connect').maybeSingle()
+  if (fnState?.enabled === false) {
+    return new Response(JSON.stringify({ error: 'Xero Sync is temporarily disabled.' }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    })
+  }
 
   const urlParams = new URL(req.url).searchParams
   const businessIdParam = urlParams.get('businessId')
@@ -113,6 +130,8 @@ serve(async (req: Request) => {
   // a forged callback linking the wrong business, since reaching this point
   // already required proving ownership of businessIdParam above.
   authorizeUrl.searchParams.set('state', businessIdParam)
+
+  supabase.rpc('record_agent_run', { fn_name: 'xero-oauth-connect', status: 'ok' }).then(() => {}, () => {})
 
   // Returned as JSON (not a 302) so the frontend can attach an Authorization
   // header to this request (ownership check above) and then navigate the

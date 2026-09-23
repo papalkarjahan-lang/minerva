@@ -16,6 +16,16 @@
 // for every Supabase project (Project Settings -> API) — no bank account
 // or third-party approval needed for that one, only for the Xero app
 // registration itself (see xero-oauth-connect/index.ts header).
+//
+// Registered in agent_functions for dashboard visibility/health tracking
+// only (record_agent_run) — deliberately NO enabled-check, same reasoning
+// as stripe-webhook: by the time Xero redirects here, the business owner
+// has already approved the connection on Xero's own screen, so a kill
+// switch could only ever strand a real, already-granted authorization
+// half-completed. (Fixed 2026-09-23, Round 40 — this function existed
+// with no agent_functions row at all, same bug class as the earlier
+// registration-gap rounds.)
+//
 // Deploy with: supabase functions deploy xero-oauth-callback --no-verify-jwt
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
@@ -27,6 +37,7 @@ serve(async (req: Request) => {
   }
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+  const supabase = createClient(supabaseUrl, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
   // APP_URL (not VITE_APP_URL — that prefix is a frontend-only Vite
   // convention; this is a Deno edge function, and every other function
   // that needs the app's public URL, e.g. create-checkout-session,
@@ -46,6 +57,9 @@ serve(async (req: Request) => {
     const dest = new URL(`${appUrl}/dispatch/${businessId || ''}`)
     dest.searchParams.set('xero', status)
     if (detail) dest.searchParams.set('xero_detail', detail)
+    supabase.rpc('record_agent_run', status === 'connected'
+      ? { fn_name: 'xero-oauth-callback', status: 'ok' }
+      : { fn_name: 'xero-oauth-callback', status: 'error', error_msg: detail || 'failed' }).then(() => {}, () => {})
     return new Response(null, { status: 302, headers: { 'Location': dest.toString(), 'Access-Control-Allow-Origin': '*' } })
   }
 
@@ -83,7 +97,6 @@ serve(async (req: Request) => {
     const connections = connRes.ok ? await connRes.json() : []
     const tenantId = connections?.[0]?.tenantId || null
 
-    const supabase = createClient(supabaseUrl, serviceRoleKey)
     const expiresAt = new Date(Date.now() + (tokens.expires_in || 1800) * 1000).toISOString()
 
     // Store whatever tokens we got either way — even without a tenant id,
