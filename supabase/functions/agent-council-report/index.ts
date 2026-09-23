@@ -52,8 +52,6 @@ import {
 
 const corsHeaders = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' }
 
-const KNOWN_AGENTS = ['outreach', 'marketing', 'scheduling', 'research', 'finance', 'design']
-
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -180,7 +178,7 @@ async function draftCouncilReport(
       }
     }
 
-    const systemPrompt = `You are an internal engineering/ops advisor reviewing the last week of an AI agent platform's telemetry, for the platform's own operator (not a customer of the platform). You will be given real counts and real insight summaries from the platform's own database — no other context exists beyond what's given. Base every suggestion on the specific data below, do not give generic advice. The platform has 6 possible agent categories: outreach, marketing, scheduling, research, finance, design — "research" and "design" do not exist as real agents yet, so only discuss an agent if it actually has data in the input below; do not hallucinate activity for an agent with zero data. Keep the whole reply well under 1200 tokens.`
+    const systemPrompt = `You are an internal engineering/ops advisor reviewing the last week of an AI agent platform's telemetry, for the platform's own operator (not a customer of the platform). You will be given real counts and real insight summaries from the platform's own database — no other context exists beyond what's given. Base every suggestion on the specific data below, do not give generic advice. Agent category names are whatever appears in the data below (e.g. outreach, marketing, scheduling, finance, core) — do not assume a fixed list, and only discuss an agent if it actually has data in the input below; do not hallucinate activity for an agent with zero data. Keep the whole reply well under 1200 tokens.`
 
     const userPrompt = `Reporting period: ${weekStart} to ${weekEnd}.
 Agent functions tracked: ${functionsChecked}

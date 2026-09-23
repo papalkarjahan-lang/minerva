@@ -1489,18 +1489,18 @@ export default function DispatcherView() {
   // even though they show up fine in the full FUNCTIONS list underneath.
   const AGENT_GROUPS = ['outreach', 'marketing', 'scheduling', 'finance', 'core', 'system', 'environment', 'research', 'design']
   const NOT_YET_BUILT_AGENTS = ['research', 'design'] // per Phase 1 seed data — no rows exist for these yet
-  // The truly autonomous cron-scheduled functions that check
-  // agent_functions.enabled at the top of every run (added 2026-09-02;
-  // extended 2026-09-05 to the industrial sector's pure cron sweeps).
-  // auto-assign-technician (event-driven, no safe disable mid-dispatch),
-  // launch-ad-campaign / send-growth-message (human-click-triggered only),
-  // test-agent-health (the health monitor itself), industrial-conductor /
-  // enrich-industrial-leads (dual-mode — also directly invoked, same
-  // no-safe-mid-action caution as auto-assign-technician), and the two
-  // external-ingestion webhooks (harvest-industrial-leads,
-  // monitor-asset-telemetry — same category as missed-call-webhook)
-  // deliberately don't read the flag, so the toggle is hidden for those
-  // rows below.
+  // Only test-agent-health is genuinely excluded — it's the health monitor
+  // itself (reads OTHER rows' `enabled`, disabling its own row would be
+  // self-defeating/confusing) and auto-assign-technician/launch-ad-campaign/
+  // send-growth-message/industrial-conductor/enrich-industrial-leads/
+  // harvest-industrial-leads/monitor-asset-telemetry/missed-call-webhook/
+  // optimize-daily-route/sync-technician-billing were PREVIOUSLY excluded
+  // here under a "no safe disable mid-action" theory — but every one of
+  // them actually checks agent_functions.enabled as the very first thing
+  // in its handler, before any side effect, so toggling any of them off is
+  // always safe (worst case: an immediate 200 no-op). That comment was
+  // stale relative to the code; verified by reading each function's
+  // handler directly before adding them below.
   const KILL_SWITCH_GATED_FUNCTIONS = [
     'chase-unpaid-invoices', 'check-inventory-levels', 'check-weather-risk',
     'detect-wasted-trips', 'generate-growth-drafts', 'nurture-stale-leads',
@@ -1508,15 +1508,14 @@ export default function DispatcherView() {
     'reconcile-billing', 'update-technician-workload',
     'optimize-industrial-routes', 'track-consumables', 'detect-safety-hazards',
     'sequence-handoffs', 'verify-industrial-compliance',
-    // Added — these all already check agent_functions.enabled at the top of
-    // their run (same as every function above) but were never added to this
-    // array, so their toggle silently never rendered even though disabling
-    // them would have worked perfectly server-side. Found by cross-checking
-    // every function's source for the enabled-flag check against this list.
     'check-credential-expiry', 'daily-digest', 'detect-idle-assets',
     'estimate-job-carbon', 'flag-abandoned-signups', 'followup-outreach',
     'forecast-demand', 'predict-asset-maintenance', 'reconcile-technician-state',
     'run-custom-workflows', 'verify-checklist-photos',
+    'auto-assign-technician', 'launch-ad-campaign', 'send-growth-message',
+    'industrial-conductor', 'enrich-industrial-leads', 'harvest-industrial-leads',
+    'monitor-asset-telemetry', 'missed-call-webhook', 'optimize-daily-route',
+    'sync-technician-billing',
   ]
   const agentGroupCounts = AGENT_GROUPS.map(agent => ({
     agent,
