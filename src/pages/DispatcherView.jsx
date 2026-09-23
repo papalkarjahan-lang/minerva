@@ -1503,6 +1503,15 @@ export default function DispatcherView() {
     'reconcile-billing', 'update-technician-workload',
     'optimize-industrial-routes', 'track-consumables', 'detect-safety-hazards',
     'sequence-handoffs', 'verify-industrial-compliance',
+    // Added — these all already check agent_functions.enabled at the top of
+    // their run (same as every function above) but were never added to this
+    // array, so their toggle silently never rendered even though disabling
+    // them would have worked perfectly server-side. Found by cross-checking
+    // every function's source for the enabled-flag check against this list.
+    'check-credential-expiry', 'daily-digest', 'detect-idle-assets',
+    'estimate-job-carbon', 'flag-abandoned-signups', 'followup-outreach',
+    'forecast-demand', 'predict-asset-maintenance', 'reconcile-technician-state',
+    'run-custom-workflows', 'verify-checklist-photos',
   ]
   const agentGroupCounts = AGENT_GROUPS.map(agent => ({
     agent,
