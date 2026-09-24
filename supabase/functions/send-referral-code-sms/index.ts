@@ -26,11 +26,19 @@
 // agent_functions but never actually checked `enabled` or called
 // `record_agent_run` — same bug class as the sync-technician-billing/
 // followup-outreach fix from 2026-09-22.
+//
+// Ownership check added 2026-09-24 (Round 43): had verify_jwt:false and no
+// check that the caller has any relationship to the business that owns
+// invoiceId — meaning an unauthenticated stranger who knew/guessed an
+// invoiceId could force-generate/force-send that business's client a
+// referral-code SMS. Fixed using the same isOwner pattern xero-oauth-connect
+// already used for the identical forged-request risk.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { formatAuPhone } from "../_shared/sms.ts"
 import { generateReferralCode } from "./logic.ts"
+import { isOwnerOfBusiness, getAuthenticatedCaller } from "../_shared/ownership.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -52,10 +60,27 @@ serve(async (req: Request) => {
 
     const { data: invoice, error } = await supabase
       .from('invoices')
-      .select('id, business_id, client_name, client_phone, referral_code, referral_sms_failed, businesses(name)')
+      .select('id, business_id, client_name, client_phone, referral_code, referral_sms_failed, businesses(name, owner_user_id, contact_email)')
       .eq('id', invoiceId)
       .single()
     if (error || !invoice) throw new Error('Invoice not found')
+
+    // Ownership check — see header note. A legitimate dispatcher's session
+    // JWT is already attached automatically by supabase.functions.invoke(),
+    // so this adds no friction for real usage.
+    const caller = await getAuthenticatedCaller(req, supabase)
+    if (!caller) {
+      return new Response(JSON.stringify({ error: 'Not authenticated.' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+    if (!isOwnerOfBusiness((invoice as any).businesses, caller.id, caller.email)) {
+      return new Response(JSON.stringify({ error: 'You do not have access to this business.' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
 
     // The code itself is generated at most once per invoice — regenerating
     // it on a resend would invalidate a code the client may already have.

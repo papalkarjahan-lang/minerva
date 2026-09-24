@@ -322,6 +322,36 @@ in-code ownership check (`_shared/ownership.ts`) for any action more
 sensitive than that — write operations, paid API calls, or anything
 touching a third party's credentials/billing.
 
+## Fixed 2026-09-24: same gap in 2 more SMS functions — send-referral-code-sms, send-weather-reschedule-sms
+
+Continuing the audit above to every remaining `verify_jwt:false` SMS
+function found 2 more with the identical pattern: `send-referral-code-sms`
+(bare `invoiceId`, no ownership check before generating/sending the
+client's referral code) and `send-weather-reschedule-sms` (bare `draftId`,
+no ownership check before texting the client a reschedule prompt) —
+meaning an unauthenticated caller who knew/guessed either id could
+force-send a real SMS to a victim business's client. Fixed the same way,
+with the same `_shared/ownership.ts` module, inserted after the DB lookup
+and before any other logic (phone-number checks, the atomic
+pending→sending claim, Twilio calls) so a forged request is rejected before
+anything happens.
+
+Verified live using the project's own `[TEST] Theoretical Co` business:
+inserted a throwaway invoice / job+draft row tied to it, called both
+functions with only the public anon key (no real login), confirmed both
+now return `401 {"error":"Not authenticated."}`, then deleted the test
+rows. No frontend change needed (`supabase.functions.invoke()` already
+attaches the real dispatcher session token).
+
+The remaining `verify_jwt:false` SMS functions — `send-eta-sms`,
+`send-completion-sms`, `send-invoice-sms`, `send-setup-sms` — don't fit
+this pattern: they take raw message content directly (phone number, name,
+tracking/invoice/tech URL) with no database ID lookup at all, so there's no
+"ownership of a record" to check the same way. Not yet assessed for a
+different risk (whether they could be abused to fire arbitrary SMS content
+through a business's Twilio number) — flagged for a future round, not
+fixed here.
+
 ## Fixed: missed-call-webhook now validates Twilio's signature
 
 `missed-call-webhook` is deployed with `--no-verify-jwt` (like

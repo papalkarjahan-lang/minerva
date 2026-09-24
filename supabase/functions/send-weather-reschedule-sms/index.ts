@@ -14,10 +14,18 @@
 // agent_functions but never actually checked `enabled` or called
 // `record_agent_run` — same bug class as the sync-technician-billing/
 // followup-outreach fix from 2026-09-22.
+//
+// Ownership check added 2026-09-24 (Round 43): had verify_jwt:false and no
+// check that the caller has any relationship to the business that owns
+// draftId — meaning an unauthenticated stranger who knew/guessed a draftId
+// could force-send that business's client a weather-reschedule SMS. Fixed
+// using the same isOwner pattern xero-oauth-connect already used for the
+// identical forged-request risk.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { formatAuPhone } from "../_shared/sms.ts"
+import { isOwnerOfBusiness, getAuthenticatedCaller } from "../_shared/ownership.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -43,7 +51,7 @@ serve(async (req: Request) => {
 
     const { data: draft, error: draftErr } = await supabase
       .from('weather_reschedule_drafts')
-      .select('*, jobs(id, client_name, client_phone, business_id)')
+      .select('*, jobs(id, client_name, client_phone, business_id, businesses(owner_user_id, contact_email))')
       .eq('id', draftId)
       .single()
     if (draftErr || !draft) throw new Error('Draft not found')
@@ -51,6 +59,24 @@ serve(async (req: Request) => {
 
     const job = (draft as any).jobs
     if (!job) throw new Error('Job for this draft no longer exists')
+
+    // Ownership check — see header note. A legitimate dispatcher's session
+    // JWT is already attached automatically by supabase.functions.invoke(),
+    // so this adds no friction for real usage.
+    const caller = await getAuthenticatedCaller(req, supabase)
+    if (!caller) {
+      return new Response(JSON.stringify({ error: 'Not authenticated.' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+    if (!isOwnerOfBusiness(job.businesses, caller.id, caller.email)) {
+      return new Response(JSON.stringify({ error: 'You do not have access to this business.' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+
     if (!job.client_phone) throw new Error('This job has no client phone number on file')
     if (!TWILIO_SID || !TWILIO_TOKEN || !TWILIO_FROM) throw new Error('Twilio secrets not configured')
 
