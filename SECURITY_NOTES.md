@@ -1264,3 +1264,45 @@ so the transitional 'sending' value is safe — same precedent as
 send-growth-message. 440/440 tests, lint/build clean, deployed
 (v7→v8), smoke-tested unaffected (still `401 Not authenticated` for an
 anon-only request, exactly as before this change).
+
+Also checked two adjacent functions for the same bug class and ruled
+both out as false alarms, no changes made: `reconcile-billing`'s only
+side effect on a detected mismatch is a best-effort Slack alert and an
+`agent_insights` row — deliberately does not auto-correct Stripe
+billing itself (its own header: "a human should look at *why* before
+changing what a client is billed"), and its backfill self-heal loop
+writes the same Stripe-sourced value regardless of how many times it
+runs concurrently, so overlap is harmless. `sync-technician-billing` is
+already explicitly self-correcting by its own header comment and
+confirmed by reading the logic: it always recomputes the full seat
+count from the database rather than incrementing, so two concurrent
+calls converge on the same idempotent `quantity` and Stripe does not
+re-invoice for a no-change update. Also re-checked `rate_limit_counters`
+via its `check_rate_limit` RPC (an initial grep for the raw table name
+found no call sites and could have wrongly suggested it was unused — a
+second grep for the RPC function name itself found 4 real callers:
+send-setup-sms, voice-intake-agent, client-support-chat,
+ai-intake-chat) and confirmed it's already race-safe: a single atomic
+`INSERT ... ON CONFLICT (key) DO UPDATE ... RETURNING request_count`,
+which Postgres row-locks for the duration of the upsert.
+
+Follow-up (2026-09-24, same day): added index coverage for the exact
+WHERE-clause predicates the four just-fixed cron functions (plus their
+new claim queries) run on every invocation — `pg_indexes` showed
+`invoices`, `leads`, and `jobs` only had primary-key/foreign-key
+indexes, nothing on the `status`/`*_sent_at` columns these crons filter
+on hourly/daily/weekly. Not an active incident (all three tables are
+still near-empty pre-launch), but a genuine, verified gap: these are
+hot-path cron predicates that will sequential-scan the full table as
+real data accumulates. Added six PARTIAL indexes (see
+`supabase_schema_delta_cron_agent_indexes.sql`), each matching one
+function's actual filter exactly rather than a generic composite —
+`idx_invoices_unpaid_reminder`, `idx_leads_new_pending_nurture`,
+`idx_leads_new_pending_second_nurture`, `idx_leads_lost_pending_winback`,
+`idx_jobs_complete_pending_retention`, and
+`idx_jobs_business_phone_created` (for retention-checkin's "does this
+client already have a newer job" sub-query). Also checked
+`businesses.twilio_number` (used by missed-call-webhook to route an
+inbound call) and confirmed it already has a UNIQUE index — no gap
+there. Applied live via the Management API and verified via a follow-up
+`pg_indexes` query showing all six present.
