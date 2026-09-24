@@ -41,6 +41,21 @@
 // Deliberately NOT given an `enabled`-check like most other gated
 // functions: silently dropping real Stripe financial events with no
 // UI-exposed use case for pausing this specific webhook is too risky.
+//
+// Idempotency (added 2026-09-24, Round 44): Stripe explicitly documents
+// that webhook deliveries can be retried (timeout, non-2xx response, or
+// occasional duplicate delivery even on success) and recommends deduping
+// by event.id. Every branch's own DB write here is itself idempotent
+// (plain UPDATEs re-writing the same values), but checkout.session.
+// completed and invoice.payment_failed each also fire a best-effort
+// email as a side effect — a retried delivery would resend either email
+// every time, unbounded. Fixed via processed_stripe_events (see
+// supabase_schema_delta_stripe_webhook_idempotency.sql): checked right
+// after signature verification (an already-processed event returns 200
+// immediately, no branch re-run), and the row is only inserted after the
+// event's branch completes without throwing, so a genuine failure
+// (which still 500s, causing a legitimate Stripe retry) is correctly not
+// marked as processed.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import Stripe from "https://esm.sh/stripe@14?target=deno"
@@ -82,6 +97,15 @@ serve(async (req: Request) => {
   }
 
   try {
+    const { data: alreadyProcessed } = await supabaseAdmin
+      .from('processed_stripe_events')
+      .select('event_id')
+      .eq('event_id', event.id)
+      .maybeSingle()
+    if (alreadyProcessed) {
+      return new Response(JSON.stringify({ received: true, duplicate: true }), { status: 200 })
+    }
+
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session
@@ -219,6 +243,13 @@ serve(async (req: Request) => {
         // Ignore other event types.
         break
     }
+
+    // Best-effort: a duplicate-key conflict here just means a near-simultaneous
+    // retry of the same event won this race too — the side effects for THIS
+    // request have already fully run above, so a conflict on marking it
+    // processed must never surface as a 500 (that would make Stripe retry an
+    // event that already succeeded).
+    await supabaseAdmin.from('processed_stripe_events').insert({ event_id: event.id, event_type: event.type }).then(() => {}, () => {})
 
     supabaseAdmin.rpc('record_agent_run', { fn_name: 'stripe-webhook', status: 'ok' }).then(() => {}, () => {})
 

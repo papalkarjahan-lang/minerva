@@ -1079,3 +1079,47 @@ allow-top-navigation, allow-popups, or allow-forms), so it can't navigate
 or pop anything up on the host page itself. Nothing here changes the RLS
 posture described above; the intake flow was already reachable by anyone
 who has (or guesses) a businessId, embed or not.
+
+## Fixed 2026-09-24: `stripe-webhook` had no event-idempotency check (Round 44)
+
+Not a trust-boundary gap like the rest of this doc — a reliability bug,
+found via a fresh pass looking specifically for correctness issues
+distinct from caller-identity gaps. Stripe's own docs explicitly warn
+that webhook deliveries can be retried (timeout, non-2xx response, or
+occasionally a duplicate delivery even after a successful response) and
+recommend deduping by `event.id`. `stripe-webhook/index.ts` had no such
+check. Every branch's actual database write is itself idempotent (plain
+`UPDATE`s re-writing the same values), but two branches also fire a
+best-effort email as a side effect of processing the event —
+`checkout.session.completed`'s "You're live on Minerva" welcome email,
+and `invoice.payment_failed`'s operator alert. A retried delivery of the
+same event would have resent either email every time, unbounded — the
+exact kind of "never spam a real inbox on a retry" failure this
+codebase is careful about everywhere else (the outreach unsubscribe
+check, `draft-outreach-batch`'s one-email-per-prospect design, etc.).
+
+Fixed with a new `processed_stripe_events` table (`event_id` primary
+key, service_role-only — same no-anon-policy pattern as
+`rate_limit_counters`/`voice_call_sessions`, see
+`supabase_schema_delta_stripe_webhook_idempotency.sql`). `index.ts` now
+checks `event.id` against this table right after signature
+verification — an already-processed event returns `200` immediately
+with no branch re-run — and only inserts the row after that event's
+branch completes without throwing, so a genuine mid-processing failure
+(which still `500`s, causing a legitimate Stripe retry) is correctly
+never marked as processed. The insert itself is fire-and-forget on a
+duplicate-key conflict (a rare near-simultaneous double-delivery racing
+past the check together) so that race can never surface as a false
+`500` telling Stripe to retry an event that already fully succeeded.
+
+Verified live: confirmed the table has the same grant (`grant select,
+insert ... to service_role`) as every other service-role-only table in
+this doc, rather than assuming it — direct REST insert/select against it
+with the real runtime `service_role` key both succeeded (then the test
+row was removed via the Management API's SQL runner, since no `DELETE`
+grant exists or is needed — `index.ts` never deletes from this table).
+440/440 tests still passing, lint/build clean, deployed (v11→v12),
+`verify_jwt: false` preserved (must stay reachable by Stripe with no
+Supabase auth header), OPTIONS/signature-guard smoke-tested unaffected
+(`400 Missing signature or webhook secret` for an unsigned POST, exactly
+as before).
