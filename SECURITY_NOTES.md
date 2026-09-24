@@ -507,6 +507,65 @@ service-role-key bypass path still works end-to-end for `notify-slack`
 and `run-custom-workflows` (real internal callers unaffected). All
 throwaway test rows deleted after verification.
 
+## Fixed 2026-09-24: the admin console's 4 own edge functions had zero server-side identity check
+
+A distinct instance of the same bug class, this time on the OPERATOR's own
+side rather than a business owner's: `AdminConsole.jsx`'s
+`VITE_ADMIN_EMAILS` allowlist is explicitly documented in that file's own
+header comment as an app-layer-only gate — "ships in the client bundle...
+treat it as hides the button from everyone else, not a hard security
+boundary." That comment was accurate about the UI, but the 4 edge
+functions the admin console actually calls — `parse-prospect-text`,
+`generate-roi-proposal`, `draft-outreach-batch`, `send-outreach-batch` —
+had **no server-side check backing that boundary at all**. Anyone with
+only the public anon key could call any of the 4 directly, bypassing the
+allowlist UI entirely:
+
+- **`send-outreach-batch`** (most severe): the ONLY function that ever
+  sends Minerva's own outbound prospecting emails. A forged call would
+  force real emails to real prospects the moment `RESEND_API_KEY` is set
+  (currently a no-op only because that key happens to be unset — a live
+  landmine, not a real protection, and unsetting-a-key-as-your-only-
+  defense is exactly the same anti-pattern this whole round has been
+  fixing elsewhere).
+- **`draft-outreach-batch`** / **`parse-prospect-text`**: attacker-forced
+  Anthropic API spend once `ANTHROPIC_API_KEY` is set (up to 8000
+  attacker-controlled characters per `parse-prospect-text` call), plus
+  unrestricted mass-overwrite/insert into `outreach_prospects`.
+- **`generate-roi-proposal`**: fully attacker-controlled
+  `companyName`/`fleetSize`/etc. creating spam public `/proposal/:id`
+  pages, and — worse — a real `bigAccountTargetId` could forge that real
+  pipeline's `stage` forward to `'proposal_sent'` without an actual
+  proposal ever having been shown to anyone, corrupting real sales-pipeline
+  tracking.
+
+Fix: added a new `isAdminCaller(supabase, userId)` helper to
+`_shared/ownership.ts` — checks whether the caller's `auth.uid()` has a row
+in `admin_users`, the same real table the Support tab's RLS policy already
+uses (`admin_users`'s only RLS policy is `auth.uid() = user_id`, self-select
+only). Wired into all 4 functions via `getAuthenticatedCaller` +
+`isAdminCaller`, right after each function's existing `agent_functions`
+kill-switch check. A real admin's session already satisfies this — no UX
+change for legitimate use.
+
+**Side discovery while building this fix:** `admin_users` had a `GRANT`
+gap of its own — `service_role` had TRUNCATE/REFERENCES/TRIGGER grants but
+no `SELECT`, so no edge function could ever have queried this table even
+if it tried (confirmed by the exact `permission denied for table
+admin_users` error hitting this while testing). Same bug class as the
+`roi_proposals`/`big_account_targets`/`outreach_prospects` missing-GRANT
+fix from 2026-09-14. Fixed with `GRANT SELECT ON public.admin_users TO
+service_role;`, run live via the Management API, verified via
+`information_schema.role_table_grants`.
+
+440/440 tests passing (2 new for `isAdminCaller`), lint/build clean.
+Deployed all 4 via the multipart Management API method (v6/v5/v5/v5 →
+v7/v6/v6/v6), preserving `verify_jwt: true`. OPTIONS-smoke-tested 200 on
+all 4. Live-exploit-verified: anon-key-only calls to all 4 now return
+`401 {"error":"Not authenticated."}`; confirmed via a direct REST query
+that no `roi_proposals`/`outreach_prospects` rows were created by the
+failed test calls (blocked before reaching any DB write).
+
 ## Fixed: missed-call-webhook now validates Twilio's signature
 
 `missed-call-webhook` is deployed with `--no-verify-jwt` (like

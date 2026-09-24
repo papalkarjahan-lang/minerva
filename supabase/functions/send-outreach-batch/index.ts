@@ -21,10 +21,22 @@
 // Marketing-style send in this codebase, and yet the one function that had
 // no kill switch. Found via a directory-vs-agent_functions diff. See
 // supabase_schema_delta_agent_registration_round2.sql for the new row.
+//
+// Fixed 2026-09-24 (Round 43 continued further still): zero caller-identity
+// check of any kind — the admin console's VITE_ADMIN_EMAILS allowlist
+// (AdminConsole.jsx) is documented there as an app-layer-only gate, NOT a
+// security boundary, so anyone with the public anon key could invoke this
+// directly and force real outbound prospecting emails to real people the
+// moment RESEND_API_KEY is configured (currently a no-op only because that
+// key happens to be unset — a live landmine, not a real protection). Fixed
+// by requiring the caller to be a real authenticated user present in
+// `admin_users` — the same table the Support tab's RLS policy already
+// checks — via the new `isAdminCaller` helper in `_shared/ownership.ts`.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { computeSentUpdates } from "./logic.ts"
+import { isAdminCaller, getAuthenticatedCaller } from "../_shared/ownership.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -39,6 +51,20 @@ serve(async (req: Request) => {
     const { data: fnState } = await supabase.from('agent_functions').select('enabled').eq('name', 'send-outreach-batch').maybeSingle()
     if (fnState?.enabled === false) {
       return new Response(JSON.stringify({ success: true, skipped: true, reason: 'disabled via agent_functions.enabled' }), { status: 200, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } })
+    }
+
+    const caller = await getAuthenticatedCaller(req, supabase)
+    if (!caller) {
+      return new Response(JSON.stringify({ error: 'Not authenticated.' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+    if (!(await isAdminCaller(supabase, caller.id))) {
+      return new Response(JSON.stringify({ error: 'You do not have access to this action.' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
     }
 
     const body = await req.json().catch(() => ({}))

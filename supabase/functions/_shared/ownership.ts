@@ -80,6 +80,32 @@ export function isOwnerOrTechnicianOfBusiness(
   return false
 }
 
+// Real server-side admin check (added Round 43 continued further, 2026-09-24).
+// AdminConsole.jsx's VITE_ADMIN_EMAILS allowlist is explicitly documented in
+// that file's own header as an app-layer-only gate — "ships in the client
+// bundle... not a hard security boundary." The actual boundary is whether the
+// caller's auth.uid() has a row in `admin_users`, the same table the Support
+// tab's RLS policy already checks. Every other admin-console edge function
+// (parse-prospect-text, generate-roi-proposal, draft-outreach-batch,
+// send-outreach-batch) previously had ZERO server-side identity check of any
+// kind — anyone with the public anon key could invoke them directly,
+// bypassing the allowlist UI entirely. This closes that gap; a real admin's
+// session already satisfies it, so no change for legitimate usage.
+export interface AdminUsersClient {
+  from(table: string): {
+    select(columns: string): {
+      eq(column: string, value: string): {
+        maybeSingle(): Promise<{ data: { user_id: string } | null; error: unknown }>
+      }
+    }
+  }
+}
+
+export async function isAdminCaller(supabase: AdminUsersClient, userId: string): Promise<boolean> {
+  const { data } = await supabase.from('admin_users').select('user_id').eq('user_id', userId).maybeSingle()
+  return !!data
+}
+
 export interface SupabaseAuthClient {
   auth: {
     getUser(token: string): Promise<{ data: { user: { id: string; email?: string | null } | null }; error: unknown }>

@@ -23,10 +23,18 @@
 // fallback category as ai-intake-chat (already registered/gated) — found
 // via a directory-vs-agent_functions diff. See
 // supabase_schema_delta_agent_registration_round2.sql for the new row.
+//
+// Fixed 2026-09-24 (Round 43 continued further still): zero caller-identity
+// check — same gap and same fix as send-outreach-batch (see that file's
+// header). Here the exploitable cost is Anthropic API spend (once
+// ANTHROPIC_API_KEY is set) on up to 8000 attacker-controlled characters per
+// call, plus unrestricted inserts into outreach_prospects. Fixed with the
+// same `isAdminCaller` check.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { sanitizeExtractedProspects } from "./logic.ts"
+import { isAdminCaller, getAuthenticatedCaller } from "../_shared/ownership.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -41,6 +49,20 @@ serve(async (req: Request) => {
     const { data: fnState } = await supabase.from('agent_functions').select('enabled').eq('name', 'parse-prospect-text').maybeSingle()
     if (fnState?.enabled === false) {
       return new Response(JSON.stringify({ success: true, skipped: true, reason: 'disabled via agent_functions.enabled' }), { status: 200, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } })
+    }
+
+    const caller = await getAuthenticatedCaller(req, supabase)
+    if (!caller) {
+      return new Response(JSON.stringify({ error: 'Not authenticated.' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+    if (!(await isAdminCaller(supabase, caller.id))) {
+      return new Response(JSON.stringify({ error: 'You do not have access to this action.' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
     }
 
     const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY')

@@ -30,6 +30,14 @@
 // at all, same bug class as the earlier registration-gap rounds.)
 //
 // Deploy with: supabase functions deploy generate-roi-proposal
+//
+// Fixed 2026-09-24 (Round 43 continued further still): zero caller-identity
+// check — same gap and same fix as send-outreach-batch (see that file's
+// header). Here the exploitable risk is a fully attacker-controlled
+// companyName/fleetSize/etc. creating spam public `/proposal/:id` pages,
+// and a real bigAccountTargetId letting anyone forge that real pipeline's
+// stage forward to 'proposal_sent' without an actual proposal ever being
+// shown to anyone. Fixed with the same `isAdminCaller` check.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
@@ -39,6 +47,7 @@ import {
   computeMinervaMonthlyCost,
   isEligibleForProposalStageAdvance,
 } from "./logic.ts"
+import { isAdminCaller, getAuthenticatedCaller } from "../_shared/ownership.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -54,6 +63,20 @@ serve(async (req: Request) => {
     if (fnState?.enabled === false) {
       return new Response(JSON.stringify({ error: 'This feature is temporarily disabled.' }), {
         status: 200,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+
+    const caller = await getAuthenticatedCaller(req, supabase)
+    if (!caller) {
+      return new Response(JSON.stringify({ error: 'Not authenticated.' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+    if (!(await isAdminCaller(supabase, caller.id))) {
+      return new Response(JSON.stringify({ error: 'You do not have access to this action.' }), {
+        status: 403,
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
       })
     }

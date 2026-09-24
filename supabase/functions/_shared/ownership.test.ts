@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isOwnerOfBusiness, isOwnerOrAssignedTechnician, isOwnerOrTechnicianOfBusiness, getAuthenticatedCaller } from './ownership'
+import { isOwnerOfBusiness, isOwnerOrAssignedTechnician, isOwnerOrTechnicianOfBusiness, isAdminCaller, getAuthenticatedCaller } from './ownership'
 
 describe('isOwnerOfBusiness', () => {
   it('returns false for a null/undefined business', () => {
@@ -98,6 +98,34 @@ describe('isOwnerOrTechnicianOfBusiness', () => {
     const biz = { owner_user_id: 'user-1', contact_email: 'a@b.com' }
     const techs = [{ auth_user_id: null }]
     expect(isOwnerOrTechnicianOfBusiness(biz, techs, 'user-4', 'stranger@b.com')).toBe(false)
+  })
+})
+
+describe('isAdminCaller', () => {
+  function fakeAdminUsersClient(rows: Record<string, { user_id: string }>) {
+    return {
+      from: (table: string) => {
+        expect(table).toBe('admin_users')
+        return {
+          select: (_columns: string) => ({
+            eq: (column: string, value: string) => {
+              expect(column).toBe('user_id')
+              return { maybeSingle: async () => ({ data: rows[value] || null, error: null }) }
+            },
+          }),
+        }
+      },
+    }
+  }
+
+  it('returns true when the caller has a row in admin_users', async () => {
+    const supabase = fakeAdminUsersClient({ 'user-1': { user_id: 'user-1' } })
+    expect(await isAdminCaller(supabase, 'user-1')).toBe(true)
+  })
+
+  it('returns false when the caller has no row in admin_users', async () => {
+    const supabase = fakeAdminUsersClient({ 'user-1': { user_id: 'user-1' } })
+    expect(await isAdminCaller(supabase, 'user-2')).toBe(false)
   })
 })
 
