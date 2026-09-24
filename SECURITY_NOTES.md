@@ -1245,3 +1245,22 @@ valid anon JWT: all four returned `200 {"success":true,"scanned":0,
 process — this project is still pre-production — but the clean 0-row
 response confirms the new claim queries execute without error against
 the real schema).
+
+Applied the same fix to `send-outreach-batch` immediately after, while
+the pattern was fresh: it has the identical SELECT-then-send-then-mark
+shape (an admin double-clicking "Send approved", or two racing requests,
+could both email the same approved prospect twice once RESEND_API_KEY
+is ever configured — currently inert/no-op without that key, but the
+same "landmine, not a real protection" reasoning already used for this
+function's isAdminCaller fix directly above applies here too). Claims
+each prospect (status: 'approved' -> 'sending') before calling
+send-email, reverting back to 'approved' on failure or on the
+documented RESEND_API_KEY-unset no-op, so the "Send approved" button
+can always retry rather than stranding a prospect in 'sending' forever.
+`outreach_prospects.status` is a plain `text` column with no enum/check
+constraint (confirmed via `supabase_schema_delta_outreach_engine.sql`),
+so the transitional 'sending' value is safe — same precedent as
+`marketing_drafts`' existing 'sending' status used by
+send-growth-message. 440/440 tests, lint/build clean, deployed
+(v7→v8), smoke-tested unaffected (still `401 Not authenticated` for an
+anon-only request, exactly as before this change).

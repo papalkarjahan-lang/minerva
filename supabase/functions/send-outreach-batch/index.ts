@@ -32,6 +32,19 @@
 // by requiring the caller to be a real authenticated user present in
 // `admin_users` — the same table the Support tab's RLS policy already
 // checks — via the new `isAdminCaller` helper in `_shared/ownership.ts`.
+//
+// Double-send fix (2026-09-24, Round 44 continued further still):
+// same SELECT-then-send-then-mark race just fixed in the cron SMS agents
+// (chase-unpaid-invoices etc.) — an admin double-clicking "Send approved",
+// or two racing requests, could both SELECT the same approved prospect
+// and email them twice once RESEND_API_KEY is ever configured. Now
+// atomically claims each prospect (status 'approved' -> 'sending') before
+// calling send-email; reverted back to 'approved' if the send fails or is
+// a documented RESEND_API_KEY-unset no-op, so the "Send approved" button
+// can always retry. Fixed proactively (this path is currently inert since
+// RESEND_API_KEY is unset) rather than waiting for that key to be
+// configured, since the fix was cheap while the pattern was fresh from
+// fixing the four cron agents above.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
@@ -84,6 +97,23 @@ serve(async (req: Request) => {
     for (const p of prospects || []) {
       if (!p.contact_email) { skippedNoEmail++; continue }
 
+      // Atomically claim this prospect before sending any real email —
+      // the SELECT above alone is a time-of-check/time-of-use race: an
+      // admin double-clicking "Send approved", or two racing admin
+      // sessions/requests, could otherwise both see the same approved
+      // prospect and email them twice once RESEND_API_KEY is configured.
+      // Mirrors the claim-before-send fix just applied to the cron SMS
+      // agents (chase-unpaid-invoices etc.) — a second request's claim
+      // affects 0 rows and it skips the prospect entirely.
+      const { data: claimed, error: claimErr } = await supabase
+        .from('outreach_prospects')
+        .update({ status: 'sending' })
+        .eq('id', p.id)
+        .eq('status', 'approved')
+        .select('id')
+      if (claimErr) { console.error('send-outreach-batch: claim failed for', p.id, claimErr.message); failed++; continue }
+      if (!claimed || claimed.length === 0) continue // already claimed by a concurrent request
+
       try {
         const res = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
           method: 'POST',
@@ -97,7 +127,11 @@ serve(async (req: Request) => {
         const result = await res.json().catch(() => ({}))
         if (!res.ok || result?.error) throw new Error(result?.error || `send-email returned ${res.status}`)
         if (result?.skipped) {
-          // RESEND_API_KEY not configured — documented no-op, not a failure.
+          // RESEND_API_KEY not configured — documented no-op, not a
+          // failure. Revert the claim so this prospect stays 'approved'
+          // and can be sent for real once the key is set, instead of
+          // being stranded in 'sending' forever.
+          await supabase.from('outreach_prospects').update({ status: 'approved' }).eq('id', p.id)
           console.warn('send-outreach-batch: send-email skipped (no RESEND_API_KEY) for', p.id)
           continue
         }
@@ -106,6 +140,10 @@ serve(async (req: Request) => {
         await supabase.from('outreach_prospects').update(updates).eq('id', p.id)
         sent++
       } catch (err) {
+        // Revert the claim so a transient failure can be retried via the
+        // same "Send approved" button instead of being stranded in
+        // 'sending' forever with no path back to 'approved'.
+        await supabase.from('outreach_prospects').update({ status: 'approved' }).eq('id', p.id)
         console.error('send-outreach-batch: send failed for', p.id, err)
         failed++
       }
