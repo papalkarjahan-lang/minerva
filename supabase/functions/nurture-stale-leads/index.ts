@@ -23,6 +23,17 @@
 // used — no behaviour change when no key is configured.
 // This function is called with no body (cron passes '{}') — it scans
 // across ALL businesses in one run, not just one.
+//
+// Double-send fix (2026-09-24, Round 44 continued further still): same
+// bug class and fix as chase-unpaid-invoices/retention-checkin — this ran
+// hourly and used to mark nurture_sent_at / second_nurture_sent_at only
+// AFTER sending, leaving a time-of-check/time-of-use race where an
+// overlapping run (a slow prior invocation still going when the next
+// hourly trigger fires) could see the same not-yet-nurtured lead and text
+// it twice, for EITHER touch. Both touches now atomically claim their
+// lead with a conditional UPDATE (same WHERE as their SELECT) BEFORE
+// sending — a second invocation's claim affects 0 rows and it skips
+// the lead entirely.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
@@ -69,6 +80,23 @@ serve(async (req: Request) => {
     let sent = 0
     for (const lead of staleLeads || []) {
       if (!lead.client_phone) continue
+
+      // Atomically claim this lead before sending any real SMS — this cron
+      // runs hourly, so an overlapping run (a slow prior invocation still
+      // going, or a manual retry) racing the next hourly trigger could
+      // otherwise both see the same not-yet-nurtured lead and text it
+      // twice. This also replaces the old "mark regardless of SMS success"
+      // update below, since it now happens up-front.
+      const { data: claimed, error: claimErr } = await supabase
+        .from('leads')
+        .update({ nurture_sent_at: new Date().toISOString() })
+        .eq('id', lead.id)
+        .eq('status', 'new')
+        .is('nurture_sent_at', null)
+        .select('id')
+      if (claimErr) { console.error('nurture-stale-leads: claim failed:', claimErr.message); continue }
+      if (!claimed || claimed.length === 0) continue // already claimed by a concurrent run
+
       const bizName = (lead as any).businesses?.name || 'the business'
       const fallbackMessage = `Hi ${lead.client_name || ''}, thanks for reaching out to ${bizName} — we've received your request and someone will be in touch shortly.`.trim()
       const message = anthropicKey
@@ -81,11 +109,10 @@ serve(async (req: Request) => {
           }, fallbackMessage)
         : fallbackMessage
 
+      // Mark as nurtured regardless of SMS success (the claim above
+      // already did this before the send), so we don't retry-storm a lead
+      // with a bad phone number every hour.
       const smsOk = await sendTwilioSms(twilio, lead.client_phone, message, 'nurture-stale-leads')
-
-      // Mark as nurtured regardless of SMS success, so we don't retry-storm
-      // a lead with a bad phone number every hour.
-      await supabase.from('leads').update({ nurture_sent_at: new Date().toISOString() }).eq('id', lead.id)
       if (smsOk) sent++
 
       await notifySlack(supabaseUrl, supabaseServiceKey, lead.business_id,
@@ -107,6 +134,18 @@ serve(async (req: Request) => {
     let sentSecond = 0
     for (const lead of doubleStaleLeads || []) {
       if (!lead.client_phone) continue
+
+      // Same atomic claim-before-send pattern as the 1st touch above.
+      const { data: claimed2, error: claimErr2 } = await supabase
+        .from('leads')
+        .update({ second_nurture_sent_at: new Date().toISOString() })
+        .eq('id', lead.id)
+        .eq('status', 'new')
+        .is('second_nurture_sent_at', null)
+        .select('id')
+      if (claimErr2) { console.error('nurture-stale-leads: 2nd-touch claim failed:', claimErr2.message); continue }
+      if (!claimed2 || claimed2.length === 0) continue // already claimed by a concurrent run
+
       const bizName = (lead as any).businesses?.name || 'the business'
       const fallbackMessage = `Hi ${lead.client_name || ''}, just checking in — ${bizName} still has your request and we're keen to help. Reply here if you'd like to lock in a time.`.trim()
       const message = anthropicKey
@@ -120,8 +159,6 @@ serve(async (req: Request) => {
         : fallbackMessage
 
       const smsOk = await sendTwilioSms(twilio, lead.client_phone, message, 'nurture-stale-leads')
-
-      await supabase.from('leads').update({ second_nurture_sent_at: new Date().toISOString() }).eq('id', lead.id)
       if (smsOk) sentSecond++
 
       await notifySlack(supabaseUrl, supabaseServiceKey, lead.business_id,

@@ -1173,3 +1173,75 @@ clean, deployed (v7→v8, full repo-relative-path deploy including
 preserved (must stay reachable by Twilio with no Supabase auth
 header), signature-guard smoke-tested unaffected (`403 Invalid
 signature` for an unsigned POST, exactly as before).
+
+## Fixed 2026-09-24: 4 cron-scheduled SMS agents had a SELECT-then-send-then-mark double-send race (Round 44 continued further still)
+
+A fresh angle on the exact same "retry/overlap causes a duplicate real
+message" bug class as the two webhook fixes directly above, but found by
+auditing Minerva's OWN cron-scheduled autonomous agents instead of an
+inbound third-party webhook. `chase-unpaid-invoices` (daily),
+`retention-checkin` (weekly), `nurture-stale-leads` (hourly, both
+touches), and `winback-lost-leads` (daily) all shared the same shape:
+SELECT candidate rows not yet touched (by a null/stale timestamp
+column), loop over them sending a real Twilio SMS to a real client or
+lead, and only mark the row handled AFTER the send. That gap between the
+SELECT and the mark is a genuine time-of-check/time-of-use race: two
+overlapping invocations of the same function (a slow run still
+in-flight when the next scheduled cron fires, or a manual re-run/retry
+racing the scheduled one) could both SELECT the same untouched row
+before either one gets to mark it, and both send the same real SMS to
+the same real person. `nurture-stale-leads` runs hourly, making overlap
+the least far-fetched of the four as lead volume grows.
+
+Audited every other cron-scheduled function that sends a real outbound
+message for the same shape first (a sub-agent pass, cross-checked
+against the actual live `cron.job` schedules via the Management API
+rather than trusting the sub-agent's file-only read): `send-growth-
+message` already uses the correct pattern (see below) since it's
+human-click-triggered rather than cron-scheduled, and every other
+cron-scheduled function in this codebase (`followup-outreach`,
+`draft-outreach-batch`, `daily-digest`, `check-weather-risk`,
+`generate-growth-drafts`, `sequence-handoffs`, `check-credential-
+expiry`) either only ever writes a human-approval-gated draft or only
+posts an internal Slack nudge — no other function had this exact gap.
+`send-outreach-batch` has the same SELECT-then-send shape but is manual-
+only (no cron entry) and currently a documented no-op since
+`RESEND_API_KEY` is unset — flagged as worth the same fix if/when that
+key is ever configured, but out of scope for this round since it isn't
+live-exploitable yet.
+
+Fixed by converting each function's "mark row handled" step from an
+unconditional UPDATE that ran AFTER the send into an atomic conditional
+UPDATE...WHERE...RETURNING claim that runs BEFORE the send — the exact
+same pattern `send-growth-message` already used correctly (claiming a
+single draft row by id before messaging any recipient), generalized here
+to a per-row claim inside a batch loop. A second overlapping invocation's
+claim attempt on the same row now affects 0 rows and is skipped entirely,
+closing the race. Per-function specifics:
+- `chase-unpaid-invoices` is the one function that intentionally retries
+  on a transient Twilio failure (so a bad number doesn't silently go
+  quiet for 3 days) — the claim optimistically advances
+  `reminder_sent_at`, and it's reverted back to its pre-claim value ONLY
+  if the send itself fails, preserving that existing retry behavior
+  while still closing the race window.
+- `retention-checkin`, `nurture-stale-leads` (both touches), and
+  `winback-lost-leads` already marked their row unconditionally
+  regardless of send success (by design — a bad phone number shouldn't
+  retry-storm every cron run) — for these, the claim IS the final mark,
+  so no revert-on-failure logic was needed, just moving the existing
+  update earlier and adding the same WHERE conditions the original
+  SELECT used.
+
+Verified: 440/440 tests still passing, lint/build clean, all four
+deployed (`chase-unpaid-invoices` v12→v13, `retention-checkin` v11→v12,
+`nurture-stale-leads` v11→v12, `winback-lost-leads` v10→v11 — each a
+full repo-relative-path deploy including every `_shared/*.ts` file the
+function imports), `verify_jwt: true` preserved on all four (matches
+their pre-fix setting — these are called by pg_cron's own `net.http_post`
+using a valid anon-role JWT, not a public-facing endpoint). Live
+smoke-tested all four directly against the deployed functions with a
+valid anon JWT: all four returned `200 {"success":true,"scanned":0,
+"sent":0}` (the live DB currently has no real invoices/jobs/leads to
+process — this project is still pre-production — but the clean 0-row
+response confirms the new claim queries execute without error against
+the real schema).

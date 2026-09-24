@@ -15,6 +15,17 @@
 // template. Falls back to the EXACT existing template if the key is
 // missing, the call fails, or the draft looks unusable — no behaviour
 // change when no key is configured.
+//
+// Double-send fix (2026-09-24, Round 44 continued further still): same
+// bug class and fix as chase-unpaid-invoices/retention-checkin/
+// nurture-stale-leads — this used to mark lost_winback_sent_at only AFTER
+// sending, leaving a time-of-check/time-of-use race where an overlapping/
+// duplicate daily run could see the same not-yet-winback'd lead and text
+// it twice, breaking the "exactly ONE re-engagement SMS" guarantee this
+// function promises. Now atomically claims each lead with a conditional
+// UPDATE (same WHERE as the original SELECT) BEFORE doing anything else —
+// a second invocation's claim affects 0 rows and it skips the lead
+// entirely.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
@@ -57,11 +68,24 @@ serve(async (req: Request) => {
 
     let sent = 0
     for (const lead of lostLeads || []) {
-      if (!lead.client_phone) {
-        // still mark it so a lead with no phone doesn't get re-evaluated forever
-        await supabase.from('leads').update({ lost_winback_sent_at: new Date().toISOString() }).eq('id', lead.id)
-        continue
-      }
+      // Atomically claim this lead before doing anything else — an
+      // overlapping/duplicate daily run could otherwise also see this same
+      // not-yet-winback'd lead and text it twice, breaking the "exactly
+      // ONE re-engagement SMS" guarantee this function promises. This also
+      // now covers the no-phone skip-branch below, so that path no longer
+      // needs its own separate update.
+      const { data: claimed, error: claimErr } = await supabase
+        .from('leads')
+        .update({ lost_winback_sent_at: new Date().toISOString() })
+        .eq('id', lead.id)
+        .eq('status', 'lost')
+        .is('lost_winback_sent_at', null)
+        .select('id')
+      if (claimErr) { console.error('winback-lost-leads: claim failed:', claimErr.message); continue }
+      if (!claimed || claimed.length === 0) continue // already claimed by a concurrent run
+
+      if (!lead.client_phone) continue // claimed above so it won't be re-evaluated; nothing more to do
+
       const bizName = (lead as any).businesses?.name || 'the business'
       const fallbackMessage = `Hi ${lead.client_name || ''}, it's ${bizName} — just checking whether you're still after the work you enquired about a couple of weeks back. No worries either way, just reply if you'd like a quote.`.trim()
       const message = anthropicKey
@@ -75,7 +99,6 @@ serve(async (req: Request) => {
         : fallbackMessage
 
       const smsOk = await sendTwilioSms(twilio, lead.client_phone, message, 'winback-lost-leads')
-      await supabase.from('leads').update({ lost_winback_sent_at: new Date().toISOString() }).eq('id', lead.id)
       if (smsOk) sent++
 
       await notifySlack(supabaseUrl, supabaseServiceKey, lead.business_id,

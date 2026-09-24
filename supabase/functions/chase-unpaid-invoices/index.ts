@@ -18,6 +18,18 @@
 // wording. The drafted text must still contain the exact dollar amount and
 // invoice link or it's discarded in favour of the fixed template; same
 // fixed template is used outright if the key is missing or the call fails.
+//
+// Double-send fix (2026-09-24, Round 44 continued further still): this
+// used to SELECT candidate invoices, send the SMS, then only afterwards
+// mark reminder_sent_at — a time-of-check/time-of-use race where an
+// overlapping/duplicate invocation could see the same not-yet-reminded
+// invoice and text the client twice. Now claims each invoice with a
+// conditional UPDATE (same WHERE as the original SELECT) BEFORE sending;
+// a second invocation's claim affects 0 rows and it skips the invoice.
+// Reverted back to its pre-claim value only if the send itself fails, so
+// the existing "retry tomorrow on a transient Twilio error" behavior is
+// preserved. Same pattern as send-growth-message's already-safe
+// claim-before-send design, generalized to a per-row batch loop.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
@@ -62,6 +74,28 @@ serve(async (req: Request) => {
     let sent = 0
     for (const inv of unpaid || []) {
       if (!inv.client_phone) continue
+
+      // Atomically claim this invoice before sending any real SMS — the
+      // SELECT above alone is a time-of-check/time-of-use race: an
+      // overlapping/duplicate invocation (a slow run still going when the
+      // next day's cron fires, or a manual retry racing the scheduled one)
+      // could otherwise also see this same not-yet-reminded invoice and
+      // text the client a second time. This conditional update only
+      // succeeds for whichever invocation gets there first; a second one
+      // sees 0 rows affected and skips the invoice entirely.
+      const originalReminderSentAt = inv.reminder_sent_at
+      let claimQuery = supabase
+        .from('invoices')
+        .update({ reminder_sent_at: new Date().toISOString() })
+        .eq('id', inv.id)
+        .eq('status', 'unpaid')
+      claimQuery = originalReminderSentAt
+        ? claimQuery.lt('reminder_sent_at', threeDaysAgo)
+        : claimQuery.is('reminder_sent_at', null)
+      const { data: claimed, error: claimErr } = await claimQuery.select('id')
+      if (claimErr) { console.error('chase-unpaid-invoices: claim failed:', claimErr.message); continue }
+      if (!claimed || claimed.length === 0) continue // already claimed by a concurrent run
+
       const bizName = (inv as any).businesses?.name || 'the business'
       const link = `${APP_URL}/invoice/${inv.id}`
 
@@ -87,18 +121,21 @@ serve(async (req: Request) => {
 
       const smsOk = await sendTwilioSms(twilio, inv.client_phone, message, 'chase-unpaid-invoices')
 
-      // Only advance the 3-day throttle on an actual successful send — the
-      // query above re-fetches anything with reminder_sent_at null/stale, so
-      // leaving it untouched on failure means a transient Twilio error (or
-      // Twilio being unconfigured) gets retried on tomorrow's run instead of
-      // silently going quiet for 3 days while looking like a reminder went
-      // out. (Fixed 2026-09-07 — this previously updated unconditionally.)
+      // Only advance the 3-day throttle on an actual successful send — a
+      // transient Twilio error (or Twilio being unconfigured) should get
+      // retried on tomorrow's run instead of silently going quiet for 3
+      // days while looking like a reminder went out. (Fixed 2026-09-07 —
+      // this previously updated unconditionally.) Since the claim above
+      // already advanced reminder_sent_at optimistically, a failure here
+      // reverts it back to its pre-claim value rather than leaving it
+      // unset in the first place, to still close the race window above.
       if (smsOk) {
         await supabase.from('invoices').update({
-          reminder_sent_at: new Date().toISOString(),
           reminder_count: (inv.reminder_count || 0) + 1,
         }).eq('id', inv.id)
         sent++
+      } else {
+        await supabase.from('invoices').update({ reminder_sent_at: originalReminderSentAt }).eq('id', inv.id)
       }
 
       await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {

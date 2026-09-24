@@ -14,6 +14,15 @@
 // fixed template. Falls back to the EXACT existing template if the key is
 // missing, the call fails, or the draft looks unusable — no behaviour
 // change when no key is configured.
+//
+// Double-send fix (2026-09-24, Round 44 continued further still): same
+// bug class and fix as chase-unpaid-invoices — this used to mark
+// retention_sent_at only AFTER sending, leaving a time-of-check/time-of-
+// use race where an overlapping/duplicate weekly run could see the same
+// not-yet-checked-in job and text the client twice. Now atomically claims
+// each job with a conditional UPDATE (same WHERE as the original SELECT)
+// BEFORE doing anything else — a second invocation's claim affects 0 rows
+// and it skips the job entirely.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
@@ -64,6 +73,22 @@ serve(async (req: Request) => {
     for (const job of candidates || []) {
       if (!job.client_phone) continue
 
+      // Atomically claim this job before doing anything else — same
+      // time-of-check/time-of-use race as chase-unpaid-invoices: an
+      // overlapping/duplicate weekly run could otherwise also see this
+      // same not-yet-checked-in job and text the client twice. This also
+      // now covers the "already has a newer job" skip-branch below, so
+      // that path no longer needs its own separate update.
+      const { data: claimed, error: claimErr } = await supabase
+        .from('jobs')
+        .update({ retention_sent_at: new Date().toISOString() })
+        .eq('id', job.id)
+        .eq('status', 'complete')
+        .is('retention_sent_at', null)
+        .select('id')
+      if (claimErr) { console.error('retention-checkin: claim failed:', claimErr.message); continue }
+      if (!claimed || claimed.length === 0) continue // already claimed by a concurrent run
+
       // Skip if this client already has a newer job (any status) since —
       // they're already back, no need to nudge them.
       const { count: newerJobs } = await supabase
@@ -72,10 +97,7 @@ serve(async (req: Request) => {
         .eq('business_id', job.business_id)
         .eq('client_phone', job.client_phone)
         .gt('created_at', job.completed_at)
-      if ((newerJobs ?? 0) > 0) {
-        await supabase.from('jobs').update({ retention_sent_at: new Date().toISOString() }).eq('id', job.id)
-        continue
-      }
+      if ((newerJobs ?? 0) > 0) continue
 
       const bizName = (job as any).businesses?.name || 'us'
       const fallbackMessage = `Hi ${job.client_name || ''}, it's been a little while since ${bizName} last helped you out — just checking in, let us know if you need anything.`.trim()
@@ -90,8 +112,6 @@ serve(async (req: Request) => {
         : fallbackMessage
 
       const smsOk = await sendTwilioSms(twilio, job.client_phone, message, 'retention-checkin')
-
-      await supabase.from('jobs').update({ retention_sent_at: new Date().toISOString() }).eq('id', job.id)
       if (smsOk) sent++
     }
 
