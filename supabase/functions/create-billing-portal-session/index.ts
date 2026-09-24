@@ -26,9 +26,21 @@
 // besides contacting support). Registered in agent_functions for dashboard
 // visibility only. See supabase_schema_delta_agent_registration_round2.sql
 // for the new row.
+//
+// Ownership check added 2026-09-24 (Round 43): had zero caller-identity
+// check at all — worse than the verify_jwt:false functions fixed earlier
+// this round, since verify_jwt:true here was proven to add no real
+// protection either (Supabase's public anon key, extractable from any
+// browser bundle per this repo's own SECURITY_NOTES.md, is itself a valid
+// JWT and satisfies the gateway's verify_jwt check trivially). Anyone who
+// knew/guessed a businessId could get back a live Stripe Billing Portal
+// session for a stranger's subscription — view payment methods/invoices,
+// or cancel it outright. Fixed using the same isOwner pattern
+// xero-oauth-connect already used for the identical forged-request risk.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { isOwnerOfBusiness, getAuthenticatedCaller } from "../_shared/ownership.ts"
 
 const corsHeaders = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' }
 
@@ -54,10 +66,28 @@ serve(async (req: Request) => {
 
     const { data: biz, error: bizErr } = await supabase
       .from('businesses')
-      .select('stripe_customer_id')
+      .select('owner_user_id, contact_email, stripe_customer_id')
       .eq('id', businessId)
       .maybeSingle()
     if (bizErr) throw new Error(bizErr.message)
+
+    // Ownership check — see header note. A legitimate dispatcher's session
+    // JWT is already attached automatically by supabase.functions.invoke(),
+    // so this adds no friction for real usage.
+    const caller = await getAuthenticatedCaller(req, supabase)
+    if (!caller) {
+      return new Response(JSON.stringify({ error: 'Not authenticated.' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders },
+      })
+    }
+    if (!isOwnerOfBusiness(biz, caller.id, caller.email)) {
+      return new Response(JSON.stringify({ error: 'You do not have access to this business.' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders },
+      })
+    }
+
     if (!biz?.stripe_customer_id) {
       throw new Error('No Stripe customer on file yet for this business — this usually means checkout has not completed. Contact support if this seems wrong.')
     }

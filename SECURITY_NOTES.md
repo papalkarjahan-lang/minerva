@@ -297,6 +297,31 @@ was also `verify_jwt:false` and audited alongside these but found to
 already have its own equivalent protection (a per-business `X-Ingestion-Key`
 shared secret, added 2026-09-02) — no change needed there.
 
+## Fixed 2026-09-24: create-billing-portal-session had zero caller-identity check
+
+Found in the same pass as the 5 functions above, but worse: this function
+had `verify_jwt:true`, which — verified empirically this round — provides
+**no real protection**, since Supabase's public anon key (itself a validly-
+signed project JWT, extractable from any browser's JS bundle per this doc's
+own trust model) satisfies the gateway's JWT check trivially. A curl with
+only that public anon key and a guessed/leaked `businessId` got back a
+live Stripe Billing Portal session URL for a stranger's business — able to
+view payment methods/invoices, or cancel the subscription outright, with
+no ownership check and no add-on gate of any kind. Fixed the same way as
+the 5 functions above: requires a real Supabase Auth `Authorization:
+Bearer <token>` proving the caller owns the target business. Verified live:
+the identical exploit request (anon key + real businessId, no user login)
+now correctly returns `401`.
+
+**Takeaway for any future audit of this codebase:** `verify_jwt` is not a
+meaningful trust boundary here on its own — it only rejects a request with
+*no* Authorization header at all, and the anon key is public by design.
+The only real protections are (a) an unguessable ID, which is this app's
+documented model for read-only/link-based access, or (b) an explicit
+in-code ownership check (`_shared/ownership.ts`) for any action more
+sensitive than that — write operations, paid API calls, or anything
+touching a third party's credentials/billing.
+
 ## Fixed: missed-call-webhook now validates Twilio's signature
 
 `missed-call-webhook` is deployed with `--no-verify-jwt` (like
