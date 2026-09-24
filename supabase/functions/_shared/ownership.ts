@@ -41,6 +41,28 @@ export function isOwnerOfBusiness(
   return false
 }
 
+export interface TechnicianAuth {
+  auth_user_id: string | null
+}
+
+// For functions triggered by a technician mid-job (not just the business
+// owner) — e.g. send-eta-sms/send-completion-sms/send-invoice-sms, all
+// legitimately called from a real technician's own session
+// (technician-login exchanges their PIN for a real Supabase Auth JWT and
+// links it onto technicians.auth_user_id — see that function's header).
+// Authorized if the caller is either the business owner, OR the specific
+// technician assigned to the job/invoice in question.
+export function isOwnerOrAssignedTechnician(
+  business: BusinessOwnership | null | undefined,
+  technician: TechnicianAuth | null | undefined,
+  userId: string,
+  userEmail: string | null | undefined
+): boolean {
+  if (isOwnerOfBusiness(business, userId, userEmail)) return true
+  if (technician?.auth_user_id && technician.auth_user_id === userId) return true
+  return false
+}
+
 export interface SupabaseAuthClient {
   auth: {
     getUser(token: string): Promise<{ data: { user: { id: string; email?: string | null } | null }; error: unknown }>

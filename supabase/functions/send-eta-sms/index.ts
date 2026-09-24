@@ -6,6 +6,8 @@
 //   TWILIO_ACCOUNT_SID
 //   TWILIO_AUTH_TOKEN
 //   TWILIO_PHONE_NUMBER  (your Twilio AU number, format: +61412345678)
+//   APP_URL              (same var used by create-checkout-session; builds
+//                         the tracking link server-side, see below)
 //
 // Health/kill-switch wiring added 2026-09-23: this was registered in
 // agent_functions (seeded in supabase_schema_delta_agent_infra.sql) but
@@ -13,18 +15,29 @@
 // failed send to a real client was 100% invisible everywhere, same bug
 // class as the sync-technician-billing/followup-outreach fix from
 // 2026-09-22.
+//
+// Redesigned 2026-09-24 (Round 43): originally took clientPhone/clientName/
+// techName/businessName/trackingUrl directly in the request body with no
+// caller-identity check and no database lookup at all — meaning ANY caller
+// (the anon key alone is enough, verify_jwt is false here) could make this
+// function blast arbitrary text to an arbitrary AU phone number "from"
+// Minerva's own shared Twilio number (TWILIO_PHONE_NUMBER is one
+// platform-wide secret, not a per-business number), at zero cost/friction —
+// an open-SMS-relay risk distinct from (and worse than) the forged-request-
+// against-a-known-record gap fixed elsewhere this round. Now takes only a
+// `jobId`; every field that goes into the SMS is read from the job/business/
+// technician rows instead of trusted from the request body, and the caller
+// must be the business owner OR the specific technician assigned to that
+// job (isOwnerOrAssignedTechnician — technician-login gives technicians a
+// real Supabase Auth JWT linked via technicians.auth_user_id, so this isn't
+// owner-only). No frontend change to worry about breaking real usage:
+// TechnicianView.jsx's own session token is already attached automatically
+// by supabase.functions.invoke().
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { formatAuPhone, buildEtaMessage } from "../_shared/sms.ts"
-
-interface SMSPayload {
-  clientPhone: string
-  clientName: string
-  techName: string
-  businessName: string
-  trackingUrl: string
-}
+import { isOwnerOrAssignedTechnician, getAuthenticatedCaller } from "../_shared/ownership.ts"
 
 serve(async (req: Request) => {
   // CORS
@@ -40,18 +53,49 @@ serve(async (req: Request) => {
       return new Response(JSON.stringify({ success: true, skipped: true, reason: 'disabled via agent_functions.enabled' }), { status: 200, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } })
     }
 
-    const payload: SMSPayload = await req.json()
-    const { clientPhone, clientName, techName, businessName, trackingUrl } = payload
+    const { jobId } = await req.json()
+    if (!jobId) throw new Error('jobId is required')
 
-    if (!clientPhone || !techName || !businessName) {
-      return new Response(JSON.stringify({ error: 'Missing required fields' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+    const APP_URL = Deno.env.get('APP_URL')
+    if (!APP_URL) throw new Error('APP_URL not configured in Supabase secrets')
+
+    const { data: job, error: jobErr } = await supabase
+      .from('jobs')
+      .select('id, client_name, client_phone, business_id, technician_id, businesses(name, owner_user_id, contact_email), technicians!jobs_technician_id_fkey(id, name, auth_user_id)')
+      .eq('id', jobId)
+      .maybeSingle()
+    if (jobErr || !job) throw new Error('Job not found')
+
+    // Ownership check — see header note. A legitimate technician's or
+    // dispatcher's session JWT is already attached automatically by
+    // supabase.functions.invoke(), so this adds no friction for real usage.
+    const caller = await getAuthenticatedCaller(req, supabase)
+    if (!caller) {
+      return new Response(JSON.stringify({ error: 'Not authenticated.' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+    if (!isOwnerOrAssignedTechnician((job as any).businesses, (job as any).technicians, caller.id, caller.email)) {
+      return new Response(JSON.stringify({ error: 'You do not have access to this job.' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
       })
     }
 
-    const phone = formatAuPhone(clientPhone)
-    const message = buildEtaMessage({ clientName, businessName, techName, trackingUrl })
+    if (!job.client_phone) {
+      return new Response(JSON.stringify({ error: 'This job has no client phone number on file' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+
+    const techName = (job as any).technicians?.name || 'your technician'
+    const businessName = (job as any).businesses?.name || 'us'
+    const trackingUrl = `${APP_URL}/track/${job.id}`
+
+    const phone = formatAuPhone(job.client_phone)
+    const message = buildEtaMessage({ clientName: job.client_name, businessName, techName, trackingUrl })
 
     const TWILIO_SID = Deno.env.get('TWILIO_ACCOUNT_SID')
     const TWILIO_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN')

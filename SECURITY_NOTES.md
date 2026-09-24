@@ -343,14 +343,74 @@ now return `401 {"error":"Not authenticated."}`, then deleted the test
 rows. No frontend change needed (`supabase.functions.invoke()` already
 attaches the real dispatcher session token).
 
-The remaining `verify_jwt:false` SMS functions — `send-eta-sms`,
-`send-completion-sms`, `send-invoice-sms`, `send-setup-sms` — don't fit
-this pattern: they take raw message content directly (phone number, name,
-tracking/invoice/tech URL) with no database ID lookup at all, so there's no
-"ownership of a record" to check the same way. Not yet assessed for a
-different risk (whether they could be abused to fire arbitrary SMS content
-through a business's Twilio number) — flagged for a future round, not
-fixed here.
+The remaining `verify_jwt:false` SMS functions at the time — `send-eta-sms`,
+`send-completion-sms`, `send-invoice-sms`, `send-setup-sms` — didn't fit
+this pattern: they took raw message content directly (phone number, name,
+tracking/invoice/tech URL) with no database ID lookup at all, so there was
+no "ownership of a record" to check the same way. See the next entry below
+— fixed later the same day.
+
+## Fixed 2026-09-24: open-SMS-relay gap in send-eta-sms, send-completion-sms, send-invoice-sms, send-setup-sms
+
+These 4 functions had a distinct, more severe gap than the forged-request
+pattern above: they took `clientPhone`/`clientName`/`techName`/
+`businessName`/`trackingUrl`/`invoiceUrl`/etc. directly in the request
+body with **zero database lookup and zero caller-identity check**. Since
+`verify_jwt` was false on all 4, the public anon key alone was enough —
+meaning any caller, anywhere, could make any of these functions blast
+arbitrary text to an arbitrary AU phone number "from" Minerva's own shared
+Twilio number (`TWILIO_PHONE_NUMBER` is one platform-wide secret, not a
+per-business number). An open SMS relay, at zero cost or friction to the
+attacker.
+
+Fix, applied to all 4:
+- Each now takes only a single trusted ID (`jobId` for send-eta-sms/
+  send-completion-sms, `invoiceId` for send-invoice-sms, `technicianId`
+  for send-setup-sms). Every field that goes into the SMS body (name,
+  phone, tracking/invoice/tech URL) is read from the job/invoice/business/
+  technician rows server-side — never trusted from the request body.
+- send-eta-sms and send-completion-sms require the caller to be the
+  business owner OR the specific technician assigned to that job. Added a
+  new `isOwnerOrAssignedTechnician` helper to `_shared/ownership.ts` for
+  this — technicians authenticate via `technician-login`'s real Supabase
+  Auth JWT (linked through `technicians.auth_user_id`), so this isn't
+  owner-only like the simpler functions above.
+- send-invoice-sms requires the same, via the technician on the invoice's
+  linked job.
+- send-setup-sms is called from 3 sites — 2 with a real dispatcher session
+  (DispatcherView's resend-text / add-technician flows) and 1 with
+  genuinely no session at all (Onboarding.jsx step 3, before the business
+  has been claimed/paid for). Two-tier fix: if the target business already
+  has an `owner_user_id` (claimed, post-payment), a real authenticated
+  owner is required (401/403 otherwise). If it doesn't yet (fresh
+  pre-payment onboarding), the request is allowed through unauthenticated
+  but rate-limited to 3 sends/hour per `technicianId` via the existing
+  `check_rate_limit` RPC — caps a direct-API replay attack against one
+  fabricated business+technician row without breaking the legitimate
+  no-session signup flow.
+- Updated all 6 frontend call sites (`TechnicianView.jsx` x3,
+  `Onboarding.jsx` x1, `DispatcherView.jsx` x2) to send only the new
+  minimal ID payloads — no behavior change for real usage, since
+  `supabase.functions.invoke()` already attaches the caller's session
+  token automatically where one exists.
+
+Bug found during this fix's own verification: `jobs` and `technicians`
+have two separate foreign keys between them (`jobs.technician_id ->
+technicians.id` and `technicians.current_job_id -> jobs.id`), so a bare
+`technicians(...)` embed in the new `.select()` calls hit PostgREST's
+`PGRST201` ambiguous-embedding error. This was silently swallowed by the
+generic `if (err || !data) throw new Error('X not found')` handling and
+surfaced as a false "Job not found" / "Invoice not found" during
+live-exploit testing instead of the real error. Fixed by qualifying the
+embed explicitly: `technicians!jobs_technician_id_fkey(...)`.
+
+Verified live using the project's own `[TEST] Theoretical Co` business:
+inserted a throwaway technician/job/invoice row tied to it, called
+send-eta-sms/send-completion-sms/send-invoice-sms with only the public
+anon key, confirmed all 3 now return `401 {"error":"Not authenticated."}`
+(not the earlier misleading "not found"), confirmed send-setup-sms's
+unclaimed-business rate-limit path passes through correctly, then deleted
+all test rows.
 
 ## Fixed: missed-call-webhook now validates Twilio's signature
 

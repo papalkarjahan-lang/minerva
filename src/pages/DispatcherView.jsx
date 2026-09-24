@@ -1002,9 +1002,8 @@ export default function DispatcherView() {
 
   async function resendTechSMS(tech) {
     setResendingTechId(tech.id)
-    const appUrl = import.meta.env.VITE_APP_URL
     const { data, error } = await supabase.functions.invoke('send-setup-sms', {
-      body: { phone: tech.phone, name: tech.name, businessName: business?.name, techUrl: `${appUrl}/tech?pin=${tech.pin}` }
+      body: { technicianId: tech.id }
     })
     setResendingTechId(null)
     if (error || data?.error) alert(`Couldn't resend the text: ${data?.error || error.message}. You can still copy their setup link directly.`)
@@ -3095,9 +3094,8 @@ function AddTechnicianModal({ businessId, businessName, onClose }) {
       ])
       if (insertErr) throw new Error(insertErr.message)
 
-      const appUrl = import.meta.env.VITE_APP_URL
       const { data: smsData, error: smsError } = await supabase.functions.invoke('send-setup-sms', {
-        body: { phone: phone.trim(), name: name.trim(), businessName, techUrl: `${appUrl}/tech?pin=${inserted[0].pin}` }
+        body: { technicianId: inserted[0].id }
       })
       if (smsError || smsData?.error) {
         alert(`${name.trim()} was added, but the setup text didn't send. Use "Copy setup link" next to their name in the technician list to send it yourself.`)

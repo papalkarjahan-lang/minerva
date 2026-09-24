@@ -480,15 +480,8 @@ export default function TechnicianView() {
     // 15s GPS tick) could both pass the sms_sent check at the call site
     // and send the client two ETA texts. (Fixed 2026-09-07.)
     if (!currentJob || currentJob.sms_sent || !currentJob.client_phone) return
-    const trackingUrl = `${import.meta.env.VITE_APP_URL}/track/${currentJob.id}`
     const { data: smsData, error: smsError } = await supabase.functions.invoke('send-eta-sms', {
-      body: {
-        clientPhone: currentJob.client_phone,
-        clientName: currentJob.client_name,
-        techName: tech.name,
-        businessName: business.name,
-        trackingUrl
-      }
+      body: { jobId: currentJob.id }
     })
     if (smsError || smsData?.error) {
       setSyncWarning("The ETA text didn't send — the client won't know you're on the way.")
@@ -506,13 +499,7 @@ export default function TechnicianView() {
     // Guard against double-firing (e.g. a double-tap on "Complete Job").
     if (!currentJob || currentJob.completion_sms_sent || !currentJob.client_phone) return
     const { data: smsData, error: smsError } = await supabase.functions.invoke('send-completion-sms', {
-      body: {
-        clientPhone: currentJob.client_phone,
-        clientName: currentJob.client_name,
-        techName: tech.name,
-        businessName: business.name,
-        completedAt: new Date().toISOString()
-      }
+      body: { jobId: currentJob.id }
     })
     if (smsError || smsData?.error) {
       setSyncWarning("The completion text didn't send — the client won't get a heads-up the job's done.")
@@ -880,15 +867,8 @@ export default function TechnicianView() {
       // and manually resend/follow up, rather than it being invisible.
       let smsFailed = false
       if (currentJob.client_phone) {
-        const invoiceUrl = `${import.meta.env.VITE_APP_URL}/invoice/${data.id}`
         const { error: smsError } = await supabase.functions.invoke('send-invoice-sms', {
-          body: {
-            clientPhone: currentJob.client_phone,
-            clientName: currentJob.client_name,
-            businessName: business.name,
-            invoiceUrl,
-            total
-          }
+          body: { invoiceId: data.id }
         })
         if (smsError) {
           console.error('send-invoice-sms failed:', smsError)

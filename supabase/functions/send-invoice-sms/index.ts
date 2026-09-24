@@ -8,6 +8,8 @@
 //   TWILIO_ACCOUNT_SID
 //   TWILIO_AUTH_TOKEN
 //   TWILIO_PHONE_NUMBER  (your Twilio AU number, format: +61412345678)
+//   APP_URL              (same var used by create-checkout-session; builds
+//                         the invoice link server-side, see below)
 //
 // Health/kill-switch wiring added 2026-09-23: this was registered in
 // agent_functions (seeded in supabase_schema_delta_agent_infra.sql) but
@@ -15,18 +17,21 @@
 // failed send to a real client was 100% invisible everywhere, same bug
 // class as the sync-technician-billing/followup-outreach fix from
 // 2026-09-22.
+//
+// Redesigned 2026-09-24 (Round 43): same open-SMS-relay risk and fix as
+// send-eta-sms (see that function's header for the full reasoning) — took
+// clientPhone/clientName/businessName/invoiceUrl/total directly with no
+// caller-identity check and no database lookup, so any caller with just the
+// anon key could blast arbitrary text to an arbitrary number via Minerva's
+// shared Twilio number. Now takes only `invoiceId`; the SMS content is
+// built from the invoice/business/job/technician rows, and the caller must
+// be the business owner OR the technician assigned to the invoice's
+// underlying job (isOwnerOrAssignedTechnician).
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { formatAuPhone, buildInvoiceMessage } from "../_shared/sms.ts"
-
-interface SMSPayload {
-  clientPhone: string
-  clientName: string
-  businessName: string
-  invoiceUrl: string
-  total: number
-}
+import { isOwnerOrAssignedTechnician, getAuthenticatedCaller } from "../_shared/ownership.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -41,17 +46,50 @@ serve(async (req: Request) => {
       return new Response(JSON.stringify({ success: true, skipped: true, reason: 'disabled via agent_functions.enabled' }), { status: 200, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } })
     }
 
-    const { clientPhone, clientName, businessName, invoiceUrl, total }: SMSPayload = await req.json()
+    const { invoiceId } = await req.json()
+    if (!invoiceId) throw new Error('invoiceId is required')
 
-    if (!clientPhone || !businessName || !invoiceUrl) {
-      return new Response(JSON.stringify({ error: 'Missing required fields' }), {
+    const APP_URL = Deno.env.get('APP_URL')
+    if (!APP_URL) throw new Error('APP_URL not configured in Supabase secrets')
+
+    const { data: invoice, error: invErr } = await supabase
+      .from('invoices')
+      .select('id, client_name, client_phone, total, business_id, job_id, businesses(name, owner_user_id, contact_email), jobs(technician_id, technicians!jobs_technician_id_fkey(id, auth_user_id))')
+      .eq('id', invoiceId)
+      .maybeSingle()
+    if (invErr || !invoice) throw new Error('Invoice not found')
+
+    const technician = (invoice as any).jobs?.technicians || null
+
+    // Ownership check — see header note. A legitimate technician's or
+    // dispatcher's session JWT is already attached automatically by
+    // supabase.functions.invoke(), so this adds no friction for real usage.
+    const caller = await getAuthenticatedCaller(req, supabase)
+    if (!caller) {
+      return new Response(JSON.stringify({ error: 'Not authenticated.' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+    if (!isOwnerOrAssignedTechnician((invoice as any).businesses, technician, caller.id, caller.email)) {
+      return new Response(JSON.stringify({ error: 'You do not have access to this invoice.' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+
+    if (!invoice.client_phone) {
+      return new Response(JSON.stringify({ error: 'This invoice has no client phone number on file' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
       })
     }
 
-    const phone = formatAuPhone(clientPhone)
-    const message = buildInvoiceMessage({ clientName, businessName, invoiceUrl, total })
+    const businessName = (invoice as any).businesses?.name || 'us'
+    const invoiceUrl = `${APP_URL}/invoice/${invoice.id}`
+
+    const phone = formatAuPhone(invoice.client_phone)
+    const message = buildInvoiceMessage({ clientName: invoice.client_name, businessName, invoiceUrl, total: invoice.total })
 
     const TWILIO_SID = Deno.env.get('TWILIO_ACCOUNT_SID')
     const TWILIO_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN')

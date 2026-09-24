@@ -15,18 +15,22 @@
 // class as the sync-technician-billing/followup-outreach fix from
 // 2026-09-22 (see supabase_schema_delta_operational_fixes.sql /
 // supabase_schema_delta_followup_outreach_agent_registration.sql).
+//
+// Redesigned 2026-09-24 (Round 43): same open-SMS-relay risk and fix as
+// send-eta-sms (see that function's header for the full reasoning) — took
+// clientPhone/clientName/techName/businessName directly with no
+// caller-identity check and no database lookup, so any caller with just the
+// anon key could blast arbitrary text to an arbitrary number via Minerva's
+// shared Twilio number. Now takes only `jobId`; the SMS content is built
+// from the job/business/technician rows, and the caller must be the
+// business owner OR the technician assigned to that job
+// (isOwnerOrAssignedTechnician). The old `completedAt` field was accepted
+// but never actually used in the message — dropped, not replaced.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { formatAuPhone, buildCompletionMessage } from "../_shared/sms.ts"
-
-interface SMSPayload {
-  clientPhone: string
-  clientName: string
-  techName: string
-  businessName: string
-  completedAt: string
-}
+import { isOwnerOrAssignedTechnician, getAuthenticatedCaller } from "../_shared/ownership.ts"
 
 serve(async (req: Request) => {
   // CORS
@@ -42,18 +46,45 @@ serve(async (req: Request) => {
       return new Response(JSON.stringify({ success: true, skipped: true, reason: 'disabled via agent_functions.enabled' }), { status: 200, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } })
     }
 
-    const payload: SMSPayload = await req.json()
-    const { clientPhone, clientName, techName, businessName } = payload
+    const { jobId } = await req.json()
+    if (!jobId) throw new Error('jobId is required')
 
-    if (!clientPhone || !techName || !businessName) {
-      return new Response(JSON.stringify({ error: 'Missing required fields' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
+    const { data: job, error: jobErr } = await supabase
+      .from('jobs')
+      .select('id, client_name, client_phone, business_id, technician_id, businesses(name, owner_user_id, contact_email), technicians!jobs_technician_id_fkey(id, name, auth_user_id)')
+      .eq('id', jobId)
+      .maybeSingle()
+    if (jobErr || !job) throw new Error('Job not found')
+
+    // Ownership check — see header note. A legitimate technician's or
+    // dispatcher's session JWT is already attached automatically by
+    // supabase.functions.invoke(), so this adds no friction for real usage.
+    const caller = await getAuthenticatedCaller(req, supabase)
+    if (!caller) {
+      return new Response(JSON.stringify({ error: 'Not authenticated.' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+    if (!isOwnerOrAssignedTechnician((job as any).businesses, (job as any).technicians, caller.id, caller.email)) {
+      return new Response(JSON.stringify({ error: 'You do not have access to this job.' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
       })
     }
 
-    const phone = formatAuPhone(clientPhone)
-    const message = buildCompletionMessage({ clientName, techName, businessName })
+    if (!job.client_phone) {
+      return new Response(JSON.stringify({ error: 'This job has no client phone number on file' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+
+    const techName = (job as any).technicians?.name || 'your technician'
+    const businessName = (job as any).businesses?.name || 'us'
+
+    const phone = formatAuPhone(job.client_phone)
+    const message = buildCompletionMessage({ clientName: job.client_name, techName, businessName })
 
     const TWILIO_SID = Deno.env.get('TWILIO_ACCOUNT_SID')
     const TWILIO_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN')

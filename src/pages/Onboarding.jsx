@@ -79,16 +79,10 @@ export default function Onboarding() {
       // DispatcherView's technician list ("Copy setup link"/"Resend text")
       // once the owner logs in after payment — but it's tracked so they
       // know to actually go check, instead of assuming every text arrived.
-      const appUrl = import.meta.env.VITE_APP_URL
       const failedSmsNames = []
       for (const tech of techData) {
         const { data: smsData, error: smsError } = await supabase.functions.invoke('send-setup-sms', {
-          body: {
-            phone: tech.phone,
-            name: tech.name,
-            businessName: bizData.name,
-            techUrl: `${appUrl}/tech?pin=${tech.pin}`
-          }
+          body: { technicianId: tech.id }
         })
         if (smsError || smsData?.error) failedSmsNames.push(tech.name)
       }
