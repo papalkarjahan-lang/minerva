@@ -1123,3 +1123,53 @@ grant exists or is needed — `index.ts` never deletes from this table).
 Supabase auth header), OPTIONS/signature-guard smoke-tested unaffected
 (`400 Missing signature or webhook secret` for an unsigned POST, exactly
 as before).
+
+## Fixed 2026-09-24: `missed-call-webhook` had no CallSid dedup either (Round 44 continued further still)
+
+Same bug class as the `stripe-webhook` fix directly above, different
+provider, worse blast radius. Twilio documents that it retries the
+"A call comes in" Voice webhook on timeout (and can otherwise
+redeliver), and `missed-call-webhook/index.ts` had no dedup at all —
+it didn't even read `CallSid` (Twilio's unique-per-call identifier,
+present on every Voice webhook request) from the incoming form data.
+Confirmed via `grep -n "CallSid"` on the file returning no matches
+before this fix. Unlike `stripe-webhook`'s side effect (an internal
+welcome/alert email), a retried delivery here unconditionally
+re-sends the "we missed your call" SMS to the real caller's real
+phone number, with no bound on how many times — a real person gets
+spammed, not just an inbox this codebase controls.
+
+Checked `voice-intake-agent/index.ts` (the more advanced opt-in
+conversational alternative to this function) for the same gap first —
+it already handles this correctly via
+`.upsert({...}, { onConflict: 'call_sid' })` when creating its call
+session row, so no fix was needed there. That upsert pattern isn't
+reusable here since this function doesn't create any row of its own
+(no call-session table) — it only has an outbound Twilio API call as
+its side effect — so a small dedicated table was the right shape
+instead.
+
+Fixed with a new `processed_call_sids` table (`call_sid` primary key,
+service_role-only — same no-anon-policy pattern as
+`processed_stripe_events`/`rate_limit_counters`/`voice_call_sessions`,
+see `supabase_schema_delta_missed_call_webhook_idempotency.sql`).
+`index.ts` now reads `CallSid` from the form data and checks it
+against this table before entering the SMS-send block — an
+already-processed `CallSid` skips the SMS entirely but still returns
+the same valid TwiML (a retry must never make the caller hear an
+error) — and only inserts the row after the SMS-send block has fully
+run (success or a handled failure), mirroring `stripe-webhook`'s
+check-before/mark-after-success design exactly. The insert is
+fire-and-forget on a duplicate-key conflict for the same
+near-simultaneous-race reason as `stripe-webhook`.
+
+Verified live: confirmed the table has the same grant (`grant select,
+insert ... to service_role`) as every other service-role-only table in
+this doc — direct REST insert/select against it with the real runtime
+`service_role` key both succeeded (test row then removed via the
+Management API's SQL runner). 440/440 tests still passing, lint/build
+clean, deployed (v7→v8, full repo-relative-path deploy including
+`_shared/sms.ts` since this function imports it), `verify_jwt: false`
+preserved (must stay reachable by Twilio with no Supabase auth
+header), signature-guard smoke-tested unaffected (`403 Invalid
+signature` for an unsigned POST, exactly as before).

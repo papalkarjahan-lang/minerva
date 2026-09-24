@@ -38,6 +38,18 @@
 // genuine requests from Twilio's servers can trigger an SMS send or read
 // business data. Mirrors how stripe-webhook validates Stripe's signature.
 // See SECURITY_NOTES.md — this closes the previously-documented gap.
+//
+// Idempotency (added 2026-09-24, Round 44 continued further still): Twilio
+// retries this Voice webhook on timeout (and can otherwise redeliver), and
+// this function had no dedup — a retry of the same missed call would
+// unconditionally resend the "we missed you" SMS to the real caller's real
+// phone number, unbounded. Fixed via processed_call_sids (see
+// supabase_schema_delta_missed_call_webhook_idempotency.sql), keyed on
+// Twilio's CallSid: checked right before the SMS-send block (an
+// already-processed CallSid skips the SMS but still returns valid TwiML —
+// a retry must never make the caller hear an error), and the row is only
+// inserted after the SMS-send block has fully run (success or handled
+// failure), mirroring stripe-webhook's check-before/mark-after design.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
@@ -101,6 +113,17 @@ serve(async (req: Request) => {
 
     const from = form.get('From')?.toString() // caller's number
     const to = form.get('To')?.toString()     // the business's Twilio number
+    const callSid = form.get('CallSid')?.toString() // unique per call — used to dedupe Twilio retries below
+
+    let alreadyProcessed = false
+    if (callSid) {
+      const { data: existing } = await supabaseAdmin
+        .from('processed_call_sids')
+        .select('call_sid')
+        .eq('call_sid', callSid)
+        .maybeSingle()
+      alreadyProcessed = !!existing
+    }
 
     // Look up the business by its Twilio number using the service_role key
     // (no anon SELECT policy exposes twilio_number for this — see notes above).
@@ -128,7 +151,9 @@ serve(async (req: Request) => {
 
     // Fire the outbound "we missed you" SMS to the caller, best-effort.
     // A failure here shouldn't stop us returning valid TwiML to Twilio.
-    if (from && smsEnabled) {
+    // Skipped entirely if this CallSid was already processed (a Twilio
+    // retry of the same call) — the caller still hears the same TwiML below.
+    if (from && smsEnabled && !alreadyProcessed) {
       try {
         const TWILIO_SID = Deno.env.get('TWILIO_ACCOUNT_SID')
         const TWILIO_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN')
@@ -174,6 +199,16 @@ serve(async (req: Request) => {
           }).catch(() => {})
         }
       }
+    }
+
+    // Best-effort: mark this CallSid processed now that the SMS-send block
+    // (if it ran) has fully completed — so a genuine failure never blocks
+    // a legitimate retry, but a duplicate delivery of the same call never
+    // re-sends the SMS again. A duplicate-key conflict here just means a
+    // near-simultaneous retry won this race too; never let it surface as
+    // an error to the caller.
+    if (callSid) {
+      supabaseAdmin.from('processed_call_sids').insert({ call_sid: callSid }).then(() => {}, () => {})
     }
 
     // Respond to the actual voice call with TwiML: a short spoken message,
