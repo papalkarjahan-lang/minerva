@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isOwnerOfBusiness, isOwnerOrAssignedTechnician, getAuthenticatedCaller } from './ownership'
+import { isOwnerOfBusiness, isOwnerOrAssignedTechnician, isOwnerOrTechnicianOfBusiness, getAuthenticatedCaller } from './ownership'
 
 describe('isOwnerOfBusiness', () => {
   it('returns false for a null/undefined business', () => {
@@ -66,6 +66,38 @@ describe('isOwnerOrAssignedTechnician', () => {
     const biz = { owner_user_id: 'user-1', contact_email: 'a@b.com' }
     const tech = { auth_user_id: null }
     expect(isOwnerOrAssignedTechnician(biz, tech, 'user-3', 'stranger@b.com')).toBe(false)
+  })
+})
+
+describe('isOwnerOrTechnicianOfBusiness', () => {
+  it('returns true when the caller is the business owner, regardless of technicians', () => {
+    const biz = { owner_user_id: 'user-1', contact_email: 'a@b.com' }
+    expect(isOwnerOrTechnicianOfBusiness(biz, [], 'user-1', 'a@b.com')).toBe(true)
+  })
+
+  it('returns true when the caller matches any technician in the roster', () => {
+    const biz = { owner_user_id: 'user-1', contact_email: 'a@b.com' }
+    const techs = [{ auth_user_id: 'user-2' }, { auth_user_id: 'user-3' }]
+    expect(isOwnerOrTechnicianOfBusiness(biz, techs, 'user-3', 'tech@b.com')).toBe(true)
+  })
+
+  it('returns false when the caller is neither the owner nor any technician in the roster', () => {
+    const biz = { owner_user_id: 'user-1', contact_email: 'a@b.com' }
+    const techs = [{ auth_user_id: 'user-2' }]
+    expect(isOwnerOrTechnicianOfBusiness(biz, techs, 'user-4', 'stranger@b.com')).toBe(false)
+  })
+
+  it('returns false when technicians is null/undefined/empty and caller is not the owner', () => {
+    const biz = { owner_user_id: 'user-1', contact_email: 'a@b.com' }
+    expect(isOwnerOrTechnicianOfBusiness(biz, null, 'user-4', 'stranger@b.com')).toBe(false)
+    expect(isOwnerOrTechnicianOfBusiness(biz, undefined, 'user-4', 'stranger@b.com')).toBe(false)
+    expect(isOwnerOrTechnicianOfBusiness(biz, [], 'user-4', 'stranger@b.com')).toBe(false)
+  })
+
+  it('ignores technicians with a null auth_user_id', () => {
+    const biz = { owner_user_id: 'user-1', contact_email: 'a@b.com' }
+    const techs = [{ auth_user_id: null }]
+    expect(isOwnerOrTechnicianOfBusiness(biz, techs, 'user-4', 'stranger@b.com')).toBe(false)
   })
 })
 

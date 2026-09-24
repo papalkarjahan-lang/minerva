@@ -63,6 +63,23 @@ export function isOwnerOrAssignedTechnician(
   return false
 }
 
+// For functions triggered by ANY technician of a business, not one tied to
+// a specific job/invoice — e.g. sync-technician-billing, legitimately
+// called either from a dispatcher's session (removing a technician) or
+// from that technician's own session (their phone just connected). Unlike
+// isOwnerOrAssignedTechnician (one specific technician record), this
+// checks membership across the whole roster.
+export function isOwnerOrTechnicianOfBusiness(
+  business: BusinessOwnership | null | undefined,
+  technicians: TechnicianAuth[] | null | undefined,
+  userId: string,
+  userEmail: string | null | undefined
+): boolean {
+  if (isOwnerOfBusiness(business, userId, userEmail)) return true
+  if (technicians?.some((t) => t.auth_user_id && t.auth_user_id === userId)) return true
+  return false
+}
+
 export interface SupabaseAuthClient {
   auth: {
     getUser(token: string): Promise<{ data: { user: { id: string; email?: string | null } | null }; error: unknown }>

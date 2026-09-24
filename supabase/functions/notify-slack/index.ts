@@ -40,6 +40,22 @@
 // toggle silently did nothing, and this being broken (it's a dependency
 // of ~36 other functions) was invisible. Same bug class as the
 // sync-technician-billing/followup-outreach fix from 2026-09-22.
+//
+// Fixed 2026-09-24 (Round 43 continued): had zero caller-identity check of
+// any kind, and unlike the SMS functions the message body (`text`) is
+// taken 100% verbatim from the request — no template, no DB-derived
+// content at all. Confirmed (grepped every caller in src/ and
+// supabase/functions/) that this function has NO legitimate frontend call
+// site — every real caller is another edge function passing
+// `Authorization: Bearer <SUPABASE_SERVICE_ROLE_KEY>` server-to-server.
+// So the public anon key alone let any caller post arbitrary attacker-
+// controlled text to a stranger's real Slack channel via their
+// slack_webhook_url — an open Slack-message relay, the same risk class as
+// the SMS-relay gap fixed earlier this round but with zero content
+// template constraining it at all. Fixed by requiring the caller to
+// present the real service-role key — the one secret only Minerva's own
+// functions ever have — closing the gap with no behavior change for any
+// legitimate caller.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
@@ -60,6 +76,17 @@ serve(async (req: Request) => {
   const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
   try {
+    // Internal-service-only — see header note. Every legitimate caller is
+    // another edge function passing the real service-role key; there is no
+    // legitimate frontend/end-user caller of this function at all.
+    const authHeader = req.headers.get('Authorization') || ''
+    if (authHeader.replace(/^Bearer\s+/i, '') !== supabaseServiceKey) {
+      return new Response(JSON.stringify({ error: 'Not authenticated.' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+
     const { data: fnState } = await supabase.from('agent_functions').select('enabled').eq('name', 'notify-slack').maybeSingle()
     if (fnState?.enabled === false) {
       return new Response(JSON.stringify({ success: true, skipped: true, reason: 'disabled via agent_functions.enabled' }), { status: 200, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } })

@@ -26,10 +26,21 @@
 // (no CLI in this project — see minerva_supabase_function_deploy_method
 // memory), verify_jwt should match this project's other human-click
 // functions (true, consistent with create-checkout-session etc.).
+//
+// Fixed 2026-09-24 (Round 43 continued): `verify_jwt:true` gave a false
+// sense of protection (the public anon key alone satisfies it — see
+// SECURITY_NOTES.md) but there was zero real caller-identity check. A
+// bare technicianId let anyone overwrite that technician's real jobs'
+// route_sequence/estimated_arrival_at for the day. Fixed requiring the
+// business owner OR that specific technician (isOwnerOrAssignedTechnician
+// — this function's only real caller is DispatcherView.jsx today, but the
+// technician side is included since nothing about this action is
+// owner-only, same reasoning as the SMS functions).
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { planRoute } from "./logic.ts"
+import { isOwnerOrAssignedTechnician, getAuthenticatedCaller } from "../_shared/ownership.ts"
 
 // Assumed average travel speed for chained ETA estimates — a deliberately
 // conservative urban/suburban trade-vehicle average, not a routing-API
@@ -67,10 +78,25 @@ serve(async (req: Request) => {
 
     const { data: tech, error: techErr } = await supabase
       .from('technicians')
-      .select('id, business_id, current_lat, current_lng')
+      .select('id, business_id, current_lat, current_lng, auth_user_id, businesses(owner_user_id, contact_email)')
       .eq('id', technicianId)
       .single()
     if (techErr || !tech) throw new Error('Technician not found')
+
+    const caller = await getAuthenticatedCaller(req, supabase)
+    if (!caller) {
+      return new Response(JSON.stringify({ error: 'Not authenticated.' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+    if (!isOwnerOrAssignedTechnician((tech as any).businesses, tech, caller.id, caller.email)) {
+      return new Response(JSON.stringify({ error: 'You do not have access to this technician.' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+
     if (tech.current_lat == null || tech.current_lng == null) {
       return new Response(JSON.stringify({ success: true, skipped: 'no_technician_position' }), {
         status: 200,

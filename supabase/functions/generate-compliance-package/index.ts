@@ -26,9 +26,17 @@
 // package-client-verification (which was already registered/gated) —
 // found via a directory-vs-agent_functions diff. See
 // supabase_schema_delta_agent_registration_round2.sql for the new row.
+//
+// Fixed 2026-09-24 (Round 43 continued): zero caller-identity check — a
+// bare jobId with the public anon key let anyone read back a real client's
+// name/address/checklist/materials/invoice summary, permanently insert a
+// stored compliance_packages row for a stranger's job, and fire a Slack
+// notification to their business. Fixed with the same owner-or-assigned-
+// technician check used for send-eta-sms/send-completion-sms.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { isOwnerOrAssignedTechnician, getAuthenticatedCaller } from "../_shared/ownership.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -50,10 +58,24 @@ serve(async (req: Request) => {
 
     const { data: job, error: jobErr } = await supabase
       .from('jobs')
-      .select('id, business_id, client_name, client_address, technician_id, status, completed_at, checklist_results, ai_verified_at')
+      .select('id, business_id, client_name, client_address, technician_id, status, completed_at, checklist_results, ai_verified_at, businesses(owner_user_id, contact_email), technicians!jobs_technician_id_fkey(auth_user_id)')
       .eq('id', jobId)
       .maybeSingle()
     if (jobErr || !job) throw new Error('Job not found')
+
+    const caller = await getAuthenticatedCaller(req, supabase)
+    if (!caller) {
+      return new Response(JSON.stringify({ error: 'Not authenticated.' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+    if (!isOwnerOrAssignedTechnician((job as any).businesses, (job as any).technicians, caller.id, caller.email)) {
+      return new Response(JSON.stringify({ error: 'You do not have access to this job.' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
 
     const [{ data: photos }, { data: materials }, { data: invoice }, credentialsResult] = await Promise.all([
       supabase.from('checklist_photos').select('checklist_item, storage_path, verification_status, verification_notes, created_at').eq('job_id', jobId),

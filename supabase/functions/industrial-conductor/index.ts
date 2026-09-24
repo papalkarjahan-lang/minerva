@@ -14,9 +14,18 @@
 //     status='new' created in the last hour and repeats the same
 //     suggestion for any not yet actioned.
 // Deploy with: supabase functions deploy industrial-conductor
+//
+// Fixed 2026-09-24 (Round 43 continued): the direct-invocation { leadId }
+// path had zero caller-identity check — anyone with a guessed leadId and
+// the public anon key could force an extra Slack "suggestion" message
+// (containing that lead's real company_name/equipment_need) to fire for a
+// stranger's business. Fixed requiring the business owner on that one
+// path only; the cron sweep (no body) is untouched — it discovers its own
+// leadIds server-side and has no per-caller identity to check.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { isOwnerOfBusiness, getAuthenticatedCaller } from "../_shared/ownership.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -34,9 +43,37 @@ serve(async (req: Request) => {
     }
 
     let leadIds: string[] = []
+    let directLeadId: string | null = null
     if (req.method === 'POST') {
       const body = await req.json().catch(() => ({}))
-      if (body.leadId) leadIds = [body.leadId]
+      if (body.leadId) {
+        leadIds = [body.leadId]
+        directLeadId = body.leadId
+      }
+    }
+
+    // Ownership check — direct-invocation path only (see header note). The
+    // cron sweep below discovers its own leadIds with no per-caller
+    // identity to check, so it's untouched.
+    if (directLeadId) {
+      const { data: directLead } = await supabase
+        .from('industrial_leads')
+        .select('business_id, businesses(owner_user_id, contact_email)')
+        .eq('id', directLeadId)
+        .maybeSingle()
+      const caller = await getAuthenticatedCaller(req, supabase)
+      if (!caller) {
+        return new Response(JSON.stringify({ error: 'Not authenticated.' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        })
+      }
+      if (!isOwnerOfBusiness((directLead as any)?.businesses, caller.id, caller.email)) {
+        return new Response(JSON.stringify({ error: 'You do not have access to this lead.' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        })
+      }
     }
 
     if (leadIds.length === 0) {

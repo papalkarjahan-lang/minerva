@@ -30,10 +30,26 @@
 //    slack_webhook_url via notify-slack, no separate secret needed.
 //
 // Deploy with: supabase functions deploy run-custom-workflows
+//
+// Fixed 2026-09-24 (Round 43 continued): zero caller-identity check —
+// direct invocation with just { businessId, event, payload } and the
+// public anon key let anyone force-fire a stranger's configured workflows
+// (an arbitrary POST to their action_target webhook URL, or a Slack
+// message, both carrying attacker-controlled `payload`) — same forged-
+// trigger risk class as elsewhere this round, worse here because the
+// attacker also controls `payload`, which feeds directly into the
+// webhook body and the condition match. Two real caller shapes to
+// support: (a) server-to-server, from ai-intake-chat/voice-intake-agent,
+// authenticated with the real service-role key; (b) real end-user
+// sessions, from TechnicianView.jsx (job.completed) and
+// DispatcherView.jsx (invoice.paid) — owner OR any technician of that
+// business, so `isOwnerOrTechnicianOfBusiness` (not the job-scoped
+// variant, since there's no single "assigned" technician here).
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { matchesCondition } from "./logic.ts"
+import { isOwnerOrTechnicianOfBusiness, getAuthenticatedCaller } from "../_shared/ownership.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -63,6 +79,36 @@ serve(async (req: Request) => {
 
     // Direct invocation: run only this business's workflows for this one event.
     if (businessId && event) {
+      // Internal service-to-service calls (ai-intake-chat, voice-intake-agent)
+      // present the real service-role key — trusted outright, same rule as
+      // notify-slack. Anything else must prove owner-or-technician identity.
+      const authHeader = req.headers.get('Authorization') || ''
+      const isInternalCall = authHeader.replace(/^Bearer\s+/i, '') === supabaseServiceKey
+      if (!isInternalCall) {
+        const caller = await getAuthenticatedCaller(req, supabase)
+        if (!caller) {
+          return new Response(JSON.stringify({ error: 'Not authenticated.' }), {
+            status: 401,
+            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+          })
+        }
+        const { data: business } = await supabase
+          .from('businesses')
+          .select('owner_user_id, contact_email')
+          .eq('id', businessId)
+          .maybeSingle()
+        const { data: roster } = await supabase
+          .from('technicians')
+          .select('auth_user_id')
+          .eq('business_id', businessId)
+        if (!isOwnerOrTechnicianOfBusiness(business, roster, caller.id, caller.email)) {
+          return new Response(JSON.stringify({ error: 'You do not have access to this business.' }), {
+            status: 403,
+            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+          })
+        }
+      }
+
       const result = await runWorkflowsFor(supabase, supabaseUrl, supabaseServiceKey, businessId, event, payload)
       supabase.rpc('record_agent_run', { fn_name: 'run-custom-workflows', status: 'ok' }).then(() => {}, () => {})
       return new Response(JSON.stringify({ success: true, ...result }), {

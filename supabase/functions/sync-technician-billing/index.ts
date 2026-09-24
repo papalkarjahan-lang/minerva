@@ -21,10 +21,27 @@
 //                              goes through RLS-safe anon-equivalent access;
 //                              service role used for consistency with the
 //                              other Stripe-touching functions)
+//
+// Fixed 2026-09-24 (Round 43 continued): had `verify_jwt:true` but, like
+// create-billing-portal-session before this same fix, that alone verifies
+// nothing about caller identity — the public anon key is itself a validly
+// signed JWT (see SECURITY_NOTES.md's "verify_jwt is not a meaningful trust
+// boundary" note). Took a bare `businessId` with zero ownership check, and
+// unlike the SMS functions this one has a real *financial* side effect:
+// `stripe.subscriptionItems.update(..., { proration_behavior: 'always_invoice' })`
+// forces an immediate Stripe invoice on that business's real subscription.
+// An unauthenticated caller with just a guessed/leaked businessId could
+// force that proration/invoice to fire on a stranger's business at will.
+// Fixed with a new `isOwnerOrTechnicianOfBusiness` check (this function's
+// two real call sites are the business owner removing a technician in
+// DispatcherView.jsx, and a technician's own phone connecting for the
+// first time in TechnicianView.jsx — both need to pass, unlike the
+// job-scoped `isOwnerOrAssignedTechnician` used elsewhere).
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import Stripe from "https://esm.sh/stripe@14?target=deno"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { isOwnerOrTechnicianOfBusiness, getAuthenticatedCaller } from "../_shared/ownership.ts"
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, {
   apiVersion: '2023-10-16',
@@ -71,12 +88,33 @@ serve(async (req: Request) => {
 
     const { data: business, error: bizErr } = await supabaseAdmin
       .from('businesses')
-      .select('stripe_sub_item_id, subscription_tier')
+      .select('stripe_sub_item_id, subscription_tier, owner_user_id, contact_email')
       .eq('id', businessId)
       .single()
     if (bizErr || !business) {
       return new Response(JSON.stringify({ error: 'Business not found' }), {
         status: 404,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders },
+      })
+    }
+
+    // Ownership check — see header note. A legitimate owner's or
+    // technician's session JWT is already attached automatically by
+    // supabase.functions.invoke(), so this adds no friction for real usage.
+    const caller = await getAuthenticatedCaller(req, supabaseAdmin)
+    if (!caller) {
+      return new Response(JSON.stringify({ error: 'Not authenticated.' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders },
+      })
+    }
+    const { data: roster } = await supabaseAdmin
+      .from('technicians')
+      .select('auth_user_id')
+      .eq('business_id', businessId)
+    if (!isOwnerOrTechnicianOfBusiness(business, roster, caller.id, caller.email)) {
+      return new Response(JSON.stringify({ error: 'You do not have access to this business.' }), {
+        status: 403,
         headers: { 'Content-Type': 'application/json', ...corsHeaders },
       })
     }

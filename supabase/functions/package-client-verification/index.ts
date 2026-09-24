@@ -12,9 +12,19 @@
 // sync-technician-billing/followup-outreach fix from 2026-09-22, added here
 // for consistency with its human-click siblings (launch-ad-campaign,
 // send-growth-message, optimize-daily-route, sync-technician-billing).
+//
+// Fixed 2026-09-24 (Round 43 continued): zero caller-identity check — a
+// bare siteId with the public anon key let anyone read back a stranger's
+// site check-ins/telemetry/safety-incident evidence, permanently insert a
+// stored client_verification_packages row, and fire a Slack notification
+// to their business. Fixed requiring the business owner (this sector has
+// no separate technician-login identity the way the trade sector does —
+// IndustrialDispatcherView.jsx is owner-session-only, per
+// RequireBusinessAuth.jsx).
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { isOwnerOfBusiness, getAuthenticatedCaller } from "../_shared/ownership.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -34,8 +44,22 @@ serve(async (req: Request) => {
     const { siteId } = await req.json()
     if (!siteId) throw new Error('siteId is required')
 
-    const { data: site, error } = await supabase.from('site_projects').select('id, business_id, name, scope_of_work').eq('id', siteId).maybeSingle()
+    const { data: site, error } = await supabase.from('site_projects').select('id, business_id, name, scope_of_work, businesses(owner_user_id, contact_email)').eq('id', siteId).maybeSingle()
     if (error || !site) throw new Error('site not found')
+
+    const caller = await getAuthenticatedCaller(req, supabase)
+    if (!caller) {
+      return new Response(JSON.stringify({ error: 'Not authenticated.' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+    if (!isOwnerOfBusiness((site as any).businesses, caller.id, caller.email)) {
+      return new Response(JSON.stringify({ error: 'You do not have access to this site.' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
 
     // asset_telemetry_events has no site_id column — only asset_id — so
     // scoping "this site's telemetry" means first finding which assets were

@@ -412,6 +412,101 @@ anon key, confirmed all 3 now return `401 {"error":"Not authenticated."}`
 unclaimed-business rate-limit path passes through correctly, then deleted
 all test rows.
 
+## Fixed 2026-09-24: sync-technician-billing had zero caller-identity check
+
+Same forged-request bug class as the two sweeps above, but with the most
+direct financial impact of any of them: a bare `businessId`+`technicianId`
+with the public anon key let anyone force a real Stripe proration invoice
+onto a stranger's real subscription (this function adjusts the
+per-technician-seat quantity on the business's live Stripe subscription
+item). No content injection risk (the amount comes from Stripe/the
+business's own row, not the request body), but the forged *trigger* alone
+costs the business owner real money and clutters their real Stripe
+billing history — worse than a nuisance Slack message or SMS.
+
+The legitimate callers are two different identities depending on which
+direction the change happened: a dispatcher's own session (removing a
+technician from the roster) or that technician's own session (their phone
+just connected via technician-login). Neither is "the one technician tied
+to this specific record" (the existing `isOwnerOrAssignedTechnician`
+shape) — it's "any technician on this business's roster" — so this
+needed a new, distinct helper: `isOwnerOrTechnicianOfBusiness(business,
+technicians[], userId, userEmail)`, added to `_shared/ownership.ts`
+alongside the existing two (5 new tests). Wired in right after the
+business lookup, before the existing `stripe_sub_item_id`/
+`subscription_tier` skip check.
+
+Verified live: anon-key-only call against the real `[TEST] Theoretical
+Co` business now returns `401 {"error":"Not authenticated."}` instead of
+silently proceeding to touch Stripe.
+
+## Fixed 2026-09-24: 6 more forged-request/open-relay gaps, found via a fresh caller-site sweep
+
+A follow-up systematic pass — grep every edge function for the presence
+of an ownership-check import, then cross-reference against every real
+`supabase.functions.invoke()` call site in `src/` — turned up 6 more
+functions with zero real caller-identity check, ranging from a critical
+open message relay down to a low-severity nuisance-notification forgery:
+
+- **`notify-slack`** (most severe of the 6): the generic Slack notifier
+  used internally by ~15 other functions. Unlike the SMS functions above,
+  `text` is sent **100% verbatim** from the request body — no DB-derived
+  template constrains it at all — and a grep of every caller in `src/`
+  and `supabase/functions/` confirmed there is no legitimate frontend/
+  end-user caller of this function whatsoever; every real caller is
+  another edge function passing the real service-role key
+  server-to-server. Fixed by requiring the caller's `Authorization`
+  header to exactly equal `Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')` —
+  no ownership-check machinery needed since there's no end-user session
+  to check. Previously: anyone with the anon key could post arbitrary
+  attacker-controlled text into a stranger's real Slack channel via their
+  configured `slack_webhook_url`.
+- **`run-custom-workflows`**: has BOTH server-to-server callers
+  (`ai-intake-chat`, `voice-intake-agent`, real service-role key) AND real
+  end-user sessions (`TechnicianView.jsx`/`DispatcherView.jsx`, any
+  technician or the owner). Fixed with a combined check: bypass if the
+  caller presents the real service-role key, otherwise require
+  `isOwnerOrTechnicianOfBusiness`. Previously: a forged `{businessId,
+  event, payload}` with the anon key could fire a stranger's configured
+  workflow with fully attacker-controlled `payload` — an arbitrary POST
+  to their webhook `action_target`, or a Slack message via the gap above.
+- **`generate-compliance-package`** / **`package-client-verification`**:
+  trade/industrial-sector twins that assemble a completed job's or site's
+  evidence (client name/address, checklist, materials, invoice, technician
+  credentials / check-ins, telemetry, safety incidents) into a permanent
+  stored package row plus a Slack notification. Previously: a bare
+  `jobId`/`siteId` exposed that evidence to anyone and forged a permanent
+  DB insert + notification for a stranger's job/site. Fixed with
+  `isOwnerOrAssignedTechnician` (job) / `isOwnerOfBusiness` (site — this
+  sector's dispatcher console is owner-session-only, no separate
+  technician login). `generate-compliance-package`'s job lookup also hit
+  the same `PGRST201` FK-ambiguity risk as the SMS functions above —
+  fixed proactively this time (`technicians!jobs_technician_id_fkey(...)`)
+  rather than discovering it via a failed live test.
+- **`optimize-daily-route`**: had `verify_jwt: true` but, as established
+  earlier this round with `create-billing-portal-session`, that alone is
+  not a real identity check (the public anon key is itself a validly-
+  signed JWT). A bare `technicianId` let anyone overwrite that
+  technician's real jobs' `route_sequence`/`estimated_arrival_at` for the
+  day. Fixed with `isOwnerOrAssignedTechnician`.
+- **`industrial-conductor`** (lowest severity of the 6): has a cron-sweep
+  mode (no body, discovers its own leadIds server-side — left untouched,
+  no per-caller identity to check there) and a direct-invocation `{leadId}`
+  mode from `IndustrialDispatcherView.jsx`. A forged `leadId` with the
+  anon key could force an extra Slack "suggestion" message containing a
+  real lead's company name/equipment need to fire for a stranger's
+  business. Fixed with `isOwnerOfBusiness`, scoped only to the
+  direct-invocation path.
+
+Deployed all 6 via the multipart Management API method, preserving each
+function's existing `verify_jwt: true`. Verified live against the real
+`[TEST] Theoretical Co` business: anon-key-only calls against real (or,
+for the two content-injection-only functions, fake) IDs now return `401
+{"error":"Not authenticated."}` for all 6; separately confirmed the
+service-role-key bypass path still works end-to-end for `notify-slack`
+and `run-custom-workflows` (real internal callers unaffected). All
+throwaway test rows deleted after verification.
+
 ## Fixed: missed-call-webhook now validates Twilio's signature
 
 `missed-call-webhook` is deployed with `--no-verify-jwt` (like
