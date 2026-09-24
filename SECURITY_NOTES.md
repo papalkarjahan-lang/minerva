@@ -264,6 +264,39 @@ control changed from a static unauthenticated `<a href>` to a fetch call
 carrying the session token, since a redirect-only flow can't attach a
 header.
 
+## Fixed 2026-09-24: same forged-request gap in 5 more dispatcher-click functions
+
+An audit of every Edge Function deployed with `verify_jwt:false` (27 of 69)
+found the exact same gap `xero-oauth-connect` was fixed for above, present
+in 5 more functions that are all triggered from a dispatcher's own
+authenticated click in `DispatcherView.jsx` but had zero server-side
+ownership check: `draft-quote` (bare `businessId` — worst of the 5, since
+an unauthenticated caller could trigger a real, costed Anthropic API call
+and insert an attacker-controlled quote row for any business whose id they
+knew/guessed), `send-quote-sms`, `send-review-request-sms`,
+`send-job-assignment-sms` (all three: force-send a real Twilio SMS to a
+victim business's client/technician given only a `quoteId`/`invoiceId`/
+`jobId`), and `xero-sync-invoice` (force-push a victim business's invoice
+to the attacker's own connected Xero org — this was actually reachable
+even after the `xero-oauth-connect` fix above, since that fix only
+protected the *connect* step, not every later sync call).
+
+`verify_jwt` was deliberately left `false` on all 5 (flipping it to `true`
+alone would only raise the bar to "any Supabase account exists", not
+actually verify ownership of the specific business/record) — instead, each
+now requires a real Supabase Auth `Authorization: Bearer <token>` proving
+the caller owns (or auto-claims, same rule as `RequireBusinessAuth.jsx`)
+the specific business that owns the target record, via a new shared
+`_shared/ownership.ts` (`isOwnerOfBusiness` + `getAuthenticatedCaller`,
+11 unit tests) extracted from `xero-oauth-connect`'s original check. No
+frontend change was needed — `supabase.functions.invoke()` already attaches
+the caller's session token automatically for every logged-in dispatcher,
+so this closes the gap only for a caller with no session at all sending a
+direct/forged request; real usage is unaffected. `harvest-industrial-leads`
+was also `verify_jwt:false` and audited alongside these but found to
+already have its own equivalent protection (a per-business `X-Ingestion-Key`
+shared secret, added 2026-09-02) — no change needed there.
+
 ## Fixed: missed-call-webhook now validates Twilio's signature
 
 `missed-call-webhook` is deployed with `--no-verify-jwt` (like

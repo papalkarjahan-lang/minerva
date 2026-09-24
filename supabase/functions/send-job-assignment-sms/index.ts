@@ -21,10 +21,18 @@
 // as send-eta-sms/send-completion-sms (both already registered/gated) —
 // found via a directory-vs-agent_functions diff. See
 // supabase_schema_delta_agent_registration_round2.sql for the new row.
+//
+// Ownership check added 2026-09-24 (Round 43): had verify_jwt:false and no
+// check that the caller has any relationship to the business that owns
+// jobId — meaning an unauthenticated stranger who knew/guessed a jobId
+// could force-send a real assignment SMS to that job's technicians. Fixed
+// using the same isOwner pattern xero-oauth-connect already used for the
+// identical forged-request risk.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { formatAuPhone, buildJobAssignmentMessage, buildJobReassignmentMessage } from "../_shared/sms.ts"
+import { isOwnerOfBusiness, getAuthenticatedCaller } from "../_shared/ownership.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -52,11 +60,30 @@ serve(async (req: Request) => {
     }
 
     const { data: job, error: jobErr } = await supabase.from('jobs')
-      .select('id, client_name, client_address, scheduled_time, urgency, businesses(name)')
+      .select('id, client_name, client_address, scheduled_time, urgency, businesses(name, owner_user_id, contact_email)')
       .eq('id', jobId).maybeSingle()
     if (jobErr || !job) throw new Error('job not found')
 
-    const bizName = (job as any).businesses?.name || 'your dispatcher'
+    const jobBusiness = (job as any).businesses
+
+    // Ownership check — see header note. A legitimate dispatcher's session
+    // JWT is already attached automatically by supabase.functions.invoke(),
+    // so this adds no friction for real usage.
+    const caller = await getAuthenticatedCaller(req, supabase)
+    if (!caller) {
+      return new Response(JSON.stringify({ error: 'Not authenticated.' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+    if (!isOwnerOfBusiness(jobBusiness, caller.id, caller.email)) {
+      return new Response(JSON.stringify({ error: 'You do not have access to this business.' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+
+    const bizName = jobBusiness?.name || 'your dispatcher'
     const when = job.scheduled_time
       ? new Date(job.scheduled_time).toLocaleString('en-AU', { weekday: 'short', hour: 'numeric', minute: '2-digit', day: 'numeric', month: 'short' })
       : 'ASAP'

@@ -21,10 +21,18 @@
 // same category as sync-technician-billing (already registered/gated) —
 // found via a directory-vs-agent_functions diff. See
 // supabase_schema_delta_agent_registration_round2.sql for the new row.
+//
+// Ownership check added 2026-09-24 (Round 43): had verify_jwt:false and no
+// check that the caller has any relationship to the business that owns
+// invoiceId — meaning an unauthenticated stranger who knew/guessed an
+// invoiceId could force-push that business's invoice to their connected
+// Xero org. Fixed using the same isOwner pattern xero-oauth-connect already
+// used for the identical forged-request risk.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { isAddonActive } from "../_shared/maxAddons.ts"
+import { isOwnerOfBusiness, getAuthenticatedCaller } from "../_shared/ownership.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -52,13 +60,31 @@ serve(async (req: Request) => {
     const { invoiceId } = await req.json()
     if (!invoiceId) throw new Error('invoiceId is required')
 
-    const { data: invoice, error: invErr } = await supabase.from('invoices').select('*, businesses(max_addons, max_addon_trials)').eq('id', invoiceId).maybeSingle()
+    const { data: invoice, error: invErr } = await supabase.from('invoices').select('*, businesses(owner_user_id, contact_email, max_addons, max_addon_trials)').eq('id', invoiceId).maybeSingle()
     if (invErr || !invoice) throw new Error('invoice not found')
+
+    const bizAddons = (invoice as any).businesses
+
+    // Ownership check — see header note. A legitimate dispatcher's session
+    // JWT is already attached automatically by supabase.functions.invoke(),
+    // so this adds no friction for real usage.
+    const caller = await getAuthenticatedCaller(req, supabase)
+    if (!caller) {
+      return new Response(JSON.stringify({ error: 'Not authenticated.' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+    if (!isOwnerOfBusiness(bizAddons, caller.id, caller.email)) {
+      return new Response(JSON.stringify({ error: 'You do not have access to this business.' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
 
     // Minerva Max: xero_sync is a paid add-on — defense in depth alongside
     // the frontend gate (see src/maxAddons.js / DispatcherView's Settings
     // Xero panel + "Sync to Xero" button).
-    const bizAddons = (invoice as any).businesses
     if (!isAddonActive(bizAddons, 'xero_sync')) {
       return new Response(JSON.stringify({ error: 'Xero Sync is a Minerva Max add-on — enable it from the MAX tab first.' }), {
         status: 403,

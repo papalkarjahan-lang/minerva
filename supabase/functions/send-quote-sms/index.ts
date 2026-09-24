@@ -12,11 +12,19 @@
 // category as send-eta-sms/send-completion-sms (already registered/gated) —
 // found via a directory-vs-agent_functions diff. See
 // supabase_schema_delta_agent_registration_round2.sql for the new row.
+//
+// Ownership check added 2026-09-24 (Round 43): had verify_jwt:false and no
+// check that the caller has any relationship to the business that owns
+// quoteId — meaning an unauthenticated stranger who knew/guessed a quoteId
+// could force-send a real SMS to that quote's client. Fixed using the same
+// isOwner pattern xero-oauth-connect already used for the identical
+// forged-request risk.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { formatAuPhone } from "../_shared/sms.ts"
 import { isAddonActive } from "../_shared/maxAddons.ts"
+import { isOwnerOfBusiness, getAuthenticatedCaller } from "../_shared/ownership.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -36,14 +44,32 @@ serve(async (req: Request) => {
     const { quoteId } = await req.json()
     if (!quoteId) throw new Error('quoteId is required')
 
-    const { data: quote, error } = await supabase.from('quotes').select('*, businesses(name, max_addons, max_addon_trials)').eq('id', quoteId).maybeSingle()
+    const { data: quote, error } = await supabase.from('quotes').select('*, businesses(name, owner_user_id, contact_email, max_addons, max_addon_trials)').eq('id', quoteId).maybeSingle()
     if (error || !quote) throw new Error('quote not found')
     if (!quote.client_phone) throw new Error('This quote has no client phone number on file')
     if (quote.status !== 'draft') throw new Error(`Quote already ${quote.status} — refusing to send twice`)
 
+    const biz = (quote as any).businesses
+
+    // Ownership check — see header note. A legitimate dispatcher's session
+    // JWT is already attached automatically by supabase.functions.invoke(),
+    // so this adds no friction for real usage.
+    const caller = await getAuthenticatedCaller(req, supabase)
+    if (!caller) {
+      return new Response(JSON.stringify({ error: 'Not authenticated.' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+    if (!isOwnerOfBusiness(biz, caller.id, caller.email)) {
+      return new Response(JSON.stringify({ error: 'You do not have access to this business.' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+
     // Minerva Max: ai_quotes is a paid add-on — defense in depth alongside
     // the frontend gate (DispatcherView's Quotes tab "Send to Client" button).
-    const biz = (quote as any).businesses
     if (!isAddonActive(biz, 'ai_quotes')) {
       return new Response(JSON.stringify({ error: 'AI Quote Drafting is a Minerva Max add-on — enable it from the MAX tab first.' }), {
         status: 403,
