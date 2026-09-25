@@ -26,6 +26,21 @@
 // with no agent_functions row at all, same bug class as the earlier
 // registration-gap rounds.)
 //
+// Forged-callback fix (2026-09-25): this used to trust the `state` query
+// param directly as the target business_id. Xero never validates `state`
+// against anything — it's an opaque value the client sets when starting
+// the flow and gets echoed back unchanged — so anyone who knew Minerva's
+// client_id/redirect_uri (not secret) could run their OWN Xero login
+// through this same callback with `state` set to any victim's
+// business_id, attaching their own real Xero tokens to that victim's
+// business. Fixed by requiring `state` to match an unexpired, unconsumed
+// row in xero_oauth_states (see supabase_schema_delta_xero_oauth_state.sql
+// and xero-oauth-connect, which is now the only place that ever creates
+// one, only after verifying the caller owns the target business). The
+// row is atomically deleted on lookup (claim-once) so a duplicated/
+// replayed callback request can't reuse the same token twice. business_id
+// is now taken ONLY from that row — never from a client-supplied param.
+//
 // Deploy with: supabase functions deploy xero-oauth-callback --no-verify-jwt
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
@@ -47,8 +62,13 @@ serve(async (req: Request) => {
   const appUrl = Deno.env.get('APP_URL') || supabaseUrl
   const url = new URL(req.url)
   const code = url.searchParams.get('code')
-  const businessId = url.searchParams.get('state')
+  const stateToken = url.searchParams.get('state')
   const xeroError = url.searchParams.get('error')
+
+  // Resolved below from xero_oauth_states — NEVER trust a business_id
+  // supplied directly by the caller (see the forged-callback fix header
+  // comment above).
+  let businessId: string | null = null
 
   function redirectWithStatus(status: 'connected' | 'failed', detail?: string) {
     // Real route is /dispatch/:businessId (see src/App.jsx) — /dispatcher/
@@ -63,8 +83,30 @@ serve(async (req: Request) => {
     return new Response(null, { status: 302, headers: { 'Location': dest.toString(), 'Access-Control-Allow-Origin': '*' } })
   }
 
+  if (!stateToken) return redirectWithStatus('failed', 'missing_state')
+
+  // Atomically claim (delete-and-return) the pending state row — this is
+  // the ONLY source of truth for which business this callback belongs to.
+  // Consumed exactly once on the first request that presents this token,
+  // regardless of whether the flow ultimately succeeds or fails below, so
+  // a stale or replayed token can never be reused.
+  const { data: claimedState, error: claimStateError } = await supabase
+    .from('xero_oauth_states')
+    .delete()
+    .eq('state', stateToken)
+    .select('business_id, expires_at')
+    .maybeSingle()
+  if (claimStateError) {
+    console.error('xero-oauth-callback: state claim failed:', claimStateError.message)
+    return redirectWithStatus('failed', 'state_lookup_error')
+  }
+  if (!claimedState || new Date(claimedState.expires_at) < new Date()) {
+    return redirectWithStatus('failed', 'invalid_or_expired_state')
+  }
+  businessId = claimedState.business_id
+
   if (xeroError) return redirectWithStatus('failed', xeroError)
-  if (!code || !businessId) return redirectWithStatus('failed', 'missing_code_or_state')
+  if (!code) return redirectWithStatus('failed', 'missing_code')
 
   const clientId = Deno.env.get('XERO_CLIENT_ID')
   const clientSecret = Deno.env.get('XERO_CLIENT_SECRET')

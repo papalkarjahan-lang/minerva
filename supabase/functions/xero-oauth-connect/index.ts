@@ -17,9 +17,26 @@
 // proving the caller is actually logged in as the target business's owner
 // (same ownership check as RequireBusinessAuth.jsx, enforced here too since
 // this is a public Edge Function URL that the client-side route guard can't
-// protect). Without this, anyone who knows/guesses a businessId could link
-// their own Xero org to a victim business (a forged-callback CSRF risk) —
-// fixed 2026-09-08.
+// protect). Without this, anyone who knows/guesses a businessId could start
+// a flow that links their own Xero org to a victim business — fixed
+// 2026-09-08.
+//
+// Forged-callback fix (2026-09-25): this ownership check alone was NOT
+// sufficient, because it only gated who could START a flow, not who Xero
+// would ultimately call back for. The `state` param used to be the raw
+// businessId, and Xero never validates `state` against anything — it's
+// an opaque value the client sets and gets echoed back unchanged.
+// Anyone who knew Minerva's client_id/redirect_uri (learnable from one
+// legitimate flow — neither is secret) could construct their own Xero
+// authorize URL, log in with their OWN Xero account, and set `state` to
+// any victim's business_id directly — xero-oauth-callback would then
+// attach the attacker's real Xero tokens to the victim's business_id,
+// silently leaking every future invoice sync to the attacker's Xero org.
+// Fixed by minting a random, single-use, 15-minute state token (see
+// supabase_schema_delta_xero_oauth_state.sql) only after this ownership
+// check passes, and having xero-oauth-callback trust ONLY a business_id
+// it looked up from a matching, unexpired, unconsumed state row — never
+// a client-supplied value.
 //
 // Registered in agent_functions with a real enabled-check (kill-switch
 // capable, unlike xero-oauth-callback/track-review-click) — this is the
@@ -119,6 +136,33 @@ serve(async (req: Request) => {
     })
   }
 
+  // Mint a random, unguessable, single-use, short-lived state token bound
+  // to businessIdParam — see supabase_schema_delta_xero_oauth_state.sql
+  // header for the forged-callback vulnerability this closes. Xero itself
+  // never validates `state`, so passing the raw businessId (the old
+  // behaviour) let anyone who knew Minerva's client_id/redirect_uri (not
+  // secret — learnable from one legitimate flow) forge their own Xero
+  // login with `state` set to any victim business_id, silently attaching
+  // their own real Xero tokens to that victim's business_id in
+  // xero-oauth-callback. This token has no meaning to Xero except as an
+  // opaque value it echoes back unchanged — the actual security is in
+  // xero-oauth-callback only trusting a business_id it looked up from a
+  // matching, unexpired, not-yet-consumed row in xero_oauth_states.
+  const state = crypto.randomUUID()
+  const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString()
+  const { error: stateInsertError } = await supabase.from('xero_oauth_states').insert({
+    state,
+    business_id: businessIdParam,
+    expires_at: expiresAt,
+  })
+  if (stateInsertError) {
+    console.error('xero-oauth-connect: failed to persist oauth state:', stateInsertError.message)
+    return new Response(JSON.stringify({ error: 'Could not start the Xero connection. Please try again.' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    })
+  }
+
   const redirectUri = `${supabaseUrl}/functions/v1/xero-oauth-callback`
   const scope = 'openid profile email accounting.transactions accounting.contacts offline_access'
   const authorizeUrl = new URL('https://login.xero.com/identity/connect/authorize')
@@ -126,10 +170,7 @@ serve(async (req: Request) => {
   authorizeUrl.searchParams.set('client_id', clientId)
   authorizeUrl.searchParams.set('redirect_uri', redirectUri)
   authorizeUrl.searchParams.set('scope', scope)
-  // state is the raw businessId — no longer the only line of defense against
-  // a forged callback linking the wrong business, since reaching this point
-  // already required proving ownership of businessIdParam above.
-  authorizeUrl.searchParams.set('state', businessIdParam)
+  authorizeUrl.searchParams.set('state', state)
 
   supabase.rpc('record_agent_run', { fn_name: 'xero-oauth-connect', status: 'ok' }).then(() => {}, () => {})
 

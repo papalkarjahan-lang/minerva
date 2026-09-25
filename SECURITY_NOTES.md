@@ -1332,3 +1332,52 @@ deployed (`stripe-webhook` v12→v13, `send-outreach-batch` v8→v9), both
 live smoke-tested unaffected (`stripe-webhook` still `400 Missing
 signature or webhook secret` for an unsigned request; `send-outreach-batch`
 still `401 Not authenticated` for an anon-only request).
+
+Fixed 2026-09-25: genuine, exploitable forged-callback vulnerability in the
+Xero OAuth flow. `xero-oauth-connect` (step 1) already verified the caller
+owns the target business before starting a flow — but that check only
+gated who could START a flow, not who Xero would ultimately call back
+for. The OAuth `state` param was set to the raw `businessId`, and Xero
+never validates `state` against anything — it's an opaque value the
+client sets on the way out and gets echoed back unchanged on the way
+back. `client_id` and `redirect_uri` are NOT secret (both appear in the
+browser's own network requests during any legitimate flow), so an
+attacker could learn them from one legitimate flow run against a
+business THEY control, then construct their own Xero authorize URL
+entirely independently of `xero-oauth-connect`, log in with their OWN
+Xero account, and set `state` directly to a victim's `business_id`.
+`xero-oauth-callback` (step 2) would then store the ATTACKER's real
+Xero tokens under the VICTIM's `business_id` in
+`integration_credentials` — every future invoice/contact sync for that
+victim business would silently push real client data into the
+attacker's own Xero organization, while the victim's UI showed
+"Connected" the whole time. The ownership check on step 1 provided zero
+protection here because the attacker never needs to go through step 1
+for the victim's business at all.
+
+Fixed by replacing the raw `businessId` `state` value with a random,
+unguessable, single-use, 15-minute opaque token
+(`crypto.randomUUID()`), minted by `xero-oauth-connect` only AFTER its
+existing ownership check passes, and stored server-side in a new
+`xero_oauth_states` table (`business_id`, `expires_at`;
+`supabase_schema_delta_xero_oauth_state.sql`; RLS enabled, no
+anon/authenticated policy — same pattern as `integration_credentials`,
+only `service_role` can touch it). `xero-oauth-callback` now resolves
+`business_id` ONLY by atomically claiming (delete-and-return) the
+matching row in `xero_oauth_states` — never from a client-supplied
+param — and rejects the callback if the token is missing, unknown, or
+expired. The delete-on-claim also makes the token single-use, so a
+duplicated/replayed callback request can't reuse it (lower stakes than
+the cron double-send-race fixes, since Xero's own `code` is already
+single-use at Xero's API level, but the same claim-once pattern applied
+for consistency and defense-in-depth). 445/445 tests, lint/build clean.
+`xero_oauth_states` table applied live (verified RLS enabled, grants
+identical to `integration_credentials`). Deployed
+(`xero-oauth-connect` v9→v10, `xero-oauth-callback` v7→v8). Live
+smoke-tested: `xero-oauth-connect` still `401 Not authenticated` for an
+unauthenticated request (ownership check unaffected); `xero-oauth-callback`
+now redirects with `xero_detail=missing_state` for a request with no
+`state` at all, and `xero_detail=invalid_or_expired_state` for a
+well-formed but unknown/forged `state` token — confirming the forged
+callback this vulnerability described is now rejected before any token
+exchange with Xero is even attempted.
