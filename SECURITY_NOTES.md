@@ -1422,3 +1422,36 @@ path. 445/445 tests, lint/build clean. Deployed
 `401 Missing authorization header` for an unauthenticated request).
 The `DispatcherView.jsx` changes ship via the normal Vercel
 deploy-on-push, not a separate deploy step.
+
+Fixed 2026-09-25: unbounded growth in three housekeeping tables with no
+cleanup path. Audited every table with an expiry/timestamp column
+across all `supabase_schema_delta_*.sql` files for a corresponding
+cleanup job; found three with none:
+`xero_oauth_states` (single-use OAuth state tokens, 15-minute
+`expires_at` — a token from an ABANDONED "Connect Xero" flow, where the
+business owner never completes Xero's own login screen, is never
+consumed by `xero-oauth-callback`'s claim-delete and was never cleaned
+up any other way), `processed_stripe_events`, and
+`processed_call_sids` (both idempotency logs — one permanent row per
+real Stripe event / real missed call, forever, by design, needed only
+long enough to catch a provider retry; Stripe documents retries over
+hours/days, Twilio's Voice retries within seconds/minutes, so
+permanent retention serves no purpose past a generous buffer). Checked
+`integration_credentials` and `rate_limit_counters` too — both are
+false alarms: `integration_credentials` has `unique(business_id,
+provider)` so it's upserted, never appended, and can't grow from
+expired tokens; `rate_limit_counters`' sliding-window upsert logic
+recycles stale windows in place. `voice_call_sessions` has no cleanup
+either, but that's a pre-existing, explicitly documented, deliberate
+deferral (see that table's own delta file), not a new finding.
+Fixed with three daily `pg_cron` jobs
+(`supabase_schema_delta_retention_cleanup.sql`) doing a direct SQL
+`DELETE` each — not edge functions, unlike every other cron job in
+this codebase, because this is pure internal janitorial work with zero
+user-facing side effects and nothing to ever kill-switch, so
+`agent_functions`/`record_agent_run` registration would add ceremony
+with no benefit. Retention: 24 hours for oauth states, 90 days for
+both idempotency logs — far beyond either provider's real retry
+window, purely for a debugging buffer. Applied live via the Management
+API; verified all three jobs present in `cron.job` with the correct
+schedule/command.
