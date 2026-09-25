@@ -36,6 +36,22 @@
 // — this function's only real caller is DispatcherView.jsx today, but the
 // technician side is included since nothing about this action is
 // owner-only, same reasoning as the SMS functions).
+//
+// UTC-default timezone bug (2026-09-25): the `date` param below has
+// always been optional with a UTC-calendar-date fallback (see the
+// comment right above `targetDate`) — but DispatcherView.jsx, this
+// function's only real caller, never actually passed `date` at all,
+// so that UTC fallback was ALWAYS what ran in production. For any
+// dispatcher outside UTC (e.g. Sydney, UTC+10/11), from local midnight
+// until UTC's own midnight rollover (i.e. most of the morning), the
+// UTC calendar date is still YESTERDAY relative to the dispatcher's
+// real "today" — so clicking "Optimize Route" first thing in the
+// morning would silently query/sequence yesterday's jobs, not today's.
+// Fixed in DispatcherView.jsx's optimizeTechRoute to compute and pass
+// today's date from the browser's own local calendar fields (not
+// toISOString, which is UTC) — this function's fallback below is now
+// only a defensive default for a direct/manual invocation without a
+// `date`, not the actual production code path.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"

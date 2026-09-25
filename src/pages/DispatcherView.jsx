@@ -1430,7 +1430,17 @@ export default function DispatcherView() {
   async function optimizeTechRoute(techId) {
     setOptimizingTechId(techId)
     try {
-      const { data, error } = await supabase.functions.invoke('optimize-daily-route', { body: { technicianId: techId } })
+      // optimize-daily-route defaults its `date` to a UTC calendar date
+      // when omitted (see that function's own comment) — wrong for any
+      // dispatcher outside UTC. For roughly 10-11 hours a day (local
+      // midnight until UTC midnight, e.g. Sydney's whole morning), that
+      // default resolves to YESTERDAY's date, silently sequencing/
+      // filtering by the wrong day. Pass today's date computed from this
+      // browser's own local calendar fields (not toISOString, which is
+      // UTC) so the dispatcher always gets their own "today".
+      const now = new Date()
+      const localToday = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+      const { data, error } = await supabase.functions.invoke('optimize-daily-route', { body: { technicianId: techId, date: localToday } })
       if (error) throw error
       if (data?.error) throw new Error(data.error)
       if (data?.skipped) {
@@ -3156,6 +3166,19 @@ function AddJobModal({ businessId, technicianCredentials, onClose }) {
     setError(null)
     try {
       const { lat, lng } = await geocodeAddress(form.client_address)
+      // scheduled_time is a `timestamptz` column, but the <input
+      // type="datetime-local"> below yields a naive "YYYY-MM-DDTHH:mm"
+      // string with no timezone info. Sending that raw string lets
+      // PostgREST/Postgres interpret it in the DB session's timezone
+      // (UTC), not the dispatcher's own browser timezone — e.g. a
+      // dispatcher in Sydney (UTC+10/11) entering "2:30 PM" would
+      // silently get a job stored as 2:30 PM UTC (~12:30 AM the next day
+      // Sydney time), then displayed back wrong everywhere this column
+      // is read. new Date(...) parses a timezone-less datetime string as
+      // browser-local time per spec, so .toISOString() below correctly
+      // converts the dispatcher's actual intended local time to UTC —
+      // same fix already applied correctly to next_action_at elsewhere in
+      // this file (updateLeadNextAction's onBlur handler).
       const { error: insertError } = await supabase.from('jobs').insert({
         business_id: businessId,
         client_name: form.client_name,
@@ -3163,7 +3186,7 @@ function AddJobModal({ businessId, technicianCredentials, onClose }) {
         client_address: form.client_address,
         client_lat: lat,
         client_lng: lng,
-        scheduled_time: form.scheduled_time || null,
+        scheduled_time: form.scheduled_time ? new Date(form.scheduled_time).toISOString() : null,
         notes: form.notes || null,
         urgency: form.urgency || null,
         required_credential_name: form.required_credential_name || null,

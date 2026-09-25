@@ -1381,3 +1381,44 @@ now redirects with `xero_detail=missing_state` for a request with no
 well-formed but unknown/forged `state` token — confirming the forged
 callback this vulnerability described is now rejected before any token
 exchange with Xero is even attempted.
+
+Fixed 2026-09-25: two related timezone-handling bugs, not security
+issues but genuine functional bugs verified against the live schema.
+(1) `jobs.scheduled_time` is a `timestamptz` column, but
+`DispatcherView.jsx`'s "Add New Job" form sent the raw naive
+`"YYYY-MM-DDTHH:mm"` string straight from its `<input
+type="datetime-local">` into the insert. Confirmed live
+(`select '2026-09-25T14:30'::timestamptz` on the actual DB) that
+Postgres interprets a timezone-less string using the DB session's
+timezone — UTC (`show timezone` confirmed) — not the dispatcher's own
+browser timezone. So a dispatcher entering "2:30 PM" got a job stored
+as 2:30 PM UTC (~12:30 AM the *next* day in Sydney), then displayed
+wrong everywhere `scheduled_time` is read back. The exact same
+timezone-less-string pattern for `leads.next_action_at` elsewhere in
+the same file was ALREADY correctly wrapped in
+`new Date(...).toISOString()` before being sent — confirming this was
+an inconsistency/oversight in one spot, not an intentional design
+choice. Fixed by applying the same `new Date(...).toISOString()`
+conversion to `scheduled_time` (JS's `Date` constructor interprets a
+timezone-less datetime string as local-to-the-browser, unlike
+Postgres, so this correctly captures what the dispatcher actually
+meant before converting to a real UTC instant).
+(2) `optimize-daily-route`'s `date` param has always been optional
+with a UTC-calendar-date fallback when omitted — but its only real
+caller, `DispatcherView.jsx`'s `optimizeTechRoute`, never actually
+passed `date` at all, so that UTC fallback was ALWAYS the production
+code path. For any dispatcher outside UTC, from local midnight until
+UTC's own midnight rollover (most of the morning for e.g. Sydney,
+UTC+10/11), the UTC calendar date is still YESTERDAY relative to the
+dispatcher's real "today" — so clicking "Optimize Route" first thing
+in the morning would silently query/sequence yesterday's jobs. Fixed
+by having `optimizeTechRoute` compute today's date from the browser's
+own local calendar fields (`getFullYear`/`getMonth`/`getDate`, not
+`toISOString`, which is UTC) and pass it explicitly; the edge
+function's own UTC fallback is now only a defensive default for a
+direct/manual invocation without `date`, not the real production
+path. 445/445 tests, lint/build clean. Deployed
+(`optimize-daily-route` v6→v7); live smoke-tested unaffected (still
+`401 Missing authorization header` for an unauthenticated request).
+The `DispatcherView.jsx` changes ship via the normal Vercel
+deploy-on-push, not a separate deploy step.
