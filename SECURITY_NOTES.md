@@ -1306,3 +1306,29 @@ client already have a newer job" sub-query). Also checked
 inbound call) and confirmed it already has a UNIQUE index — no gap
 there. Applied live via the Management API and verified via a follow-up
 `pg_indexes` query showing all six present.
+
+Fixed 2026-09-25: unescaped HTML injection via business name / outreach
+draft body in transactional emails. `stripe-webhook`'s welcome email
+(checkout.session.completed) and payment-failed operator alert
+(invoice.payment_failed), and `send-outreach-batch`'s prospect email,
+all interpolated a free-text value directly into an HTML email body
+template string with no escaping: `businesses.name` (set by the
+business owner at signup, Onboarding.jsx, no character restriction)
+and `outreach_prospects.draft_body` (AI-drafted or hand-written). A
+business name containing markup would render as live HTML in the
+recipient's inbox — and for the payment-failed alert, that recipient is
+OPERATOR_EMAIL, meaning any signed-up business could inject content
+into an email landing directly in the site operator's own inbox, not
+just their own. Fixed by adding a shared `escapeHtml()` helper
+(`_shared/html.ts`, escapes `& < > " '`) and applying it at all three
+interpolation points; a normal name like "Smith & Sons" still renders
+correctly once the email client decodes the entities. Did not escape
+email `subject` fields — confirmed via reading `send-email/index.ts`
+that subjects are passed as a structured JSON field to Resend's API
+(not raw SMTP), so there is no header-injection surface there, only a
+cosmetic risk from stray characters, which isn't worth the extra
+complexity. 445/445 tests (5 new for escapeHtml), lint/build clean,
+deployed (`stripe-webhook` v12→v13, `send-outreach-batch` v8→v9), both
+live smoke-tested unaffected (`stripe-webhook` still `400 Missing
+signature or webhook secret` for an unsigned request; `send-outreach-batch`
+still `401 Not authenticated` for an anon-only request).

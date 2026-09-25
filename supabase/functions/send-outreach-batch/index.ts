@@ -45,11 +45,23 @@
 // RESEND_API_KEY is unset) rather than waiting for that key to be
 // configured, since the fix was cheap while the pattern was fresh from
 // fixing the four cron agents above.
+//
+// HTML-injection fix (2026-09-25): draft_body (AI-drafted or hand-written,
+// see the header above) was interpolated directly into the outbound
+// email's HTML body with no escaping — a draft containing stray markup
+// (accidentally, or via a scraped company_name/job field feeding the
+// Claude draft prompt) could break the email's layout or inject a link
+// for the real prospect who receives it. The 'approved' human-review gate
+// mitigates this for content a reviewer actually reads closely, but
+// escaping is a cheap, lossless defense-in-depth fix regardless — see
+// stripe-webhook's identical fix for its business-name interpolation,
+// same day, same shared escapeHtml() helper (_shared/html.ts).
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { computeSentUpdates } from "./logic.ts"
 import { isAdminCaller, getAuthenticatedCaller } from "../_shared/ownership.ts"
+import { escapeHtml } from "../_shared/html.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -121,7 +133,7 @@ serve(async (req: Request) => {
           body: JSON.stringify({
             to: p.contact_email,
             subject: p.draft_subject || `Quick question for ${p.company_name}`,
-            html: `<p>${(p.draft_body || '').split('\n').join('</p><p>')}</p>`,
+            html: `<p>${escapeHtml(p.draft_body || '').split('\n').join('</p><p>')}</p>`,
           }),
         })
         const result = await res.json().catch(() => ({}))

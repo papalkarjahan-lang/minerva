@@ -56,6 +56,18 @@
 // event's branch completes without throwing, so a genuine failure
 // (which still 500s, causing a legitimate Stripe retry) is correctly not
 // marked as processed.
+//
+// HTML-injection fix (2026-09-25): the welcome and payment-failed emails
+// above interpolate the business's own `name` (free text, set by the
+// business owner at signup with no character restriction — see
+// Onboarding.jsx) directly into an HTML email body. A business name
+// containing markup (e.g. an anchor tag) would render as live HTML in
+// the recipient's inbox — and for the payment-failed alert, that
+// recipient is OPERATOR_EMAIL, i.e. the site operator's own inbox, not
+// just the business's own. Fixed by escaping via the new shared
+// escapeHtml() (_shared/html.ts) before interpolation; a plain business
+// name like "Smith & Sons" still renders correctly once the email client
+// decodes the entities.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import Stripe from "https://esm.sh/stripe@14?target=deno"
@@ -68,6 +80,7 @@ import {
   planPaymentIntentSucceeded,
   shouldAlertOperator,
 } from "./logic.ts"
+import { escapeHtml } from "../_shared/html.ts"
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, {
   apiVersion: '2023-10-16',
@@ -143,7 +156,7 @@ serve(async (req: Request) => {
               body: JSON.stringify({
                 to: plan.welcomeEmailTo,
                 subject: `You're live on Minerva`,
-                html: `<p>Hi${biz?.name ? ' ' + biz.name : ''},</p><p>Your Minerva trial has started. Your 7-day free trial runs from today, and your card will be billed automatically when it ends unless you cancel first from your billing settings.</p><p>— The Minerva team</p>`,
+                html: `<p>Hi${biz?.name ? ' ' + escapeHtml(biz.name) : ''},</p><p>Your Minerva trial has started. Your 7-day free trial runs from today, and your card will be billed automatically when it ends unless you cancel first from your billing settings.</p><p>— The Minerva team</p>`,
               }),
             }).catch(err => console.error('stripe-webhook: welcome email failed', err))
           }
@@ -196,7 +209,7 @@ serve(async (req: Request) => {
               body: JSON.stringify({
                 to: operatorEmail,
                 subject: `[Minerva] Payment failed — ${biz?.name || plan.subscriptionId}`,
-                html: `<p>A Stripe charge for <strong>${biz?.name || 'a business'}</strong> (subscription ${plan.subscriptionId}) failed. Stripe will retry automatically per its dunning schedule — no action needed unless it keeps failing. Check the dispatcher app's billing warning or the Stripe dashboard for details.</p>`,
+                html: `<p>A Stripe charge for <strong>${escapeHtml(biz?.name || 'a business')}</strong> (subscription ${plan.subscriptionId}) failed. Stripe will retry automatically per its dunning schedule — no action needed unless it keeps failing. Check the dispatcher app's billing warning or the Stripe dashboard for details.</p>`,
               }),
             }).catch(err => console.error('stripe-webhook: operator payment-failed alert failed', err))
           }
