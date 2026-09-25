@@ -360,7 +360,7 @@ export default function AdminConsole() {
     const { data, error } = await supabase.functions.invoke('send-outreach-batch', { body: {} })
     setOutreachBusy(false)
     if (error) { alert(`Send failed: ${error.message}`); return }
-    alert(`Sent ${data?.sent ?? 0}, skipped (no email) ${data?.skippedNoEmail ?? 0}, failed ${data?.failed ?? 0}.`)
+    alert(`Sent ${data?.sent ?? 0}, skipped (no email) ${data?.skippedNoEmail ?? 0}, skipped (invalid email) ${data?.skippedInvalidEmail ?? 0}, failed ${data?.failed ?? 0}.`)
     loadProspects()
   }
 

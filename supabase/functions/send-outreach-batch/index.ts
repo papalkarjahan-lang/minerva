@@ -56,10 +56,29 @@
 // escaping is a cheap, lossless defense-in-depth fix regardless — see
 // stripe-webhook's identical fix for its business-name interpolation,
 // same day, same shared escapeHtml() helper (_shared/html.ts).
+//
+// Real unsubscribe link + email validation (2026-09-25): two related
+// fixes made now that RESEND_API_KEY is actually configured (this path
+// was previously an inert documented no-op). (1) Every outbound email now
+// gets a genuine one-click "Unsubscribe" link — outreach-unsubscribe,
+// keyed by this prospect's own unguessable UUID id — appended to a FIXED
+// footer outside draft_body, so it survives regardless of what a human
+// edited/approved in the draft text, unlike the reply-based
+// "reply unsubscribe" line living inside draft_body itself (see
+// draft-outreach-batch's UNSUBSCRIBE_LINE, kept as a second channel, not
+// replaced). Spam Act 2003 (Cth) requires a functional unsubscribe
+// facility; a reply that depends on a human noticing it in an inbox is
+// fragile on its own. (2) contact_email is now checked against
+// isValidEmail (logic.ts) before attempting a send — a malformed value
+// (scraped from a public source, or hand-entered) would otherwise be
+// rejected by Resend and, since the catch block below reverts the claim
+// back to 'approved', retried forever by every future "Send approved"
+// click and every followup-outreach cron run, never succeeding and never
+// getting cleaned up.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
-import { computeSentUpdates } from "./logic.ts"
+import { computeSentUpdates, isValidEmail } from "./logic.ts"
 import { isAdminCaller, getAuthenticatedCaller } from "../_shared/ownership.ts"
 import { escapeHtml } from "../_shared/html.ts"
 
@@ -104,10 +123,11 @@ serve(async (req: Request) => {
     const { data: prospects, error } = await query
     if (error) throw error
 
-    let sent = 0, skippedNoEmail = 0, failed = 0
+    let sent = 0, skippedNoEmail = 0, skippedInvalidEmail = 0, failed = 0
 
     for (const p of prospects || []) {
       if (!p.contact_email) { skippedNoEmail++; continue }
+      if (!isValidEmail(p.contact_email)) { skippedInvalidEmail++; continue }
 
       // Atomically claim this prospect before sending any real email —
       // the SELECT above alone is a time-of-check/time-of-use race: an
@@ -127,13 +147,18 @@ serve(async (req: Request) => {
       if (!claimed || claimed.length === 0) continue // already claimed by a concurrent request
 
       try {
+        // Fixed footer, outside draft_body — see header comment. Present on
+        // every send regardless of what a human edited/approved in the
+        // draft text.
+        const unsubscribeUrl = `${supabaseUrl}/functions/v1/outreach-unsubscribe?id=${p.id}`
+        const footer = `<p style="font-size:12px;color:#888;margin-top:24px;">Minerva — GPS dispatch for trade businesses. <a href="${unsubscribeUrl}">Unsubscribe</a></p>`
         const res = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${serviceRoleKey}` },
           body: JSON.stringify({
             to: p.contact_email,
             subject: p.draft_subject || `Quick question for ${p.company_name}`,
-            html: `<p>${escapeHtml(p.draft_body || '').split('\n').join('</p><p>')}</p>`,
+            html: `<p>${escapeHtml(p.draft_body || '').split('\n').join('</p><p>')}</p>${footer}`,
           }),
         })
         const result = await res.json().catch(() => ({}))
@@ -163,7 +188,7 @@ serve(async (req: Request) => {
 
     supabase.rpc('record_agent_run', { fn_name: 'send-outreach-batch', status: 'ok' }).then(() => {}, () => {})
 
-    return new Response(JSON.stringify({ success: true, sent, skippedNoEmail, failed }), {
+    return new Response(JSON.stringify({ success: true, sent, skippedNoEmail, skippedInvalidEmail, failed }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     })

@@ -1455,3 +1455,50 @@ both idempotency logs — far beyond either provider's real retry
 window, purely for a debugging buffer. Applied live via the Management
 API; verified all three jobs present in `cron.job` with the correct
 schedule/command.
+
+Fixed 2026-09-25: `RESEND_API_KEY` was confirmed newly set on the live
+project (via the Management API `/secrets` endpoint) — meaning
+`send-outreach-batch`'s real cold-prospecting emails are no longer a
+documented no-op, they now genuinely send. This surfaced two real gaps
+in that path, both fixed before treating it as production-ready:
+(1) the ONLY unsubscribe mechanism was a plain "reply \"unsubscribe\""
+text line living inside the human-editable/AI-drafted `draft_body` —
+requiring a human to notice the reply in an inbox and manually flip
+`outreach_prospects.unsubscribed_at` via the admin console. The Spam
+Act 2003 (Cth) requires a functional unsubscribe facility; a
+reply-dependent mechanism is fragile (easy to miss, does nothing if
+that inbox is ever unmonitored, and the text line itself could be
+edited out by a reviewer without anyone noticing). Fixed by adding a
+new `outreach-unsubscribe` edge function — a public,
+unauthenticated GET endpoint keyed by the prospect's own unguessable
+UUID row id (same unguessable-link-as-authorization pattern already
+used by `track-review-click`'s `review_requests.id` and
+`calendar-feed`'s `businessId`) — and having `send-outreach-batch`
+append a real "Unsubscribe" link to a FIXED HTML footer on every
+email, outside `draft_body`, so it's always present regardless of what
+a human edited/approved in the draft text. The reply-based line stays
+as a second channel, not replaced. (2) `contact_email` (scraped from
+public sources via `harvest-industrial-leads`, or hand-entered in the
+admin console) was never validated — a malformed value would be
+rejected by Resend, and since the existing catch block reverts the
+claim back to `'approved'` on any send failure, would have been
+retried forever by every future "Send approved" click and every
+`followup-outreach` cron run, never succeeding and never getting
+cleaned up. Fixed by adding `isValidEmail()` (`logic.ts`) — a
+deliberately loose check catching only obviously-broken values — and
+skipping (not failing) invalid addresses before attempting a send;
+surfaced in the response as `skippedInvalidEmail` and in the admin
+console's confirmation alert. 451/451 tests (6 new for
+`isValidEmail`), lint/build clean. Deployed (`outreach-unsubscribe`
+new, v1; `send-outreach-batch` v9→v10); registered in
+`agent_functions` (health-tracking only, deliberately no enabled-check
+— same reasoning as `track-review-click`: by the time this link is
+clicked it's already been sent to a real prospect, so a kill switch
+could only break a working opt-out). Live-verified end-to-end with a
+throwaway `outreach_prospects` row (`[TEST] Unsubscribe Verify Co`,
+`test-unsub-verify@example.invalid`): inserted, hit the real deployed
+`outreach-unsubscribe` URL with the public anon key, confirmed
+`unsubscribed_at` was actually set by the live function (not just
+locally reasoned about), then deleted the row immediately after.
+`send-outreach-batch` confirmed unaffected (still `401 Missing
+authorization header` for an unauthenticated request).

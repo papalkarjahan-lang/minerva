@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeSentUpdates } from './logic'
+import { computeSentUpdates, isValidEmail } from './logic'
 
 const NOW = '2026-09-24T00:00:00.000Z'
 
@@ -26,5 +26,33 @@ describe('computeSentUpdates', () => {
   it('sets both fields for the edge case of a stage > 0 row with no sent_at yet', () => {
     const result = computeSentUpdates({ sent_at: null, followup_stage: 2 }, NOW)
     expect(result).toEqual({ status: 'sent', sent_at: NOW, last_followup_sent_at: NOW })
+  })
+})
+
+describe('isValidEmail', () => {
+  it('accepts a normal address', () => {
+    expect(isValidEmail('owner@acmeplumbing.com.au')).toBe(true)
+  })
+
+  it('rejects a missing @', () => {
+    expect(isValidEmail('owneracmeplumbing.com.au')).toBe(false)
+  })
+
+  it('rejects a missing domain dot', () => {
+    expect(isValidEmail('owner@acmeplumbing')).toBe(false)
+  })
+
+  it('rejects an empty or whitespace-only value', () => {
+    expect(isValidEmail('')).toBe(false)
+    expect(isValidEmail('   ')).toBe(false)
+  })
+
+  it('rejects null/undefined without throwing', () => {
+    expect(isValidEmail(null as unknown as string)).toBe(false)
+    expect(isValidEmail(undefined as unknown as string)).toBe(false)
+  })
+
+  it('trims surrounding whitespace before checking', () => {
+    expect(isValidEmail('  owner@acmeplumbing.com.au  ')).toBe(true)
   })
 })

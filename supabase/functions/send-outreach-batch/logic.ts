@@ -27,3 +27,17 @@ export function computeSentUpdates(p: SentProspect, nowIso: string): SentUpdates
   if ((p.followup_stage || 0) > 0) updates.last_followup_sent_at = nowIso
   return updates
 }
+
+// Malformed-email fix (2026-09-25): contact_email is free-text, scraped
+// from public sources (harvest-industrial-leads) or hand-entered
+// (AdminConsole's manual prospect form) — nothing upstream validates its
+// shape. Without this check, a garbage value would reach Resend, get
+// rejected, and the prospect would be reverted to 'approved' and retried
+// forever on every future "Send approved" click and every followup-outreach
+// cron run — never succeeding, never getting cleaned up. Deliberately a
+// loose, permissive check (not a full RFC 5322 validator) — the goal is
+// catching obviously-broken values (no @, no domain, stray whitespace),
+// not rejecting unusual-but-real addresses.
+export function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((email || '').trim())
+}
