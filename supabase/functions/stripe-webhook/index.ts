@@ -79,6 +79,7 @@ import {
   planInvoicePaymentSucceeded,
   planPaymentIntentSucceeded,
   shouldAlertOperator,
+  shouldApplyCheckoutCompletion,
 } from "./logic.ts"
 import { escapeHtml } from "../_shared/html.ts"
 
@@ -139,6 +140,22 @@ serve(async (req: Request) => {
 
         const plan = planCheckoutSessionCompleted(session, subItemId)
         if (plan) {
+          const { data: biz } = await supabaseAdmin.from('businesses').select('name, stripe_customer_id').eq('id', plan.businessId).maybeSingle()
+
+          // Cross-tenant hijack guard — see shouldApplyCheckoutCompletion's
+          // header comment in logic.ts. create-checkout-session has no
+          // caller-identity check (its one real caller is pre-auth), so
+          // session.metadata.business_id is only as trustworthy as whoever
+          // originally started the checkout claimed it was. Only apply this
+          // write if the target business has no *different* Stripe customer
+          // already on file — true for every real first-time signup, false
+          // for an attempt to attach a stranger's paid checkout onto an
+          // existing business.
+          if (!shouldApplyCheckoutCompletion(biz?.stripe_customer_id, plan.update.stripe_customer_id)) {
+            console.error('stripe-webhook: refusing to overwrite existing stripe_customer_id for business', plan.businessId, '— possible cross-tenant checkout hijack attempt (session customer', plan.update.stripe_customer_id, ')')
+            break
+          }
+
           const { error } = await supabaseAdmin
             .from('businesses')
             .update(plan.update)
@@ -149,7 +166,6 @@ serve(async (req: Request) => {
           // RESEND_API_KEY isn't configured, so this never blocks the
           // webhook's real job (saving the Stripe IDs above).
           if (plan.welcomeEmailTo) {
-            const { data: biz } = await supabaseAdmin.from('businesses').select('name').eq('id', plan.businessId).maybeSingle()
             fetch(`${Deno.env.get('SUPABASE_URL')!}/functions/v1/send-email`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!}` },

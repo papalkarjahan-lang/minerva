@@ -43,6 +43,41 @@ export function planCheckoutSessionCompleted(session: CheckoutSessionLike, subIt
   }
 }
 
+// Cross-tenant hijack guard (added 2026-09-27). create-checkout-session
+// takes a bare `businessId` in the request body with NO caller-identity
+// check — deliberately, since its one real caller (Onboarding.jsx) runs
+// pre-auth, right after creating a brand-new business row with no
+// Supabase session yet, so there's no ownership to check at that point.
+// That businessId flows untouched into the Stripe Checkout Session's own
+// metadata, which a REAL, correctly-signed checkout.session.completed
+// webhook later hands back here as session.metadata.business_id — Stripe's
+// signature verification proves the checkout genuinely happened, but proves
+// nothing about which business the *original* businessId legitimately
+// belonged to. Business UUIDs are not secret in this codebase (they appear
+// in public tracking/invoice/calendar links every business hands to its
+// own clients — the established "unguessable ID" trust model is about
+// being hard to guess, not about being confidential once known), so an
+// attacker who has ever received a link from a victim business could take
+// that business's id, call create-checkout-session directly with it plus
+// their OWN card/tier/email, complete a real (or $0 trial) checkout, and
+// have this exact webhook branch overwrite the VICTIM's
+// stripe_customer_id/stripe_sub_id with the ATTACKER's — after which
+// cancelling that subscription (customer.subscription.deleted, matched by
+// subscriptionId) would flip the victim's business to
+// subscription_tier:'cancelled' with no fault or awareness on the victim's
+// part. The one legitimate call path only ever targets a just-created
+// business with no Stripe link yet, so the fix costs it nothing: only
+// apply the update if the business doesn't already have a *different*
+// stripe_customer_id on file. A null existing id (real first-time signup)
+// or a matching id (an idempotent Stripe webhook retry of the same event)
+// both pass; any other existing id is a hijack attempt and is rejected.
+export function shouldApplyCheckoutCompletion(
+  existingStripeCustomerId: string | null | undefined,
+  planStripeCustomerId: string
+): boolean {
+  return !existingStripeCustomerId || existingStripeCustomerId === planStripeCustomerId
+}
+
 export interface SubscriptionLike {
   id?: string | null
 }

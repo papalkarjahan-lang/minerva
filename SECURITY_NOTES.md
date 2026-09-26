@@ -1561,3 +1561,54 @@ Authorization header at all still `401`; the service-role key (the
 credential every real caller already uses) still passes through to
 the same 400 validation response as before — confirming zero change
 for legitimate internal traffic.
+
+## Cross-tenant Stripe checkout hijack via create-checkout-session's unchecked businessId (2026-09-27)
+
+Continuing the same "does this webhook trust an attacker-controlled
+value that flows through a legitimately-signed callback" question that
+drove the Xero OAuth forged-callback fix, applied to Stripe.
+`create-checkout-session` takes a bare `businessId` in its request body
+with **no caller-identity check of any kind** — not an oversight so much
+as unavoidable given its one real call site (`Onboarding.jsx`, right
+after creating a brand-new business row, before any Supabase Auth
+session exists at all in this pre-auth signup flow) — and passes it
+straight into the Stripe Checkout Session's own `metadata.business_id`.
+
+The problem: business UUIDs are not secret in this codebase — they
+appear in public tracking/invoice/calendar-feed links every business
+already hands to its own clients, and the established "unguessable ID"
+trust model here is about being hard to *guess*, not about staying
+confidential once known (see the `verify_jwt` takeaway above). So
+anyone who has ever received a link from a victim business could take
+that business's id, call `create-checkout-session` directly with it
+plus their own card/tier/email, and complete a real (or $0, 7-day-trial)
+Stripe checkout. Stripe's webhook signature genuinely verifies the
+checkout happened — it proves nothing about who the businessId in its
+metadata actually belongs to. `stripe-webhook`'s
+`checkout.session.completed` handler blindly trusted that metadata and
+overwrote the target business's `stripe_customer_id`/`stripe_sub_id`
+with the attacker's own Stripe IDs. Next step for the attacker:
+cancel that subscription — `customer.subscription.deleted` matches by
+`subscriptionId` alone and flips `subscription_tier` to `'cancelled'`
+— silently knocking a real, legitimately-paying business offline with
+no fault or visibility on their part. Confirmed `create-checkout-session`
+is only ever called from that one pre-auth Onboarding.jsx path, always
+targeting a business with no existing Stripe link yet — so the real
+trust boundary belongs at the point of the actual write, not at
+request-auth (there's no session to check there regardless).
+
+Fixed with `shouldApplyCheckoutCompletion()` (`logic.ts`, 3 new unit
+tests): before applying `checkout.session.completed`'s update, fetch
+the target business's current `stripe_customer_id` and only proceed if
+it's null (real first-time signup) or already equals the session's own
+customer id (an idempotent Stripe webhook retry of the same event) —
+any other existing value means this businessId already belongs to a
+different, already-linked Stripe customer, so the write is refused and
+logged (`console.error`, visible in function logs) instead of silently
+overwriting a stranger's business. 454/454 tests (3 new), lint/build
+clean. Deployed (`stripe-webhook` v13→v14, `verify_jwt:false`
+preserved — Stripe must still reach this with no Supabase auth header).
+Smoke-tested: still correctly rejects a signature-less/unsigned POST
+with `400 Missing signature or webhook secret`, same as before the
+change — this fix sits entirely inside the already-signature-verified
+branch, so it cannot be exercised or bypassed by an unsigned request.

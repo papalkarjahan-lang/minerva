@@ -6,6 +6,7 @@ import {
   planInvoicePaymentSucceeded,
   planPaymentIntentSucceeded,
   shouldAlertOperator,
+  shouldApplyCheckoutCompletion,
 } from './logic'
 
 const NOW = '2026-09-16T12:00:00.000Z'
@@ -42,6 +43,21 @@ describe('planCheckoutSessionCompleted', () => {
   it('carries a null subItemId through untouched if the Stripe lookup failed', () => {
     const plan = planCheckoutSessionCompleted({ metadata: { business_id: 'biz_1' }, customer: 'cus_1', subscription: 'sub_1' }, null)
     expect(plan!.update.stripe_sub_item_id).toBeNull()
+  })
+})
+
+describe('shouldApplyCheckoutCompletion', () => {
+  it('allows a real first-time signup (no existing stripe_customer_id)', () => {
+    expect(shouldApplyCheckoutCompletion(null, 'cus_1')).toBe(true)
+    expect(shouldApplyCheckoutCompletion(undefined, 'cus_1')).toBe(true)
+  })
+
+  it('allows an idempotent retry of the same event (existing id matches)', () => {
+    expect(shouldApplyCheckoutCompletion('cus_1', 'cus_1')).toBe(true)
+  })
+
+  it('rejects a checkout for a different Stripe customer than the one already on file (hijack attempt)', () => {
+    expect(shouldApplyCheckoutCompletion('cus_victim', 'cus_attacker')).toBe(false)
   })
 })
 
