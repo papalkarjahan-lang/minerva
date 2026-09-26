@@ -21,6 +21,30 @@
 // yet was never registered in agent_functions at all — found via a
 // directory-vs-agent_functions diff. See
 // supabase_schema_delta_agent_registration_round2.sql for the new row.
+//
+// Internal-only caller-identity fix (2026-09-27): this function had
+// verify_jwt:true but NO application-level caller check, and this codebase
+// already established (see SECURITY_NOTES.md) that verify_jwt is NOT a
+// real security boundary — the public anon key is itself a valid signed
+// JWT, so verify_jwt:true only blocks a request with no Authorization
+// header at all, not one bearing the anon key. Confirmed live: a POST with
+// only the anon key reaches this function's own code (hits the
+// to/subject/html validation below) rather than being rejected at the
+// platform layer. Every real caller of this function (stripe-webhook,
+// test-agent-health, send-outreach-batch) is itself a server-side edge
+// function invoking this one with its own SUPABASE_SERVICE_ROLE_KEY as the
+// Authorization bearer — none of them are reachable from the frontend, and
+// this function was never meant to be either. Left unfixed, this was an
+// open relay: once RESEND_API_KEY is configured (now live), anyone holding
+// the public anon key (shipped in every page load) could send an arbitrary
+// email — attacker-chosen recipient, subject, and HTML — through Minerva's
+// own paid Resend account and sending domain. Real risk: phishing using
+// Minerva's domain, spam/abuse reports against that domain hurting
+// deliverability for every legitimate email this codebase sends, and
+// Resend quota exhaustion. Fixed by requiring the caller's own
+// Authorization header to literally be the service role key, matching how
+// every real caller already invokes this function — no change for any
+// legitimate usage.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
@@ -33,6 +57,14 @@ serve(async (req: Request) => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
   const supabase = createClient(supabaseUrl, supabaseServiceKey)
+
+  const callerToken = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '')
+  if (callerToken !== supabaseServiceKey) {
+    return new Response(JSON.stringify({ error: 'Not authenticated.' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    })
+  }
 
   try {
     const { data: fnState } = await supabase.from('agent_functions').select('enabled').eq('name', 'send-email').maybeSingle()

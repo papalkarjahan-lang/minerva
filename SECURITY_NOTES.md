@@ -1502,3 +1502,62 @@ throwaway `outreach_prospects` row (`[TEST] Unsubscribe Verify Co`,
 locally reasoned about), then deleted the row immediately after.
 `send-outreach-batch` confirmed unaffected (still `401 Missing
 authorization header` for an unauthenticated request).
+
+## `send-email` open relay — anon key could send arbitrary email through Minerva's own Resend account (2026-09-27)
+
+With `RESEND_API_KEY` now live (see the entry above), swept every caller
+of `send-email` for the same class of gap just fixed in
+`send-outreach-batch`. `stripe-webhook` and `test-agent-health` were
+both clean: the only interpolated field in either is a business name,
+already run through `escapeHtml()`, and every `to`/subject value in
+both is either an env-configured `OPERATOR_EMAIL` (admin-set, trusted)
+or `session.customer_details.email` (collected and format-validated by
+Stripe Checkout itself, not attacker-controlled).
+
+`send-email` itself was the real gap. It had `verify_jwt:true`, but
+this codebase already established (see the `verify_jwt` audit further
+up this file) that `verify_jwt` is **not** a real security boundary —
+the public anon key, shipped in every page load, is itself a valid
+signed JWT, so `verify_jwt:true` only rejects a request with no
+Authorization header at all. `send-email` had zero
+application-level caller check on top of that — no `isAdminCaller`,
+no internal-caller check, nothing — despite taking a fully
+attacker-controlled `to`, `subject`, and `html` and forwarding them
+straight to the Resend API using this project's own paid account and
+sending domain. Confirmed live before fixing: a `POST` bearing only
+the public anon key reached the function's own code (400 "to,
+subject, and html are required" — the *validation* response) rather
+than being rejected at the platform layer. Had a real `to`/`subject`/
+`html` been supplied, that request would have genuinely sent, because
+`RESEND_API_KEY` is now configured. In effect: an open relay handing
+anyone with devtools a way to send arbitrary phishing/spam email,
+attacker-chosen recipient and content, that looks like it comes from
+Minerva's own verified domain — plus Resend quota exhaustion and
+deliverability/reputation damage to every legitimate email this
+codebase sends (welcome emails, payment-failure alerts, health
+alerts, cold outreach).
+
+This is unlike every other `isAdminCaller`-style fix so far: `send-email`
+is never called from the frontend at all — its only three real callers
+(`stripe-webhook`, `test-agent-health`, `send-outreach-batch`) are
+themselves server-side edge functions, each already invoking it with
+its own `SUPABASE_SERVICE_ROLE_KEY` as the `Authorization` bearer.
+So rather than requiring an authenticated admin user, fixed by
+requiring the caller's `Authorization` header to literally equal
+`Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')` — a true internal-only
+guard. Both sides read the same env var at request time, so this
+can't drift the way a hand-typed comparison value would (see the
+service-role-key-format note elsewhere in this file about legacy JWT
+vs. new `sb_secret_...` format) — every real caller stays in sync
+automatically, and no legitimate usage changes at all.
+
+451/451 tests unaffected (no testable logic extracted here — this is
+a single `Authorization` header comparison in `index.ts`, nothing to
+put in a `logic.ts`). Lint/build clean. Deployed (`send-email`
+v4→v5, `verify_jwt:true` preserved). Live-verified all three cases
+post-deploy: anon-key-only request now `401 {"error":"Not
+authenticated."}` (previously reached validation logic); no
+Authorization header at all still `401`; the service-role key (the
+credential every real caller already uses) still passes through to
+the same 400 validation response as before — confirming zero change
+for legitimate internal traffic.
