@@ -65,7 +65,7 @@ create table custom_workflows (
   name            text not null,
   trigger_event   text not null, -- 'lead.created' | 'job.completed' | 'invoice.paid' | 'invoice.overdue'
   condition_field text, -- optional, e.g. 'urgency', 'estimated_value_tier', 'total'
-  condition_op    text, -- 'eq' | 'neq' | 'gt' | 'lt' | 'contains' — null/empty = always match
+  condition_op    text, -- 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'contains' — null/empty = always match (gte/lte added 2026-09-27)
   condition_value text,
   action_type     text not null, -- 'webhook' | 'slack'
   action_target   text not null, -- webhook URL, or ignored for 'slack' (uses business's own slack_webhook_url)

@@ -19,6 +19,8 @@ export function matchesCondition(
     case 'neq': return String(actual) !== String(value)
     case 'gt': return Number(actual) > Number(value)
     case 'lt': return Number(actual) < Number(value)
+    case 'gte': return Number(actual) >= Number(value)
+    case 'lte': return Number(actual) <= Number(value)
     case 'contains': return String(actual).toLowerCase().includes(String(value || '').toLowerCase())
     default: return true
   }

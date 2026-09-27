@@ -39,6 +39,18 @@ describe('matchesCondition', () => {
     it('does not match when actual is not less', () => { expect(matchesCondition({ amount: 500 }, 'amount', 'lt', '100')).toBe(false) })
   })
 
+  describe('gte', () => {
+    it('matches when actual is greater', () => { expect(matchesCondition({ amount: 500 }, 'amount', 'gte', '100')).toBe(true) })
+    it('matches when actual is equal', () => { expect(matchesCondition({ amount: 100 }, 'amount', 'gte', '100')).toBe(true) })
+    it('does not match when actual is less', () => { expect(matchesCondition({ amount: 50 }, 'amount', 'gte', '100')).toBe(false) })
+  })
+
+  describe('lte', () => {
+    it('matches when actual is less', () => { expect(matchesCondition({ amount: 50 }, 'amount', 'lte', '100')).toBe(true) })
+    it('matches when actual is equal', () => { expect(matchesCondition({ amount: 100 }, 'amount', 'lte', '100')).toBe(true) })
+    it('does not match when actual is greater', () => { expect(matchesCondition({ amount: 500 }, 'amount', 'lte', '100')).toBe(false) })
+  })
+
   describe('contains', () => {
     it('matches a case-insensitive substring', () => { expect(matchesCondition({ notes: 'Urgent Job Here' }, 'notes', 'contains', 'urgent')).toBe(true) })
     it('does not match when substring is absent', () => { expect(matchesCondition({ notes: 'routine job' }, 'notes', 'contains', 'urgent')).toBe(false) })

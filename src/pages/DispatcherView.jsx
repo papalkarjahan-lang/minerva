@@ -4174,7 +4174,9 @@ function CustomWorkflowsPanel({ businessId }) {
                 <option value="eq">is equal to</option>
                 <option value="neq">is not equal to</option>
                 <option value="gt">is greater than</option>
+                <option value="gte">is greater than or equal to</option>
                 <option value="lt">is less than</option>
+                <option value="lte">is less than or equal to</option>
                 <option value="contains">contains</option>
               </select>
               <input required placeholder="value" value={draft.condition_value} onChange={e => setDraft(d => ({ ...d, condition_value: e.target.value }))} style={{ ...styles.input, flex: 1 }} />
