@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import Map, { Marker, NavigationControl, Source, Layer } from 'react-map-gl'
+import Map, { Marker, NavigationControl, ScaleControl, Source, Layer } from 'react-map-gl'
 import { supabase } from '../supabaseClient'
-import { timeAgo, isMapboxTokenConfigured } from '../utils'
+import { timeAgo, isMapboxTokenConfigured, haversineKm } from '../utils'
 import ClientSupportChat from '../components/ClientSupportChat'
 import 'mapbox-gl/dist/mapbox-gl.css'
 
@@ -245,6 +245,7 @@ export default function TrackingView() {
           terrain={{ source: 'mapbox-dem', exaggeration: 1.5 }}
         >
           <NavigationControl position="top-right" showCompass={true} visualizePitch />
+          <ScaleControl position="bottom-left" unit="metric" />
           {/* 3D terrain elevation + sky atmosphere */}
           <Source
             id="mapbox-dem"
@@ -299,7 +300,12 @@ export default function TrackingView() {
       <div style={styles.footer}>
         <div>
           <p style={styles.techName}>{tech.name}</p>
-          <p style={styles.techMeta}>Updated {timeAgo(tech.last_seen)}</p>
+          <p style={styles.techMeta}>
+            Updated {timeAgo(tech.last_seen)}
+            {tech.current_lat != null && job.client_lat != null && (
+              <> · {haversineKm(tech.current_lat, tech.current_lng, job.client_lat, job.client_lng).toFixed(1)} km away</>
+            )}
+          </p>
         </div>
         <div style={{ textAlign: 'right' }}>
           <p style={styles.statusBadge}>En route</p>

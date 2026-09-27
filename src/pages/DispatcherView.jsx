@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
-import Map, { Marker, NavigationControl, Popup, Source, Layer } from 'react-map-gl'
+import Map, { Marker, NavigationControl, FullscreenControl, ScaleControl, Popup, Source, Layer } from 'react-map-gl'
 import { supabase } from '../supabaseClient'
 import { timeAgo, geocodeAddress, insertTechniciansWithPinRetry, haversineKm, isMapboxTokenConfigured } from '../utils'
 import ContactSupportModal from '../components/ContactSupportModal'
@@ -160,10 +160,15 @@ export default function DispatcherView() {
   function toggle3D() {
     const next = !is3D
     setIs3D(next)
+    // Respect prefers-reduced-motion: jump straight to the new pitch/bearing
+    // instead of animating for dispatchers who've asked their OS/browser to
+    // minimize motion.
+    const reduceMotion = typeof window !== 'undefined' && window.matchMedia
+      && window.matchMedia('(prefers-reduced-motion: reduce)').matches
     mapRef.current?.easeTo({
       pitch: next ? DISPATCHER_DEFAULT_PITCH : 0,
       bearing: next ? DISPATCHER_DEFAULT_BEARING : 0,
-      duration: 600
+      duration: reduceMotion ? 0 : 600
     })
   }
   // Fog gives the dark console map atmospheric depth (distant terrain
@@ -2857,6 +2862,8 @@ export default function DispatcherView() {
           terrain={{ source: 'mapbox-dem', exaggeration: 1.5 }}
         >
           <NavigationControl position="top-right" visualizePitch />
+          <FullscreenControl position="top-right" />
+          <ScaleControl position="bottom-left" unit="metric" />
           {/* 3D terrain elevation + sky atmosphere */}
           <Source
             id="mapbox-dem"
@@ -2962,6 +2969,15 @@ export default function DispatcherView() {
                     <p style={{ margin: 0, fontSize: 12, color: '#888' }}>
                       {jobs.find(j => j.id === selected.current_job_id).client_address}
                     </p>
+                    {jobs.find(j => j.id === selected.current_job_id).client_lat != null && (
+                      <p style={{ margin: '4px 0 0', fontSize: 12, color: '#2D5FA8' }}>
+                        {haversineKm(
+                          selected.current_lat, selected.current_lng,
+                          jobs.find(j => j.id === selected.current_job_id).client_lat,
+                          jobs.find(j => j.id === selected.current_job_id).client_lng
+                        ).toFixed(1)} km from job
+                      </p>
+                    )}
                   </>
                 )}
                 <p style={{ margin: '6px 0 0', fontSize: 12, color: '#1D9E75' }}>
@@ -3013,6 +3029,7 @@ export default function DispatcherView() {
             type="button"
             onClick={toggle3D}
             title={is3D ? 'Switch to flat 2D view' : 'Switch to 3D view'}
+            aria-label={is3D ? 'Switch to flat 2D view' : 'Switch to 3D view'}
             style={styles.map3DToggle}
           >
             {is3D ? '2D' : '3D'}
