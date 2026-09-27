@@ -4214,9 +4214,13 @@ function CustomWorkflowsPanel({ businessId }) {
           <select value={draft.action_type} onChange={e => setDraft(d => ({ ...d, action_type: e.target.value }))} style={{ ...styles.input, marginBottom: 8 }}>
             <option value="slack">Post to Slack (uses your webhook above)</option>
             <option value="webhook">POST to a custom webhook URL</option>
+            <option value="email">Send a notification email</option>
           </select>
           {draft.action_type === 'webhook' && (
             <input required placeholder="https://your-webhook-url.com/..." value={draft.action_target} onChange={e => setDraft(d => ({ ...d, action_target: e.target.value }))} style={{ ...styles.input, marginBottom: 8 }} />
+          )}
+          {draft.action_type === 'email' && (
+            <input required type="email" placeholder="you@yourbusiness.com" value={draft.action_target} onChange={e => setDraft(d => ({ ...d, action_target: e.target.value }))} style={{ ...styles.input, marginBottom: 8 }} />
           )}
           <button type="submit" style={{ ...styles.submitBtn, padding: '6px 14px', fontSize: 13 }}>Save rule</button>
         </form>

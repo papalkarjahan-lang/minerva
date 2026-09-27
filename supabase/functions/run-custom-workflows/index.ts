@@ -46,6 +46,10 @@
 //    points their own webhook-receiving integration at this).
 //  - 'slack': posts a formatted line to the business's already-configured
 //    slack_webhook_url via notify-slack, no separate secret needed.
+//  - 'email' (added 2026-09-28): sends a plain notification email to
+//    action_target (the destination address here, not a URL) via send-email
+//    — a documented no-op until RESEND_API_KEY is configured, same as every
+//    other email in this codebase.
 //
 // Deploy with: supabase functions deploy run-custom-workflows
 //
@@ -246,6 +250,22 @@ async function runWorkflowsFor(
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
           body: JSON.stringify({ businessId, text: `🔧 Workflow *${wf.name}* triggered by ${event}` }),
+        })
+      } else if (wf.action_type === 'email') {
+        // action_target doubles as the destination email address for this
+        // action type (webhook uses it as a URL, slack ignores it) — same
+        // no-extra-columns reuse already established for this table. Routed
+        // through send-email (the shared Resend choke point, gated on
+        // RESEND_API_KEY exactly like every other email in this codebase)
+        // rather than calling Resend directly.
+        await fetch(`${supabaseUrl}/functions/v1/send-email`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
+          body: JSON.stringify({
+            to: wf.action_target,
+            subject: `Minerva workflow triggered: ${wf.name}`,
+            html: `<p>Your workflow <strong>${wf.name}</strong> was triggered by <strong>${event}</strong>.</p><pre>${JSON.stringify(payload, null, 2)}</pre>`,
+          }),
         })
       }
       ran++

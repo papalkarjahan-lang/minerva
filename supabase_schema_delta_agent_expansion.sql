@@ -67,8 +67,8 @@ create table custom_workflows (
   condition_field text, -- optional, e.g. 'urgency', 'estimated_value_tier', 'total'
   condition_op    text, -- 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'contains' — null/empty = always match (gte/lte added 2026-09-27)
   condition_value text,
-  action_type     text not null, -- 'webhook' | 'slack'
-  action_target   text not null, -- webhook URL, or ignored for 'slack' (uses business's own slack_webhook_url)
+  action_type     text not null, -- 'webhook' | 'slack' | 'email' (email added 2026-09-28)
+  action_target   text not null, -- webhook URL for 'webhook'; destination email for 'email'; ignored for 'slack' (uses business's own slack_webhook_url)
   active          bool default true,
   created_at      timestamptz default now()
 );
