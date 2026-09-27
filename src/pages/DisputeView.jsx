@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import Map, { Marker, Source, Layer } from 'react-map-gl'
 import { supabase } from '../supabaseClient'
+import { isMapboxTokenConfigured } from '../utils'
 import 'mapbox-gl/dist/mapbox-gl.css'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
@@ -126,10 +127,24 @@ export default function DisputeView() {
             <p style={styles.lineMuted}>No GPS breadcrumbs recorded against this job.</p>
           ) : (
             <div style={{ height: 280, borderRadius: 10, overflow: 'hidden', marginTop: 10 }}>
+              {!isMapboxTokenConfigured() ? (
+                // Same underlying gap as DispatcherView/TrackingView (see
+                // isMapboxTokenConfigured in utils.js) — this evidence page
+                // is read-only and shares no state with either of those, so
+                // it needs its own guard. The route's raw first/last-point
+                // timestamps are still printed below regardless, so a
+                // dispute pack viewed before Mapbox is connected is still
+                // useful evidence, just without the visual route.
+                <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f5f5f5', color: '#888', fontSize: 13, textAlign: 'center', padding: 16 }}>
+                  Map preview unavailable — GPS points are still listed below.
+                </div>
+              ) : (
               <Map
                 mapboxAccessToken={MAPBOX_TOKEN}
                 {...viewState}
                 onMove={e => setViewState(e.viewState)}
+                onError={e => console.error('DisputeView: map tile/style error', e?.error || e)}
+                antialias
                 style={{ width: '100%', height: '100%' }}
                 mapStyle="mapbox://styles/mapbox/streets-v12"
               >
@@ -162,6 +177,7 @@ export default function DisputeView() {
                   <div style={styles.routeDot('#8A2525')} title="Last recorded point" />
                 </Marker>
               </Map>
+              )}
               <p style={{ ...styles.lineMuted, marginTop: 8 }}>
                 First point {new Date(locations[0].recorded_at).toLocaleString('en-AU')} · Last point {new Date(locations[locations.length - 1].recorded_at).toLocaleString('en-AU')}
               </p>

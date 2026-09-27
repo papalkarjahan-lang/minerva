@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
-import Map, { Marker, Popup, Source, Layer } from 'react-map-gl'
+import Map, { Marker, NavigationControl, Popup, Source, Layer } from 'react-map-gl'
 import { supabase } from '../supabaseClient'
-import { timeAgo, geocodeAddress, insertTechniciansWithPinRetry, haversineKm } from '../utils'
+import { timeAgo, geocodeAddress, insertTechniciansWithPinRetry, haversineKm, isMapboxTokenConfigured } from '../utils'
 import ContactSupportModal from '../components/ContactSupportModal'
 import { MAX_ADDONS, hasAddon, isTrialing, trialDaysLeft, hasUsedTrial, enableAddonPatch, disableAddonPatch, startTrialPatch } from '../maxAddons'
 import 'mapbox-gl/dist/mapbox-gl.css'
@@ -147,6 +147,46 @@ export default function DispatcherView() {
     pitch: 45,
     bearing: -10
   })
+  // 3D terrain/buildings toggle — some dispatchers on older laptops or with
+  // a lot of markers on screen would rather have a flat, cheaper-to-render
+  // map; others want the spatial depth. easeTo (not setViewState) gives a
+  // smooth animated tilt instead of an instant jump cut. mapRef is only
+  // ever read after the map's onLoad fires (see DISPATCHER_DEFAULT_PITCH
+  // below), so it's safe for the button to reference it directly.
+  const [is3D, setIs3D] = useState(true)
+  const mapRef = useRef(null)
+  const DISPATCHER_DEFAULT_PITCH = 45
+  const DISPATCHER_DEFAULT_BEARING = -10
+  function toggle3D() {
+    const next = !is3D
+    setIs3D(next)
+    mapRef.current?.easeTo({
+      pitch: next ? DISPATCHER_DEFAULT_PITCH : 0,
+      bearing: next ? DISPATCHER_DEFAULT_BEARING : 0,
+      duration: 600
+    })
+  }
+  // Fog gives the dark console map atmospheric depth (distant terrain
+  // fades into the same near-black as the sky instead of hard-cutting at
+  // the horizon) and a faint starfield — the "glowing city at night"
+  // look this console is going for. Light casts a cool blue-tinted glow
+  // across the 3D building extrusions instead of Mapbox's flat default
+  // shading, matching the existing #1e3a5f building fill. Both are
+  // runtime style mutations (not react-map-gl props), so they're applied
+  // once via onLoad's raw map instance rather than passed as JSX props.
+  function handleDispatcherMapLoad(e) {
+    e.target.setFog({
+      range: [0.5, 10],
+      color: '#0b1220',
+      'high-color': '#1b2a4a',
+      'space-color': '#020308',
+      'star-intensity': 0.15
+    })
+    e.target.setLight({ anchor: 'viewport', color: '#8fb8ff', intensity: 0.5 })
+  }
+  function handleMapTileError(e) {
+    console.error('DispatcherView: map tile/style error', e?.error || e)
+  }
 
   // Load business and initial data
   useEffect(() => {
@@ -2785,14 +2825,38 @@ export default function DispatcherView() {
 
       {/* Map */}
       <div style={{ flex: 1, position: 'relative' }}>
+        {!isMapboxTokenConfigured() ? (
+          // Real state as of this build: VITE_MAPBOX_TOKEN is still
+          // Mapbox's own placeholder value until a real one is pasted in
+          // (see isMapboxTokenConfigured's comment in utils.js) — rendering
+          // <Map> anyway would just show a broken grey tile grid with a
+          // console full of 401s. This panel is the honest, actionable
+          // stand-in until then; nothing else on this page depends on the
+          // map (technician/job lists, assignment, etc. all live in the
+          // sidebar), so dispatching still works fully without it.
+          <div style={styles.mapUnconfigured}>
+            <p style={{ fontSize: 32, margin: '0 0 10px' }}>🗺️</p>
+            <p style={{ color: '#ccc', fontSize: 15, fontWeight: 'bold', margin: '0 0 6px' }}>Live map isn&apos;t connected yet</p>
+            <p style={{ color: '#888', fontSize: 13, margin: 0, maxWidth: 320, textAlign: 'center', lineHeight: 1.5 }}>
+              Add a real Mapbox token to <code style={styles.mapUnconfiguredCode}>VITE_MAPBOX_TOKEN</code> (in Vercel&apos;s
+              Environment Variables and your local .env.local) to see technicians and jobs on the 3D map here.
+              Everything else on this page works normally in the meantime.
+            </p>
+          </div>
+        ) : (
         <Map
+          ref={mapRef}
           mapboxAccessToken={MAPBOX_TOKEN}
           {...viewState}
           onMove={e => setViewState(e.viewState)}
+          onLoad={handleDispatcherMapLoad}
+          onError={handleMapTileError}
+          antialias
           style={{ width: '100%', height: '100%' }}
           mapStyle="mapbox://styles/mapbox/dark-v11"
           terrain={{ source: 'mapbox-dem', exaggeration: 1.5 }}
         >
+          <NavigationControl position="top-right" visualizePitch />
           {/* 3D terrain elevation + sky atmosphere */}
           <Source
             id="mapbox-dem"
@@ -2943,6 +3007,17 @@ export default function DispatcherView() {
             </Source>
           )}
         </Map>
+        )}
+        {isMapboxTokenConfigured() && (
+          <button
+            type="button"
+            onClick={toggle3D}
+            title={is3D ? 'Switch to flat 2D view' : 'Switch to 3D view'}
+            style={styles.map3DToggle}
+          >
+            {is3D ? '2D' : '3D'}
+          </button>
+        )}
       </div>
 
       {/* New Quote Modal — quote-to-job AI estimator */}
@@ -3955,6 +4030,9 @@ const styles = {
   dealValueInput: { background: '#0f1420', color: '#ccc', border: '1px solid #1e293b', borderRadius: 6, padding: '5px 8px', fontSize: 12, width: 110 },
   marker: { width: 36, height: 36, borderRadius: '50%', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: 14, border: '2px solid #fff', cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.5)' },
   jobMarker: { fontSize: 20, cursor: 'pointer' },
+  mapUnconfigured: { position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#050811' },
+  mapUnconfiguredCode: { background: '#0f1420', border: '1px solid #1e293b', borderRadius: 4, padding: '1px 5px', color: '#8fb8ff', fontSize: 12 },
+  map3DToggle: { position: 'absolute', top: 10, left: 10, zIndex: 1, background: '#0a0f1d', border: '1px solid #1e293b', borderRadius: 8, color: '#ccc', fontSize: 12, fontWeight: 'bold', padding: '6px 10px', cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.4)' },
   modalOverlay: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999 },
   modal: { background: '#fff', borderRadius: 16, padding: 28, width: '90%', maxWidth: 420, boxShadow: '0 20px 60px rgba(0,0,0,0.4)' },
   inputLabel: { display: 'block', fontSize: 13, fontWeight: 'bold', color: '#444', marginBottom: 5 },

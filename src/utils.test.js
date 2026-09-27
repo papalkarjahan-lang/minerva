@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { haversineKm, generatePin, generateReferralCode, timeAgo, insertTechniciansWithPinRetry, classifyPriority, normalizeAddressForGeocoding, pickBestGeocodeFeature } from './utils'
+import { describe, it, expect, afterEach, vi } from 'vitest'
+import { haversineKm, generatePin, generateReferralCode, timeAgo, insertTechniciansWithPinRetry, classifyPriority, normalizeAddressForGeocoding, pickBestGeocodeFeature, isMapboxTokenConfigured } from './utils'
 
 describe('haversineKm', () => {
   it('returns 0 for identical points', () => {
@@ -160,5 +160,36 @@ describe('classifyPriority', () => {
   it('is case-insensitive', () => {
     expect(classifyPriority('THIS IS AN EMERGENCY')).toBe('urgent')
     expect(classifyPriority('Can I get a REFUND please')).toBe('urgent')
+  })
+})
+
+describe('isMapboxTokenConfigured', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it('returns false when the token is missing', () => {
+    vi.stubEnv('VITE_MAPBOX_TOKEN', '')
+    expect(isMapboxTokenConfigured()).toBe(false)
+  })
+
+  it('returns false for the shipped documentation placeholder token', () => {
+    vi.stubEnv('VITE_MAPBOX_TOKEN', 'pk.eyJ1IjoieW91cnVzZXJuYW1lIiwi...')
+    expect(isMapboxTokenConfigured()).toBe(false)
+  })
+
+  it('returns false for any other value containing "..."', () => {
+    vi.stubEnv('VITE_MAPBOX_TOKEN', 'pk.abc...xyz')
+    expect(isMapboxTokenConfigured()).toBe(false)
+  })
+
+  it('returns false for a malformed token missing the signature segment', () => {
+    vi.stubEnv('VITE_MAPBOX_TOKEN', 'pk.onlyOneSegment')
+    expect(isMapboxTokenConfigured()).toBe(false)
+  })
+
+  it('returns true for a well-formed pk.<payload>.<signature> token', () => {
+    vi.stubEnv('VITE_MAPBOX_TOKEN', 'pk.eyJ1IjoicmVhbHVzZXIifQ.abcDEF123-_signature')
+    expect(isMapboxTokenConfigured()).toBe(true)
   })
 })

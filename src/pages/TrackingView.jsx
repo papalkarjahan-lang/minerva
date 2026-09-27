@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import Map, { Marker, Source, Layer } from 'react-map-gl'
+import Map, { Marker, NavigationControl, Source, Layer } from 'react-map-gl'
 import { supabase } from '../supabaseClient'
-import { timeAgo } from '../utils'
+import { timeAgo, isMapboxTokenConfigured } from '../utils'
 import ClientSupportChat from '../components/ClientSupportChat'
 import 'mapbox-gl/dist/mapbox-gl.css'
 
@@ -21,6 +21,25 @@ export default function TrackingView() {
   const [viewState, setViewState] = useState({
     latitude: -33.87, longitude: 151.21, zoom: 13, pitch: 50, bearing: -15
   })
+  // Same fog/light treatment as DispatcherView's dark console, tuned for
+  // this page's lighter streets-v12 style instead — soft daytime haze
+  // fading to the horizon plus a gentle warm-white light on the building
+  // extrusions (matching the existing #c8d4e0 building fill) rather than
+  // Mapbox's flat default shading. Applied once via onLoad's raw map
+  // instance since fog/light are runtime style calls, not JSX props.
+  function handleTrackingMapLoad(e) {
+    e.target.setFog({
+      range: [0.5, 10],
+      color: '#e6edf5',
+      'high-color': '#c9d9ec',
+      'space-color': '#eef3f8',
+      'star-intensity': 0
+    })
+    e.target.setLight({ anchor: 'viewport', color: '#ffffff', intensity: 0.4 })
+  }
+  function handleMapTileError(e) {
+    console.error('TrackingView: map tile/style error', e?.error || e)
+  }
   // Client Self-Serve Rebooking Loop: shown once the job is complete, lets
   // the client ask for the same job again without a phone call. Writes
   // straight to `leads` (status='new', source='rebooking') — reuses the
@@ -199,15 +218,33 @@ export default function TrackingView() {
       </div>
 
       {/* Map */}
-      <div style={{ flex: 1 }}>
+      <div style={{ flex: 1, position: 'relative' }}>
+        {!isMapboxTokenConfigured() ? (
+          // Client-facing — no technical jargon about env vars here (that
+          // belongs on DispatcherView's internal fallback, not something a
+          // customer waiting for their technician should ever see). The
+          // footer below still shows the technician's name and "Updated
+          // X ago", so this isn't a dead end — the client still knows
+          // someone's coming, just without the live pin.
+          <div style={styles.mapUnconfigured}>
+            <p style={{ fontSize: 32, margin: '0 0 8px' }}>📍</p>
+            <p style={{ color: '#555', fontSize: 14, margin: 0, textAlign: 'center', maxWidth: 260 }}>
+              Live map view isn&apos;t available right now — your technician is still on the way.
+            </p>
+          </div>
+        ) : (
         <Map
           mapboxAccessToken={MAPBOX_TOKEN}
           {...viewState}
           onMove={e => setViewState(e.viewState)}
+          onLoad={handleTrackingMapLoad}
+          onError={handleMapTileError}
+          antialias
           style={{ width: '100%', height: '100%' }}
           mapStyle="mapbox://styles/mapbox/streets-v12"
           terrain={{ source: 'mapbox-dem', exaggeration: 1.5 }}
         >
+          <NavigationControl position="top-right" showCompass={true} visualizePitch />
           {/* 3D terrain elevation + sky atmosphere */}
           <Source
             id="mapbox-dem"
@@ -255,6 +292,7 @@ export default function TrackingView() {
             </Marker>
           )}
         </Map>
+        )}
       </div>
 
       {/* Footer info */}
@@ -274,6 +312,7 @@ export default function TrackingView() {
 
 const styles = {
   screen: { minHeight: '100vh', background: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Arial, sans-serif' },
+  mapUnconfigured: { position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#f0f2f5' },
   errorCard: { background: '#FAEAEA', borderRadius: 12, padding: 20, maxWidth: 340, textAlign: 'center' },
   completeCard: { background: '#fff', borderRadius: 16, padding: 32, maxWidth: 300, textAlign: 'center', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' },
   header: { background: '#0a0f1d', padding: '16px 20px', borderBottom: '1px solid #1e293b' },

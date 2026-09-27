@@ -16,6 +16,30 @@ export function haversineKm(lat1, lng1, lat2, lng2) {
 }
 
 // ============================================================
+// IS MAPBOX TOKEN CONFIGURED?
+// VITE_MAPBOX_TOKEN ships in .env.local/.env.example as Mapbox's own
+// placeholder example token ("pk.eyJ1IjoieW91cnVzZXJuYW1lIiwi...") until a
+// real one is pasted in. Sending that placeholder to Mapbox doesn't fail
+// loudly — geocoding requests come back as an opaque 401, and every 3D
+// map (DispatcherView/TrackingView/DisputeView) either renders a blank
+// grey tile grid or throws deep inside mapbox-gl with no indication the
+// *token* is the problem, not the address or the map code. Every place
+// that touches Mapbox checks this first so the real cause ("no real
+// token yet") is immediately obvious instead of looking like a bug.
+// A real Mapbox public token is shaped "pk.<payload>.<signature>" (two
+// dots, base64url segments) — the placeholder fails this shape check on
+// its own (it has a literal "..." instead of a real third segment), but
+// the explicit .includes('...') check is kept as a self-documenting
+// belt-and-suspenders guard against any other placeholder-shaped value.
+// ============================================================
+export function isMapboxTokenConfigured() {
+  const token = import.meta.env.VITE_MAPBOX_TOKEN
+  if (!token) return false
+  if (token.includes('...')) return false
+  return /^pk\.[\w-]+\.[\w-]+$/.test(token)
+}
+
+// ============================================================
 // NORMALIZE ADDRESS FOR GEOCODING
 // Collapses repeated/irregular whitespace before sending to Mapbox, so
 // near-duplicate input ("123  Main St,  Sydney" vs "123 Main St, Sydney")
@@ -51,6 +75,9 @@ export function pickBestGeocodeFeature(features) {
 // Call this when a job is created so client_lat/client_lng are set.
 // ============================================================
 export async function geocodeAddress(address) {
+  if (!isMapboxTokenConfigured()) {
+    throw new Error("Mapbox isn't connected yet (VITE_MAPBOX_TOKEN is missing or still the placeholder value) — addresses can't be geocoded until a real Mapbox token is set.")
+  }
   const token = import.meta.env.VITE_MAPBOX_TOKEN
   const normalized = normalizeAddressForGeocoding(address)
   const encoded = encodeURIComponent(normalized)
