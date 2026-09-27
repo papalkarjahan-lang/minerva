@@ -4079,6 +4079,14 @@ const WORKFLOW_CONDITION_FIELDS = {
     { value: 'client_name', label: 'Client name' },
     { value: 'days_overdue', label: 'Days overdue' },
   ],
+  'quote.accepted': [
+    { value: 'total', label: 'Quote total' },
+    { value: 'client_name', label: 'Client name' },
+  ],
+  'quote.declined': [
+    { value: 'total', label: 'Quote total' },
+    { value: 'client_name', label: 'Client name' },
+  ],
 }
 
 function CustomWorkflowsPanel({ businessId }) {
@@ -4155,6 +4163,8 @@ function CustomWorkflowsPanel({ businessId }) {
             <option value="job.completed">When a job is completed</option>
             <option value="invoice.paid">When an invoice is paid</option>
             <option value="invoice.overdue">When an invoice goes unpaid 3+ days</option>
+            <option value="quote.accepted">When a client accepts a quote</option>
+            <option value="quote.declined">When a client declines a quote</option>
           </select>
 
           <label style={{ ...styles.inputLabel, fontSize: 11, marginBottom: 4 }}>Only run if... (optional)</label>

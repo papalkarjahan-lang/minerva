@@ -63,7 +63,7 @@ create table custom_workflows (
   id              uuid primary key default gen_random_uuid(),
   business_id     uuid references businesses(id) on delete cascade,
   name            text not null,
-  trigger_event   text not null, -- 'lead.created' | 'job.completed' | 'invoice.paid' | 'invoice.overdue'
+  trigger_event   text not null, -- 'lead.created' | 'job.completed' | 'invoice.paid' | 'invoice.overdue' | 'quote.accepted' | 'quote.declined'
   condition_field text, -- optional, e.g. 'urgency', 'estimated_value_tier', 'total'
   condition_op    text, -- 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'contains' — null/empty = always match (gte/lte added 2026-09-27)
   condition_value text,

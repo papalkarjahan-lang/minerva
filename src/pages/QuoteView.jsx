@@ -27,10 +27,14 @@ export default function QuoteView() {
 
   async function respond(status) {
     setSubmitting(true)
-    const { error: updateError } = await supabase.from('quotes').update({ status }).eq('id', quoteId)
+    // Routed through respond-to-quote (rather than updating quotes directly)
+    // so the business's own 'quote.accepted'/'quote.declined' custom
+    // workflows can fire — that requires the trusted service-role key,
+    // which this public, unauthenticated page never holds.
+    const { data, error: invokeError } = await supabase.functions.invoke('respond-to-quote', { body: { quoteId, status } })
     setSubmitting(false)
-    if (updateError) { alert("Couldn't send your response — please try again."); return }
-    setQuote(prev => ({ ...prev, status }))
+    if (invokeError || data?.error) { alert("Couldn't send your response — please try again."); return }
+    setQuote(prev => ({ ...prev, status: data?.status || status }))
   }
 
   if (error) return (
