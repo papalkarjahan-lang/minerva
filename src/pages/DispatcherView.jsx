@@ -97,6 +97,11 @@ export default function DispatcherView() {
   const [showSettingsModal, setShowSettingsModal] = useState(false)
   const [showSupportModal, setShowSupportModal] = useState(false)
   const [queueTab, setQueueTab] = useState('jobs') // 'jobs' | 'leads' | 'assets' | 'invoices' | 'inventory' | 'marketing' | 'credentials' | 'weather' | 'payroll' | 'agents'
+  // Leads tab has two display modes: the existing flat 'list' (unchanged
+  // default) and a new Salesforce/HubSpot-style drag-and-drop 'board' view
+  // grouped by pipeline_stage — see the Kanban board render below.
+  const [leadsViewMode, setLeadsViewMode] = useState('list')
+  const [dragOverStage, setDragOverStage] = useState(null)
   // Payroll v1 (Pro tier) — hours-worked CSV export only, computed on-demand
   // for an owner-chosen date range (not pre-fetched, since technician_locations
   // can be large). Same GPS-breadcrumb estimate logic as update-technician-workload's
@@ -855,6 +860,19 @@ export default function DispatcherView() {
     setLeads(prev => prev.filter(l => l.id !== leadId)) // leaves the active pipeline view
   }
 
+  // See duplicatePhoneGroups above — marks the duplicate as lost and logs
+  // which other lead it duplicated, so the reason is visible later in
+  // LOST LEADS/the timeline rather than just silently disappearing.
+  async function markLeadDuplicate(lead, otherLead) {
+    const { error } = await supabase.from('leads').update({ status: 'lost' }).eq('id', lead.id)
+    if (error) { alert(`Couldn't update lead: ${error.message}`); return }
+    await supabase.from('lead_activities').insert({
+      lead_id: lead.id, business_id: businessId, activity_type: 'note', created_by: 'dispatcher',
+      body: `Marked as a duplicate of another open lead (${otherLead.client_name || 'unnamed'}, captured ${timeAgo(otherLead.created_at)}).`,
+    })
+    setLeads(prev => prev.filter(l => l.id !== lead.id))
+  }
+
   // CRM pipeline_stage — a finer-grained lens on top of the existing status
   // field (see supabase_schema_delta_lead_crm_pipeline.sql). Does not touch
   // status, so nurture-stale-leads/winback-lost-leads/daily-digest are
@@ -894,15 +912,38 @@ export default function DispatcherView() {
     }
   }
 
-  async function logLeadNote(leadId) {
-    if (!newLeadNote.trim()) return
+  // Generalized activity logger — backs the free-text "note" as well as the
+  // "log a call"/"log an email" quick-actions below. activity_type already
+  // supported 'call_logged'/'email_logged' in the schema (see
+  // supabase_schema_delta_lead_crm_pipeline.sql) but had no UI to write
+  // them until now — every logged call/email fell back to a generic
+  // 'note', so the timeline couldn't distinguish "I called them" from any
+  // other written note.
+  async function logLeadActivity(leadId, activityType, body) {
+    if (!body.trim()) return
     const { error } = await supabase.from('lead_activities').insert({
-      lead_id: leadId, business_id: businessId, activity_type: 'note', body: newLeadNote.trim(), created_by: 'dispatcher',
+      lead_id: leadId, business_id: businessId, activity_type: activityType, body: body.trim(), created_by: 'dispatcher',
     })
-    if (error) { alert(`Couldn't log note: ${error.message}`); return }
+    if (error) { alert(`Couldn't log activity: ${error.message}`); return }
     setNewLeadNote('')
     const { data } = await supabase.from('lead_activities').select('*').eq('lead_id', leadId).order('created_at', { ascending: false })
     setLeadActivities(prev => ({ ...prev, [leadId]: data || [] }))
+  }
+  function logLeadNote(leadId) { logLeadActivity(leadId, 'note', newLeadNote) }
+  function logLeadCall(leadId) { logLeadActivity(leadId, 'call_logged', newLeadNote.trim() || 'Call logged') }
+  function logLeadEmail(leadId) { logLeadActivity(leadId, 'email_logged', newLeadNote.trim() || 'Email logged') }
+  function activityIcon(activityType) {
+    return { call_logged: '📞', email_logged: '✉', stage_change: '🔄', auto_nudge: '🤖' }[activityType] || '📝'
+  }
+
+  // Lead assignment/ownership — same assigned_technician_id pattern as
+  // assignAsset() below, see supabase_schema_delta_lead_assignment.sql.
+  // Purely a display/filter aid (who's chasing this lead), not an access
+  // gate — every dispatcher/owner still sees every lead regardless.
+  async function assignLead(leadId, techId) {
+    const { error } = await supabase.from('leads').update({ assigned_to_technician_id: techId || null }).eq('id', leadId)
+    if (error) { alert(`Couldn't assign lead: ${error.message}`); return }
+    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, assigned_to_technician_id: techId || null } : l))
   }
 
   async function convertLeadToJob(lead) {
@@ -1619,6 +1660,19 @@ export default function DispatcherView() {
     return daysSinceLastTouch >= 7 ? Math.max(0, base - 10) : base
   }
   const sortedLeadsForDisplay = [...leads].sort((a, b) => effectiveLeadScore(b) - effectiveLeadScore(a))
+  // Duplicate-lead detection — same client_phone on more than one currently
+  // -open lead almost always means the same person called/messaged twice
+  // before either was actioned (ai-intake-chat's is_repeat_client flag only
+  // catches repeat CLIENTS across past jobs/leads, not two open leads
+  // created minutes apart from the same enquiry). Client-side only, grouped
+  // from leads already in state — not a merge, just a flag so a dispatcher
+  // notices instead of quoting the same job twice.
+  const duplicatePhoneGroups = {}
+  for (const l of leads) {
+    if (!l.client_phone) continue
+    if (!duplicatePhoneGroups[l.client_phone]) duplicatePhoneGroups[l.client_phone] = []
+    duplicatePhoneGroups[l.client_phone].push(l)
+  }
   const isUnhealthyFn = (fn) => fn.error_count >= 5 || fn.last_status === 'error'
   const unhealthyAgentFunctions = agentFunctions.filter(isUnhealthyFn)
   const sortedAgentFunctions = [...agentFunctions].sort((a, b) => {
@@ -2125,6 +2179,10 @@ export default function DispatcherView() {
 
           {queueTab === 'leads' && (
             <>
+              <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+                <button style={styles.tabBtn(leadsViewMode === 'list')} onClick={() => setLeadsViewMode('list')}>List</button>
+                <button style={styles.tabBtn(leadsViewMode === 'board')} onClick={() => setLeadsViewMode('board')}>Board</button>
+              </div>
               {leadAttribution.length > 0 && (
                 <div style={{ marginBottom: 14, padding: 10, background: '#0f1420', borderRadius: 8, border: '1px solid #1e293b' }}>
                   <p style={styles.sectionLabel}>LEAD SOURCES — WHAT'S ACTUALLY CONVERTING</p>
@@ -2149,16 +2207,18 @@ export default function DispatcherView() {
                   </p>
                 </div>
               )}
-              {sortedLeadsForDisplay.map(lead => {
+              {leadsViewMode === 'list' && sortedLeadsForDisplay.map(lead => {
                 const effScore = effectiveLeadScore(lead)
                 const isAging = effScore !== (lead.score ?? 0)
+                const duplicateGroup = lead.client_phone ? duplicatePhoneGroups[lead.client_phone] : null
+                const otherDuplicate = duplicateGroup && duplicateGroup.length > 1 ? duplicateGroup.find(l => l.id !== lead.id) : null
                 return (
                 <div key={lead.id} style={styles.leadRow}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <p style={styles.jobClient}>{lead.client_name || 'Unnamed'}</p>
                     <span style={styles.scoreBadge(effScore)}>{effScore ?? '–'}</span>
                   </div>
-                  <div style={{ display: 'flex', gap: 6, margin: '2px 0 4px' }}>
+                  <div style={{ display: 'flex', gap: 6, margin: '2px 0 4px', flexWrap: 'wrap' }}>
                     <span style={styles.urgencyBadge(lead.urgency)}>{(lead.urgency || 'routine').toUpperCase()}</span>
                     {lead.is_repeat_client && <span style={styles.repeatBadge}>RETURNING</span>}
                     {lead.estimated_value_tier && (
@@ -2166,6 +2226,14 @@ export default function DispatcherView() {
                     )}
                     {isAging && <span style={styles.repeatBadge}>AGING (-10)</span>}
                   </div>
+                  {otherDuplicate && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 4px', padding: '4px 6px', background: '#3a2a0f', borderRadius: 6 }}>
+                      <p style={{ color: '#e0a94e', fontSize: 11, margin: 0, flex: 1 }}>
+                        ⚠ Possible duplicate of &quot;{otherDuplicate.client_name || 'Unnamed'}&quot; (same phone, {timeAgo(otherDuplicate.created_at)})
+                      </p>
+                      <button style={{ ...styles.leadActionSecondary, padding: '3px 8px', fontSize: 11 }} onClick={() => markLeadDuplicate(lead, otherDuplicate)}>Mark duplicate</button>
+                    </div>
+                  )}
                   <p style={styles.jobAddr}>{lead.suburb} · {lead.client_phone}</p>
                   <p style={styles.leadDesc}>{lead.job_description}</p>
                   {lead.score_reason && <p style={styles.leadReason}>{lead.score_reason}</p>}
@@ -2204,6 +2272,18 @@ export default function DispatcherView() {
                       onBlur={e => updateLeadDealValue(lead.id, lead.deal_value_estimate_low ?? '', e.target.value)}
                       style={styles.dealValueInput}
                     />
+                    {/* Lead owner — who's chasing this, not an access gate.
+                        See supabase_schema_delta_lead_assignment.sql. */}
+                    <select
+                      value={lead.assigned_to_technician_id || ''}
+                      onChange={e => assignLead(lead.id, e.target.value)}
+                      style={styles.pipelineStageSelect}
+                    >
+                      <option value="">Unassigned</option>
+                      {technicians.map(t => (
+                        <option key={t.id} value={t.id}>{t.name}</option>
+                      ))}
+                    </select>
                   </div>
                   <div style={{ display: 'flex', gap: 6, marginTop: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                     <input
@@ -2239,12 +2319,16 @@ export default function DispatcherView() {
                         />
                         <button style={styles.leadActionSecondary} onClick={() => logLeadNote(lead.id)}>Add</button>
                       </div>
+                      <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                        <button style={{ ...styles.leadActionSecondary, flex: 1 }} onClick={() => logLeadCall(lead.id)}>📞 Log call</button>
+                        <button style={{ ...styles.leadActionSecondary, flex: 1 }} onClick={() => logLeadEmail(lead.id)}>✉ Log email</button>
+                      </div>
                       {(leadActivities[lead.id] || []).length === 0 && (
                         <p style={{ color: '#444', fontSize: 12 }}>No activity logged yet</p>
                       )}
                       {(leadActivities[lead.id] || []).map(a => (
                         <div key={a.id} style={{ padding: '4px 0', borderBottom: '1px solid #1e293b' }}>
-                          <p style={{ color: '#9aa5b1', fontSize: 12, margin: 0 }}>{a.body}</p>
+                          <p style={{ color: '#9aa5b1', fontSize: 12, margin: 0 }}>{activityIcon(a.activity_type)} {a.body}</p>
                           <p style={{ color: '#444', fontSize: 10, margin: 0 }}>{a.created_by} · {timeAgo(a.created_at)}</p>
                         </div>
                       ))}
@@ -2252,7 +2336,54 @@ export default function DispatcherView() {
                   )}
                 </div>
               )})}
-              {leads.length === 0 && <p style={{ color: '#444', fontSize: 13 }}>No open leads</p>}
+              {leadsViewMode === 'board' && (
+                <div style={styles.kanbanBoard}>
+                  {[
+                    ['new', 'New'], ['contacted', 'Contacted'], ['discovery_call', 'Discovery call'],
+                    ['quoted', 'Quoted'], ['negotiating', 'Negotiating'], ['won', 'Won'], ['lost', 'Lost'],
+                  ].map(([stageKey, stageLabel]) => {
+                    const stageLeads = sortedLeadsForDisplay.filter(l => (l.pipeline_stage || 'new') === stageKey)
+                    return (
+                      <div
+                        key={stageKey}
+                        style={styles.kanbanColumn(dragOverStage === stageKey)}
+                        onDragOver={e => { e.preventDefault(); setDragOverStage(stageKey) }}
+                        onDragLeave={() => setDragOverStage(prev => (prev === stageKey ? null : prev))}
+                        onDrop={e => {
+                          e.preventDefault()
+                          setDragOverStage(null)
+                          const leadId = e.dataTransfer.getData('text/plain')
+                          if (leadId) updateLeadPipelineStage(leadId, stageKey)
+                        }}
+                      >
+                        <p style={styles.kanbanColumnHeader}>
+                          <span>{stageLabel}</span>
+                          <span>{stageLeads.length}</span>
+                        </p>
+                        {stageLeads.map(lead => (
+                          <div
+                            key={lead.id}
+                            style={styles.kanbanCard}
+                            draggable
+                            onDragStart={e => e.dataTransfer.setData('text/plain', lead.id)}
+                          >
+                            <p style={styles.kanbanCardName}>{lead.client_name || 'Unnamed'}</p>
+                            <p style={styles.kanbanCardMeta}>
+                              {lead.suburb || '—'}
+                              {(lead.deal_value_estimate_low != null || lead.deal_value_estimate_high != null) &&
+                                ` · $${(lead.deal_value_estimate_low ?? 0).toLocaleString()}–$${(lead.deal_value_estimate_high ?? 0).toLocaleString()}`}
+                            </p>
+                          </div>
+                        ))}
+                        {stageLeads.length === 0 && (
+                          <p style={{ color: '#333', fontSize: 11, margin: '4px 0' }}>Drop here</p>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+              {leadsViewMode === 'list' && leads.length === 0 && <p style={{ color: '#444', fontSize: 13 }}>No open leads</p>}
 
               {lostLeads.length > 0 && (
                 <div style={{ marginTop: 16 }}>
@@ -4045,6 +4176,15 @@ const styles = {
   leadActionSecondary: { background: 'transparent', color: '#888', border: '1px solid #1e293b', borderRadius: 8, padding: '6px 10px', fontSize: 12, cursor: 'pointer' },
   pipelineStageSelect: { background: '#0f1420', color: '#ccc', border: '1px solid #1e293b', borderRadius: 6, padding: '5px 8px', fontSize: 12 },
   dealValueInput: { background: '#0f1420', color: '#ccc', border: '1px solid #1e293b', borderRadius: 6, padding: '5px 8px', fontSize: 12, width: 110 },
+  // Lead pipeline Kanban board (leadsViewMode === 'board') — a Salesforce/
+  // HubSpot-style drag-between-stages view sitting alongside the list view,
+  // over the same `leads` data (pipeline_stage column).
+  kanbanBoard: { display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 8 },
+  kanbanColumn: (isDragOver) => ({ minWidth: 220, flex: '0 0 220px', background: isDragOver ? '#132033' : '#050811', border: `1px dashed ${isDragOver ? '#2D5FA8' : '#1e293b'}`, borderRadius: 10, padding: 8, transition: 'background 0.1s, border-color 0.1s' }),
+  kanbanColumnHeader: { color: '#8fd0e8', fontSize: 11, fontWeight: 'bold', letterSpacing: 1, textTransform: 'uppercase', margin: '0 0 8px', display: 'flex', justifyContent: 'space-between' },
+  kanbanCard: { background: '#0f1420', border: '1px solid #1e293b', borderRadius: 8, padding: 8, marginBottom: 6, cursor: 'grab' },
+  kanbanCardName: { color: '#e2e8f0', fontSize: 12, fontWeight: 'bold', margin: '0 0 2px' },
+  kanbanCardMeta: { color: '#666', fontSize: 10, margin: 0 },
   marker: { width: 36, height: 36, borderRadius: '50%', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: 14, border: '2px solid #fff', cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.5)' },
   jobMarker: { fontSize: 20, cursor: 'pointer' },
   mapUnconfigured: { position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#050811' },
