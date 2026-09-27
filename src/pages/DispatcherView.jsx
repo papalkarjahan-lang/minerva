@@ -4053,6 +4053,34 @@ function SettingsModal({
 // own save/delete directly against custom_workflows, independent of the
 // main Settings form above since it's a separate table, not a businesses
 // column. See run-custom-workflows edge function for execution logic.
+// Known payload fields per trigger_event — mirrors the exact `payload` shapes
+// each caller sends into run-custom-workflows (ai-intake-chat/voice-intake-agent
+// for lead.created, TechnicianView for job.completed, DispatcherView for
+// invoice.paid, the cron sweep in run-custom-workflows/index.ts for
+// invoice.overdue). Used to populate the condition-field dropdown so a user
+// can only pick a field that will actually be present, rather than typing a
+// field name freehand and having it silently never match (matchesCondition
+// treats a missing field as "no match").
+const WORKFLOW_CONDITION_FIELDS = {
+  'lead.created': [
+    { value: 'urgency', label: 'Urgency (e.g. emergency, routine)' },
+    { value: 'estimated_value_tier', label: 'Estimated value tier (e.g. high, low)' },
+  ],
+  'job.completed': [
+    { value: 'trade_type', label: 'Trade type' },
+    { value: 'client_address', label: 'Client address' },
+  ],
+  'invoice.paid': [
+    { value: 'total', label: 'Invoice total' },
+    { value: 'client_name', label: 'Client name' },
+  ],
+  'invoice.overdue': [
+    { value: 'total', label: 'Invoice total' },
+    { value: 'client_name', label: 'Client name' },
+    { value: 'days_overdue', label: 'Days overdue' },
+  ],
+}
+
 function CustomWorkflowsPanel({ businessId }) {
   const [workflows, setWorkflows] = useState([])
   const [loading, setLoading] = useState(true)
@@ -4118,12 +4146,41 @@ function CustomWorkflowsPanel({ businessId }) {
       {showAdd && (
         <form onSubmit={addWorkflow} style={{ background: '#f7f7f9', borderRadius: 10, padding: 12, marginBottom: 12 }}>
           <input required placeholder="Rule name" value={draft.name} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))} style={{ ...styles.input, marginBottom: 8 }} />
-          <select value={draft.trigger_event} onChange={e => setDraft(d => ({ ...d, trigger_event: e.target.value }))} style={{ ...styles.input, marginBottom: 8 }}>
+          <select
+            value={draft.trigger_event}
+            onChange={e => setDraft(d => ({ ...d, trigger_event: e.target.value, condition_field: '', condition_op: '', condition_value: '' }))}
+            style={{ ...styles.input, marginBottom: 8 }}
+          >
             <option value="lead.created">When a new lead comes in</option>
             <option value="job.completed">When a job is completed</option>
             <option value="invoice.paid">When an invoice is paid</option>
             <option value="invoice.overdue">When an invoice goes unpaid 3+ days</option>
           </select>
+
+          <label style={{ ...styles.inputLabel, fontSize: 11, marginBottom: 4 }}>Only run if... (optional)</label>
+          <select
+            value={draft.condition_field}
+            onChange={e => setDraft(d => ({ ...d, condition_field: e.target.value, condition_op: e.target.value ? (d.condition_op || 'eq') : '', condition_value: e.target.value ? d.condition_value : '' }))}
+            style={{ ...styles.input, marginBottom: 8 }}
+          >
+            <option value="">No condition — always run</option>
+            {(WORKFLOW_CONDITION_FIELDS[draft.trigger_event] || []).map(f => (
+              <option key={f.value} value={f.value}>{f.label}</option>
+            ))}
+          </select>
+          {draft.condition_field && (
+            <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+              <select value={draft.condition_op} onChange={e => setDraft(d => ({ ...d, condition_op: e.target.value }))} style={{ ...styles.input, flex: '0 0 130px' }}>
+                <option value="eq">is equal to</option>
+                <option value="neq">is not equal to</option>
+                <option value="gt">is greater than</option>
+                <option value="lt">is less than</option>
+                <option value="contains">contains</option>
+              </select>
+              <input required placeholder="value" value={draft.condition_value} onChange={e => setDraft(d => ({ ...d, condition_value: e.target.value }))} style={{ ...styles.input, flex: 1 }} />
+            </div>
+          )}
+
           <select value={draft.action_type} onChange={e => setDraft(d => ({ ...d, action_type: e.target.value }))} style={{ ...styles.input, marginBottom: 8 }}>
             <option value="slack">Post to Slack (uses your webhook above)</option>
             <option value="webhook">POST to a custom webhook URL</option>
@@ -4140,7 +4197,9 @@ function CustomWorkflowsPanel({ businessId }) {
         <div key={wf.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid #f0f0f0' }}>
           <div>
             <p style={{ margin: 0, fontSize: 13, fontWeight: 'bold', color: wf.active ? '#1B2B4B' : '#bbb' }}>{wf.name}</p>
-            <p style={{ margin: 0, fontSize: 11, color: '#999' }}>{wf.trigger_event} → {wf.action_type}</p>
+            <p style={{ margin: 0, fontSize: 11, color: '#999' }}>
+              {wf.trigger_event}{wf.condition_field ? ` (if ${wf.condition_field} ${wf.condition_op} ${wf.condition_value})` : ''} → {wf.action_type}
+            </p>
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
             <button type="button" onClick={() => toggleActive(wf)} style={{ ...styles.cancelBtn, padding: '3px 8px', fontSize: 11 }}>{wf.active ? 'Pause' : 'Resume'}</button>
