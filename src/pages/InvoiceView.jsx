@@ -37,9 +37,26 @@ export default function InvoiceView() {
   async function loadInvoice() {
     const { data, error: err } = await supabase
       .from('invoices').select('*, businesses(name)').eq('id', invoiceId).single()
-    if (err || !data) { setError('This invoice link is invalid or has expired.'); return }
+    if (err || !data) { setError('This invoice link is invalid or has expired.'); return null }
     setInvoice(data)
     setBusiness(data.businesses)
+    return data
+  }
+
+  // stripe.confirmPayment resolving successfully only means the card was
+  // charged — invoices.status is set to 'paid' separately, by stripe-webhook's
+  // payment_intent.succeeded handler, which can land a second or two later.
+  // A single immediate re-fetch right after confirmPayment can easily lose
+  // that race and briefly (or, on a slow webhook delivery, not-so-briefly)
+  // show "UNPAID" right after a client just paid. Poll for a few seconds
+  // instead of a single fetch; PayNowForm keeps its "Processing..." state
+  // shown for the duration (see its onPaid caller below).
+  async function pollUntilPaid() {
+    for (let i = 0; i < 5; i++) {
+      const data = await loadInvoice()
+      if (data?.status === 'paid') return
+      if (i < 4) await new Promise(resolve => setTimeout(resolve, 1500))
+    }
   }
 
   async function startPayNow() {
@@ -114,7 +131,7 @@ export default function InvoiceView() {
             {payError && <p style={{ color: '#8A2525', fontSize: 13, marginBottom: 10 }}>{payError}</p>}
             {clientSecret ? (
               <Elements stripe={stripePromise} options={{ clientSecret }}>
-                <PayNowForm invoiceId={invoiceId} onPaid={loadInvoice} />
+                <PayNowForm invoiceId={invoiceId} onPaid={pollUntilPaid} />
               </Elements>
             ) : !payError && (
               <p style={{ color: '#888', fontSize: 13 }}>Loading payment form...</p>
@@ -159,8 +176,9 @@ function PayNowForm({ invoiceId, onPaid }) {
       return
     }
     // Webhook (payment_intent.succeeded) marks the invoice paid server-side;
-    // re-fetch so the UI reflects it without needing a manual page refresh.
-    onPaid()
+    // onPaid polls for it so the UI reflects it without needing a manual
+    // page refresh, and "Processing..." stays shown for the duration.
+    await onPaid()
     setSubmitting(false)
   }
 
