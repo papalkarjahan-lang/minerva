@@ -4,6 +4,7 @@ import Map, { Marker, NavigationControl, ScaleControl, Source, Layer } from 'rea
 import { supabase } from '../supabaseClient'
 import { timeAgo, isMapboxTokenConfigured, haversineKm } from '../utils'
 import ClientSupportChat from '../components/ClientSupportChat'
+import LoadingScreen from '../components/LoadingScreen'
 import 'mapbox-gl/dist/mapbox-gl.css'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
@@ -137,11 +138,7 @@ export default function TrackingView() {
     </div>
   )
 
-  if (!job) return (
-    <div style={styles.screen}>
-      <p style={{ color: '#888', fontSize: 16 }}>Loading tracking...</p>
-    </div>
-  )
+  if (!job) return <LoadingScreen label="Loading your job..." />
 
   // A job with no technician_id yet (not dispatched) would otherwise leave
   // `tech` null forever, showing "Loading tracking..." indefinitely with no
@@ -154,11 +151,7 @@ export default function TrackingView() {
     </div>
   )
 
-  if (!tech) return (
-    <div style={styles.screen}>
-      <p style={{ color: '#888', fontSize: 16 }}>Loading tracking...</p>
-    </div>
-  )
+  if (!tech) return <LoadingScreen label="Finding your technician..." />
 
   if (job.status === 'complete') return (
     <div style={styles.screen}>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
+import LoadingScreen from '../components/LoadingScreen'
 
 // Client-facing, read-only-ish quote view. Texted to the client via
 // send-quote-sms once a dispatcher approves and sends a drafted quote.
@@ -45,11 +46,7 @@ export default function QuoteView() {
     </div>
   )
 
-  if (!quote) return (
-    <div style={styles.screen}>
-      <p style={{ color: '#888', fontSize: 16 }}>Loading quote...</p>
-    </div>
-  )
+  if (!quote) return <LoadingScreen label="Loading quote..." />
 
   const items = Array.isArray(quote.line_items) ? quote.line_items : []
 

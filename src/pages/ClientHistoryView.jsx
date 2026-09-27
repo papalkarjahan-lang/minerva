@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
+import LoadingScreen from '../components/LoadingScreen'
 
 // Client-facing, read-only service history page. Round-2 batch (2026-09-04):
 // reached via an opaque token (client_portal_links.token, a random UUID —
@@ -53,11 +54,9 @@ export default function ClientHistoryView() {
     </div>
   )
 
-  if (!loaded) return (
-    <div style={styles.screen}>
-      <p style={{ color: '#888', fontSize: 16 }}>Loading your history...</p>
-    </div>
-  )
+  if (!loaded) return <LoadingScreen label="Loading your history..." />
+
+  const hasHistory = jobs.length > 0 || invoices.length > 0
 
   return (
     <div style={styles.screen}>
@@ -65,27 +64,33 @@ export default function ClientHistoryView() {
         <p style={styles.bizName}>{business?.name}</p>
         <h1 style={styles.title}>Your Service History</h1>
 
-        <p style={styles.sectionLabel}>JOBS</p>
-        {jobs.map(job => (
-          <div key={job.id} style={styles.row}>
-            <p style={styles.rowMain}>{job.client_address || 'Job'}</p>
-            <p style={styles.rowMeta}>
-              {new Date(job.created_at).toLocaleDateString('en-AU')} · {job.status.toUpperCase()}
-            </p>
-          </div>
-        ))}
-        {jobs.length === 0 && <p style={styles.emptyText}>No jobs on file yet</p>}
+        {!hasHistory ? (
+          <p style={styles.emptyText}>No history with {business?.name || 'this business'} yet — jobs and invoices will show up here after your first service.</p>
+        ) : (
+          <>
+            <p style={styles.sectionLabel}>JOBS</p>
+            {jobs.map(job => (
+              <div key={job.id} style={styles.row}>
+                <p style={styles.rowMain}>{job.client_address || 'Job'}</p>
+                <p style={styles.rowMeta}>
+                  {new Date(job.created_at).toLocaleDateString('en-AU')} · {job.status.toUpperCase()}
+                </p>
+              </div>
+            ))}
+            {jobs.length === 0 && <p style={styles.emptyText}>No jobs on file yet</p>}
 
-        <p style={{ ...styles.sectionLabel, marginTop: 20 }}>INVOICES</p>
-        {invoices.map(inv => (
-          <div key={inv.id} style={styles.row}>
-            <p style={styles.rowMain}>${Number(inv.total).toFixed(2)} inc. GST</p>
-            <p style={styles.rowMeta}>
-              {new Date(inv.created_at).toLocaleDateString('en-AU')} · {inv.status.toUpperCase()}
-            </p>
-          </div>
-        ))}
-        {invoices.length === 0 && <p style={styles.emptyText}>No invoices on file yet</p>}
+            <p style={{ ...styles.sectionLabel, marginTop: 20 }}>INVOICES</p>
+            {invoices.map(inv => (
+              <div key={inv.id} style={styles.row}>
+                <p style={styles.rowMain}>${Number(inv.total).toFixed(2)} inc. GST</p>
+                <p style={styles.rowMeta}>
+                  {new Date(inv.created_at).toLocaleDateString('en-AU')} · {inv.status.toUpperCase()}
+                </p>
+              </div>
+            ))}
+            {invoices.length === 0 && <p style={styles.emptyText}>No invoices on file yet</p>}
+          </>
+        )}
       </div>
     </div>
   )

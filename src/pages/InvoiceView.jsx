@@ -4,6 +4,7 @@ import { loadStripe } from '@stripe/stripe-js'
 import { Elements, PaymentElement, useElements, useStripe } from '@stripe/react-stripe-js'
 import { supabase } from '../supabaseClient'
 import ClientSupportChat from '../components/ClientSupportChat'
+import LoadingScreen from '../components/LoadingScreen'
 
 // Client-facing, read-only invoice view (Pro tier). Texted to the client
 // via send-invoice-sms once a technician builds the invoice on job
@@ -58,11 +59,7 @@ export default function InvoiceView() {
     </div>
   )
 
-  if (!invoice) return (
-    <div style={styles.screen}>
-      <p style={{ color: '#888', fontSize: 16 }}>Loading invoice...</p>
-    </div>
-  )
+  if (!invoice) return <LoadingScreen label="Loading invoice..." />
 
   const items = Array.isArray(invoice.line_items) ? invoice.line_items : []
 
