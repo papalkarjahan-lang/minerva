@@ -4,6 +4,7 @@ import Map, { Marker, NavigationControl, FullscreenControl, ScaleControl, Popup,
 import { supabase } from '../supabaseClient'
 import { timeAgo, geocodeAddress, insertTechniciansWithPinRetry, haversineKm, isMapboxTokenConfigured, computeReplayStats, interpolateReplayPosition, describeAuditEntry } from '../utils'
 import ContactSupportModal from '../components/ContactSupportModal'
+import LoadingScreen from '../components/LoadingScreen'
 import { MAX_ADDONS, hasAddon, isTrialing, trialDaysLeft, hasUsedTrial, enableAddonPatch, disableAddonPatch, startTrialPatch } from '../maxAddons'
 import 'mapbox-gl/dist/mapbox-gl.css'
 
@@ -22,6 +23,7 @@ export default function DispatcherView() {
   const [searchParams, setSearchParams] = useSearchParams()
   const showAgentsTab = searchParams.get('agents') === '1'
   const [business, setBusiness] = useState(null)
+  const [businessLoadError, setBusinessLoadError] = useState(null)
   const [technicians, setTechnicians] = useState([])
   const [jobs, setJobs] = useState([])
   const [leads, setLeads] = useState([])
@@ -245,11 +247,15 @@ export default function DispatcherView() {
   }, [searchParams])
 
   async function loadAll() {
-    const { data: biz } = await supabase
+    const { data: biz, error: bizError } = await supabase
       .from('businesses')
       .select('*')
       .eq('id', businessId)
       .single()
+    if (bizError || !biz) {
+      setBusinessLoadError(bizError?.message || 'Business not found')
+      return
+    }
     setBusiness(biz)
     setSlackWebhookInput(biz?.slack_webhook_url || '')
     setGoogleReviewLinkInput(biz?.google_review_link || '')
@@ -1879,6 +1885,16 @@ export default function DispatcherView() {
     next.setDate(d.getDate() + daysUntil)
     return next.toLocaleDateString('en-AU')
   }
+
+  if (businessLoadError) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#050811', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontFamily: 'Arial, sans-serif', gap: 10, padding: 20, textAlign: 'center' }}>
+        <p style={{ color: '#fff', fontSize: 18, fontWeight: 'bold', margin: 0 }}>Could not load this dashboard</p>
+        <p style={{ color: '#888', fontSize: 14, margin: 0, maxWidth: 420 }}>{businessLoadError}</p>
+      </div>
+    )
+  }
+  if (!business) return <LoadingScreen label="Loading your dashboard..." />
 
   return (
     <div style={{ display: 'flex', height: '100vh', background: '#050811', fontFamily: 'Arial, sans-serif' }}>

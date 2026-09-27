@@ -106,5 +106,5 @@ const styles = {
   row: { borderBottom: '1px solid #1e293b', padding: '10px 0' },
   rowMain: { color: '#ccc', fontSize: 14, margin: '0 0 2px' },
   rowMeta: { color: '#666', fontSize: 12, margin: 0 },
-  emptyText: { color: '#444', fontSize: 13, margin: 0 },
+  emptyText: { color: '#888', fontSize: 13, margin: 0 },
 }

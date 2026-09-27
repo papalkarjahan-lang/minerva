@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 import { timeAgo } from '../utils'
+import LoadingScreen from '../components/LoadingScreen'
 
 // Industrial sector console (Track B) — mirrors DispatcherView's structure
 // and visual language, scoped to the industrial_* tables instead of the
@@ -27,6 +28,11 @@ export default function IndustrialDispatcherView() {
   const [showAddItem, setShowAddItem] = useState(false)
   const [showAddIncident, setShowAddIncident] = useState(false)
   const [busyId, setBusyId] = useState(null)
+  const [businessLoadError, setBusinessLoadError] = useState(null)
+  // Shared across all 5 "Add ..." modals below (only one is ever open at a
+  // time) — previously these forms had no in-flight state at all, so a
+  // double-click or slow connection could fire the insert twice.
+  const [formSubmitting, setFormSubmitting] = useState(false)
   const [expandedAssetId, setExpandedAssetId] = useState(null)
   const [assetEvents, setAssetEvents] = useState({}) // asset_id -> asset_telemetry_events rows, fetched lazily
   const [expandedSiteId, setExpandedSiteId] = useState(null)
@@ -36,7 +42,11 @@ export default function IndustrialDispatcherView() {
   useEffect(() => { loadAll() }, [businessId])
 
   async function loadAll() {
-    const { data: biz } = await supabase.from('businesses').select('*').eq('id', businessId).single()
+    const { data: biz, error: bizError } = await supabase.from('businesses').select('*').eq('id', businessId).single()
+    if (bizError || !biz) {
+      setBusinessLoadError(bizError?.message || 'Business not found')
+      return
+    }
     setBusiness(biz)
 
     const { data: leadList } = await supabase.from('industrial_leads')
@@ -131,6 +141,8 @@ export default function IndustrialDispatcherView() {
 
   async function addLead(e) {
     e.preventDefault()
+    if (formSubmitting) return
+    setFormSubmitting(true)
     const f = new FormData(e.target)
     const { error } = await supabase.from('industrial_leads').insert({
       business_id: businessId,
@@ -141,6 +153,7 @@ export default function IndustrialDispatcherView() {
       estimated_size: f.get('estimated_size'),
       status: 'new',
     })
+    setFormSubmitting(false)
     if (error) { alert(`Couldn't add lead: ${error.message}`); return }
     setShowAddLead(false)
     loadAll()
@@ -148,6 +161,8 @@ export default function IndustrialDispatcherView() {
 
   async function addSite(e) {
     e.preventDefault()
+    if (formSubmitting) return
+    setFormSubmitting(true)
     const f = new FormData(e.target)
     const { error } = await supabase.from('site_projects').insert({
       business_id: businessId,
@@ -156,6 +171,7 @@ export default function IndustrialDispatcherView() {
       scope_of_work: f.get('scope_of_work'),
       status: 'active',
     })
+    setFormSubmitting(false)
     if (error) { alert(`Couldn't add site: ${error.message}`); return }
     setShowAddSite(false)
     loadAll()
@@ -163,6 +179,8 @@ export default function IndustrialDispatcherView() {
 
   async function addAsset(e) {
     e.preventDefault()
+    if (formSubmitting) return
+    setFormSubmitting(true)
     const f = new FormData(e.target)
     const { error } = await supabase.from('industrial_assets').insert({
       business_id: businessId,
@@ -171,6 +189,7 @@ export default function IndustrialDispatcherView() {
       tag_id: f.get('tag_id') || null,
       status: 'available',
     })
+    setFormSubmitting(false)
     if (error) { alert(`Couldn't add asset: ${error.message}`); return }
     setShowAddAsset(false)
     loadAll()
@@ -178,6 +197,8 @@ export default function IndustrialDispatcherView() {
 
   async function addItem(e) {
     e.preventDefault()
+    if (formSubmitting) return
+    setFormSubmitting(true)
     const f = new FormData(e.target)
     const { error } = await supabase.from('consumables_items').insert({
       business_id: businessId,
@@ -186,6 +207,7 @@ export default function IndustrialDispatcherView() {
       quantity_on_hand: Number(f.get('quantity_on_hand')) || 0,
       reorder_threshold: Number(f.get('reorder_threshold')) || 0,
     })
+    setFormSubmitting(false)
     if (error) { alert(`Couldn't add item: ${error.message}`); return }
     setShowAddItem(false)
     loadAll()
@@ -255,6 +277,8 @@ export default function IndustrialDispatcherView() {
   // insert. This adds the missing manual-report path.
   async function addIncident(e) {
     e.preventDefault()
+    if (formSubmitting) return
+    setFormSubmitting(true)
     const f = new FormData(e.target)
     const { error } = await supabase.from('safety_incidents').insert({
       business_id: businessId,
@@ -262,12 +286,23 @@ export default function IndustrialDispatcherView() {
       severity: f.get('severity') || 'warning',
       description: f.get('description'),
     })
+    setFormSubmitting(false)
     if (error) { alert(`Couldn't log incident: ${error.message}`); return }
     setShowAddIncident(false)
     loadAll()
   }
 
   const openIncidents = incidents.filter(i => !i.acknowledged_at)
+
+  if (businessLoadError) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#050811', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontFamily: 'Arial, sans-serif', gap: 10, padding: 20, textAlign: 'center' }}>
+        <p style={{ color: '#fff', fontSize: 18, fontWeight: 'bold', margin: 0 }}>Could not load this dashboard</p>
+        <p style={{ color: '#888', fontSize: 14, margin: 0, maxWidth: 420 }}>{businessLoadError}</p>
+      </div>
+    )
+  }
+  if (!business) return <LoadingScreen label="Loading your dashboard..." />
 
   return (
     <div style={styles.screen}>
@@ -536,7 +571,7 @@ export default function IndustrialDispatcherView() {
             <input name="source" placeholder="Source (default: manual)" style={styles.input} />
             <div style={styles.modalActions}>
               <button type="button" style={styles.cancelBtn} onClick={() => setShowAddLead(false)}>Cancel</button>
-              <button type="submit" style={styles.submitBtn}>Add</button>
+              <button type="submit" disabled={formSubmitting} style={styles.submitBtn}>{formSubmitting ? 'Adding...' : 'Add'}</button>
             </div>
           </form>
         </div>
@@ -554,7 +589,7 @@ export default function IndustrialDispatcherView() {
             </select>
             <div style={styles.modalActions}>
               <button type="button" style={styles.cancelBtn} onClick={() => setShowAddSite(false)}>Cancel</button>
-              <button type="submit" style={styles.submitBtn}>Add</button>
+              <button type="submit" disabled={formSubmitting} style={styles.submitBtn}>{formSubmitting ? 'Adding...' : 'Add'}</button>
             </div>
           </form>
         </div>
@@ -569,7 +604,7 @@ export default function IndustrialDispatcherView() {
             <input name="tag_id" placeholder="RFID / tracker tag ID (optional)" style={styles.input} />
             <div style={styles.modalActions}>
               <button type="button" style={styles.cancelBtn} onClick={() => setShowAddAsset(false)}>Cancel</button>
-              <button type="submit" style={styles.submitBtn}>Add</button>
+              <button type="submit" disabled={formSubmitting} style={styles.submitBtn}>{formSubmitting ? 'Adding...' : 'Add'}</button>
             </div>
           </form>
         </div>
@@ -590,7 +625,7 @@ export default function IndustrialDispatcherView() {
             <input name="description" placeholder="What happened?" required style={styles.input} />
             <div style={styles.modalActions}>
               <button type="button" style={styles.cancelBtn} onClick={() => setShowAddIncident(false)}>Cancel</button>
-              <button type="submit" style={styles.submitBtn}>Report</button>
+              <button type="submit" disabled={formSubmitting} style={styles.submitBtn}>{formSubmitting ? 'Reporting...' : 'Report'}</button>
             </div>
           </form>
         </div>
@@ -606,7 +641,7 @@ export default function IndustrialDispatcherView() {
             <input name="reorder_threshold" type="number" placeholder="Reorder threshold" style={styles.input} />
             <div style={styles.modalActions}>
               <button type="button" style={styles.cancelBtn} onClick={() => setShowAddItem(false)}>Cancel</button>
-              <button type="submit" style={styles.submitBtn}>Add</button>
+              <button type="submit" disabled={formSubmitting} style={styles.submitBtn}>{formSubmitting ? 'Adding...' : 'Add'}</button>
             </div>
           </form>
         </div>
