@@ -100,8 +100,13 @@ export default function TrackingView() {
       setViewState(prev => ({ ...prev, latitude: jobData.client_lat, longitude: jobData.client_lng }))
     }
     if (jobData.technician_id) {
-      const { data: techData } = await supabase
+      const { data: techData, error: techErr } = await supabase
         .from('technicians').select('*, businesses(name)').eq('id', jobData.technician_id).single()
+      // Same "don't leave the client stuck on an infinite loading spinner"
+      // reasoning as the missing-technician_id case above (2026-09-07) — a
+      // fetch error here previously left `tech` null forever with no
+      // explanation, showing "Finding your technician..." indefinitely.
+      if (techErr || !techData) { setError("Couldn't load your technician's details — please try refreshing, or contact the business directly."); return }
       setTech(techData)
       setBusiness(techData?.businesses)
       if (techData?.current_lat) {

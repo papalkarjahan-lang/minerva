@@ -261,18 +261,21 @@ export default function AdminConsole() {
 
   async function saveDraft(id, draft_subject, draft_body) {
     setSavingId(id)
-    await supabase.from('outreach_prospects').update({ draft_subject, draft_body }).eq('id', id)
+    const { error } = await supabase.from('outreach_prospects').update({ draft_subject, draft_body }).eq('id', id)
     setSavingId(null)
+    if (error) { alert(`Couldn't save draft: ${error.message}`); return }
     loadProspects()
   }
 
   async function approveProspect(id) {
-    await supabase.from('outreach_prospects').update({ status: 'approved' }).eq('id', id)
+    const { error } = await supabase.from('outreach_prospects').update({ status: 'approved' }).eq('id', id)
+    if (error) { alert(`Couldn't approve: ${error.message}`); return }
     loadProspects()
   }
 
   async function rejectProspect(id) {
-    await supabase.from('outreach_prospects').update({ status: 'closed_lost' }).eq('id', id)
+    const { error } = await supabase.from('outreach_prospects').update({ status: 'closed_lost' }).eq('id', id)
+    if (error) { alert(`Couldn't reject: ${error.message}`); return }
     loadProspects()
   }
 
@@ -310,8 +313,9 @@ export default function AdminConsole() {
     if (ids.length === 0) { alert('No selected prospects are in a drafted, ready-to-approve state.'); return }
     if (!window.confirm(`Approve ${ids.length} drafted email(s) for sending? This does not send them yet — you still click "Send approved" separately.`)) return
     setOutreachBusy(true)
-    await supabase.from('outreach_prospects').update({ status: 'approved' }).in('id', ids)
+    const { error } = await supabase.from('outreach_prospects').update({ status: 'approved' }).in('id', ids)
     setOutreachBusy(false)
+    if (error) { alert(`Couldn't approve selected: ${error.message}`); return }
     clearSelection()
     loadProspects()
   }
@@ -321,8 +325,9 @@ export default function AdminConsole() {
     if (ids.length === 0) { alert('Nothing selected to discard.'); return }
     if (!window.confirm(`Discard ${ids.length} selected prospect(s)?`)) return
     setOutreachBusy(true)
-    await supabase.from('outreach_prospects').update({ status: 'closed_lost' }).in('id', ids)
+    const { error } = await supabase.from('outreach_prospects').update({ status: 'closed_lost' }).in('id', ids)
     setOutreachBusy(false)
+    if (error) { alert(`Couldn't discard selected: ${error.message}`); return }
     clearSelection()
     loadProspects()
   }

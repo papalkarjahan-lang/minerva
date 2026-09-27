@@ -112,7 +112,8 @@ serve(async (req: Request) => {
     // negotiating/closed), and only if it's still at an early stage, so
     // this can't accidentally undo manual stage-tracking done later.
     if (bigAccountTargetId) {
-      const { data: target } = await supabase.from('big_account_targets').select('stage').eq('id', bigAccountTargetId).single()
+      const { data: target, error: targetErr } = await supabase.from('big_account_targets').select('stage').eq('id', bigAccountTargetId).single()
+      if (targetErr) console.error('generate-roi-proposal: big_account_targets fetch failed, stage not advanced', targetErr)
       if (isEligibleForProposalStageAdvance(target?.stage)) {
         await supabase.from('big_account_targets')
           .update({ stage: 'proposal_sent', updated_at: new Date().toISOString() })

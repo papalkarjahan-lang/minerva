@@ -27,6 +27,7 @@ export default function QuoteView() {
   }
 
   async function respond(status) {
+    if (submitting) return
     setSubmitting(true)
     // Routed through respond-to-quote (rather than updating quotes directly)
     // so the business's own 'quote.accepted'/'quote.declined' custom

@@ -27,7 +27,7 @@ export default function ClientSupportChat({ jobId, invoiceId, businessName }) {
       setMessages(prev => [...prev, { role: 'assistant', content: "Sorry, I couldn't get an answer just then — please try again." }])
       return
     }
-    setMessages(prev => [...prev, { role: 'assistant', content: data.reply }])
+    setMessages(prev => [...prev, { role: 'assistant', content: data?.reply || "Sorry, I couldn't get an answer just then — please try again." }])
   }
 
   if (!open) {
