@@ -240,11 +240,17 @@ async function runWorkflowsFor(
 
     try {
       if (wf.action_type === 'webhook') {
-        await fetch(wf.action_target, {
+        const res = await fetch(wf.action_target, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ event, business_id: businessId, payload }),
         })
+        // Unlike a network-level throw (caught below), an HTTP error status
+        // is a normal fetch() resolution — without this check a webhook
+        // that's misconfigured or down (4xx/5xx) was silently logged as
+        // 'sent' forever, with no way for a business to notice via the run
+        // log this file's own UI exposes.
+        if (!res.ok) throw new Error(`Webhook returned ${res.status}`)
       } else if (wf.action_type === 'slack') {
         await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
           method: 'POST',
