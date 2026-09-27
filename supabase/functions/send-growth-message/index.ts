@@ -9,10 +9,28 @@
 // Deploy with: supabase functions deploy send-growth-message
 //
 // Required secrets: same Twilio secrets as the other SMS functions.
+//
+// Ownership check added 2026-09-27: this had no caller-identity check of
+// any kind, despite taking a bare draftId and using it to blast a real
+// Twilio SMS to every recipient on that draft — the exact same
+// forged-request risk already fixed on draft-quote/send-quote-sms/etc.
+// (see _shared/ownership.ts's header). marketing_drafts ids aren't secret
+// (any dispatcher with real access to their own Marketing tab can see
+// their own drafts' ids in the DOM/network tab, and draft ids for OTHER
+// businesses are only as hard to guess as any other UUID — this codebase's
+// documented model treats that as guessable-in-principle, not
+// confidential), so an attacker who obtained/guessed another business's
+// draftId could have forced Minerva to text that business's own real
+// leads on the attacker's behalf. Fixed the same way as draft-quote: a
+// real Supabase Auth session proving the caller owns the draft's
+// business. No frontend change needed — DispatcherView.jsx already calls
+// this via supabase.functions.invoke(), which attaches the caller's
+// session token automatically.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { sendTwilioSms } from "../_shared/twilioSms.ts"
+import { isOwnerOfBusiness, getAuthenticatedCaller } from "../_shared/ownership.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -38,10 +56,25 @@ serve(async (req: Request) => {
 
     const { data: draft, error: draftErr } = await supabase
       .from('marketing_drafts')
-      .select('*')
+      .select('*, businesses(owner_user_id, contact_email)')
       .eq('id', draftId)
       .single()
     if (draftErr || !draft) throw new Error('Draft not found')
+
+    const caller = await getAuthenticatedCaller(req, supabase)
+    if (!caller) {
+      return new Response(JSON.stringify({ error: 'Not authenticated.' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+    if (!isOwnerOfBusiness((draft as any).businesses, caller.id, caller.email)) {
+      return new Response(JSON.stringify({ error: 'You do not have access to this business.' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+
     if (draft.type !== 'outreach_sms') throw new Error('This draft is not an outreach message')
     if (draft.status !== 'pending') throw new Error(`Draft already ${draft.status} — refusing to send twice`)
     if (!draft.body_text) throw new Error('Draft has no message body')

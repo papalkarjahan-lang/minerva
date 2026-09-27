@@ -16,9 +16,28 @@
 // Deploy with: supabase functions deploy launch-ad-campaign
 // Required secrets: none beyond the shared SUPABASE_* ones — Meta
 // credentials are per-business, stored on the businesses row, not a secret.
+//
+// Ownership check added 2026-09-27: this had no caller-identity check of
+// any kind, despite taking a bare draftId and using it to spend REAL money
+// from that business's own connected Meta ad account — the single highest-
+// stakes gap of this class found so far (worse than send-growth-message's
+// identical shape, since this one is a real financial transaction, not
+// just a message). Same forged-request risk already fixed on
+// draft-quote/send-quote-sms/send-growth-message/etc. — marketing_drafts
+// ids aren't secret, only guessable-in-principle like any other UUID (see
+// _shared/ownership.ts's header for this codebase's trust model). An
+// attacker who obtained/guessed another business's draftId could have
+// launched a real, paid ad campaign — attacker-controlled activate flag,
+// running on the VICTIM's Meta ad spend — with zero relationship to that
+// business. Fixed the same way as draft-quote: a real Supabase Auth
+// session proving the caller owns the draft's business. No frontend
+// change needed — DispatcherView.jsx already calls this via
+// supabase.functions.invoke(), which attaches the caller's session token
+// automatically.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { isOwnerOfBusiness, getAuthenticatedCaller } from "../_shared/ownership.ts"
 
 const META_API_VERSION = 'v21.0'
 const META_BASE = `https://graph.facebook.com/${META_API_VERSION}`
@@ -43,10 +62,25 @@ serve(async (req: Request) => {
 
     const { data: draft, error: draftErr } = await supabase
       .from('marketing_drafts')
-      .select('*, businesses(name, meta_access_token, meta_ad_account_id, meta_page_id)')
+      .select('*, businesses(name, meta_access_token, meta_ad_account_id, meta_page_id, owner_user_id, contact_email)')
       .eq('id', draftId)
       .single()
     if (draftErr || !draft) throw new Error('Draft not found')
+
+    const caller = await getAuthenticatedCaller(req, supabase)
+    if (!caller) {
+      return new Response(JSON.stringify({ error: 'Not authenticated.' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+    if (!isOwnerOfBusiness((draft as any).businesses, caller.id, caller.email)) {
+      return new Response(JSON.stringify({ error: 'You do not have access to this business.' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+
     if (draft.type !== 'ad_campaign') throw new Error('This draft is not an ad campaign')
     if (draft.status !== 'pending') throw new Error(`Draft already ${draft.status} — refusing to launch twice`)
 

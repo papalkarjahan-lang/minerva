@@ -1612,3 +1612,47 @@ Smoke-tested: still correctly rejects a signature-less/unsigned POST
 with `400 Missing signature or webhook secret`, same as before the
 change — this fix sits entirely inside the already-signature-verified
 branch, so it cannot be exercised or bypassed by an unsigned request.
+
+## Forged-request gap in 2 more Marketing-pillar functions: send-growth-message, launch-ad-campaign (2026-09-27)
+
+Same forged-request pattern as `draft-quote`/`send-quote-sms`/etc.
+(see the 2026-09-24 entries above), found in the two Marketing-tab
+"Approve" actions and missed by every prior audit round because they'd
+never been swept specifically — both had `verify_jwt:true` (not a real
+boundary on its own, per this file's established takeaway) but **zero**
+application-level caller-identity check, despite each taking nothing but
+a bare `draftId` and using it to trigger a real, irreversible side
+effect: `send-growth-message` blasts a real Twilio SMS to every
+recipient stored on that draft; `launch-ad-campaign` spends real money
+by creating a live Meta ad campaign using that specific business's own
+connected ad account/token/page. `marketing_drafts.id` is a UUID, not a
+secret — this codebase's own established trust model (see the
+`verify_jwt` takeaway above) treats "unguessable" as a property for
+read-only/link-based access, not as a substitute for an ownership check
+on a real write/spend. `launch-ad-campaign` is the more severe of the
+two: an attacker who obtained/guessed a victim business's draftId could
+have caused that business's own Meta account to actually spend money on
+an attacker-controlled campaign (headline/body/budget already baked
+into the draft row, `activate` flag also caller-controlled) with zero
+relationship to that business — worse than a message-only relay, since
+Twilio SMS is billed to Minerva's own account while this is billed
+directly to the victim's own connected ad account.
+
+Fixed both identically to `draft-quote`: added `getAuthenticatedCaller`
++ `isOwnerOfBusiness` (`_shared/ownership.ts`) right after loading the
+draft (joined to `businesses(owner_user_id, contact_email, ...)` in the
+same query), before any Twilio/Meta call or status-claiming update. No
+frontend change needed — `DispatcherView.jsx`'s `approveDraft()` already
+calls both via `supabase.functions.invoke()`, which attaches the real
+dispatcher's session token automatically. 454/454 tests unaffected (no
+`logic.ts` in either function — pure I/O guard, same shape as the
+`send-email` fix). Lint/build clean. Deployed (`send-growth-message`
+v12→v13, `launch-ad-campaign` v11→v12, both `verify_jwt:true`
+preserved). Live-verified with two real throwaway `marketing_drafts`
+rows (one per type) tied to the project's `[TEST] Theoretical Co`
+business: called both functions with only the public anon key (no real
+login) against the real draft ids — both now correctly return `401
+{"error":"Not authenticated."}` — then confirmed via a follow-up read
+that neither draft's `status` had moved off `'pending'` (i.e. neither
+attempt reached the SMS-send or Meta-API code at all), before deleting
+both test rows.
