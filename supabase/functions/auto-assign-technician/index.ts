@@ -100,6 +100,14 @@
 // Pure scoring/filtering logic lives in ./logic.ts so it can be unit tested
 // without a database or the Deno runtime — this file just wires that logic
 // up to real Supabase reads/writes.
+//
+// Custom Workflows (added 2026-09-28): fires the 'job.assigned' trigger via
+// run-custom-workflows (internal service-role call, same pattern as the
+// existing notify-slack/send-job-assignment-sms fires) on every successful
+// assignment — technician OR subcontractor. DispatcherView's manual
+// assignJob fires the same trigger for the human-assigned path, so a
+// business's 'job.assigned' workflow rules fire consistently regardless of
+// whether auto-dispatch or a dispatcher's own click assigned the job.
 // Deploy with: supabase functions deploy auto-assign-technician
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
@@ -239,6 +247,15 @@ serve(async (req: Request) => {
           text: `🚚 No technician was free — auto-dispatched subcontractor *${nearestSub!.name}* to job for *${job.client_name || 'client'}*.`,
         }),
       }).catch(() => {})
+      await fetch(`${supabaseUrl}/functions/v1/run-custom-workflows`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
+        body: JSON.stringify({
+          businessId: job.business_id,
+          event: 'job.assigned',
+          payload: { client_name: job.client_name, client_address: job.client_address, technician_name: nearestSub!.name },
+        }),
+      }).catch(() => {})
       supabase.rpc('record_agent_run', { fn_name: 'auto-assign-technician', status: 'ok' }).then(() => {}, () => {})
       return new Response(JSON.stringify({ success: true, assigned_subcontractor_to: nearestSub!.id }), {
         status: 200,
@@ -271,6 +288,16 @@ serve(async (req: Request) => {
       body: JSON.stringify({
         businessId: job.business_id,
         text: `🚚 Auto-dispatched *${nearest!.name}* to job for *${job.client_name || 'client'}*.`,
+      }),
+    }).catch(() => {})
+
+    await fetch(`${supabaseUrl}/functions/v1/run-custom-workflows`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
+      body: JSON.stringify({
+        businessId: job.business_id,
+        event: 'job.assigned',
+        payload: { client_name: job.client_name, client_address: job.client_address, technician_name: nearest!.name },
       }),
     }).catch(() => {})
 

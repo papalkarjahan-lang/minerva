@@ -748,7 +748,8 @@ export default function DispatcherView() {
 
   // Assign job to technician
   async function assignJob(jobId, techId) {
-    const previousTechId = jobs.find(j => j.id === jobId)?.technician_id || null
+    const job = jobs.find(j => j.id === jobId)
+    const previousTechId = job?.technician_id || null
     const { error: jobErr } = await supabase.from('jobs').update({ technician_id: techId }).eq('id', jobId)
     if (jobErr) { alert(`Couldn't assign job: ${jobErr.message}`); return }
     const { error: techErr } = await supabase.from('technicians').update({ current_job_id: jobId }).eq('id', techId)
@@ -757,12 +758,23 @@ export default function DispatcherView() {
     supabase.functions.invoke('send-job-assignment-sms', {
       body: { jobId, technicianId: techId, previousTechnicianId: previousTechId && previousTechId !== techId ? previousTechId : undefined },
     }).catch(() => {})
+    // Custom Workflows: fire the 'job.assigned' trigger for this business, if any are configured.
+    const technicianName = technicians.find(t => t.id === techId)?.name || null
+    supabase.functions.invoke('run-custom-workflows', {
+      body: { businessId, event: 'job.assigned', payload: { client_name: job?.client_name, client_address: job?.client_address, technician_name: technicianName } },
+    }).catch(() => {})
     await loadAll()
   }
 
   async function assignJobSubcontractor(jobId, subcontractorId) {
+    const job = jobs.find(j => j.id === jobId)
     const { error } = await supabase.from('jobs').update({ assigned_subcontractor_id: subcontractorId }).eq('id', jobId)
     if (error) { alert(`Couldn't assign subcontractor: ${error.message}`); return }
+    // Custom Workflows: fire the 'job.assigned' trigger for this business, if any are configured.
+    const technicianName = subcontractors.find(s => s.id === subcontractorId)?.name || null
+    supabase.functions.invoke('run-custom-workflows', {
+      body: { businessId, event: 'job.assigned', payload: { client_name: job?.client_name, client_address: job?.client_address, technician_name: technicianName } },
+    }).catch(() => {})
     await loadAll()
   }
 
@@ -4087,6 +4099,11 @@ const WORKFLOW_CONDITION_FIELDS = {
     { value: 'total', label: 'Quote total' },
     { value: 'client_name', label: 'Client name' },
   ],
+  'job.assigned': [
+    { value: 'client_name', label: 'Client name' },
+    { value: 'client_address', label: 'Client address' },
+    { value: 'technician_name', label: 'Assigned technician/subcontractor name' },
+  ],
 }
 
 function CustomWorkflowsPanel({ businessId }) {
@@ -4165,6 +4182,7 @@ function CustomWorkflowsPanel({ businessId }) {
             <option value="invoice.overdue">When an invoice goes unpaid 3+ days</option>
             <option value="quote.accepted">When a client accepts a quote</option>
             <option value="quote.declined">When a client declines a quote</option>
+            <option value="job.assigned">When a job is assigned to a technician</option>
           </select>
 
           <label style={{ ...styles.inputLabel, fontSize: 11, marginBottom: 4 }}>Only run if... (optional)</label>

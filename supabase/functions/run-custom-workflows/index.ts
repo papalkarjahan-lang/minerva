@@ -26,9 +26,11 @@
 //  2. Direct invocation with a body: { businessId, event, payload } — called
 //     fire-and-forget from wherever the event actually happens (e.g.
 //     ai-intake-chat after inserting a lead, DispatcherView after marking a
-//     job complete or an invoice paid, respond-to-quote after a client
-//     accepts/declines their quote). This is the same "internal function
-//     calling another function" pattern already used by notify-slack.
+//     job complete, assigning a job, or an invoice paid; auto-assign-
+//     technician after its own auto/subcontractor assignment; respond-to-
+//     quote after a client accepts/declines their quote). This is the same
+//     "internal function calling another function" pattern already used by
+//     notify-slack.
 //     respond-to-quote is a fully public, unauthenticated caller (a client
 //     with no login, same as its own quote link) but is trusted here because
 //     IT holds the real service-role key server-side and re-derives
