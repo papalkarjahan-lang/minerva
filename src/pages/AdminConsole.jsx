@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
+import LoadingScreen from '../components/LoadingScreen'
 
 // Internal Minerva staff console — NOT tied to any one business. Gated by
 // an admin-email allowlist (VITE_ADMIN_EMAILS, comma-separated) checked
@@ -365,7 +366,7 @@ export default function AdminConsole() {
   }
 
   if (state === 'loading') {
-    return <div style={pageStyle}><p style={{ color: '#888' }}>Loading...</p></div>
+    return <LoadingScreen />
   }
 
   if (state === 'unauthenticated' || state === 'forbidden') {

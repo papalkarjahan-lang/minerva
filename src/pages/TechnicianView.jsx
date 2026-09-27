@@ -4,6 +4,7 @@ import { supabase } from '../supabaseClient'
 import { haversineKm } from '../utils'
 import { hasAddon } from '../maxAddons'
 import ContactSupportModal from '../components/ContactSupportModal'
+import LoadingScreen from '../components/LoadingScreen'
 
 // GPS update interval in milliseconds
 const GPS_INTERVAL_MS = 15000 // 15 seconds
@@ -927,11 +928,7 @@ export default function TechnicianView() {
     </div>
   )
 
-  if (!tech) return (
-    <div style={styles.screen}>
-      <p style={{ color: '#888', fontSize: 16 }}>Loading...</p>
-    </div>
-  )
+  if (!tech) return <LoadingScreen />
 
   return (
     <div style={styles.screen}>
@@ -1389,7 +1386,7 @@ const styles = {
   btnGreySmall: { flex: 1, background: '#1e293b', color: '#ccc', border: 'none', borderRadius: 10, padding: '12px 0', fontSize: 14, fontWeight: 'bold', cursor: 'pointer' },
   btnGreenSmall: { flex: 2, background: '#1D9E75', color: '#fff', border: 'none', borderRadius: 10, padding: '12px 0', fontSize: 14, fontWeight: 'bold', cursor: 'pointer' },
   photoAttachBtn: { display: 'inline-block', background: '#1e293b', color: '#8899a6', border: '1px dashed #2D5FA8', borderRadius: 8, padding: '6px 10px', fontSize: 12, cursor: 'pointer', margin: '4px 0 8px' },
-  materialSelect: { flex: 2, background: '#050811', border: '1px solid #1e293b', borderRadius: 8, padding: '10px 12px', color: '#fff', fontSize: 13 },
+  materialSelect: { flex: 2, minWidth: 0, background: '#050811', border: '1px solid #1e293b', borderRadius: 8, padding: '10px 12px', color: '#fff', fontSize: 13 },
   credentialBanner: { background: '#2A1F0844', border: '1px solid #A87C16', borderRadius: 12, padding: '12px 16px', width: '100%', maxWidth: 360, marginBottom: 20 },
   credentialBannerTitle: { color: '#A87C16', fontSize: 13, fontWeight: 'bold', margin: '0 0 6px' },
   credentialBannerLine: { color: '#ccc', fontSize: 12, margin: '2px 0' },

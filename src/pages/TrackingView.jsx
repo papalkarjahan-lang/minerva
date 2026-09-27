@@ -38,8 +38,10 @@ export default function TrackingView() {
     })
     e.target.setLight({ anchor: 'viewport', color: '#ffffff', intensity: 0.4 })
   }
+  const [mapError, setMapError] = useState(false)
   function handleMapTileError(e) {
     console.error('TrackingView: map tile/style error', e?.error || e)
+    setMapError(true)
   }
   // Client Self-Serve Rebooking Loop: shown once the job is complete, lets
   // the client ask for the same job again without a phone call. Writes
@@ -212,13 +214,15 @@ export default function TrackingView() {
 
       {/* Map */}
       <div style={{ flex: 1, position: 'relative' }}>
-        {!isMapboxTokenConfigured() ? (
-          // Client-facing — no technical jargon about env vars here (that
-          // belongs on DispatcherView's internal fallback, not something a
-          // customer waiting for their technician should ever see). The
-          // footer below still shows the technician's name and "Updated
-          // X ago", so this isn't a dead end — the client still knows
-          // someone's coming, just without the live pin.
+        {!isMapboxTokenConfigured() || mapError ? (
+          // Client-facing — no technical jargon about env vars/tile errors
+          // here (that belongs on DispatcherView's internal fallback, not
+          // something a customer waiting for their technician should ever
+          // see). Reused for both the unconfigured-token case and a runtime
+          // map tile/style error, since either way the map just can't be
+          // shown right now. The footer below still shows the technician's
+          // name and "Updated X ago", so this isn't a dead end — the client
+          // still knows someone's coming, just without the live pin.
           <div style={styles.mapUnconfigured}>
             <p style={{ fontSize: 32, margin: '0 0 8px' }}>📍</p>
             <p style={{ color: '#555', fontSize: 14, margin: 0, textAlign: 'center', maxWidth: 260 }}>
