@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   haversineKm,
   filterQualifiedTechnicians,
+  filterSkilledTechnicians,
   pickNearestTechnician,
   pickNearestSubcontractor,
   isBeyondMaxKm,
@@ -31,6 +32,32 @@ describe('filterQualifiedTechnicians', () => {
   it('returns empty when nobody is qualified', () => {
     const free = [{ id: 'a' }, { id: 'b' }]
     expect(filterQualifiedTechnicians(free, new Set())).toEqual([])
+  })
+})
+
+describe('filterSkilledTechnicians', () => {
+  it('keeps only technicians whose skills array contains the required tag', () => {
+    const free = [
+      { id: 'a', skills: ['electrical', 'confined_space'] },
+      { id: 'b', skills: ['plumbing'] },
+      { id: 'c', skills: null },
+    ]
+    expect(filterSkilledTechnicians(free, 'confined_space').map(t => t.id)).toEqual(['a'])
+  })
+
+  it('matches case-insensitively', () => {
+    const free = [{ id: 'a', skills: ['Confined_Space'] }]
+    expect(filterSkilledTechnicians(free, 'confined_space')).toHaveLength(1)
+  })
+
+  it('returns empty when nobody has the tag', () => {
+    const free = [{ id: 'a', skills: ['plumbing'] }, { id: 'b', skills: [] }]
+    expect(filterSkilledTechnicians(free, 'electrical')).toEqual([])
+  })
+
+  it('treats a missing/null skills list as no skills, not a crash', () => {
+    const free = [{ id: 'a' }, { id: 'b', skills: null }]
+    expect(filterSkilledTechnicians(free, 'electrical')).toEqual([])
   })
 })
 

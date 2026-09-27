@@ -1508,6 +1508,19 @@ export default function DispatcherView() {
     supabase.functions.invoke('sync-technician-billing', { body: { businessId } }).catch(() => {})
   }
 
+  // Lets a dispatcher tag a technician with skills (e.g. "confined_space")
+  // so a job's optional required_skill can hard-filter auto-dispatch
+  // candidates — see supabase_schema_delta_skill_dispatch.sql and
+  // auto-assign-technician/logic.ts (filterSkilledTechnicians). The column
+  // already existed (supabase_schema_delta_minerva_max.sql) but had no
+  // write path anywhere in the UI until now, so it always read back empty.
+  async function updateTechSkills(techId, skillsText) {
+    const skills = skillsText.split(',').map(s => s.trim()).filter(Boolean)
+    const { error } = await supabase.from('technicians').update({ skills }).eq('id', techId)
+    if (error) { alert(`Couldn't update skills: ${error.message}`); return }
+    setTechnicians(prev => prev.map(t => t.id === techId ? { ...t, skills } : t))
+  }
+
   // Human-click only, same pattern as sync-technician-billing above —
   // never fires on its own. Writes route_sequence/estimated_arrival_at
   // onto that technician's remaining jobs today (nearest-neighbor
@@ -1802,6 +1815,13 @@ export default function DispatcherView() {
                     </button>
                   </div>
                 )}
+                <input
+                  defaultValue={(tech.skills || []).join(', ')}
+                  placeholder="Skills (comma-separated, e.g. confined_space)"
+                  onClick={(e) => e.stopPropagation()}
+                  onBlur={(e) => updateTechSkills(tech.id, e.target.value)}
+                  style={{ ...styles.dealValueInput, width: '100%', marginTop: 4, boxSizing: 'border-box' }}
+                />
               </div>
             )
           })}
@@ -3210,6 +3230,7 @@ export default function DispatcherView() {
         <AddJobModal
           businessId={businessId}
           technicianCredentials={technicianCredentials}
+          technicians={technicians}
           onClose={() => { setShowAddJob(false); loadAll() }}
         />
       )}
@@ -3370,9 +3391,9 @@ function AddTechnicianModal({ businessId, businessName, onClose }) {
 }
 
 // ── ADD JOB MODAL ──────────────────────────────────────────
-function AddJobModal({ businessId, technicianCredentials, onClose }) {
+function AddJobModal({ businessId, technicianCredentials, technicians, onClose }) {
   const [form, setForm] = useState({
-    client_name: '', client_phone: '', client_address: '', scheduled_time: '', notes: '', urgency: '', required_credential_name: ''
+    client_name: '', client_phone: '', client_address: '', scheduled_time: '', notes: '', urgency: '', required_credential_name: '', required_skill: ''
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -3382,6 +3403,12 @@ function AddJobModal({ businessId, technicianCredentials, onClose }) {
   // from real credentials instead of free-typing a name that won't match
   // anything in auto-assign-technician's exact-match filter.
   const credentialNames = [...new Set((technicianCredentials || []).map(c => c.credential_name).filter(Boolean))].sort()
+
+  // Distinct skill tags already assigned to at least one technician (see
+  // supabase_schema_delta_skill_dispatch.sql) — same "pick from real data"
+  // rationale as credentialNames above, so a dispatcher can't select a tag
+  // no technician actually holds.
+  const skillTags = [...new Set((technicians || []).flatMap(t => t.skills || []).filter(Boolean))].sort()
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -3413,6 +3440,7 @@ function AddJobModal({ businessId, technicianCredentials, onClose }) {
         notes: form.notes || null,
         urgency: form.urgency || null,
         required_credential_name: form.required_credential_name || null,
+        required_skill: form.required_skill || null,
         status: 'scheduled'
       })
       if (insertError) throw insertError
@@ -3467,6 +3495,19 @@ function AddJobModal({ businessId, technicianCredentials, onClose }) {
               <p style={{ color: '#888', fontSize: 12, margin: '6px 0 0' }}>
                 If set, auto-dispatch will only assign a technician who currently holds this
                 credential (unexpired) — unlike urgency, this DOES block assignment.
+              </p>
+            </div>
+          )}
+          {skillTags.length > 0 && (
+            <div style={{ marginBottom: 14 }}>
+              <label style={styles.inputLabel}>Required skill (optional)</label>
+              <select value={form.required_skill} onChange={f('required_skill')} style={styles.input}>
+                <option value="">None</option>
+                {skillTags.map(tag => <option key={tag} value={tag}>{tag}</option>)}
+              </select>
+              <p style={{ color: '#888', fontSize: 12, margin: '6px 0 0' }}>
+                If set, auto-dispatch will only assign a technician tagged with this skill —
+                same hard requirement as a required credential, just for skills instead of licences.
               </p>
             </div>
           )}
@@ -4081,6 +4122,7 @@ function CustomWorkflowsPanel({ businessId }) {
             <option value="lead.created">When a new lead comes in</option>
             <option value="job.completed">When a job is completed</option>
             <option value="invoice.paid">When an invoice is paid</option>
+            <option value="invoice.overdue">When an invoice goes unpaid 3+ days</option>
           </select>
           <select value={draft.action_type} onChange={e => setDraft(d => ({ ...d, action_type: e.target.value }))} style={{ ...styles.input, marginBottom: 8 }}>
             <option value="slack">Post to Slack (uses your webhook above)</option>

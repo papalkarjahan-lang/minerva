@@ -31,6 +31,7 @@ export interface TechnicianCandidate {
   current_lng: number | null
   rolling_emergency_job_count?: number | null
   rolling_week_hours?: number | null
+  skills?: string[] | null
 }
 
 export interface SubcontractorCandidate {
@@ -44,6 +45,17 @@ export interface SubcontractorCandidate {
 // credential — see index.ts header comment for the compliance rationale.
 export function filterQualifiedTechnicians<T extends { id: string }>(free: T[], qualifiedIds: Set<string>): T[] {
   return free.filter(t => qualifiedIds.has(t.id))
+}
+
+// Hard-exclude technicians who don't hold the job's required skill tag —
+// see index.ts header comment. Unlike the credential filter (which checks
+// a live technician_credentials row with an expiry date), skills are a
+// simple free-text tag list on technicians.skills (text[]), so this is a
+// pure in-memory membership check, case-insensitive since dispatchers may
+// not always type/select tags with identical casing.
+export function filterSkilledTechnicians<T extends { skills?: string[] | null }>(free: T[], requiredSkill: string): T[] {
+  const target = requiredSkill.trim().toLowerCase()
+  return free.filter(t => (t.skills || []).some(s => s.toLowerCase() === target))
 }
 
 // Nearest-by-distance PLUS soft emergency/fatigue tiebreak penalties (never

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { matchesCondition } from './logic'
+import { matchesCondition, daysOverdue } from './logic'
 
 describe('matchesCondition', () => {
   it('always matches when no field is set', () => {
@@ -46,5 +46,20 @@ describe('matchesCondition', () => {
 
   it('defaults to matching (true) for an unrecognized operator', () => {
     expect(matchesCondition({ amount: 100 }, 'amount', 'unknown_op', '100')).toBe(true)
+  })
+})
+
+describe('daysOverdue', () => {
+  it('returns 0 for the same instant', () => {
+    expect(daysOverdue('2026-09-27T00:00:00Z', '2026-09-27T00:00:00Z')).toBe(0)
+  })
+
+  it('returns whole days elapsed, floored', () => {
+    expect(daysOverdue('2026-09-20T00:00:00Z', '2026-09-27T00:00:00Z')).toBe(7)
+    expect(daysOverdue('2026-09-20T00:00:00Z', '2026-09-27T12:00:00Z')).toBe(7)
+  })
+
+  it('returns 3 for exactly the chase-worthy threshold', () => {
+    expect(daysOverdue('2026-09-24T00:00:00Z', '2026-09-27T00:00:00Z')).toBe(3)
   })
 })

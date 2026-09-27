@@ -83,6 +83,20 @@
 // subcontractor pool is skipped outright and the job falls through to
 // no_technician_available for a human to route, instead of ever guessing.
 //
+// Skill-based hard filter (added 2026-09-27, supabase_schema_delta_
+// skill_dispatch.sql): jobs.required_skill, null by default (= no
+// requirement, unchanged behaviour). technicians.skills (text[]) already
+// existed as a free-text tag list (supabase_schema_delta_minerva_max.sql)
+// but nothing read it until now. If a dispatcher sets a required skill on
+// the job (e.g. "confined_space"), any free technician whose skills list
+// doesn't contain that exact tag (case-insensitive) is excluded from the
+// candidate pool — same hard-exclude treatment as the credential filter,
+// applied independently (a job can require a credential, a skill, both,
+// or neither). Same subcontractor-fallback-skip rationale as credentials:
+// subcontractors have no skills data in this build, so a skill-required
+// job falls straight to no_technician_available once no employed
+// technician qualifies, rather than ever guessing.
+//
 // Pure scoring/filtering logic lives in ./logic.ts so it can be unit tested
 // without a database or the Deno runtime — this file just wires that logic
 // up to real Supabase reads/writes.
@@ -90,7 +104,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
-import { filterQualifiedTechnicians, pickNearestTechnician, pickNearestSubcontractor, isBeyondMaxKm } from "./logic.ts"
+import { filterQualifiedTechnicians, filterSkilledTechnicians, pickNearestTechnician, pickNearestSubcontractor, isBeyondMaxKm } from "./logic.ts"
 import { isAddonActive } from "../_shared/maxAddons.ts"
 
 serve(async (req: Request) => {
@@ -118,7 +132,7 @@ serve(async (req: Request) => {
 
     const { data: job, error: jobErr } = await supabase
       .from('jobs')
-      .select('id, business_id, technician_id, client_lat, client_lng, client_name, required_credential_name')
+      .select('id, business_id, technician_id, client_lat, client_lng, client_name, required_credential_name, required_skill')
       .eq('id', job_id)
       .single()
     if (jobErr || !job) throw new Error('Job not found')
@@ -155,7 +169,7 @@ serve(async (req: Request) => {
 
     const { data: techs } = await supabase
       .from('technicians')
-      .select('id, name, current_lat, current_lng, current_job_id, is_active, rolling_emergency_job_count, rolling_week_hours')
+      .select('id, name, current_lat, current_lng, current_job_id, is_active, rolling_emergency_job_count, rolling_week_hours, skills')
       .eq('business_id', job.business_id)
       .eq('is_active', true)
       .is('current_job_id', null)
@@ -176,14 +190,21 @@ serve(async (req: Request) => {
       free = filterQualifiedTechnicians(free, qualifiedIds)
     }
 
+    // Hard-exclude technicians lacking the job's required skill tag — see
+    // header comment. No requirement set = no filtering, same as before.
+    if (job.required_skill && free.length > 0) {
+      free = filterSkilledTechnicians(free, job.required_skill)
+    }
+
     if (free.length === 0) {
       // No employed technician free — fall back to the subcontractor pool
       // before giving up entirely (only if the business's add-on is
       // actually active — see comment above). Skipped entirely when a
-      // credential is required, since subcontractors have no credential
-      // data to verify against (see header comment) — falling through
-      // straight to no_technician_available instead of ever guessing.
-      const { data: subs } = (subcontractorPoolActive && !job.required_credential_name) ? await supabase
+      // credential or skill is required, since subcontractors have no
+      // credential/skill data to verify against (see header comment) —
+      // falling through straight to no_technician_available instead of
+      // ever guessing.
+      const { data: subs } = (subcontractorPoolActive && !job.required_credential_name && !job.required_skill) ? await supabase
         .from('subcontractors')
         .select('id, name, current_lat, current_lng')
         .eq('business_id', job.business_id)

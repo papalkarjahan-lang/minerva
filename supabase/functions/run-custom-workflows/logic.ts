@@ -23,3 +23,12 @@ export function matchesCondition(
     default: return true
   }
 }
+
+// Whole days elapsed since createdAt, as of nowIso — used by the
+// 'invoice.overdue' cron sweep (index.ts) to both pick which unpaid
+// invoices qualify and to populate payload.days_overdue for a workflow's
+// own condition (e.g. "only Slack me if days_overdue > 7").
+export function daysOverdue(createdAtIso: string, nowIso: string): number {
+  const ms = new Date(nowIso).getTime() - new Date(createdAtIso).getTime()
+  return Math.floor(ms / (24 * 60 * 60 * 1000))
+}

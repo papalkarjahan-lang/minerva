@@ -9,11 +9,20 @@
 // rows, it doesn't itself parse natural language).
 //
 // Two ways this runs:
-//  1. Cron sweep (every 15 min, no body) — checks 'job.completed' and
-//     'invoice.paid' style triggers by scanning for rows updated since the
-//     last sweep isn't tracked per-row, so those two triggers are handled
-//     by the OTHER functions that already own that event (see below) via a
-//     direct POST with a body instead of this function polling for them.
+//  1. Cron sweep (every 15 min, no body) — 'job.completed' and 'invoice.paid'
+//     are event-driven via direct invocation (see below), so nothing to poll
+//     for there. 'invoice.overdue' (added 2026-09-27) IS time-based, so the
+//     sweep itself finds qualifying invoices: unpaid, created 3+ days ago
+//     (the same "chase-worthy" threshold chase-unpaid-invoices already
+//     uses), and not yet notified for this trigger. Claimed atomically via
+//     invoices.workflow_overdue_notified_at (UPDATE ... WHERE still null,
+//     checked via .select() returning the claimed row) BEFORE running any
+//     workflow — same claim-before-send pattern as nurture-stale-leads,
+//     preventing an overlapping sweep from double-firing the same invoice.
+//     Fires once per invoice ever, not on a recurring cadence — a business
+//     wanting repeated overdue nags already has chase-unpaid-invoices SMS
+//     for that; this is for a DIFFERENT one-time action (e.g. Slack the
+//     accounts team, or hit an external collections webhook).
 //  2. Direct invocation with a body: { businessId, event, payload } — called
 //     fire-and-forget from wherever the event actually happens (e.g.
 //     ai-intake-chat after inserting a lead, DispatcherView after marking a
@@ -48,7 +57,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
-import { matchesCondition } from "./logic.ts"
+import { matchesCondition, daysOverdue } from "./logic.ts"
 import { isOwnerOrTechnicianOfBusiness, getAuthenticatedCaller } from "../_shared/ownership.ts"
 
 serve(async (req: Request) => {
@@ -117,12 +126,62 @@ serve(async (req: Request) => {
       })
     }
 
-    // Cron sweep with no body: nothing to poll for currently (both supported
-    // triggers are event-driven via direct invocation above), so this is a
-    // harmless no-op tick kept for forward-compatibility with future
-    // time-based trigger types (e.g. 'invoice.overdue').
+    // Cron sweep with no body: find every business with at least one active
+    // 'invoice.overdue' workflow, then check just their invoices (not every
+    // business's) for anything unpaid and 3+ days old that hasn't already
+    // been claimed for this trigger — see header comment for the full
+    // rationale and the atomic-claim ordering.
+    const OVERDUE_THRESHOLD_DAYS = 3
+    const nowIso = new Date().toISOString()
+    const cutoffIso = new Date(Date.now() - OVERDUE_THRESHOLD_DAYS * 24 * 60 * 60 * 1000).toISOString()
+
+    const { data: overdueWorkflows } = await supabase
+      .from('custom_workflows')
+      .select('business_id')
+      .eq('trigger_event', 'invoice.overdue')
+      .eq('active', true)
+    const businessIds: string[] = [...new Set((overdueWorkflows || []).map((w: any) => w.business_id))]
+
+    let totalRan = 0
+    let totalChecked = 0
+    for (const bId of businessIds) {
+      const { data: overdueInvoices } = await supabase
+        .from('invoices')
+        .select('id, client_name, total, created_at')
+        .eq('business_id', bId)
+        .eq('status', 'unpaid')
+        .lt('created_at', cutoffIso)
+        .is('workflow_overdue_notified_at', null)
+
+      for (const inv of overdueInvoices || []) {
+        totalChecked++
+        // Atomic claim: only the sweep that actually flips this row from
+        // null gets to run the workflow, so an overlapping run racing on
+        // the same invoice is a harmless no-op for it, not a double-fire.
+        const { data: claimed } = await supabase
+          .from('invoices')
+          .update({ workflow_overdue_notified_at: nowIso })
+          .eq('id', inv.id)
+          .is('workflow_overdue_notified_at', null)
+          .select('id')
+        if (!claimed || claimed.length === 0) continue
+
+        const result = await runWorkflowsFor(supabase, supabaseUrl, supabaseServiceKey, bId, 'invoice.overdue', {
+          invoice_id: inv.id,
+          client_name: inv.client_name,
+          total: inv.total,
+          days_overdue: daysOverdue(inv.created_at, nowIso),
+        })
+        totalRan += result.ran
+      }
+    }
+
     supabase.rpc('record_agent_run', { fn_name: 'run-custom-workflows', status: 'ok' }).then(() => {}, () => {})
-    return new Response(JSON.stringify({ success: true, note: 'no time-based triggers configured' }), {
+    return new Response(JSON.stringify({
+      success: true,
+      note: businessIds.length ? `checked ${totalChecked} overdue invoice(s) across ${businessIds.length} business(es)` : 'no time-based triggers configured',
+      ran: totalRan,
+    }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     })
