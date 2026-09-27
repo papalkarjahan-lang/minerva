@@ -1719,3 +1719,67 @@ follow-up read that the row was untouched (`status` still `'new'`,
 `decision_maker_name` still null) after both attempts, then confirmed
 the legitimate path (anon key + the business's real ingestion key)
 still succeeds exactly as intended, before deleting the test row.
+
+## Ownership-check fix on send-job-assignment-sms silently broke its OWN internal caller (2026-09-27)
+
+Found while re-checking `send-job-assignment-sms` ahead of
+`TWILIO_PHONE_NUMBER` becoming configurable now that the bank account is
+connected. This function has exactly two real callers: `DispatcherView`'s
+`assignJob()` (a real dispatcher session, via `supabase.functions.invoke()`)
+and `auto-assign-technician`, which invokes it server-to-server with
+`Authorization: Bearer <SUPABASE_SERVICE_ROLE_KEY>` — there is no end-user
+session in that flow at all. The 2026-09-24 ownership-check fix (Round 43)
+added `getAuthenticatedCaller`/`isOwnerOfBusiness` unconditionally, with no
+awareness that this function has a legitimate non-session caller. `getAuthenticatedCaller`
+calls `supabase.auth.getUser(accessToken)`, which hits GoTrue's `/auth/v1/user`
+endpoint — confirmed live that this rejects the service-role key outright
+(`403 bad_jwt: missing sub claim`, since a service-role JWT isn't tied to any
+real `auth.users` row). That meant every auto-dispatched job has been
+silently failing to text its technician since the ownership fix shipped:
+the call from `auto-assign-technician` is fire-and-forget
+(`.catch(() => {})`, no `response.ok` check), so the 401 was invisible
+anywhere — no error log, no alert, nothing. This is the same underlying
+bug class as `run-custom-workflows`'s two-caller shape
+(`ai-intake-chat`/`voice-intake-agent` server-to-server vs. a real dispatcher
+session), which already handles it correctly — used as the template here.
+
+Fixed by trusting the request outright when the `Authorization` header is
+the literal live `SUPABASE_SERVICE_ROLE_KEY` (read via `Deno.env.get`, not
+hardcoded, so it tracks whichever key format/rotation is actually active),
+and only running the `getAuthenticatedCaller`/`isOwnerOfBusiness` check for
+everyone else — same rule already used by `notify-slack`/`run-custom-workflows`.
+`DispatcherView`'s manual `assignJob()` path is completely unchanged: it
+never presents the service-role key, so it still goes through the full
+ownership check exactly as before. Also reordered the Twilio-credential
+guard to run *after* the ownership check (previously it ran first, so an
+unauthenticated caller would learn "Twilio not configured" before ever
+being rejected — a minor info leak fixed as a side effect of this change,
+and it also made this bug untestable live, since every request died with
+the same 500 regardless of auth).
+
+454/454 tests unaffected (pure I/O guard reordering, no new branches to
+unit-test). Lint/build clean (same pre-existing unrelated Deno-TS parsing
+error as every other edge function). Deployed (`send-job-assignment-sms`
+v7→v8, `verify_jwt:false` preserved). Live-verified against a real
+throwaway `jobs` row: an anon-key call with no session correctly still
+gets `401 Not authenticated` (ownership check unaffected for real
+outsiders); a call presenting the live `SUPABASE_SERVICE_ROLE_KEY` now
+gets past the ownership check and reaches `500 Twilio credentials not
+configured` instead of `401` — proving the bypass works, and matching the
+pre-existing, already-documented `TWILIO_PHONE_NUMBER` gap in
+`DEPLOYMENT_CHECKLIST_PENDING.md` (this fix makes the function correct and
+ready the moment that secret is set; it does not itself require or assume
+Twilio is configured). Test row deleted after.
+
+Side discovery during this test: the project has migrated to Supabase's
+newer API key system (`sb_publishable_...`/`sb_secret_...`), and the
+`SUPABASE_SERVICE_ROLE_KEY` secret exposed to edge functions now actually
+resolves to the new `sb_secret_...` value, not the legacy `service_role`
+JWT — confirmed live (the legacy JWT got `401` against this function, the
+`sb_secret_...` value got the expected `500`). Not a bug: the fix compares
+against `Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')` directly rather than a
+hardcoded key, so it's correct either way, and `auto-assign-technician`
+reads the same env var for its own outbound call — both sides always agree
+on which key is "current." Worth knowing for future live-testing of any
+other function in this bug class: use whichever key that endpoint actually
+returns as current, not an assumed format.

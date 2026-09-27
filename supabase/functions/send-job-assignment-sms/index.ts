@@ -28,6 +28,28 @@
 // could force-send a real assignment SMS to that job's technicians. Fixed
 // using the same isOwner pattern xero-oauth-connect already used for the
 // identical forged-request risk.
+//
+// Internal-caller bypass added 2026-09-27: that fix broke this function's
+// OTHER real caller — auto-assign-technician invokes this server-to-server
+// with `Authorization: Bearer <SUPABASE_SERVICE_ROLE_KEY>` (no end-user
+// session exists in that flow at all), but `getAuthenticatedCaller` calls
+// `supabase.auth.getUser()`, which rejects the service-role key outright
+// (confirmed live against this project's own GoTrue: `403 bad_jwt: missing
+// sub claim` — the service-role JWT has no `sub`, since it isn't a real
+// user session). That meant every auto-dispatched job has been silently
+// failing to text its technician since the ownership fix shipped — the
+// call is fire-and-forget (`.catch(() => {})`, no `response.ok` check), so
+// the 401 was invisible anywhere. Only surfaced now while checking this
+// function ahead of TWILIO_PHONE_NUMBER finally being configurable (see
+// DEPLOYMENT_CHECKLIST_PENDING.md — was blocked on a bank account, not
+// blocked anymore). Fixed with the same internal-service-key bypass
+// run-custom-workflows already uses for its own identical two-caller-shape
+// problem (ai-intake-chat/voice-intake-agent server-to-server, vs.
+// DispatcherView's real dispatcher session): trust the request outright if
+// the Authorization header is the real service-role key, otherwise require
+// owner identity as before. DispatcherView's manual assignJob() still goes
+// through the full ownership check unchanged — it always sends a real
+// session token, never the service-role key.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
@@ -52,13 +74,6 @@ serve(async (req: Request) => {
     const { jobId, technicianId, previousTechnicianId } = await req.json()
     if (!jobId || !technicianId) throw new Error('jobId and technicianId are required')
 
-    const TWILIO_SID = Deno.env.get('TWILIO_ACCOUNT_SID')
-    const TWILIO_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN')
-    const TWILIO_FROM = Deno.env.get('TWILIO_PHONE_NUMBER')
-    if (!TWILIO_SID || !TWILIO_TOKEN || !TWILIO_FROM) {
-      throw new Error('Twilio credentials not configured in Supabase secrets')
-    }
-
     const { data: job, error: jobErr } = await supabase.from('jobs')
       .select('id, client_name, client_address, scheduled_time, urgency, businesses(name, owner_user_id, contact_email)')
       .eq('id', jobId).maybeSingle()
@@ -68,19 +83,32 @@ serve(async (req: Request) => {
 
     // Ownership check — see header note. A legitimate dispatcher's session
     // JWT is already attached automatically by supabase.functions.invoke(),
-    // so this adds no friction for real usage.
-    const caller = await getAuthenticatedCaller(req, supabase)
-    if (!caller) {
-      return new Response(JSON.stringify({ error: 'Not authenticated.' }), {
-        status: 401,
-        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-      })
+    // so this adds no friction for real usage. Internal service-to-service
+    // calls (auto-assign-technician) present the real service-role key —
+    // trusted outright, same rule as notify-slack/run-custom-workflows.
+    const authHeader = req.headers.get('Authorization') || ''
+    const isInternalCall = authHeader.replace(/^Bearer\s+/i, '') === supabaseServiceKey
+    if (!isInternalCall) {
+      const caller = await getAuthenticatedCaller(req, supabase)
+      if (!caller) {
+        return new Response(JSON.stringify({ error: 'Not authenticated.' }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        })
+      }
+      if (!isOwnerOfBusiness(jobBusiness, caller.id, caller.email)) {
+        return new Response(JSON.stringify({ error: 'You do not have access to this business.' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        })
+      }
     }
-    if (!isOwnerOfBusiness(jobBusiness, caller.id, caller.email)) {
-      return new Response(JSON.stringify({ error: 'You do not have access to this business.' }), {
-        status: 403,
-        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-      })
+
+    const TWILIO_SID = Deno.env.get('TWILIO_ACCOUNT_SID')
+    const TWILIO_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN')
+    const TWILIO_FROM = Deno.env.get('TWILIO_PHONE_NUMBER')
+    if (!TWILIO_SID || !TWILIO_TOKEN || !TWILIO_FROM) {
+      throw new Error('Twilio credentials not configured in Supabase secrets')
     }
 
     const bizName = jobBusiness?.name || 'your dispatcher'
