@@ -8,11 +8,16 @@
 -- per-job evidence bundles, workflow_runs = automation trigger history) —
 -- none of those cover ordinary dispatcher actions like removing a
 -- technician, assigning a job, or marking an invoice paid. This table is
--- the missing general record for those, written to directly from the
--- browser (same anon-insert pattern as every other table here — this app
--- has no auth.uid()-scoped RLS on writes by design) but readable only by
--- the business owner, since it's a record ABOUT staff actions, not
--- something staff need to read back.
+-- the missing general record for those.
+--
+-- Unlike most tables in the original schema (anon-insert-with-check(true)),
+-- every current writer of audit_log is DispatcherView, which already runs
+-- in an authenticated-owner session (supabase.auth.getSession(), same as
+-- the owner_user_id-scoped tables from the rls_scoping_v1-v4 deltas). So
+-- both INSERT and SELECT are owner-scoped here, not just SELECT — an audit
+-- trail an anon caller could forge rows into (even unreadable ones) isn't
+-- a trustworthy trail. If a technician-side write path is ever added,
+-- that will need its own policy added then, not a wider "anon insert" now.
 --
 -- entity_id has no FK — deliberately. An audit row must survive the
 -- referenced row being deleted later (e.g. a removed technician's past
@@ -38,14 +43,11 @@ grant select, insert on audit_log to anon, authenticated, service_role;
 
 alter table audit_log enable row level security;
 
--- Written from the browser with no edge function in between (same as
--- checklist_templates, invoices, etc. in this schema) so insert stays open.
-create policy "anon insert audit_log" on audit_log
-  for insert with check (true);
+create policy "owner insert audit_log" on audit_log
+  for insert with check (
+    exists (select 1 from businesses b where b.id = audit_log.business_id and b.owner_user_id = auth.uid())
+  );
 
--- Read-scoped to the owning business's authenticated owner only — this is
--- the one table in this pass where "anon select" would be wrong, since the
--- whole point is a record staff can't quietly read or tamper with.
 create policy "owner select audit_log" on audit_log
   for select using (
     exists (select 1 from businesses b where b.id = audit_log.business_id and b.owner_user_id = auth.uid())

@@ -348,6 +348,13 @@ describe('describeAuditEntry', () => {
       .toBe('Recorded credential for a technician')
   })
 
+  it('describes a saved payroll run', () => {
+    expect(describeAuditEntry({ action: 'payroll.saved', details: { period_start: '2026-09-01', period_end: '2026-09-14', technician_count: 3 } }))
+      .toBe('Saved payroll run (2026-09-01 to 2026-09-14) — 3 technicians')
+    expect(describeAuditEntry({ action: 'payroll.saved', details: {} }))
+      .toBe('Saved payroll run')
+  })
+
   it('falls back to the raw action string for an unknown action', () => {
     expect(describeAuditEntry({ action: 'something.unlisted', details: {} }))
       .toBe('something.unlisted')

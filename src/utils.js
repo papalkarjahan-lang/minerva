@@ -293,6 +293,8 @@ export function describeAuditEntry(entry) {
       return `Saved ${d.type === 'onboarding' ? 'onboarding' : 'completion'} checklist "${d.name || ''}"`
     case 'credential.added':
       return `Recorded credential${d.credential_type ? ` (${d.credential_type})` : ''} for ${d.technician_name || 'a technician'}`
+    case 'payroll.saved':
+      return `Saved payroll run${d.period_start && d.period_end ? ` (${d.period_start} to ${d.period_end})` : ''}${d.technician_count != null ? ` — ${d.technician_count} technician${d.technician_count === 1 ? '' : 's'}` : ''}`
     default:
       return entry.action
   }

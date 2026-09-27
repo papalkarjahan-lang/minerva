@@ -115,6 +115,9 @@ export default function DispatcherView() {
   const [payrollEnd, setPayrollEnd] = useState(today)
   const [payrollRows, setPayrollRows] = useState(null) // null = not yet generated for current range
   const [payrollLoading, setPayrollLoading] = useState(false)
+  const [payrollSaving, setPayrollSaving] = useState(false)
+  const [payrollRuns, setPayrollRuns] = useState([]) // saved snapshots, most recent first
+  const [payrollRunsLoaded, setPayrollRunsLoaded] = useState(false)
   // Agent Operating System dashboard (Phase 5) — platform-wide, read-only.
   // Lazy-loaded (see useEffect below) so these 3 queries only fire if/when
   // someone actually opens the tab, not on every DispatcherView mount.
@@ -605,6 +608,45 @@ export default function DispatcherView() {
       loadAuditLog()
     }
   }, [queueTab])
+
+  // Payroll tab — past saved runs (payroll_runs), same lazy-load-on-first-
+  // open pattern. Separate from generatePayrollHours, which always
+  // computes fresh from technician_locations for whatever range is picked.
+  useEffect(() => {
+    if (queueTab === 'payroll' && !payrollRunsLoaded) {
+      loadPayrollRuns()
+    }
+  }, [queueTab])
+
+  async function loadPayrollRuns() {
+    setPayrollRunsLoaded(true)
+    const { data, error } = await supabase
+      .from('payroll_runs')
+      .select('*')
+      .eq('business_id', businessId)
+      .order('generated_at', { ascending: false })
+      .limit(50)
+    if (error) { console.error('payroll_runs fetch failed', error); return }
+    setPayrollRuns(data || [])
+  }
+
+  // Freezes the currently-generated payrollRows into a permanent snapshot
+  // — the record-keeping counterpart to Export CSV, which hands the same
+  // numbers off but keeps nothing on Minerva's side.
+  async function savePayrollRun() {
+    if (!payrollRows || payrollRows.length === 0) return
+    setPayrollSaving(true)
+    const { data, error } = await supabase.from('payroll_runs').insert({
+      business_id: businessId,
+      period_start: payrollStart,
+      period_end: payrollEnd,
+      rows: payrollRows.map(r => ({ technician_id: r.id, name: r.name, hours: r.hours, days_active: r.daysActive })),
+    }).select().single()
+    setPayrollSaving(false)
+    if (error) { alert(`Couldn't save payroll run: ${error.message}`); return }
+    setPayrollRuns(prev => [data, ...prev])
+    logAudit('payroll.saved', { entityType: 'payroll_run', entityId: data.id, details: { period_start: payrollStart, period_end: payrollEnd, technician_count: payrollRows.length } })
+  }
 
   async function loadAuditLog() {
     setAuditLogLoaded(true)
@@ -2833,6 +2875,12 @@ export default function DispatcherView() {
                     ⬇ Export CSV
                   </button>
                 )}
+                {payrollRows && payrollRows.length > 0 && (
+                  <button style={{ ...styles.addJobBtn, background: 'transparent', border: '1px solid #1e293b', color: '#1D9E75' }}
+                    onClick={savePayrollRun} disabled={payrollSaving}>
+                    {payrollSaving ? 'Saving…' : '💾 Save this run'}
+                  </button>
+                )}
               </div>
               {payrollRows && payrollRows.map(row => (
                 <div key={row.id} style={styles.jobRow}>
@@ -2845,6 +2893,22 @@ export default function DispatcherView() {
               ))}
               {payrollRows && payrollRows.length === 0 && <p style={{ color: '#444', fontSize: 13 }}>No active technicians</p>}
               {!payrollRows && !payrollLoading && <p style={{ color: '#444', fontSize: 13 }}>Choose a period and click Generate</p>}
+
+              {payrollRuns.length > 0 && (
+                <>
+                  <p style={{ ...styles.sectionLabel, marginTop: 20 }}>SAVED RUNS</p>
+                  {payrollRuns.map(run => (
+                    <div key={run.id} style={styles.jobRow}>
+                      <p style={styles.jobClient}>{run.period_start} to {run.period_end}</p>
+                      <p style={styles.jobAddr}>
+                        Saved {new Date(run.generated_at).toLocaleDateString('en-AU')} ·{' '}
+                        {run.rows.length} technician{run.rows.length === 1 ? '' : 's'} ·{' '}
+                        {run.rows.reduce((sum, r) => sum + (r.hours || 0), 0).toFixed(1)}h total
+                      </p>
+                    </div>
+                  ))}
+                </>
+              )}
             </>
           )}
 
