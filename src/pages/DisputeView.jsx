@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import Map, { Marker, Source, Layer } from 'react-map-gl'
 import { supabase } from '../supabaseClient'
-import { isMapboxTokenConfigured } from '../utils'
+import { isMapboxTokenConfigured, haversineKm } from '../utils'
 import 'mapbox-gl/dist/mapbox-gl.css'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
@@ -179,7 +179,11 @@ export default function DisputeView() {
               </Map>
               )}
               <p style={{ ...styles.lineMuted, marginTop: 8 }}>
-                First point {new Date(locations[0].recorded_at).toLocaleString('en-AU')} · Last point {new Date(locations[locations.length - 1].recorded_at).toLocaleString('en-AU')}
+                First point {new Date(locations[0].recorded_at).toLocaleString('en-AU')}
+                {job.client_lat != null && ` (${haversineKm(locations[0].lat, locations[0].lng, job.client_lat, job.client_lng).toFixed(2)} km from client address)`}
+                {' · '}
+                Last point {new Date(locations[locations.length - 1].recorded_at).toLocaleString('en-AU')}
+                {job.client_lat != null && ` (${haversineKm(locations[locations.length - 1].lat, locations[locations.length - 1].lng, job.client_lat, job.client_lng).toFixed(2)} km from client address)`}
               </p>
             </div>
           )}
