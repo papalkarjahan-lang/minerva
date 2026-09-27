@@ -1369,6 +1369,19 @@ export default function DispatcherView() {
     )
   }
 
+  function exportAuditLogCSV() {
+    exportCSV(
+      ['Date', 'Action', 'Description', 'Entity Type'],
+      auditLog.map(entry => [
+        new Date(entry.created_at).toLocaleString('en-AU'),
+        entry.action,
+        describeAuditEntry(entry),
+        entry.entity_type || ''
+      ]),
+      'minerva-records'
+    )
+  }
+
   // Estimate only — see estimate-job-carbon/index.ts header for exactly
   // what this is and isn't (transit-only, straight-line distance, static
   // reference factor). Not a certified emissions audit.
@@ -2955,6 +2968,9 @@ export default function DispatcherView() {
                 Visible only to you (the account owner), never to technicians. Most recent
                 200 entries.
               </p>
+              {auditLog.length > 0 && (
+                <button style={{ ...styles.addJobBtn, marginBottom: 10 }} onClick={exportAuditLogCSV}>⬇ Export CSV</button>
+              )}
               {auditLog.map(entry => (
                 <div key={entry.id} style={styles.jobRow}>
                   <p style={styles.jobClient}>{describeAuditEntry(entry)}</p>
