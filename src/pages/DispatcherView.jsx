@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import Map, { Marker, NavigationControl, FullscreenControl, ScaleControl, Popup, Source, Layer } from 'react-map-gl'
 import { supabase } from '../supabaseClient'
-import { timeAgo, geocodeAddress, insertTechniciansWithPinRetry, haversineKm, isMapboxTokenConfigured } from '../utils'
+import { timeAgo, geocodeAddress, insertTechniciansWithPinRetry, haversineKm, isMapboxTokenConfigured, computeReplayStats, interpolateReplayPosition } from '../utils'
 import ContactSupportModal from '../components/ContactSupportModal'
 import { MAX_ADDONS, hasAddon, isTrialing, trialDaysLeft, hasUsedTrial, enableAddonPatch, disableAddonPatch, startTrialPatch } from '../maxAddons'
 import 'mapbox-gl/dist/mapbox-gl.css'
@@ -136,7 +136,18 @@ export default function DispatcherView() {
   const [draggingJobId, setDraggingJobId] = useState(null)
   const [dragHoverTechId, setDragHoverTechId] = useState(null)
   const DRAG_ASSIGN_RADIUS_KM = 0.6
-  const [trailPoints, setTrailPoints] = useState([]) // [{lat,lng,recorded_at}]
+  const [trailPoints, setTrailPoints] = useState([]) // [{lat,lng,recorded_at,job_id}]
+  // GPS Replay ("behaviour animation") — turns the static breadcrumb trail
+  // above into an animated marker moving along the selected technician's
+  // recorded route for a chosen day, for dispute resolution/compliance
+  // review rather than live tracking. trailDate defaults to today but can
+  // be set to any past day; the interpolation math itself lives in
+  // utils.js (computeReplayStats/interpolateReplayPosition) so it's unit
+  // tested independently of the map.
+  const [trailDate, setTrailDate] = useState(new Date().toISOString().slice(0, 10))
+  const [replayPlaying, setReplayPlaying] = useState(false)
+  const [replayElapsedMs, setReplayElapsedMs] = useState(0)
+  const [replaySpeed, setReplaySpeed] = useState(60) // 1 real second of playback = 60 recorded seconds
   const [showAddJob, setShowAddJob] = useState(false)
   const [showAddTech, setShowAddTech] = useState(false)
   const [linkCopied, setLinkCopied] = useState(false)
@@ -702,26 +713,59 @@ export default function DispatcherView() {
     return () => supabase.removeChannel(channel)
   }, [businessId])
 
-  // Fetch today's GPS breadcrumb trail for the selected technician, only
-  // when the dispatcher actually asks to see it (avoids pulling a full
-  // day of points for every technician on every selection).
+  // Fetch the selected technician's GPS breadcrumb trail for trailDate
+  // (defaults to today), only when the dispatcher actually asks to see it
+  // (avoids pulling a full day of points for every technician on every
+  // selection). job_id is fetched too so the Replay stats line can note
+  // which jobs the route touched that day.
   useEffect(() => {
     if (!selected || !showTrail) { setTrailPoints([]); return }
     let cancelled = false
-    const midnight = new Date(); midnight.setHours(0, 0, 0, 0)
+    const dayStart = new Date(`${trailDate}T00:00:00`)
+    const dayEnd = new Date(`${trailDate}T23:59:59.999`)
     supabase
       .from('technician_locations')
-      .select('lat, lng, recorded_at')
+      .select('lat, lng, recorded_at, job_id')
       .eq('technician_id', selected.id)
-      .gte('recorded_at', midnight.toISOString())
+      .gte('recorded_at', dayStart.toISOString())
+      .lte('recorded_at', dayEnd.toISOString())
       .order('recorded_at', { ascending: true })
       .then(({ data, error }) => {
         if (cancelled) return
         if (error) { console.error('trail fetch failed', error); return }
         setTrailPoints(data || [])
+        setReplayElapsedMs(0)
+        setReplayPlaying(false)
       })
     return () => { cancelled = true }
-  }, [selected, showTrail])
+  }, [selected, showTrail, trailDate])
+
+  // Replay ticker — advances replayElapsedMs (real recorded-timeline ms)
+  // by wall-clock-delta * replaySpeed while playing, via requestAnimationFrame
+  // so it stays smooth regardless of tab throttling granularity. Stops
+  // itself at the end of the recorded route rather than overshooting.
+  const replayFrameRef = useRef(null)
+  const replayStatsForTicker = computeReplayStats(trailPoints)
+  const replayDurationMs = replayStatsForTicker.durationMinutes * 60000
+  useEffect(() => {
+    if (!replayPlaying) return
+    let lastTs = performance.now()
+    function tick(ts) {
+      const deltaMs = ts - lastTs
+      lastTs = ts
+      setReplayElapsedMs(prev => {
+        const next = prev + deltaMs * replaySpeed
+        if (next >= replayDurationMs) {
+          setReplayPlaying(false)
+          return replayDurationMs
+        }
+        return next
+      })
+      replayFrameRef.current = requestAnimationFrame(tick)
+    }
+    replayFrameRef.current = requestAnimationFrame(tick)
+    return () => { if (replayFrameRef.current) cancelAnimationFrame(replayFrameRef.current) }
+  }, [replayPlaying, replaySpeed, replayDurationMs])
 
   // Called when a job pin is dropped on the map. Finds the nearest
   // technician marker to the drop point within DRAG_ASSIGN_RADIUS_KM and,
@@ -3146,25 +3190,70 @@ export default function DispatcherView() {
                 <p style={{ margin: '6px 0 0', fontSize: 12, color: '#1D9E75' }}>
                   Updated {timeAgo(selected.last_seen)}
                 </p>
-                <button
-                  onClick={() => setShowTrail(v => !v)}
-                  style={{
-                    marginTop: 8, fontSize: 12, padding: '4px 8px', cursor: 'pointer',
-                    background: showTrail ? '#2D5FA8' : '#eee',
-                    color: showTrail ? '#fff' : '#333',
-                    border: 'none', borderRadius: 4
-                  }}
-                >
-                  {showTrail ? 'Hide' : 'Show'} today's route{trailPoints.length > 0 ? ` (${trailPoints.length} pts)` : ''}
-                </button>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 8 }}>
+                  <input
+                    type="date" value={trailDate} max={today}
+                    onChange={e => setTrailDate(e.target.value)}
+                    style={{ fontSize: 12, padding: '3px 4px', border: '1px solid #ccc', borderRadius: 4 }}
+                  />
+                  <button
+                    onClick={() => setShowTrail(v => !v)}
+                    style={{
+                      fontSize: 12, padding: '4px 8px', cursor: 'pointer',
+                      background: showTrail ? '#2D5FA8' : '#eee',
+                      color: showTrail ? '#fff' : '#333',
+                      border: 'none', borderRadius: 4
+                    }}
+                  >
+                    {showTrail ? 'Hide' : 'Show'} route{trailPoints.length > 0 ? ` (${trailPoints.length} pts)` : ''}
+                  </button>
+                </div>
+                {/* GPS Replay — animates a marker along the route above
+                    instead of just showing a static line, so a dispatcher
+                    can actually watch where a technician went that day
+                    (dispute resolution / compliance review, not live
+                    tracking). Pure math (interpolation, distance/duration)
+                    lives in utils.js and is unit tested there. */}
+                {showTrail && trailPoints.length > 1 && (
+                  <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid #eee' }}>
+                    <p style={{ margin: '0 0 6px', fontSize: 11, color: '#888' }}>
+                      {replayStatsForTicker.totalDistanceKm.toFixed(1)} km · {Math.round(replayStatsForTicker.durationMinutes)} min
+                      {replayStatsForTicker.jobIds.length > 0 ? ` · ${replayStatsForTicker.jobIds.length} job${replayStatsForTicker.jobIds.length === 1 ? '' : 's'}` : ''}
+                    </p>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <button
+                        onClick={() => setReplayPlaying(v => !v)}
+                        style={{ fontSize: 12, padding: '4px 10px', cursor: 'pointer', background: '#1D9E75', color: '#fff', border: 'none', borderRadius: 4 }}
+                      >
+                        {replayPlaying ? '⏸ Pause' : replayElapsedMs >= replayDurationMs ? '↺ Replay' : '▶ Play'}
+                      </button>
+                      <select
+                        value={replaySpeed}
+                        onChange={e => setReplaySpeed(Number(e.target.value))}
+                        style={{ fontSize: 12, padding: '3px 4px', border: '1px solid #ccc', borderRadius: 4 }}
+                      >
+                        <option value={15}>15x</option>
+                        <option value={60}>60x</option>
+                        <option value={300}>300x</option>
+                        <option value={900}>900x</option>
+                      </select>
+                    </div>
+                    <input
+                      type="range" min={0} max={Math.max(replayDurationMs, 1)} value={Math.min(replayElapsedMs, replayDurationMs)}
+                      onChange={e => { setReplayPlaying(false); setReplayElapsedMs(Number(e.target.value)) }}
+                      style={{ width: '100%', marginTop: 6 }}
+                    />
+                  </div>
+                )}
               </div>
             </Popup>
           )}
 
           {/* Selected tech's GPS breadcrumb trail — a real, durable record of
-              where they were today, not just the live dot. Cheap accountability/
-              dispute evidence: "when were we actually on site" vs. current_lat/
-              current_lng alone, which only ever holds the latest point. */}
+              where they were on trailDate, not just the live dot. Cheap
+              accountability/dispute evidence: "when were we actually on
+              site" vs. current_lat/current_lng alone, which only ever
+              holds the latest point. */}
           {showTrail && trailPoints.length > 1 && (
             <Source
               id="tech-trail"
@@ -3185,6 +3274,20 @@ export default function DispatcherView() {
               />
             </Source>
           )}
+
+          {/* Animated replay marker — current interpolated position along
+              trailPoints at replayElapsedMs. Shown whenever a route with
+              2+ points is loaded, whether playing or scrubbed via the
+              range input, not only while actively animating. */}
+          {showTrail && trailPoints.length > 1 && (() => {
+            const pos = interpolateReplayPosition(replayStatsForTicker.sorted, replayElapsedMs)
+            if (!pos) return null
+            return (
+              <Marker latitude={pos.lat} longitude={pos.lng} anchor="center">
+                <div style={{ width: 16, height: 16, borderRadius: '50%', background: '#F5A623', border: '2px solid #fff', boxShadow: '0 0 0 3px #F5A62355' }} />
+              </Marker>
+            )
+          })()}
         </Map>
         )}
         {isMapboxTokenConfigured() && (

@@ -193,3 +193,76 @@ export function classifyPriority(message) {
   const lower = message.toLowerCase()
   return URGENT_KEYWORDS.some(kw => lower.includes(kw)) ? 'urgent' : 'normal'
 }
+
+// ============================================================
+// TECHNICIAN GPS REPLAY
+// Pure helpers behind DispatcherView's "Replay" tab, which turns a
+// technician's recorded technician_locations pings for a chosen day into
+// an animated route on the map — a "behaviour animation" of where they
+// actually went, for dispute resolution / compliance evidence. This is
+// distinct from TrackingView/the live dispatch map, which show only the
+// current position. Kept as pure functions so the interpolation math can
+// be unit tested without a map.
+// ============================================================
+
+// locations: array of { lat, lng, recorded_at, job_id } — NOT assumed
+// pre-sorted (Supabase order-by is a courtesy, not a guarantee callers
+// should rely on here).
+export function computeReplayStats(locations) {
+  const sorted = [...(locations || [])].sort((a, b) => new Date(a.recorded_at) - new Date(b.recorded_at))
+  if (sorted.length === 0) {
+    return { pingCount: 0, totalDistanceKm: 0, durationMinutes: 0, jobIds: [], sorted }
+  }
+  let totalDistanceKm = 0
+  const jobIds = []
+  for (let i = 0; i < sorted.length; i++) {
+    if (sorted[i].job_id && !jobIds.includes(sorted[i].job_id)) jobIds.push(sorted[i].job_id)
+    if (i > 0) {
+      totalDistanceKm += haversineKm(sorted[i - 1].lat, sorted[i - 1].lng, sorted[i].lat, sorted[i].lng)
+    }
+  }
+  const durationMinutes = (new Date(sorted[sorted.length - 1].recorded_at) - new Date(sorted[0].recorded_at)) / 60000
+  return { pingCount: sorted.length, totalDistanceKm, durationMinutes, jobIds, sorted }
+}
+
+// sortedLocations: already time-sorted (as returned by computeReplayStats).
+// elapsedMs: milliseconds since the first ping, in the *original* (real
+// GPS) timeline — the caller multiplies real playback seconds by a speed
+// multiplier before calling this, so a whole day can replay in e.g. 30
+// on-screen seconds. Clamps to the first/last point outside the recorded
+// range, and linearly interpolates lat/lng between the two bracketing
+// pings otherwise. Returns null only for an empty list.
+export function interpolateReplayPosition(sortedLocations, elapsedMs) {
+  if (!sortedLocations || sortedLocations.length === 0) return null
+  if (sortedLocations.length === 1) {
+    return { lat: sortedLocations[0].lat, lng: sortedLocations[0].lng, index: 0 }
+  }
+  if (elapsedMs <= 0) return { lat: sortedLocations[0].lat, lng: sortedLocations[0].lng, index: 0 }
+
+  const startMs = new Date(sortedLocations[0].recorded_at).getTime()
+  const targetMs = startMs + elapsedMs
+  const lastIndex = sortedLocations.length - 1
+  const lastMs = new Date(sortedLocations[lastIndex].recorded_at).getTime()
+  if (targetMs >= lastMs) {
+    return { lat: sortedLocations[lastIndex].lat, lng: sortedLocations[lastIndex].lng, index: lastIndex }
+  }
+
+  for (let i = 0; i < lastIndex; i++) {
+    const aMs = new Date(sortedLocations[i].recorded_at).getTime()
+    const bMs = new Date(sortedLocations[i + 1].recorded_at).getTime()
+    if (targetMs >= aMs && targetMs <= bMs) {
+      const span = bMs - aMs
+      const ratio = span === 0 ? 0 : (targetMs - aMs) / span
+      const a = sortedLocations[i]
+      const b = sortedLocations[i + 1]
+      return {
+        lat: a.lat + (b.lat - a.lat) * ratio,
+        lng: a.lng + (b.lng - a.lng) * ratio,
+        index: i,
+      }
+    }
+  }
+  // Unreachable given the clamps above — kept as a safe fallback rather
+  // than returning undefined if a future edit changes the bounds.
+  return { lat: sortedLocations[lastIndex].lat, lng: sortedLocations[lastIndex].lng, index: lastIndex }
+}

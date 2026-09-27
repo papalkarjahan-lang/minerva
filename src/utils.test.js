@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { haversineKm, generatePin, generateReferralCode, timeAgo, insertTechniciansWithPinRetry, classifyPriority, normalizeAddressForGeocoding, pickBestGeocodeFeature, isMapboxTokenConfigured } from './utils'
+import { haversineKm, generatePin, generateReferralCode, timeAgo, insertTechniciansWithPinRetry, classifyPriority, normalizeAddressForGeocoding, pickBestGeocodeFeature, isMapboxTokenConfigured, computeReplayStats, interpolateReplayPosition } from './utils'
 
 describe('haversineKm', () => {
   it('returns 0 for identical points', () => {
@@ -191,5 +191,111 @@ describe('isMapboxTokenConfigured', () => {
   it('returns true for a well-formed pk.<payload>.<signature> token', () => {
     vi.stubEnv('VITE_MAPBOX_TOKEN', 'pk.eyJ1IjoicmVhbHVzZXIifQ.abcDEF123-_signature')
     expect(isMapboxTokenConfigured()).toBe(true)
+  })
+})
+
+describe('computeReplayStats', () => {
+  it('returns zeroed stats for an empty/missing list', () => {
+    expect(computeReplayStats([])).toEqual({ pingCount: 0, totalDistanceKm: 0, durationMinutes: 0, jobIds: [], sorted: [] })
+    expect(computeReplayStats(null)).toEqual({ pingCount: 0, totalDistanceKm: 0, durationMinutes: 0, jobIds: [], sorted: [] })
+  })
+
+  it('sorts out-of-order pings by recorded_at before computing anything', () => {
+    const locations = [
+      { lat: -33.87, lng: 151.21, recorded_at: '2026-09-01T09:10:00Z', job_id: null },
+      { lat: -33.87, lng: 151.21, recorded_at: '2026-09-01T09:00:00Z', job_id: null },
+    ]
+    const { sorted } = computeReplayStats(locations)
+    expect(sorted[0].recorded_at).toBe('2026-09-01T09:00:00Z')
+    expect(sorted[1].recorded_at).toBe('2026-09-01T09:10:00Z')
+  })
+
+  it('sums haversine distance across consecutive pings', () => {
+    const locations = [
+      { lat: -33.8688, lng: 151.2093, recorded_at: '2026-09-01T09:00:00Z', job_id: 'j1' },
+      { lat: -33.8688, lng: 151.2093, recorded_at: '2026-09-01T09:05:00Z', job_id: 'j1' }, // same spot, adds 0km
+    ]
+    const { totalDistanceKm } = computeReplayStats(locations)
+    expect(totalDistanceKm).toBeCloseTo(0, 5)
+  })
+
+  it('computes duration in minutes between the first and last ping', () => {
+    const locations = [
+      { lat: 0, lng: 0, recorded_at: '2026-09-01T09:00:00Z', job_id: null },
+      { lat: 0, lng: 1, recorded_at: '2026-09-01T10:30:00Z', job_id: null },
+    ]
+    expect(computeReplayStats(locations).durationMinutes).toBe(90)
+  })
+
+  it('collects unique, non-null job_ids in first-seen order', () => {
+    const locations = [
+      { lat: 0, lng: 0, recorded_at: '2026-09-01T09:00:00Z', job_id: 'j1' },
+      { lat: 0, lng: 0, recorded_at: '2026-09-01T09:05:00Z', job_id: null },
+      { lat: 0, lng: 0, recorded_at: '2026-09-01T09:10:00Z', job_id: 'j2' },
+      { lat: 0, lng: 0, recorded_at: '2026-09-01T09:15:00Z', job_id: 'j1' },
+    ]
+    expect(computeReplayStats(locations).jobIds).toEqual(['j1', 'j2'])
+  })
+
+  it('reports the correct ping count', () => {
+    const locations = [
+      { lat: 0, lng: 0, recorded_at: '2026-09-01T09:00:00Z', job_id: null },
+      { lat: 0, lng: 0, recorded_at: '2026-09-01T09:05:00Z', job_id: null },
+      { lat: 0, lng: 0, recorded_at: '2026-09-01T09:10:00Z', job_id: null },
+    ]
+    expect(computeReplayStats(locations).pingCount).toBe(3)
+  })
+})
+
+describe('interpolateReplayPosition', () => {
+  it('returns null for an empty/missing list', () => {
+    expect(interpolateReplayPosition([], 1000)).toBeNull()
+    expect(interpolateReplayPosition(null, 1000)).toBeNull()
+  })
+
+  it('returns the single point regardless of elapsedMs when there is only one ping', () => {
+    const sorted = [{ lat: 1, lng: 2, recorded_at: '2026-09-01T09:00:00Z' }]
+    expect(interpolateReplayPosition(sorted, 999999)).toEqual({ lat: 1, lng: 2, index: 0 })
+  })
+
+  it('clamps to the first point when elapsedMs is 0 or negative', () => {
+    const sorted = [
+      { lat: 0, lng: 0, recorded_at: '2026-09-01T09:00:00Z' },
+      { lat: 10, lng: 10, recorded_at: '2026-09-01T09:10:00Z' },
+    ]
+    expect(interpolateReplayPosition(sorted, 0)).toEqual({ lat: 0, lng: 0, index: 0 })
+    expect(interpolateReplayPosition(sorted, -500)).toEqual({ lat: 0, lng: 0, index: 0 })
+  })
+
+  it('clamps to the last point when elapsedMs is beyond the recorded range', () => {
+    const sorted = [
+      { lat: 0, lng: 0, recorded_at: '2026-09-01T09:00:00Z' },
+      { lat: 10, lng: 10, recorded_at: '2026-09-01T09:10:00Z' },
+    ]
+    expect(interpolateReplayPosition(sorted, 20 * 60 * 1000)).toEqual({ lat: 10, lng: 10, index: 1 })
+  })
+
+  it('linearly interpolates the midpoint between two bracketing pings', () => {
+    const sorted = [
+      { lat: 0, lng: 0, recorded_at: '2026-09-01T09:00:00Z' },
+      { lat: 10, lng: 20, recorded_at: '2026-09-01T09:10:00Z' },
+    ]
+    const pos = interpolateReplayPosition(sorted, 5 * 60 * 1000) // halfway through the 10-minute gap
+    expect(pos.lat).toBeCloseTo(5, 5)
+    expect(pos.lng).toBeCloseTo(10, 5)
+    expect(pos.index).toBe(0)
+  })
+
+  it('picks the correct bracketing pair across more than two points', () => {
+    const sorted = [
+      { lat: 0, lng: 0, recorded_at: '2026-09-01T09:00:00Z' },
+      { lat: 10, lng: 10, recorded_at: '2026-09-01T09:10:00Z' },
+      { lat: 20, lng: 20, recorded_at: '2026-09-01T09:20:00Z' },
+    ]
+    // 15 minutes in — between the 2nd and 3rd ping, 50% of the way
+    const pos = interpolateReplayPosition(sorted, 15 * 60 * 1000)
+    expect(pos.lat).toBeCloseTo(15, 5)
+    expect(pos.lng).toBeCloseTo(15, 5)
+    expect(pos.index).toBe(1)
   })
 })
