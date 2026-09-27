@@ -1656,3 +1656,66 @@ login) against the real draft ids — both now correctly return `401
 that neither draft's `status` had moved off `'pending'` (i.e. neither
 attempt reached the SMS-send or Meta-API code at all), before deleting
 both test rows.
+
+## Ruled out (non-issue): `technician-login` PIN brute-forcing (2026-09-27)
+
+Investigated whether the PIN-to-session exchange (`technician-login`)
+needed a `check_rate_limit`-style guard, matching the defense-in-depth
+pattern already used on `ai-intake-chat`/`client-support-chat`/
+`send-setup-sms`. Concluded no fix is needed: `generatePin()`
+(`src/utils.js`) draws from a 33-character alphabet at 8 characters,
+~1.7×10^12 combinations. Even an *unthrottled* attacker sustaining 100
+requests/sec from a single source would need on the order of 270 years
+for 50% keyspace coverage — the entropy alone already puts brute force
+far outside practical range, so a rate limiter here would add no real
+protection. This differs from the `ai-intake-chat`/`send-setup-sms`
+cases, which limit replay *against one fixed, already-known target*
+(cost-abuse/duplicate-send), not a keyspace search — a different threat
+model where a limiter is the only defense. No code changed.
+
+## Forged-request gap in `enrich-industrial-leads`'s direct-invocation path (2026-09-27)
+
+Same bug class as every other entry in this round, found continuing the
+sweep past the Marketing pillar into Industrial. `enrich-industrial-
+leads`'s `{leadId, decision_maker_name, decision_maker_title,
+decision_maker_contact}` direct-invocation mode took the leadId with
+**zero** identity check of any kind and used it to overwrite those
+columns on any business's `industrial_leads` row (plus flip its
+`status` to `'enriched'`) — despite its own sibling in the exact same
+domain and same table, `harvest-industrial-leads`, already requiring a
+per-business `X-Ingestion-Key` header for exactly this reason. `industrial_leads.id`
+is a UUID, not a secret, so any caller who obtained/guessed another
+business's leadId could inject fake decision-maker contact info into
+that business's lead pipeline before they ever sourced real enrichment
+data — a data-integrity/pipeline-poisoning risk rather than a money-
+spend or message-send one, but the same unauthenticated-write shape as
+every other fix this round. Note: unlike `send-growth-message`/
+`launch-ad-campaign`, grep of `src/` found **no live frontend caller**
+of this direct-invocation mode at all today (it's intended for a future
+vendor/CRM integration or manual dispatcher entry, per the function's
+own header) — so this closes a real hole in a currently-reachable public
+endpoint, not a race against an existing UI flow. `industrial_leads`'
+own RLS policy was already tightened to owner-only back in pass 3
+(`supabase_schema_delta_rls_scoping_v3.sql`), but that's irrelevant here
+since this edge function reads/writes with the service-role key, which
+bypasses RLS entirely — the exact reason every other fix in this
+session required an explicit application-level check rather than
+relying on the database policy.
+
+Fixed the same way as `harvest-industrial-leads`/`monitor-asset-
+telemetry` (their shared pattern, not `_shared/ownership.ts`'s owner-auth
+pattern, since there's no dispatcher UI or Supabase session to check
+against yet): fetch the lead first to get its `business_id`, then
+require the caller to present that business's own `X-Ingestion-Key`
+header before applying the update. 454/454 tests unaffected (no
+`logic.ts` for this function). Lint/build clean (the pre-existing eslint
+parsing error on this file's Deno `req: Request` syntax is unrelated —
+confirmed identical on the untouched `harvest-industrial-leads` sibling).
+Deployed (`enrich-industrial-leads` v10→v11, `verify_jwt:true`
+preserved). Live-verified with a real throwaway `industrial_leads` row
+tied to `[TEST] Theoretical Co`: anon key with no `X-Ingestion-Key` and
+with a wrong one both correctly returned `401`, confirmed via a
+follow-up read that the row was untouched (`status` still `'new'`,
+`decision_maker_name` still null) after both attempts, then confirmed
+the legitimate path (anon key + the business's real ingestion key)
+still succeeds exactly as intended, before deleting the test row.
