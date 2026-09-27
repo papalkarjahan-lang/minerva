@@ -1455,3 +1455,15 @@ Verified: lint clean, 16/16 tests passing, build clean.
   was pasted directly into chat — same rotate/revoke recommendation as
   above applies to whichever of these is still active once this round's
   work is confirmed done.
+- **New 2026-09-28, not yet run**: `supabase_schema_delta_audit_log.sql`
+  (new `audit_log` table — general "who did what, when" ledger, read from
+  DispatcherView's new RECORDS tab; owner-only SELECT via `owner_user_id`/
+  `auth.uid()`, anon INSERT). Needed before the RECORDS tab will show any
+  real data — no other feature depends on it. Idempotent-safe to run
+  whenever; nothing breaks if it's delayed.
+- **New 2026-09-28, still genuinely outstanding**: a Supabase PAT
+  (`sbp_fc60f643...`) was pasted directly into chat again — the 4th+
+  consecutive round this has happened. Not used for anything (declined
+  per the never-enter-tokens rule). Genuinely overdue for the user to
+  revoke in Supabase Account → Access Tokens; this pattern needs breaking,
+  not just re-flagging.

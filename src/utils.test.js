@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { haversineKm, generatePin, generateReferralCode, timeAgo, insertTechniciansWithPinRetry, classifyPriority, normalizeAddressForGeocoding, pickBestGeocodeFeature, isMapboxTokenConfigured, computeReplayStats, interpolateReplayPosition } from './utils'
+import { haversineKm, generatePin, generateReferralCode, timeAgo, insertTechniciansWithPinRetry, classifyPriority, normalizeAddressForGeocoding, pickBestGeocodeFeature, isMapboxTokenConfigured, computeReplayStats, interpolateReplayPosition, describeAuditEntry } from './utils'
 
 describe('haversineKm', () => {
   it('returns 0 for identical points', () => {
@@ -297,5 +297,59 @@ describe('interpolateReplayPosition', () => {
     expect(pos.lat).toBeCloseTo(15, 5)
     expect(pos.lng).toBeCloseTo(15, 5)
     expect(pos.index).toBe(1)
+  })
+})
+
+describe('describeAuditEntry', () => {
+  it('returns an empty string for a missing entry or action', () => {
+    expect(describeAuditEntry(null)).toBe('')
+    expect(describeAuditEntry({})).toBe('')
+  })
+
+  it('describes a technician removal', () => {
+    expect(describeAuditEntry({ action: 'technician.removed', details: { name: 'Jane Doe' } }))
+      .toBe('Removed technician Jane Doe')
+    expect(describeAuditEntry({ action: 'technician.removed', details: {} }))
+      .toBe('Removed technician Unknown')
+  })
+
+  it('describes subcontractor added/removed', () => {
+    expect(describeAuditEntry({ action: 'subcontractor.added', details: { name: 'Acme Sparky' } }))
+      .toBe('Added subcontractor Acme Sparky')
+    expect(describeAuditEntry({ action: 'subcontractor.removed', details: { name: 'Acme Sparky' } }))
+      .toBe('Removed subcontractor Acme Sparky')
+  })
+
+  it('describes a job assignment, with and without a client name', () => {
+    expect(describeAuditEntry({ action: 'job.assigned', details: { client_name: 'Bob Smith', assignee_name: 'Jane Doe' } }))
+      .toBe('Assigned job for Bob Smith to Jane Doe')
+    expect(describeAuditEntry({ action: 'job.assigned', details: {} }))
+      .toBe('Assigned job to Unassigned')
+  })
+
+  it('describes an invoice payment, formatting the total', () => {
+    expect(describeAuditEntry({ action: 'invoice.paid', details: { total: 245.5, client_name: 'Bob Smith' } }))
+      .toBe('Marked invoice paid ($245.50) — Bob Smith')
+    expect(describeAuditEntry({ action: 'invoice.paid', details: {} }))
+      .toBe('Marked invoice paid')
+  })
+
+  it('describes a checklist template save, distinguishing completion vs onboarding', () => {
+    expect(describeAuditEntry({ action: 'checklist_template.saved', details: { type: 'onboarding', name: 'New Hire SOP' } }))
+      .toBe('Saved onboarding checklist "New Hire SOP"')
+    expect(describeAuditEntry({ action: 'checklist_template.saved', details: { name: 'Job Sign-off' } }))
+      .toBe('Saved completion checklist "Job Sign-off"')
+  })
+
+  it('describes a credential being added', () => {
+    expect(describeAuditEntry({ action: 'credential.added', details: { credential_type: 'Licence', technician_name: 'Jane Doe' } }))
+      .toBe('Recorded credential (Licence) for Jane Doe')
+    expect(describeAuditEntry({ action: 'credential.added', details: {} }))
+      .toBe('Recorded credential for a technician')
+  })
+
+  it('falls back to the raw action string for an unknown action', () => {
+    expect(describeAuditEntry({ action: 'something.unlisted', details: {} }))
+      .toBe('something.unlisted')
   })
 })

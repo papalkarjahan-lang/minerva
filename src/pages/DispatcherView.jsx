@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import Map, { Marker, NavigationControl, FullscreenControl, ScaleControl, Popup, Source, Layer } from 'react-map-gl'
 import { supabase } from '../supabaseClient'
-import { timeAgo, geocodeAddress, insertTechniciansWithPinRetry, haversineKm, isMapboxTokenConfigured, computeReplayStats, interpolateReplayPosition } from '../utils'
+import { timeAgo, geocodeAddress, insertTechniciansWithPinRetry, haversineKm, isMapboxTokenConfigured, computeReplayStats, interpolateReplayPosition, describeAuditEntry } from '../utils'
 import ContactSupportModal from '../components/ContactSupportModal'
 import { MAX_ADDONS, hasAddon, isTrialing, trialDaysLeft, hasUsedTrial, enableAddonPatch, disableAddonPatch, startTrialPatch } from '../maxAddons'
 import 'mapbox-gl/dist/mapbox-gl.css'
@@ -96,7 +96,7 @@ export default function DispatcherView() {
   const [incidentDraft, setIncidentDraft] = useState({ category: 'note', description: '' })
   const [showSettingsModal, setShowSettingsModal] = useState(false)
   const [showSupportModal, setShowSupportModal] = useState(false)
-  const [queueTab, setQueueTab] = useState('jobs') // 'jobs' | 'leads' | 'assets' | 'invoices' | 'inventory' | 'marketing' | 'credentials' | 'weather' | 'payroll' | 'agents'
+  const [queueTab, setQueueTab] = useState('jobs') // 'jobs' | 'leads' | 'assets' | 'invoices' | 'inventory' | 'marketing' | 'credentials' | 'weather' | 'payroll' | 'agents' | 'records'
   // Leads tab has two display modes: the existing flat 'list' (unchanged
   // default) and a new Salesforce/HubSpot-style drag-and-drop 'board' view
   // grouped by pipeline_stage — see the Kanban board render below.
@@ -123,6 +123,12 @@ export default function DispatcherView() {
   const [agentInsightsCount, setAgentInsightsCount] = useState(0) // total in last 7d, unlimited (agentInsights list itself is capped at 20 for display)
   const [agentCouncilReport, setAgentCouncilReport] = useState(null)
   const [agentDataLoaded, setAgentDataLoaded] = useState(false)
+  // Records tab (audit_log) — same lazy-load-on-first-open pattern as the
+  // Agent Ops tab above. General "who did what, when" ledger, separate
+  // from the job-specific compliance tables (checklists/credentials/
+  // compliance_packages) already elsewhere in this file.
+  const [auditLog, setAuditLog] = useState([])
+  const [auditLogLoaded, setAuditLogLoaded] = useState(false)
   const [showAddAsset, setShowAddAsset] = useState(false)
   const [showAddInventory, setShowAddInventory] = useState(false)
   const [selected, setSelected] = useState(null) // selected technician
@@ -591,6 +597,55 @@ export default function DispatcherView() {
     }))
   }
 
+  // Records tab (audit_log) — lazy-loads the same way, only the first time
+  // it's opened. Owner-only by RLS (see supabase_schema_delta_audit_log.sql)
+  // so this read only ever succeeds for a signed-in owner anyway.
+  useEffect(() => {
+    if (queueTab === 'records' && !auditLogLoaded) {
+      loadAuditLog()
+    }
+  }, [queueTab])
+
+  async function loadAuditLog() {
+    setAuditLogLoaded(true)
+    const { data, error } = await supabase
+      .from('audit_log')
+      .select('*')
+      .eq('business_id', businessId)
+      .order('created_at', { ascending: false })
+      .limit(200)
+    if (error) { console.error('audit_log fetch failed', error); return }
+    setAuditLog(data || [])
+  }
+
+  // Fire-and-forget insert into audit_log — never blocks or fails the
+  // action it's recording. `details` shape per `action` is documented in
+  // utils.js's describeAuditEntry, which renders these rows back out.
+  function logAudit(action, { entityType, entityId, details } = {}) {
+    supabase.from('audit_log').insert({
+      business_id: businessId,
+      actor_type: 'owner',
+      actor_name: business?.name || null,
+      action,
+      entity_type: entityType || null,
+      entity_id: entityId || null,
+      details: details || {},
+    }).then(({ error }) => { if (error) console.error('audit log insert failed', error) })
+    // Optimistic prepend so an already-open Records tab reflects it live
+    // without a refetch.
+    setAuditLog(prev => [{
+      id: `optimistic-${Date.now()}`,
+      business_id: businessId,
+      actor_type: 'owner',
+      actor_name: business?.name || null,
+      action,
+      entity_type: entityType || null,
+      entity_id: entityId || null,
+      details: details || {},
+      created_at: new Date().toISOString(),
+    }, ...prev])
+  }
+
   // Agent Operating System dashboard (Phase 5) — lazy-loads its 3 queries
   // only the first time the "agents" tab is actually opened, same "don't
   // fetch data the UI isn't showing yet" instinct as toggleJobDetails above.
@@ -807,6 +862,7 @@ export default function DispatcherView() {
     supabase.functions.invoke('run-custom-workflows', {
       body: { businessId, event: 'job.assigned', payload: { client_name: job?.client_name, client_address: job?.client_address, technician_name: technicianName } },
     }).catch(() => {})
+    logAudit('job.assigned', { entityType: 'job', entityId: jobId, details: { client_name: job?.client_name, assignee_name: technicianName } })
     await loadAll()
   }
 
@@ -819,6 +875,7 @@ export default function DispatcherView() {
     supabase.functions.invoke('run-custom-workflows', {
       body: { businessId, event: 'job.assigned', payload: { client_name: job?.client_name, client_address: job?.client_address, technician_name: technicianName } },
     }).catch(() => {})
+    logAudit('job.assigned', { entityType: 'job', entityId: jobId, details: { client_name: job?.client_name, assignee_name: technicianName } })
     await loadAll()
   }
 
@@ -1076,6 +1133,7 @@ export default function DispatcherView() {
     supabase.functions.invoke('run-custom-workflows', {
       body: { businessId: business?.id, event: 'invoice.paid', payload: { total: invoice?.total, client_name: invoice?.client_name } },
     }).catch(() => {})
+    logAudit('invoice.paid', { entityType: 'invoice', entityId: invoiceId, details: { total: invoice?.total, client_name: invoice?.client_name } })
   }
 
   // Manual retry for a referral-code SMS that failed the first time
@@ -1305,11 +1363,14 @@ export default function DispatcherView() {
     setSubcontractors(prev => [...prev, data])
     setNewSubcontractor({ name: '', phone: '', skills: '', hourly_rate: '' })
     setShowAddSubcontractor(false)
+    logAudit('subcontractor.added', { entityType: 'subcontractor', entityId: data.id, details: { name: data.name } })
   }
 
   async function removeSubcontractor(id) {
     const { error } = await supabase.from('subcontractors').update({ is_active: false }).eq('id', id)
     if (error) { alert(`Couldn't remove subcontractor: ${error.message}`); return }
+    const name = subcontractors.find(s => s.id === id)?.name || null
+    logAudit('subcontractor.removed', { entityType: 'subcontractor', entityId: id, details: { name } })
     setSubcontractors(prev => prev.filter(s => s.id !== id))
   }
 
@@ -1558,6 +1619,8 @@ export default function DispatcherView() {
     if (!confirm('Remove this technician? They will stop appearing on the map and you will no longer be billed for them.')) return
     const { error } = await supabase.from('technicians').update({ is_active: false }).eq('id', techId)
     if (error) { alert(`Couldn't remove technician: ${error.message}`); return }
+    const name = technicians.find(t => t.id === techId)?.name || null
+    logAudit('technician.removed', { entityType: 'technician', entityId: techId, details: { name } })
     setTechnicians(prev => prev.filter(t => t.id !== techId))
     // Recompute billed quantity now that the roster shrank. Fire-and-forget,
     // same as the technician-side sync call — never blocks the UI.
@@ -1935,6 +1998,9 @@ export default function DispatcherView() {
                   </button>
                   <button style={styles.tabBtn(queueTab === 'credentials')} onClick={() => setQueueTab('credentials')}>
                     CREDENTIALS ({technicianCredentials.length})
+                  </button>
+                  <button style={styles.tabBtn(queueTab === 'records')} onClick={() => setQueueTab('records')}>
+                    RECORDS
                   </button>
                 </>
               )}
@@ -2817,6 +2883,24 @@ export default function DispatcherView() {
             </>
           )}
 
+          {queueTab === 'records' && (
+            <>
+              <p style={{ color: '#888', fontSize: 12, marginBottom: 10 }}>
+                A record of key actions taken in this dashboard — technician/subcontractor
+                changes, job assignments, invoice payments, checklist and credential edits.
+                Visible only to you (the account owner), never to technicians. Most recent
+                200 entries.
+              </p>
+              {auditLog.map(entry => (
+                <div key={entry.id} style={styles.jobRow}>
+                  <p style={styles.jobClient}>{describeAuditEntry(entry)}</p>
+                  <p style={styles.jobAddr}>{new Date(entry.created_at).toLocaleString('en-AU')}</p>
+                </div>
+              ))}
+              {auditLog.length === 0 && <p style={{ color: '#444', fontSize: 13 }}>No recorded actions yet</p>}
+            </>
+          )}
+
           {queueTab === 'weather' && (
             <>
               <p style={{ color: '#888', fontSize: 12, marginBottom: 10 }}>
@@ -3380,6 +3464,7 @@ export default function DispatcherView() {
         <AddCredentialModal
           businessId={businessId}
           technicians={technicians}
+          onSaved={(techId, credentialType) => logAudit('credential.added', { entityType: 'technician_credential', details: { technician_name: technicians.find(t => t.id === techId)?.name || null, credential_type: credentialType } })}
           onClose={() => { setShowAddCredential(false); loadAll() }}
         />
       )}
@@ -3390,6 +3475,7 @@ export default function DispatcherView() {
           businessId={businessId}
           template={checklistTemplate}
           type="completion"
+          onSaved={(name) => logAudit('checklist_template.saved', { entityType: 'checklist_template', entityId: checklistTemplate?.id, details: { type: 'completion', name } })}
           onClose={() => { setShowChecklistModal(false); loadAll() }}
         />
       )}
@@ -3400,6 +3486,7 @@ export default function DispatcherView() {
           businessId={businessId}
           template={onboardingTemplate}
           type="onboarding"
+          onSaved={(name) => logAudit('checklist_template.saved', { entityType: 'checklist_template', entityId: onboardingTemplate?.id, details: { type: 'onboarding', name } })}
           onClose={() => { setShowOnboardingModal(false); loadAll() }}
         />
       )}
@@ -3754,7 +3841,7 @@ function AddInventoryItemModal({ businessId, onClose }) {
 // credential). The document upload is optional — the expiry date is the
 // only thing the agent actually needs; the photo/PDF is just handy proof
 // to have on file alongside it.
-function AddCredentialModal({ businessId, technicians, onClose }) {
+function AddCredentialModal({ businessId, technicians, onSaved, onClose }) {
   const [form, setForm] = useState({
     technician_id: technicians?.[0]?.id || '', credential_type: '', credential_name: '', expiry_date: ''
   })
@@ -3787,6 +3874,7 @@ function AddCredentialModal({ businessId, technicians, onClose }) {
         document_storage_path: documentPath
       })
       if (insertErr) throw insertErr
+      onSaved?.(form.technician_id, form.credential_type.trim() || null)
       onClose()
     } catch (err) {
       setError(err.message)
@@ -3841,7 +3929,7 @@ function AddCredentialModal({ businessId, technicians, onClose }) {
 // they can complete a job) and 'onboarding' (shown once, before a
 // technician's first "Start Tracking"). Upserts — updates the existing
 // template row of that type if one exists, otherwise inserts a new one.
-function ChecklistModal({ businessId, template, type = 'completion', onClose }) {
+function ChecklistModal({ businessId, template, type = 'completion', onSaved, onClose }) {
   const defaultName = type === 'onboarding' ? 'Onboarding Checklist' : 'Completion Checklist'
   const [name, setName] = useState(template?.name || defaultName)
   const [items, setItems] = useState(template?.items?.length ? template.items : [''])
@@ -3878,6 +3966,7 @@ function ChecklistModal({ businessId, template, type = 'completion', onClose }) 
         })
         if (insertErr) throw insertErr
       }
+      onSaved?.(name.trim() || defaultName)
       onClose()
     } catch (err) {
       setError(err.message)

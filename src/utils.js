@@ -266,3 +266,34 @@ export function interpolateReplayPosition(sortedLocations, elapsedMs) {
   // than returning undefined if a future edit changes the bounds.
   return { lat: sortedLocations[lastIndex].lat, lng: sortedLocations[lastIndex].lng, index: lastIndex }
 }
+
+// ============================================================
+// AUDIT LOG
+// Turns an audit_log row ({ action, details }) into the one-line
+// human-readable summary shown in DispatcherView's Records tab. Centralized
+// here (rather than formatted inline at each of the several call sites that
+// write a row) so every caller's `details` shape only has to be decided
+// once, and so it's unit-testable without a real DB row.
+// ============================================================
+export function describeAuditEntry(entry) {
+  if (!entry || !entry.action) return ''
+  const d = entry.details || {}
+  switch (entry.action) {
+    case 'technician.removed':
+      return `Removed technician ${d.name || 'Unknown'}`
+    case 'subcontractor.added':
+      return `Added subcontractor ${d.name || 'Unknown'}`
+    case 'subcontractor.removed':
+      return `Removed subcontractor ${d.name || 'Unknown'}`
+    case 'job.assigned':
+      return `Assigned job${d.client_name ? ` for ${d.client_name}` : ''} to ${d.assignee_name || 'Unassigned'}`
+    case 'invoice.paid':
+      return `Marked invoice paid${d.total != null ? ` ($${Number(d.total).toFixed(2)})` : ''}${d.client_name ? ` — ${d.client_name}` : ''}`
+    case 'checklist_template.saved':
+      return `Saved ${d.type === 'onboarding' ? 'onboarding' : 'completion'} checklist "${d.name || ''}"`
+    case 'credential.added':
+      return `Recorded credential${d.credential_type ? ` (${d.credential_type})` : ''} for ${d.technician_name || 'a technician'}`
+    default:
+      return entry.action
+  }
+}
