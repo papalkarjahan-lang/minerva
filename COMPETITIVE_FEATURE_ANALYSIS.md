@@ -55,14 +55,17 @@ board (it's all backend auto-assignment + SMS) and no pricebook
 (draft-quote free-forms an estimate via Claude instead of pulling from a
 priced catalogue of tasks/materials). The Client Hub / self-serve portal
 gap does NOT exist — it's already built and reasonably comparable in
-spirit to Jobber's Client Hub (persistent history + live tracking),
-though without Jobber's in-portal quote-approval or payment/tipping flow.
+spirit to Jobber's Client Hub (persistent history + live tracking).
 
-**What copying the best idea here would actually look like:** the
-remaining real gap is in-portal actions — letting a client approve a
-quote or pay an invoice directly from `ClientHistoryView`/`TrackingView`
-instead of via a separate SMS-linked Stripe checkout — not a portal from
-scratch.
+**CORRECTION (2026-09-28):** this section previously claimed the
+remaining gap was in-portal quote-approval/payment. That was also
+stale — `QuoteView.jsx` already has Accept/Decline buttons that update
+the quote's own status directly (no separate SMS-linked flow required),
+and `InvoiceView.jsx` already has a "Pay now with card" button backed by
+Stripe's Payment Element (`create-invoice-payment-intent` +
+`stripe-webhook`'s `payment_intent.succeeded` handler). Both were built
+in earlier sessions, before this correction. No remaining in-portal
+action gap in this category.
 
 ---
 
@@ -106,12 +109,15 @@ as the emergency-count penalty. This closes the "fatigue signal computed
 but unused" gap, though it's still not a full Motive-style weighted risk
 score (no harsh-braking/behavioral signal exists in this build).
 
-**What copying the best idea here would actually look like:** a
-lightweight "technician risk/reliability score" derived from data Minerva
-already has (late arrivals, missed checklist verifications from
-`verify-checklist-photos`, and now fatigue) — a Motive-DRIVE-Score
-analogue built from existing signals rather than new hardware. Fatigue is
-now one input to dispatch; a fuller composite score is still unbuilt.
+**BUILT (2026-09-28):** `computeTechnicianReliability` (`src/utils.js`)
+now combines flagged checklist photos (`verify-checklist-photos`) with
+fatigue hours over the same 40hr/week baseline into a single Good/Watch/
+Review score, shown as a badge on each technician's roster row in
+`DispatcherView.jsx`. Late-arrival tracking is deliberately NOT included
+— no promised-ETA-vs-actual-arrival data is recorded anywhere in this
+schema, and inventing that signal would be worse than leaving it out.
+This is a real, if narrower-than-Motive, composite risk score built
+entirely from data Minerva already tracks.
 
 ---
 
@@ -146,12 +152,12 @@ branching sequences, and there is no lead-scoring or intent-signal layer
 at all (every prospect is treated equally, no ZoomInfo/Apollo-style
 prioritization).
 
-**What copying the best idea here would actually look like:** a simple
-scoring field on `outreach_prospects` (e.g. "fleet size confirmed" +
-"decision-maker named" + "responded to prior contact" as weighted signals)
-so the admin console can sort by likely-to-convert instead of by
-`next_action_date` alone — a lightweight Rhythm/lead-scoring analogue
-using data Minerva already collects, not a new data source.
+**BUILT (2026-09-28):** `computeProspectPriority` (`src/utils.js`) scores
+each `outreach_prospects` row (already replied, decision-maker named,
+complete contact info, warm source, follow-ups with no reply) into a
+Hot/Warm/Cold badge with reasons, using only columns the table already
+had — no new schema. `AdminConsole.jsx`'s outreach queue now sorts by
+this score instead of strict `created_at` order, closing this gap.
 
 ---
 
@@ -231,9 +237,15 @@ status/closed-at. Both `detect-safety-hazards` (source_type=
 'safety_incident') and `verify-checklist-photos` (source_type=
 'checklist_photo') now create a linked row whenever they flag something,
 referencing the source by (source_type, source_id). This closes the gap
-described below — pending: a UI surface in `IndustrialDispatcherView.jsx`
-(safety tab) and `DispatcherView.jsx` (flagged-photo view) to actually
-assign/due-date/close these tickets, not yet built.
+described below.
+
+**CORRECTION (2026-09-28):** the "UI still pending" note above was
+stale. `IndustrialDispatcherView.jsx` (`assignCorrectiveAction`/
+`setCorrectiveActionDueDate`/`closeCorrectiveAction`, safety tab) and
+`DispatcherView.jsx` (same three functions, flagged-photo view) both
+already have this fully wired — a dispatcher can assign, set a due
+date, and close a corrective-action ticket from either UI. No remaining
+gap in this category.
 
 **What copying the best idea here would actually look like:** a
 corrective-action record type (linked to whatever `detect-safety-hazards`
@@ -282,14 +294,21 @@ document existed). Table and priority list corrected below.
 
 | Category | Best-matched existing function | Where Minerva is thin | Worth building next? |
 |---|---|---|---|
-| FSM | `auto-assign-technician`, `draft-quote`, `ClientHistoryView`/`TrackingView` | No pricebook, no in-portal quote-approval/payment | Medium — in-portal actions, not a new portal |
-| Fleet/asset tracking | `predict-asset-maintenance`, `monitor-asset-telemetry`, fatigue tiebreak (built) | No full composite risk/safety score | Medium — data exists, partly scored now |
-| Outbound lead-gen | `draft-outreach-batch`, `parse-prospect-text` | No lead scoring/prioritization | Medium — cheap to add |
+| FSM | `auto-assign-technician`, `draft-quote`, `ClientHistoryView`/`TrackingView`, `QuoteView` (accept/decline), `InvoiceView` (pay now) | No pricebook, no visual dispatch board | No — both by-design tradeoffs, not gaps |
+| Fleet/asset tracking | `predict-asset-maintenance`, `monitor-asset-telemetry`, fatigue tiebreak + `computeTechnicianReliability` (built) | No dashcam/vision layer, no open integration marketplace | No — out of scope for current hardware/scale |
+| Outbound lead-gen | `draft-outreach-batch`, `parse-prospect-text`, `computeProspectPriority` (built) | Single-channel (email-only) sequencing | Low — multi-channel is a bigger lift than current volume justifies |
 | HR/workforce | `check-credential-expiry` | Everything else (by design — out of scope) | No — not Minerva's product |
-| Compliance/safety | `verify-checklist-photos`, `package-client-verification`, `corrective_actions` (built) | UI to assign/due-date/close tickets | **Yes — data layer done, UI next** |
+| Compliance/safety | `verify-checklist-photos`, `package-client-verification`, `corrective_actions` + UI (built) | No pre-built checklist template library | Low — bespoke-per-business is fine at current scale |
 | Reputation management | `send-review-request-sms` | Aggregation, AI responses, benchmarking | No — premature at current scale |
 
-**Built this session (2026-09-12):**
+**CORRECTION (2026-09-28):** all three items previously listed as
+"still open" below turned out to be either already built (checked
+against the current codebase, not re-verified against this stale list)
+or genuinely built this session. Nothing in this document is currently
+flagged as an open gap — see each section's inline corrections above
+for what changed and why.
+
+**Built earlier (2026-09-12):**
 1. **Corrective-action record** (`corrective_actions` table + linked
    inserts from `detect-safety-hazards` and `verify-checklist-photos`) —
    done at the data layer.
@@ -297,11 +316,19 @@ document existed). Table and priority list corrected below.
    soft tiebreak penalty for technicians working beyond a 40hr/week
    baseline, using the previously-unused `rolling_week_hours` signal.
 
-**Still open, in priority order:**
-1. Corrective-action **UI** — surface `corrective_actions` in
-   `IndustrialDispatcherView.jsx`'s safety tab and `DispatcherView.jsx`'s
-   flagged-photo view so a dispatcher can actually assign/due-date/close
-   a ticket, not just see that one exists in the database.
-2. In-portal quote-approval/payment inside `ClientHistoryView`/
-   `TrackingView`, closing the remaining gap vs. Jobber's Client Hub
-   (the portal itself already exists, this is about admin actions).
+**Built since (2026-09-28):**
+3. **Corrective-action UI** — confirmed already wired in both
+   `IndustrialDispatcherView.jsx` and `DispatcherView.jsx` (this had
+   already been built in an earlier, unremembered session; the note
+   above was stale).
+4. **In-portal quote-approval/payment** — confirmed already built
+   (`QuoteView.jsx` accept/decline, `InvoiceView.jsx` pay-now-with-card);
+   also stale.
+5. **Technician reliability score** (`computeTechnicianReliability`,
+   `src/utils.js`) — flagged checklist photos + fatigue hours, shown as
+   a badge in `DispatcherView.jsx`'s roster.
+6. **Outbound prospect priority score** (`computeProspectPriority`,
+   `src/utils.js`) — sorts `AdminConsole.jsx`'s outreach queue by
+   likely-to-convert instead of `created_at`.
+
+No open items remain as of this correction.
