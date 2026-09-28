@@ -72,7 +72,10 @@ page before spending time debugging Minerva's own code.
 - Real-time alert (email/SMS to yourself) the moment an urgent request comes
   in, instead of having to check `/admin` — worth building once request
   volume makes manual checking unreliable, not before.
-- In-app reply (currently "Reply by email" opens your own mail client with
-  the customer's email prefilled — there's no reply history stored back
-  onto the `support_requests` row, so you'd want to CC/BCC yourself or keep
-  your own email thread as the record for now).
+
+**BUILT (2026-09-28):** each request card in the Support tab now has a
+"Reply/resolution notes" field (saved to `admin_notes`, which existed in
+the schema but had no UI). "Reply by email" still opens your own mail
+client — this doesn't replace that — but you can now log what you said
+and when directly on the request, so the history isn't only in your own
+inbox.

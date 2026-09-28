@@ -135,6 +135,21 @@ export default function AdminConsole() {
     loadRequests()
   }
 
+  // admin_notes has existed on support_requests since it was created, but
+  // never had a UI — SUPPORT_PLAYBOOK.md's "Not yet built" section flags
+  // "no reply history stored back onto the support_requests row" as the
+  // reason to keep your own email thread as the record for now. This
+  // closes that gap without needing real email/SMS infra: a running log
+  // of what you did/said, visible next time this request (or a related
+  // one from the same business) comes up.
+  async function saveRequestNotes(id, notes) {
+    setSavingId(id)
+    const { error } = await supabase.from('support_requests').update({ admin_notes: notes }).eq('id', id)
+    setSavingId(null)
+    if (error) { alert(`Couldn't save notes: ${error.message}`); return }
+    loadRequests()
+  }
+
   // --- Outreach pipeline (Minerva's own client acquisition, not a client's) ---
   // See supabase_schema_delta_outreach_engine.sql for the full design note.
   // Nothing here ever sends an email except sendApproved(), and that only
@@ -508,29 +523,13 @@ export default function AdminConsole() {
           <div>
             {requests.length === 0 && <p style={{ color: '#888' }}>No support requests.</p>}
             {requests.map(r => (
-              <div key={r.id} style={{ ...cardStyle, maxWidth: 'none', textAlign: 'left', marginBottom: 12, opacity: r.status === 'resolved' ? 0.5 : 1, border: r.status !== 'resolved' && r.priority === 'urgent' ? '1px solid #8A2525' : cardStyle.border }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <strong style={{ color: '#fff' }}>
-                    {r.priority === 'urgent' && r.status !== 'resolved' && <span style={{ color: '#e05555', marginRight: 6 }}>⚠ URGENT</span>}
-                    {r.from_name || 'Unknown'} {r.from_contact ? `(${r.from_contact})` : ''}
-                  </strong>
-                  <span style={{ color: '#666', fontSize: 12 }}>{new Date(r.created_at).toLocaleString()}</span>
-                </div>
-                <p style={{ color: '#ccc', margin: '10px 0' }}>{r.message}</p>
-                <div style={{ display: 'flex', gap: 10 }}>
-                  {r.status !== 'resolved' && (
-                    <button onClick={() => resolveRequest(r.id)} style={{ background: '#1D9E75', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13 }}>
-                      Mark resolved
-                    </button>
-                  )}
-                  {r.from_contact?.includes('@') && (
-                    <a href={`mailto:${r.from_contact}?subject=${encodeURIComponent('Re: your Minerva support request')}`}
-                      style={{ color: '#8fd0e8', fontSize: 13, alignSelf: 'center', textDecoration: 'none' }}>
-                      Reply by email →
-                    </a>
-                  )}
-                </div>
-              </div>
+              <SupportRequestCard
+                key={r.id}
+                request={r}
+                onResolve={resolveRequest}
+                onSaveNotes={saveRequestNotes}
+                busy={savingId === r.id}
+              />
             ))}
           </div>
         )}
@@ -883,6 +882,48 @@ function BigAccountCard({ target: t, onSave, onGenerateProposal, proposalId, roi
         {proposalId && (
           <a href={`/proposal/${proposalId}`} target="_blank" rel="noreferrer" style={{ color: '#1D9E75', fontSize: 12 }}>
             /proposal/{proposalId} →
+          </a>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function SupportRequestCard({ request: r, onResolve, onSaveNotes, busy }) {
+  const [notes, setNotes] = useState(r.admin_notes || '')
+  const dirty = notes !== (r.admin_notes || '')
+
+  return (
+    <div style={{ ...cardStyle, maxWidth: 'none', textAlign: 'left', marginBottom: 12, opacity: r.status === 'resolved' ? 0.5 : 1, border: r.status !== 'resolved' && r.priority === 'urgent' ? '1px solid #8A2525' : cardStyle.border }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+        <strong style={{ color: '#fff' }}>
+          {r.priority === 'urgent' && r.status !== 'resolved' && <span style={{ color: '#e05555', marginRight: 6 }}>⚠ URGENT</span>}
+          {r.from_name || 'Unknown'} {r.from_contact ? `(${r.from_contact})` : ''}
+        </strong>
+        <span style={{ color: '#666', fontSize: 12 }}>{new Date(r.created_at).toLocaleString()}</span>
+      </div>
+      <p style={{ color: '#ccc', margin: '10px 0' }}>{r.message}</p>
+      <textarea
+        value={notes}
+        onChange={e => setNotes(e.target.value)}
+        placeholder="Reply/resolution notes — what you said, when, and how it was resolved. Not visible to the customer."
+        style={{ width: '100%', minHeight: 50, background: '#0a0f1d', color: '#ccc', border: '1px solid #1e293b', borderRadius: 6, padding: 8, fontSize: 13, boxSizing: 'border-box', marginBottom: 10 }}
+      />
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        {dirty && (
+          <button onClick={() => onSaveNotes(r.id, notes || null)} disabled={busy} style={{ background: '#2D5FA8', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', cursor: busy ? 'default' : 'pointer', fontSize: 13, opacity: busy ? 0.6 : 1 }}>
+            {busy ? 'Saving...' : 'Save notes'}
+          </button>
+        )}
+        {r.status !== 'resolved' && (
+          <button onClick={() => onResolve(r.id)} style={{ background: '#1D9E75', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13 }}>
+            Mark resolved
+          </button>
+        )}
+        {r.from_contact?.includes('@') && (
+          <a href={`mailto:${r.from_contact}?subject=${encodeURIComponent('Re: your Minerva support request')}`}
+            style={{ color: '#8fd0e8', fontSize: 13, alignSelf: 'center', textDecoration: 'none' }}>
+            Reply by email →
           </a>
         )}
       </div>
