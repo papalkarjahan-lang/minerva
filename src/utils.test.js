@@ -355,6 +355,27 @@ describe('describeAuditEntry', () => {
       .toBe('Saved payroll run')
   })
 
+  it('describes a sent quote', () => {
+    expect(describeAuditEntry({ action: 'quote.sent', details: { total: 450, client_name: 'Bob Smith' } }))
+      .toBe('Sent quote ($450.00) to Bob Smith')
+    expect(describeAuditEntry({ action: 'quote.sent', details: {} }))
+      .toBe('Sent quote')
+  })
+
+  it('describes an added or removed workflow', () => {
+    expect(describeAuditEntry({ action: 'workflow.added', details: { name: 'Slack on new lead', trigger_event: 'lead.created' } }))
+      .toBe('Added workflow "Slack on new lead" (on lead.created)')
+    expect(describeAuditEntry({ action: 'workflow.added', details: {} }))
+      .toBe('Added workflow "Untitled"')
+    expect(describeAuditEntry({ action: 'workflow.removed', details: { name: 'Slack on new lead' } }))
+      .toBe('Removed workflow "Slack on new lead"')
+  })
+
+  it('describes an updated business settings save', () => {
+    expect(describeAuditEntry({ action: 'business.settings_updated', details: {} }))
+      .toBe('Updated business settings')
+  })
+
   it('falls back to the raw action string for an unknown action', () => {
     expect(describeAuditEntry({ action: 'something.unlisted', details: {} }))
       .toBe('something.unlisted')

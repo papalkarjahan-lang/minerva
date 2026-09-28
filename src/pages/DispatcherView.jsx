@@ -991,6 +991,8 @@ export default function DispatcherView() {
     try {
       const { data, error } = await supabase.functions.invoke('send-quote-sms', { body: { quoteId } })
       if (error || data?.error) throw new Error(data?.error || error.message)
+      const quote = quotes.find(q => q.id === quoteId)
+      logAudit('quote.sent', { entityType: 'quote', entityId: quoteId, details: { client_name: quote?.client_name, total: quote?.total } })
       await loadAll()
     } catch (err) {
       alert(`Couldn't send quote: ${err.message}`)
@@ -1283,7 +1285,10 @@ export default function DispatcherView() {
         ? 'That Twilio number is already connected to another Minerva business — check for a typo, or a duplicate signup.'
         : `Couldn't save settings: ${error.message}`)
     }
-    if (data) setBusiness(data)
+    if (data) {
+      setBusiness(data)
+      logAudit('business.settings_updated', { entityType: 'business', entityId: businessId })
+    }
     setSavingSettings(false)
   }
 
@@ -3591,6 +3596,7 @@ export default function DispatcherView() {
       {showSettingsModal && (
         <SettingsModal
           business={business}
+          onLogAudit={logAudit}
           slackWebhookInput={slackWebhookInput}
           setSlackWebhookInput={setSlackWebhookInput}
           googleReviewLinkInput={googleReviewLinkInput}
@@ -4133,7 +4139,7 @@ function SettingsModal({
   metaPageIdInput, setMetaPageIdInput,
   twilioNumberInput, setTwilioNumberInput,
   weatherTradesInput, setWeatherTradesInput,
-  saving, onSave, calendarLinkCopied, onCopyCalendarLink, onClose,
+  saving, onSave, calendarLinkCopied, onCopyCalendarLink, onClose, onLogAudit,
 }) {
   const [autoDispatch, setAutoDispatch] = useState(business?.auto_dispatch_enabled || false)
   const [autoDispatchMaxKm, setAutoDispatchMaxKm] = useState(business?.auto_dispatch_max_km ?? '')
@@ -4340,7 +4346,7 @@ function SettingsModal({
           </div>
         </form>
 
-        {business?.id && <CustomWorkflowsPanel businessId={business.id} />}
+        {business?.id && <CustomWorkflowsPanel businessId={business.id} onLogAudit={onLogAudit} />}
       </div>
     </div>
   )
@@ -4394,7 +4400,7 @@ const WORKFLOW_CONDITION_FIELDS = {
   ],
 }
 
-function CustomWorkflowsPanel({ businessId }) {
+function CustomWorkflowsPanel({ businessId, onLogAudit }) {
   const [workflows, setWorkflows] = useState([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
@@ -4427,7 +4433,10 @@ function CustomWorkflowsPanel({ businessId }) {
     const row = { business_id: businessId, ...draft }
     if (!row.condition_field) { row.condition_field = null; row.condition_op = null; row.condition_value = null }
     const { data } = await supabase.from('custom_workflows').insert(row).select().single()
-    if (data) setWorkflows(prev => [data, ...prev])
+    if (data) {
+      setWorkflows(prev => [data, ...prev])
+      onLogAudit?.('workflow.added', { entityType: 'custom_workflow', entityId: data.id, details: { name: data.name, trigger_event: data.trigger_event, action_type: data.action_type } })
+    }
     setDraft({ name: '', trigger_event: 'lead.created', condition_field: '', condition_op: '', condition_value: '', action_type: 'slack', action_target: '' })
     setShowAdd(false)
   }
@@ -4439,9 +4448,11 @@ function CustomWorkflowsPanel({ businessId }) {
   }
 
   async function removeWorkflow(id) {
+    const removed = workflows.find(w => w.id === id)
     const { error } = await supabase.from('custom_workflows').delete().eq('id', id)
     if (error) { alert(`Couldn't remove workflow: ${error.message}`); return }
     setWorkflows(prev => prev.filter(w => w.id !== id))
+    onLogAudit?.('workflow.removed', { entityType: 'custom_workflow', entityId: id, details: { name: removed?.name } })
   }
 
   return (
