@@ -37,6 +37,7 @@ export default function AdminConsole() {
   const [outreachBusy, setOutreachBusy] = useState(false)
   const [csvText, setCsvText] = useState('')
   const [csvStatus, setCsvStatus] = useState('')
+  const [csvBusy, setCsvBusy] = useState(false)
   const [pasteText, setPasteText] = useState('')
   const [pasteBusy, setPasteBusy] = useState(false)
   const [pasteStatus, setPasteStatus] = useState('')
@@ -48,6 +49,7 @@ export default function AdminConsole() {
   const [bigAccounts, setBigAccounts] = useState([])
   const [newTarget, setNewTarget] = useState({ company_name: '', company_type: 'multi_van', contact_name: '', contact_title: '', contact_email: '', contact_phone: '', estimated_fleet_size: '', region: '' })
   const [bigAccountBusy, setBigAccountBusy] = useState(null)
+  const [addingBigAccount, setAddingBigAccount] = useState(false)
   // Batch-review throughput helpers — nothing here changes WHO decides what
   // sends: bulk actions only ever act on rows the operator has explicitly
   // checked, and only ever move status to 'approved'/'closed_lost', the
@@ -56,6 +58,7 @@ export default function AdminConsole() {
   // still filtered server-side to status='approved' in send-outreach-batch.
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [expandedIds, setExpandedIds] = useState(new Set())
+  const [dirtyIds, setDirtyIds] = useState(new Set())
 
   useEffect(() => {
     let cancelled = false
@@ -81,10 +84,11 @@ export default function AdminConsole() {
   }, [state])
 
   async function loadBusinesses() {
-    const { data: bizRows } = await supabase
+    const { data: bizRows, error } = await supabase
       .from('businesses')
       .select('id, name, sector, subscription_tier, stripe_sub_id, created_at, feature_priorities')
       .order('created_at', { ascending: false })
+    if (error) { alert(`Couldn't load businesses: ${error.message}`); return }
     if (!bizRows) return
 
     const withStats = await Promise.all(bizRows.map(async (biz) => {
@@ -104,10 +108,11 @@ export default function AdminConsole() {
   }
 
   async function loadRequests() {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('support_requests')
       .select('*')
       .order('created_at', { ascending: false })
+    if (error) { alert(`Couldn't load support requests: ${error.message}`); return }
     // Urgent-open first, then routine-open, then resolved — see
     // SUPPORT_PLAYBOOK.md for the SLA targets this triage order is meant
     // to support (2hr urgent / 1 business day routine).
@@ -136,10 +141,11 @@ export default function AdminConsole() {
   // function itself re-enforces that same filter server-side too, so this
   // client-side gate is a UX convenience, not the only safeguard.
   async function loadProspects() {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('outreach_prospects')
       .select('*')
       .order('created_at', { ascending: false })
+    if (error) { alert(`Couldn't load prospects: ${error.message}`); return }
     setProspects(data || [])
   }
 
@@ -147,6 +153,7 @@ export default function AdminConsole() {
   // — solves the "can't hand-type enough prospects" bottleneck at the data-
   // entry stage; draftOutreach() below solves it at the writing stage.
   async function importCsv() {
+    if (csvBusy) return
     const lines = csvText.split('\n').map(l => l.trim()).filter(Boolean)
     if (lines.length === 0) { setCsvStatus('Paste at least one line first.'); return }
     const rows = lines.map(line => {
@@ -154,7 +161,9 @@ export default function AdminConsole() {
       return { company_name, contact_name: contact_name || null, contact_email: contact_email || null, trade_type: trade_type || null, city: city || null, source: 'manual' }
     }).filter(r => r.company_name)
     if (rows.length === 0) { setCsvStatus('No valid rows found — expected: company_name,contact_name,contact_email,trade_type,city'); return }
+    setCsvBusy(true)
     const { error } = await supabase.from('outreach_prospects').insert(rows)
+    setCsvBusy(false)
     if (error) { setCsvStatus(`Import failed: ${error.message}`); return }
     setCsvStatus(`Imported ${rows.length} prospect(s).`)
     setCsvText('')
@@ -198,16 +207,18 @@ export default function AdminConsole() {
   // is entered/edited by hand; see BIG_ACCOUNT_EXECUTION_KIT.md for the
   // discovery-call script and objection handling to use alongside this.
   async function loadBigAccounts() {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('big_account_targets')
       .select('*')
       .order('next_action_date', { ascending: true, nullsFirst: false })
+    if (error) { alert(`Couldn't load big-account targets: ${error.message}`); return }
     setBigAccounts(data || [])
     if (data && data.length > 0) {
-      const { data: proposals } = await supabase
+      const { data: proposals, error: proposalsError } = await supabase
         .from('roi_proposals')
         .select('id, big_account_target_id')
         .in('big_account_target_id', data.map(t => t.id))
+      if (proposalsError) console.error('Failed to load ROI proposal links:', proposalsError.message)
       if (proposals) {
         setProposalLinks(prev => {
           const next = { ...prev }
@@ -219,11 +230,14 @@ export default function AdminConsole() {
   }
 
   async function addBigAccount() {
+    if (addingBigAccount) return
     if (!newTarget.company_name.trim()) { alert('Company name is required.'); return }
+    setAddingBigAccount(true)
     const { error } = await supabase.from('big_account_targets').insert({
       ...newTarget,
       estimated_fleet_size: newTarget.estimated_fleet_size ? Number(newTarget.estimated_fleet_size) : null,
     })
+    setAddingBigAccount(false)
     if (error) { alert(`Couldn't add target: ${error.message}`); return }
     setNewTarget({ company_name: '', company_type: 'multi_van', contact_name: '', contact_title: '', contact_email: '', contact_phone: '', estimated_fleet_size: '', region: '' })
     loadBigAccounts()
@@ -303,15 +317,38 @@ export default function AdminConsole() {
     setSelectedIds(new Set())
   }
 
+  // Fed by each ProspectCard's own `dirty` check (unsaved subject/body
+  // edits) so the bulk approve below can actually see it — the card's
+  // local edit state otherwise never reaches this component.
+  function handleDirtyChange(id, isDirty) {
+    setDirtyIds(prev => {
+      if (isDirty === prev.has(id)) return prev
+      const next = new Set(prev)
+      isDirty ? next.add(id) : next.delete(id)
+      return next
+    })
+  }
+
   // Bulk-approve — same rule as the single-card "Approve for sending"
   // button: only ever touches rows currently at status='drafted'. A row
   // the operator edited but never saved isn't silently approved with the
   // stale draft — edited-but-unsaved rows are simply skipped, same
-  // guard the single card already applies via its own `dirty` check.
+  // guard the single card already applies via its own `dirty` check
+  // (reported up here via handleDirtyChange).
   async function approveSelected() {
-    const ids = prospects.filter(p => selectedIds.has(p.id) && p.status === 'drafted').map(p => p.id)
-    if (ids.length === 0) { alert('No selected prospects are in a drafted, ready-to-approve state.'); return }
-    if (!window.confirm(`Approve ${ids.length} drafted email(s) for sending? This does not send them yet — you still click "Send approved" separately.`)) return
+    const eligible = prospects.filter(p => selectedIds.has(p.id) && p.status === 'drafted')
+    const ids = eligible.filter(p => !dirtyIds.has(p.id)).map(p => p.id)
+    const skippedDirty = eligible.length - ids.length
+    if (ids.length === 0) {
+      alert(skippedDirty > 0
+        ? `${skippedDirty} selected prospect(s) have unsaved edits — save or discard those edits first.`
+        : 'No selected prospects are in a drafted, ready-to-approve state.')
+      return
+    }
+    const confirmMsg = skippedDirty > 0
+      ? `Approve ${ids.length} drafted email(s) for sending? ${skippedDirty} selected prospect(s) with unsaved edits will be skipped — save their edits first, then approve separately. This does not send them yet — you still click "Send approved" separately.`
+      : `Approve ${ids.length} drafted email(s) for sending? This does not send them yet — you still click "Send approved" separately.`
+    if (!window.confirm(confirmMsg)) return
     setOutreachBusy(true)
     const { error } = await supabase.from('outreach_prospects').update({ status: 'approved' }).in('id', ids)
     setOutreachBusy(false)
@@ -511,8 +548,8 @@ export default function AdminConsole() {
                 style={{ width: '100%', minHeight: 100, background: '#0a0f1d', color: '#fff', border: '1px solid #1e293b', borderRadius: 8, padding: 10, fontFamily: 'monospace', fontSize: 13 }}
               />
               <div style={{ display: 'flex', gap: 10, marginTop: 10, alignItems: 'center' }}>
-                <button onClick={importCsv} style={{ background: '#2D5FA8', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', cursor: 'pointer', fontSize: 13 }}>
-                  Import
+                <button onClick={importCsv} disabled={csvBusy} style={{ background: '#2D5FA8', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', cursor: csvBusy ? 'default' : 'pointer', fontSize: 13, opacity: csvBusy ? 0.6 : 1 }}>
+                  {csvBusy ? 'Importing...' : 'Import'}
                 </button>
                 {csvStatus && <span style={{ color: '#8fd0e8', fontSize: 13 }}>{csvStatus}</span>}
               </div>
@@ -596,6 +633,7 @@ export default function AdminConsole() {
                 onToggleSelect={() => toggleSelect(p.id)}
                 expanded={expandedIds.has(p.id)}
                 onToggleExpand={() => toggleExpand(p.id)}
+                onDirtyChange={handleDirtyChange}
               />
             ))}
 
@@ -646,8 +684,8 @@ export default function AdminConsole() {
                 <input type="number" min="1" placeholder="Est. fleet size" value={newTarget.estimated_fleet_size} onChange={e => setNewTarget({ ...newTarget, estimated_fleet_size: e.target.value })} style={{ ...inputStyle, width: 110 }} />
                 <input placeholder="Region" value={newTarget.region} onChange={e => setNewTarget({ ...newTarget, region: e.target.value })} style={{ ...inputStyle, width: 130 }} />
               </div>
-              <button onClick={addBigAccount} style={{ background: '#2D5FA8', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', cursor: 'pointer', fontSize: 13 }}>
-                Add target
+              <button onClick={addBigAccount} disabled={addingBigAccount} style={{ background: '#2D5FA8', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', cursor: addingBigAccount ? 'default' : 'pointer', fontSize: 13, opacity: addingBigAccount ? 0.6 : 1 }}>
+                {addingBigAccount ? 'Adding...' : 'Add target'}
               </button>
             </div>
 
@@ -676,11 +714,13 @@ export default function AdminConsole() {
   )
 }
 
-function ProspectCard({ prospect: p, onSaveDraft, onApprove, onReject, savingId, onGenerateProposal, proposalId, roiBusy, selected, onToggleSelect, expanded, onToggleExpand }) {
+function ProspectCard({ prospect: p, onSaveDraft, onApprove, onReject, savingId, onGenerateProposal, proposalId, roiBusy, selected, onToggleSelect, expanded, onToggleExpand, onDirtyChange }) {
   const [subject, setSubject] = useState(p.draft_subject || '')
   const [body, setBody] = useState(p.draft_body || '')
   const [fleetSize, setFleetSize] = useState('')
   const dirty = subject !== (p.draft_subject || '') || body !== (p.draft_body || '')
+
+  useEffect(() => { onDirtyChange?.(p.id, dirty) }, [dirty, p.id, onDirtyChange])
 
   return (
     <div style={{ ...cardStyle, maxWidth: 'none', textAlign: 'left', marginBottom: 14, border: p.status === 'approved' ? '1px solid #1D9E75' : (selected ? '1px solid #2D5FA8' : cardStyle.border) }}>

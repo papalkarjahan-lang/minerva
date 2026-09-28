@@ -57,6 +57,16 @@
 // (which still 500s, causing a legitimate Stripe retry) is correctly not
 // marked as processed.
 //
+// Write-failure fix (2026-09-28): the claim in the paragraph above was
+// only true once every branch's DB-write error actually threw. Until this
+// fix, each branch did `if (error) console.error(...)` and then fell
+// through to the processed-event insert and the 200 response regardless
+// — so a real DB failure (transient error, RLS misconfiguration) still
+// got marked processed and Stripe never retried, silently stranding the
+// business without stripe_customer_id/stripe_sub_id, a cleared payment
+// warning, or a paid invoice. Every branch below now throws on a write
+// error so the outer catch's 500 response makes Stripe retry instead.
+//
 // HTML-injection fix (2026-09-25): the welcome and payment-failed emails
 // above interpolate the business's own `name` (free text, set by the
 // business owner at signup with no character restriction — see
@@ -160,7 +170,7 @@ serve(async (req: Request) => {
             .from('businesses')
             .update(plan.update)
             .eq('id', plan.businessId)
-          if (error) console.error('Failed to save Stripe IDs:', error.message)
+          if (error) throw new Error(`Failed to save Stripe IDs: ${error.message}`)
 
           // Best-effort welcome email — send-email no-ops cleanly if
           // RESEND_API_KEY isn't configured, so this never blocks the
@@ -189,7 +199,7 @@ serve(async (req: Request) => {
             .from('businesses')
             .update(plan.update)
             .eq('stripe_sub_id', plan.subscriptionId)
-          if (error) console.error('Failed to mark subscription cancelled:', error.message)
+          if (error) throw new Error(`Failed to mark subscription cancelled: ${error.message}`)
         }
         break
       }
@@ -210,7 +220,7 @@ serve(async (req: Request) => {
             .eq('stripe_sub_id', plan.subscriptionId)
             .select('id, name')
             .maybeSingle()
-          if (error) console.error('Failed to record payment_failed_at:', error.message)
+          if (error) throw new Error(`Failed to record payment_failed_at: ${error.message}`)
 
           // Best-effort operator alert — see test-agent-health's header
           // comment for why this exists: without it, a declined card sits
@@ -244,7 +254,7 @@ serve(async (req: Request) => {
             .from('businesses')
             .update(plan.update)
             .eq('stripe_sub_id', plan.subscriptionId)
-          if (error) console.error('Failed to clear payment_failed_at:', error.message)
+          if (error) throw new Error(`Failed to clear payment_failed_at: ${error.message}`)
         }
         break
       }
@@ -263,7 +273,7 @@ serve(async (req: Request) => {
             .update(plan.update)
             .eq('id', plan.invoiceId)
             .eq('stripe_payment_intent_id', plan.paymentIntentId)
-          if (error) console.error('Failed to mark invoice paid from payment_intent.succeeded:', error.message)
+          if (error) throw new Error(`Failed to mark invoice paid from payment_intent.succeeded: ${error.message}`)
         }
         break
       }
