@@ -271,6 +271,38 @@ export default function IndustrialDispatcherView() {
     loadAll()
   }
 
+  // Compliance/paperwork export — same zero-setup CSV pattern already used
+  // in DispatcherView (see its exportCSV) for a compliance-relevant record
+  // that regulators/insurers/auditors typically need in hand, not just
+  // viewable in-app. Includes each incident's linked corrective-action
+  // ticket status, since that's the actual remediation trail an auditor
+  // cares about, not just the raw incident report.
+  function exportIncidentsCSV() {
+    const headers = ['Date', 'Severity', 'Description', 'Acknowledged At', 'Corrective Action Status', 'Corrective Action Due', 'Corrective Action Closed At']
+    const rows = incidents.map(i => {
+      const ticket = correctiveActions.find(a => a.source_type === 'safety_incident' && a.source_id === i.id)
+      return [
+        new Date(i.created_at).toLocaleString('en-AU'),
+        i.severity,
+        i.description,
+        i.acknowledged_at ? new Date(i.acknowledged_at).toLocaleString('en-AU') : '',
+        ticket?.status || '',
+        ticket?.due_date || '',
+        ticket?.closed_at ? new Date(ticket.closed_at).toLocaleString('en-AU') : '',
+      ]
+    })
+    const csv = [headers, ...rows]
+      .map(row => row.map(field => `"${String(field ?? '').replace(/"/g, '""')}"`).join(','))
+      .join('\n')
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `minerva-safety-incidents-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   // Previously the only way a safety_incidents row was ever created was
   // via detect-safety-hazards' automated proximity check — a site manager
   // calling in an observed hazard had no way to log it except a direct DB
@@ -497,7 +529,12 @@ export default function IndustrialDispatcherView() {
           <>
             <div style={styles.sectionHead}>
               <p style={styles.sectionLabel}>Safety incidents</p>
-              <button style={styles.addBtn} onClick={() => setShowAddIncident(true)}>+ Report incident</button>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {incidents.length > 0 && (
+                  <button style={styles.smallBtn} onClick={exportIncidentsCSV}>Export CSV</button>
+                )}
+                <button style={styles.addBtn} onClick={() => setShowAddIncident(true)}>+ Report incident</button>
+              </div>
             </div>
             {incidents.length === 0 && <p style={styles.emptyText}>No incidents recorded.</p>}
             {incidents.map(i => {
