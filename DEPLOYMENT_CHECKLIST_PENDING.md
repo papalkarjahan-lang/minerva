@@ -1457,10 +1457,23 @@ Verified: lint clean, 16/16 tests passing, build clean.
   work is confirmed done.
 - **New 2026-09-28, not yet run**: `supabase_schema_delta_audit_log.sql`
   (new `audit_log` table — general "who did what, when" ledger, read from
-  DispatcherView's new RECORDS tab; owner-only SELECT via `owner_user_id`/
-  `auth.uid()`, anon INSERT). Needed before the RECORDS tab will show any
-  real data — no other feature depends on it. Idempotent-safe to run
-  whenever; nothing breaks if it's delayed.
+  DispatcherView's new RECORDS tab; owner-only SELECT **and INSERT**, both
+  via `owner_user_id`/`auth.uid()` — tightened from anon-insert same day,
+  before this file's first note about it went stale). Needed before the
+  RECORDS tab will show any real data — no other feature depends on it.
+  Idempotent-safe to run whenever; nothing breaks if it's delayed.
+- **New 2026-09-28, not yet run**: `supabase_schema_delta_payroll_runs.sql`
+  (new `payroll_runs` table — frozen snapshot behind the Payroll tab's
+  "Save this run" button, same owner-scoped RLS pattern as audit_log).
+  Also still pending: `supabase_schema_delta_skill_dispatch.sql` and
+  `supabase_schema_delta_workflow_invoice_overdue.sql` (both idempotent
+  `add column if not exists`). All four are safe to run in any order,
+  any time.
+- **New 2026-09-28, needs redeploy**: `generate-roi-proposal` edge
+  function's source changed (logs an error instead of silently swallowing
+  a failed `big_account_targets` lookup) — not yet redeployed live. Use
+  the multipart `/functions/deploy` Management API method (see
+  `minerva_supabase_function_deploy_method` memory), not PATCH+JSON.
 - **New 2026-09-28, still genuinely outstanding**: a Supabase PAT
   (`sbp_fc60f643...`) was pasted directly into chat again — the 4th+
   consecutive round this has happened. Not used for anything (declined

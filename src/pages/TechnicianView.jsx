@@ -108,6 +108,9 @@ export default function TechnicianView() {
   const [showChecklist, setShowChecklist] = useState(false)
   const [checklistChecks, setChecklistChecks] = useState([])
   const [checklistDone, setChecklistDone] = useState(false)
+  // Guards confirmChecklist() against a double-tap firing two concurrent
+  // submissions — same class of bug as materialsSubmitting/invoiceSubmitting.
+  const [checklistSubmitting, setChecklistSubmitting] = useState(false)
   // Optional photo evidence per checklist item — index-aligned with
   // checklistTemplate.items/checklistChecks. Never required, so a tech
   // without a good photo opportunity can still submit the checklist.
@@ -130,6 +133,11 @@ export default function TechnicianView() {
   const [showMaterials, setShowMaterials] = useState(false)
   const [materialLines, setMaterialLines] = useState([{ inventory_item_id: '', quantity_used: '' }])
   const [materialsDone, setMaterialsDone] = useState(false)
+  // Guards confirmMaterials()/skipMaterials() against a double-tap firing
+  // two concurrent submissions (same class of bug as invoiceSubmitting) —
+  // without this, a fast double-tap on "Continue" could insert duplicate
+  // job_materials rows and decrement inventory_items.quantity twice.
+  const [materialsSubmitting, setMaterialsSubmitting] = useState(false)
   // Pro-tier onboarding checklist: shown once, before the technician's very
   // first "Start Tracking" tap, gated on technicians.onboarding_completed_at.
   const [onboardingTemplate, setOnboardingTemplate] = useState(null)
@@ -166,6 +174,13 @@ export default function TechnicianView() {
   // tick — only needs to fire once per page load, since the sync function
   // recomputes the full count server-side anyway.
   const billingSyncedRef = useRef(false)
+  // Guards finishTheJob() against a double-fire — e.g. a fast double-tap on
+  // "Skip" (which calls it synchronously, unlike submitInvoice's awaited
+  // call) before setShowInvoiceBuilder(false) has re-rendered the button
+  // away. Without this, both calls would race: duplicate completion SMS,
+  // duplicate 'job.completed' custom-workflow invocations, and a second,
+  // redundant crew-release pass.
+  const finishingJobRef = useRef(false)
 
   // Reflect any backlog restored from localStorage in the UI on first render.
   useEffect(() => {
@@ -322,6 +337,22 @@ export default function TechnicianView() {
       .eq('id', jobId)
       .single()
     if (data) {
+      // Reset per-job checklist/materials state whenever a genuinely new
+      // job loads (initial login, or a dispatcher auto-assigning a new job
+      // via the realtime subscription below) — otherwise a checklist
+      // ticked or materials line added for a PREVIOUS job could carry
+      // straight into this one, since "Ready for Next Job" (the only other
+      // place these reset) is never reached on this path.
+      if (jobId !== currentJob?.id) {
+        finishingJobRef.current = false
+        setChecklistDone(false)
+        setChecklistChecks([])
+        setChecklistPhotos([])
+        setChecklistSubmitting(false)
+        setMaterialsDone(false)
+        setMaterialLines([{ inventory_item_id: '', quantity_used: '' }])
+        setMaterialsSubmitting(false)
+      }
       setCurrentJob(data)
       saveCachedJob(data)
     } else if (error) {
@@ -683,6 +714,8 @@ export default function TechnicianView() {
   }
 
   async function confirmChecklist() {
+    if (checklistSubmitting) return
+    setChecklistSubmitting(true)
     const results = checklistTemplate.items.map((item, i) => ({ item, checked: checklistChecks[i] }))
     const { error } = await supabase.from('jobs').update({ checklist_results: results }).eq('id', currentJob.id)
     if (error) {
@@ -692,6 +725,7 @@ export default function TechnicianView() {
     uploadChecklistPhotos()
     setChecklistDone(true)
     setShowChecklist(false)
+    setChecklistSubmitting(false)
     if (inventoryItems.length > 0) {
       setShowMaterials(true)
     } else {
@@ -712,6 +746,7 @@ export default function TechnicianView() {
   }
 
   function skipMaterials() {
+    if (materialsSubmitting) return
     setMaterialsDone(true)
     setShowMaterials(false)
     setShowInvoiceBuilder(true)
@@ -722,6 +757,8 @@ export default function TechnicianView() {
   // safe (never block job completion) — errors just get logged, same
   // pattern as the technician_locations insert above.
   async function confirmMaterials() {
+    if (materialsSubmitting) return
+    setMaterialsSubmitting(true)
     const validLines = materialLines
       .filter(l => l.inventory_item_id && Number(l.quantity_used) > 0)
       .map(l => {
@@ -751,12 +788,15 @@ export default function TechnicianView() {
 
     setMaterialsDone(true)
     setShowMaterials(false)
+    setMaterialsSubmitting(false)
     setShowInvoiceBuilder(true)
   }
 
   // The actual job-completion side effects, shared by both the "no invoice"
   // path and the "invoice sent" path.
   async function finishTheJob() {
+    if (finishingJobRef.current) return
+    finishingJobRef.current = true
     clearInterval(intervalRef.current)
     setTracking(false)
     const syncErrors = []
@@ -1132,10 +1172,10 @@ export default function TechnicianView() {
           <button
             type="button"
             style={styles.btnGreenSmall}
-            disabled={!checklistChecks.every(Boolean) || checklistChecks.length === 0}
+            disabled={checklistSubmitting || !checklistChecks.every(Boolean) || checklistChecks.length === 0}
             onClick={confirmChecklist}
           >
-            Continue
+            {checklistSubmitting ? 'Saving...' : 'Continue'}
           </button>
         </div>
       )}
@@ -1175,8 +1215,8 @@ export default function TechnicianView() {
           ))}
           <button type="button" style={styles.invoiceAddBtn} onClick={addMaterialLine}>+ Add material</button>
           <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
-            <button type="button" style={styles.btnGreySmall} onClick={skipMaterials}>Skip</button>
-            <button type="button" style={styles.btnGreenSmall} onClick={confirmMaterials}>Continue</button>
+            <button type="button" style={styles.btnGreySmall} disabled={materialsSubmitting} onClick={skipMaterials}>Skip</button>
+            <button type="button" style={styles.btnGreenSmall} disabled={materialsSubmitting} onClick={confirmMaterials}>{materialsSubmitting ? 'Saving...' : 'Continue'}</button>
           </div>
         </div>
       )}
@@ -1250,13 +1290,16 @@ export default function TechnicianView() {
           <div style={{ textAlign: 'center' }}>
             <p style={{ fontSize: 20, color: '#1D9E75' }}>✓ Job Complete</p>
             <button style={styles.btnGreen} onClick={() => {
+              finishingJobRef.current = false
               setCurrentJob(null)
               setStatus('tracking')
               setTracking(true)
               setChecklistDone(false)
               setChecklistPhotos([])
+              setChecklistSubmitting(false)
               setMaterialsDone(false)
               setMaterialLines([{ inventory_item_id: '', quantity_used: '' }])
+              setMaterialsSubmitting(false)
             }}>Ready for Next Job</button>
           </div>
         )}
