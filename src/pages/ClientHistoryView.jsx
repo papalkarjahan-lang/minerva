@@ -81,12 +81,12 @@ export default function ClientHistoryView() {
 
             <p style={{ ...styles.sectionLabel, marginTop: 20 }}>INVOICES</p>
             {invoices.map(inv => (
-              <div key={inv.id} style={styles.row}>
+              <a key={inv.id} href={`/invoice/${inv.id}`} target="_blank" rel="noreferrer" style={styles.rowLink}>
                 <p style={styles.rowMain}>${Number(inv.total).toFixed(2)} inc. GST</p>
                 <p style={styles.rowMeta}>
                   {new Date(inv.created_at).toLocaleDateString('en-AU')} · {inv.status.toUpperCase()}
                 </p>
-              </div>
+              </a>
             ))}
             {invoices.length === 0 && <p style={styles.emptyText}>No invoices on file yet</p>}
           </>
@@ -104,6 +104,7 @@ const styles = {
   title: { color: '#fff', fontSize: 22, fontWeight: 'bold', margin: '0 0 20px' },
   sectionLabel: { color: '#666', fontSize: 11, letterSpacing: 1, fontWeight: 'bold', margin: '0 0 10px' },
   row: { borderBottom: '1px solid #1e293b', padding: '10px 0' },
+  rowLink: { display: 'block', borderBottom: '1px solid #1e293b', padding: '10px 0', textDecoration: 'none' },
   rowMain: { color: '#ccc', fontSize: 14, margin: '0 0 2px' },
   rowMeta: { color: '#666', fontSize: 12, margin: 0 },
   emptyText: { color: '#888', fontSize: 13, margin: 0 },
