@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { haversineKm, generatePin, generateReferralCode, timeAgo, insertTechniciansWithPinRetry, classifyPriority, normalizeAddressForGeocoding, pickBestGeocodeFeature, isMapboxTokenConfigured, computeReplayStats, interpolateReplayPosition, describeAuditEntry, computeTechnicianReliability, RELIABILITY_FATIGUE_BASELINE_HOURS } from './utils'
+import { haversineKm, generatePin, generateReferralCode, timeAgo, insertTechniciansWithPinRetry, classifyPriority, normalizeAddressForGeocoding, pickBestGeocodeFeature, isMapboxTokenConfigured, computeReplayStats, interpolateReplayPosition, describeAuditEntry, computeTechnicianReliability, RELIABILITY_FATIGUE_BASELINE_HOURS, computeProspectPriority } from './utils'
 
 describe('haversineKm', () => {
   it('returns 0 for identical points', () => {
@@ -425,5 +425,57 @@ describe('computeTechnicianReliability', () => {
     const result = computeTechnicianReliability({ rolling_week_hours: 200 }, 20)
     expect(result.score).toBe(0)
     expect(result.label).toBe('Review')
+  })
+})
+
+describe('computeProspectPriority', () => {
+  it('returns a Cold zero-reason baseline for a missing prospect or one with no signals', () => {
+    expect(computeProspectPriority(null)).toEqual({ score: 0, label: 'Cold', reasons: [] })
+    expect(computeProspectPriority({})).toEqual({ score: 40, label: 'Cold', reasons: [] })
+  })
+
+  it('scores a reply as the strongest single signal', () => {
+    expect(computeProspectPriority({ replied_at: '2026-09-20T00:00:00Z' }))
+      .toEqual({ score: 80, label: 'Hot', reasons: ['Already replied'] })
+  })
+
+  it('scores a named decision-maker', () => {
+    expect(computeProspectPriority({ contact_name: 'Jane Doe' }))
+      .toEqual({ score: 55, label: 'Warm', reasons: ['Decision-maker named'] })
+  })
+
+  it('scores complete contact info', () => {
+    expect(computeProspectPriority({ contact_email: 'a@b.com', contact_phone: '0400000000' }))
+      .toEqual({ score: 50, label: 'Warm', reasons: ['Email + phone on file'] })
+  })
+
+  it('scores a warm source', () => {
+    expect(computeProspectPriority({ source: 'broker_referral' }))
+      .toEqual({ score: 50, label: 'Warm', reasons: ['Warm source (referral/named target)'] })
+    expect(computeProspectPriority({ source: 'named_target' }).score).toBe(50)
+    expect(computeProspectPriority({ source: 'manual' }).score).toBe(40)
+  })
+
+  it('penalizes repeated follow-ups with no reply', () => {
+    expect(computeProspectPriority({ followup_stage: 2 }))
+      .toEqual({ score: 25, label: 'Cold', reasons: ['No response after multiple follow-ups'] })
+  })
+
+  it('does not penalize repeated follow-ups once the prospect has replied', () => {
+    const result = computeProspectPriority({ followup_stage: 3, replied_at: '2026-09-20T00:00:00Z' })
+    expect(result.reasons).not.toContain('No response after multiple follow-ups')
+  })
+
+  it('combines signals and caps the score at 100', () => {
+    const result = computeProspectPriority({
+      replied_at: '2026-09-20T00:00:00Z',
+      contact_name: 'Jane Doe',
+      contact_email: 'a@b.com',
+      contact_phone: '0400000000',
+      source: 'broker_referral',
+    })
+    expect(result.score).toBe(100)
+    expect(result.label).toBe('Hot')
+    expect(result.reasons).toHaveLength(4)
   })
 })

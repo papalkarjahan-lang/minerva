@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 import LoadingScreen from '../components/LoadingScreen'
+import { computeProspectPriority } from '../utils'
 
 // Internal Minerva staff console — NOT tied to any one business. Gated by
 // an admin-email allowlist (VITE_ADMIN_EMAILS, comma-separated) checked
@@ -618,7 +619,10 @@ export default function AdminConsole() {
               </div>
             )}
 
-            {prospects.filter(p => ['drafted', 'approved'].includes(p.status)).map(p => (
+            {prospects
+              .filter(p => ['drafted', 'approved'].includes(p.status))
+              .sort((a, b) => computeProspectPriority(b).score - computeProspectPriority(a).score)
+              .map(p => (
               <ProspectCard
                 key={p.id}
                 prospect={p}
@@ -719,6 +723,7 @@ function ProspectCard({ prospect: p, onSaveDraft, onApprove, onReject, savingId,
   const [body, setBody] = useState(p.draft_body || '')
   const [fleetSize, setFleetSize] = useState('')
   const dirty = subject !== (p.draft_subject || '') || body !== (p.draft_body || '')
+  const priority = computeProspectPriority(p)
 
   useEffect(() => { onDirtyChange?.(p.id, dirty) }, [dirty, p.id, onDirtyChange])
 
@@ -730,6 +735,15 @@ function ProspectCard({ prospect: p, onSaveDraft, onApprove, onReject, savingId,
             <input type="checkbox" checked={!!selected} onChange={onToggleSelect} style={{ width: 16, height: 16, cursor: 'pointer' }} />
           )}
           <strong style={{ color: '#fff' }}>{p.company_name}{p.followup_stage > 0 ? ` (follow-up #${p.followup_stage})` : ''}</strong>
+          <span
+            title={priority.reasons.length > 0 ? priority.reasons.join('; ') : 'No positive or negative signals on file yet'}
+            style={{
+              fontSize: 10, fontWeight: 'bold', letterSpacing: 0.5, padding: '2px 8px', borderRadius: 10, textTransform: 'uppercase',
+              color: priority.label === 'Hot' ? '#1D9E75' : priority.label === 'Warm' ? '#A87C16' : '#666',
+              background: priority.label === 'Hot' ? '#1D9E7522' : priority.label === 'Warm' ? '#A87C1622' : '#66666622',
+            }}>
+            {priority.label} · {priority.score}
+          </span>
         </div>
         <span style={{ color: p.status === 'approved' ? '#1D9E75' : '#8fd0e8', fontSize: 12, textTransform: 'uppercase' }}>{p.status}</span>
       </div>

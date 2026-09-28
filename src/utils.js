@@ -303,6 +303,46 @@ export function computeTechnicianReliability(tech, flaggedPhotoCount) {
   return { score: Math.round(score), label, reasons }
 }
 
+// Outbound prospect priority score — the "no lead-scoring or intent-signal
+// layer at all" gap named in COMPETITIVE_FEATURE_ANALYSIS.md's outbound
+// lead-gen section ("a simple scoring field ... so the admin console can
+// sort by likely-to-convert instead of by next_action_date alone"). Built
+// entirely from columns outreach_prospects already has today — no new
+// schema, no invented signals (e.g. no "engagement score" from data that
+// isn't actually tracked). Used to sort AdminConsole's outreach queue so
+// the most-likely-to-convert prospects surface first instead of strict
+// created_at order.
+export function computeProspectPriority(prospect) {
+  if (!prospect) return { score: 0, label: 'Cold', reasons: [] }
+  let score = 40
+  const reasons = []
+
+  if (prospect.replied_at) {
+    score += 40
+    reasons.push('Already replied')
+  }
+  if (prospect.contact_name) {
+    score += 15
+    reasons.push('Decision-maker named')
+  }
+  if (prospect.contact_email && prospect.contact_phone) {
+    score += 10
+    reasons.push('Email + phone on file')
+  }
+  if (prospect.source === 'broker_referral' || prospect.source === 'named_target') {
+    score += 10
+    reasons.push('Warm source (referral/named target)')
+  }
+  if (prospect.followup_stage >= 2 && !prospect.replied_at) {
+    score -= 15
+    reasons.push('No response after multiple follow-ups')
+  }
+
+  score = Math.max(0, Math.min(100, score))
+  const label = score >= 75 ? 'Hot' : score >= 50 ? 'Warm' : 'Cold'
+  return { score, label, reasons }
+}
+
 export function describeAuditEntry(entry) {
   if (!entry || !entry.action) return ''
   const d = entry.details || {}
