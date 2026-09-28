@@ -140,7 +140,7 @@ serve(async (req: Request) => {
 
     const { data: job, error: jobErr } = await supabase
       .from('jobs')
-      .select('id, business_id, technician_id, client_lat, client_lng, client_name, required_credential_name, required_skill')
+      .select('id, business_id, technician_id, client_lat, client_lng, client_name, client_address, required_credential_name, required_skill')
       .eq('id', job_id)
       .single()
     if (jobErr || !job) throw new Error('Job not found')
