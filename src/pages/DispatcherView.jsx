@@ -30,6 +30,7 @@ export default function DispatcherView() {
   const [lostLeads, setLostLeads] = useState([])
   const [leadAttribution, setLeadAttribution] = useState([]) // from lead_attribution_summary view — which channel is actually converting
   const [expandedLeadId, setExpandedLeadId] = useState(null) // which lead's activity timeline is open, if any
+  const [convertingLeadId, setConvertingLeadId] = useState(null)
   const [leadActivities, setLeadActivities] = useState({}) // leadId -> lead_activities[] loaded on demand
   const [leadActivitySummary, setLeadActivitySummary] = useState({}) // leadId -> { count, lastAt }, loaded upfront for every visible lead so the list itself shows engagement momentum without expanding each one
   const [newLeadNote, setNewLeadNote] = useState('')
@@ -41,6 +42,7 @@ export default function DispatcherView() {
   const [carbonEstimates, setCarbonEstimates] = useState([]) // Pro tier only — see estimate-job-carbon
   const [subcontractors, setSubcontractors] = useState([])
   const [showAddSubcontractor, setShowAddSubcontractor] = useState(false)
+  const [savingSubcontractor, setSavingSubcontractor] = useState(false)
   const [newSubcontractor, setNewSubcontractor] = useState({ name: '', phone: '', skills: '', hourly_rate: '' })
   const [inventory, setInventory] = useState([]) // Pro tier only
   const [marketingDrafts, setMarketingDrafts] = useState([]) // Pro tier only — Growth pillar
@@ -65,6 +67,7 @@ export default function DispatcherView() {
   const [requestingReviewId, setRequestingReviewId] = useState(null)
   const [resendingReferralId, setResendingReferralId] = useState(null)
   const [markingPaidId, setMarkingPaidId] = useState(null)
+  const [syncingXeroId, setSyncingXeroId] = useState(null)
   // Round-2 batch: seasonal demand forecasting — most recent business-scoped insight, or null.
   const [demandForecast, setDemandForecast] = useState(null)
   // Minerva Max add-on tier (2026-09-04) — gates the Minerva Max batch +
@@ -1130,6 +1133,8 @@ export default function DispatcherView() {
   }
 
   async function convertLeadToJob(lead) {
+    if (convertingLeadId === lead.id) return
+    setConvertingLeadId(lead.id)
     try {
       const { lat, lng } = await geocodeAddress(`${lead.suburb}, Australia`)
       const { error: insertError } = await supabase.from('jobs').insert({
@@ -1155,6 +1160,8 @@ export default function DispatcherView() {
       await loadAll()
     } catch (err) {
       alert(`Couldn't convert lead: ${err.message}`)
+    } finally {
+      setConvertingLeadId(null)
     }
   }
 
@@ -1313,6 +1320,7 @@ export default function DispatcherView() {
       logAudit('business.settings_updated', { entityType: 'business', entityId: businessId })
     }
     setSavingSettings(false)
+    return !error
   }
 
   // Weather-Risk Reschedule Agent — human-approval-gate handlers, same
@@ -1431,8 +1439,10 @@ export default function DispatcherView() {
   }
 
   async function addSubcontractor() {
+    if (savingSubcontractor) return
     const name = newSubcontractor.name.trim()
     if (!name) return
+    setSavingSubcontractor(true)
     // Backend also enforces this (a before-insert trigger on subcontractors
     // checks the subcontractor_pool addon) since this insert goes straight
     // from the browser with no edge function in between — this UI check
@@ -1445,6 +1455,7 @@ export default function DispatcherView() {
       skills: newSubcontractor.skills.split(',').map(s => s.trim()).filter(Boolean),
       hourly_rate: newSubcontractor.hourly_rate ? Number(newSubcontractor.hourly_rate) : null,
     }).select().single()
+    setSavingSubcontractor(false)
     if (error) {
       alert(error.message.includes('subcontractor_pool') ? error.message : 'Could not add subcontractor: ' + error.message)
       return
@@ -1464,7 +1475,10 @@ export default function DispatcherView() {
   }
 
   async function syncInvoiceToXero(invoiceId) {
+    if (syncingXeroId === invoiceId) return
+    setSyncingXeroId(invoiceId)
     const { data, error } = await supabase.functions.invoke('xero-sync-invoice', { body: { invoiceId } })
+    setSyncingXeroId(null)
     if (error || data?.error) {
       alert(`Xero sync failed: ${data?.error || error.message}`)
       return
@@ -2414,7 +2428,7 @@ export default function DispatcherView() {
                     onChange={(e) => setNewSubcontractor(prev => ({ ...prev, skills: e.target.value }))} />
                   <input style={{ ...styles.input, marginTop: 6 }} type="number" placeholder="Hourly rate ($)" value={newSubcontractor.hourly_rate}
                     onChange={(e) => setNewSubcontractor(prev => ({ ...prev, hourly_rate: e.target.value }))} />
-                  <button style={{ ...styles.leadActionPrimary, marginTop: 8 }} onClick={addSubcontractor}>Save</button>
+                  <button style={{ ...styles.leadActionPrimary, marginTop: 8 }} disabled={savingSubcontractor} onClick={addSubcontractor}>{savingSubcontractor ? 'Saving...' : 'Save'}</button>
                 </div>
               )}
               {subcontractors.map(sub => (
@@ -2551,7 +2565,7 @@ export default function DispatcherView() {
                   </div>
 
                   <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-                    <button style={styles.leadActionPrimary} onClick={() => convertLeadToJob(lead)}>Convert to job</button>
+                    <button style={styles.leadActionPrimary} disabled={convertingLeadId === lead.id} onClick={() => convertLeadToJob(lead)}>{convertingLeadId === lead.id ? 'Converting...' : 'Convert to job'}</button>
                     {lead.status === 'new' && (
                       <button style={styles.leadActionSecondary} onClick={() => markLeadStatus(lead.id, 'contacted')}>Contacted</button>
                     )}
@@ -2755,7 +2769,7 @@ export default function DispatcherView() {
                   {inv.status !== 'void' && hasAddon(business, 'xero_sync') && business?.xero_connected && (
                     inv.xero_invoice_id
                       ? <p style={{ ...styles.jobAddr, color: '#1D9E75' }}>✓ Synced to Xero</p>
-                      : <button style={styles.leadActionSecondary} onClick={() => syncInvoiceToXero(inv.id)}>Sync to Xero</button>
+                      : <button style={styles.leadActionSecondary} disabled={syncingXeroId === inv.id} onClick={() => syncInvoiceToXero(inv.id)}>{syncingXeroId === inv.id ? 'Syncing...' : 'Sync to Xero'}</button>
                   )}
                   {hasAddon(business, 'review_loop') && inv.status === 'paid' && business?.google_review_link && !reviewRequests[inv.id] && (
                     <button style={styles.leadActionSecondary} disabled={requestingReviewId === inv.id} onClick={() => requestReview(inv.id)}>
@@ -4180,7 +4194,11 @@ function SettingsModal({
 
   async function handleSave(e) {
     e.preventDefault()
-    await onSave({
+    // onSave (saveSettings) returns false on a failed write (e.g. the
+    // Twilio-number uniqueness collision it already alerts on) — only
+    // close the modal on success, so a failed save doesn't read as "it
+    // saved" while silently discarding the edits.
+    const ok = await onSave({
       slackWebhookUrl: slackWebhookInput.trim(),
       autoDispatchEnabled: autoDispatch,
       autoDispatchMaxKm: autoDispatchMaxKm === '' ? null : Number(autoDispatchMaxKm),
@@ -4191,7 +4209,7 @@ function SettingsModal({
       googleReviewLink: googleReviewLinkInput.trim(),
       twilioNumber: twilioNumberInput.trim(),
     })
-    onClose()
+    if (ok) onClose()
   }
 
   return (
@@ -4446,6 +4464,7 @@ function CustomWorkflowsPanel({ businessId, onLogAudit }) {
   const [showRunLog, setShowRunLog] = useState(false)
   const [runLog, setRunLog] = useState([])
   const [runLogLoading, setRunLogLoading] = useState(false)
+  const [savingWorkflow, setSavingWorkflow] = useState(false)
 
   useEffect(() => {
     supabase.from('custom_workflows').select('*').eq('business_id', businessId).order('created_at', { ascending: false })
@@ -4464,9 +4483,12 @@ function CustomWorkflowsPanel({ businessId, onLogAudit }) {
 
   async function addWorkflow(e) {
     e.preventDefault()
+    if (savingWorkflow) return
+    setSavingWorkflow(true)
     const row = { business_id: businessId, ...draft }
     if (!row.condition_field) { row.condition_field = null; row.condition_op = null; row.condition_value = null }
     const { data } = await supabase.from('custom_workflows').insert(row).select().single()
+    setSavingWorkflow(false)
     if (data) {
       setWorkflows(prev => [data, ...prev])
       onLogAudit?.('workflow.added', { entityType: 'custom_workflow', entityId: data.id, details: { name: data.name, trigger_event: data.trigger_event, action_type: data.action_type } })
@@ -4555,7 +4577,7 @@ function CustomWorkflowsPanel({ businessId, onLogAudit }) {
           {draft.action_type === 'email' && (
             <input required type="email" placeholder="you@yourbusiness.com" value={draft.action_target} onChange={e => setDraft(d => ({ ...d, action_target: e.target.value }))} style={{ ...styles.input, marginBottom: 8 }} />
           )}
-          <button type="submit" style={{ ...styles.submitBtn, padding: '6px 14px', fontSize: 13 }}>Save rule</button>
+          <button type="submit" disabled={savingWorkflow} style={{ ...styles.submitBtn, padding: '6px 14px', fontSize: 13 }}>{savingWorkflow ? 'Saving...' : 'Save rule'}</button>
         </form>
       )}
 
