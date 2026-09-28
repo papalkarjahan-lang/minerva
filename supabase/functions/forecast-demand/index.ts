@@ -70,6 +70,25 @@ serve(async (req: Request) => {
       const best = findBestTrendingAddress(buckets)
 
       if (best) {
+        // Dedup guard — this is a weekly cron job with no natural
+        // per-episode claim column (unlike a jobs/inventory row, a trend
+        // is recomputed fresh each run, not "claimed" once). An
+        // overlapping/duplicate run within the same week could otherwise
+        // insert a duplicate trend insight for the same business+address.
+        // A 6-day existence check (just under LOOKBACK_DAYS's weekly
+        // cadence) blocks that duplicate while still allowing a genuine
+        // fresh trend to be re-flagged next week.
+        const recentCutoff = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString()
+        const { data: existing } = await supabase
+          .from('agent_insights')
+          .select('id')
+          .eq('business_id', biz.id)
+          .eq('insight_type', 'demand_forecast')
+          .eq('trend_address', best.addr)
+          .gte('created_at', recentCutoff)
+          .limit(1)
+        if (existing && existing.length > 0) continue // already flagged this trend recently
+
         await supabase.from('agent_insights').insert({
           agent: 'scheduling',
           insight_type: 'demand_forecast',

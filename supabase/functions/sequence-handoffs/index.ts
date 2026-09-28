@@ -30,6 +30,7 @@ serve(async (req: Request) => {
       .select('id, site_id, business_id, person_name, detail, created_at, site_projects(name)')
       .eq('role', 'automated_process')
       .eq('checkin_type', 'task_complete')
+      .is('handoff_nudged_at', null)
       .gte('created_at', hourAgo)
     if (error) throw error
 
@@ -39,6 +40,19 @@ serve(async (req: Request) => {
         .select('id').eq('site_id', c.site_id).eq('role', 'human_technician').eq('checkin_type', 'task_start')
         .gte('created_at', c.created_at).limit(1)
       if (followUp && followUp.length > 0) continue // already picked up
+
+      // Atomically claim this completion before nudging — same
+      // claim-before-notify pattern as chase-unpaid-invoices (fixed
+      // 2026-09-24) — so a completion that stays unhandled for the full
+      // hour window only ever gets one Slack nudge, not one per sweep.
+      const { data: claimed, error: claimErr } = await supabase
+        .from('site_checkins')
+        .update({ handoff_nudged_at: new Date().toISOString() })
+        .eq('id', c.id)
+        .is('handoff_nudged_at', null)
+        .select('id')
+      if (claimErr) { console.error('sequence-handoffs: claim failed:', claimErr.message); continue }
+      if (!claimed || claimed.length === 0) continue // already nudged by a prior sweep
 
       const siteName = (c as any).site_projects?.name || 'a site'
       await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {

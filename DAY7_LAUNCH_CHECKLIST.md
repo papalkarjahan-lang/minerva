@@ -192,6 +192,17 @@ Stop and fix before continuing if any box fails — don't skip ahead.
       (`auto-assign-technician`) picks the less-fatigued one; this is a
       soft tiebreak, so it should only change the outcome when the two
       technicians are close in distance, not override a clearly-closer tech
+- [ ] Technician reliability badge (added 2026-09-28): with the same high
+      `rolling_week_hours` technician from above (or a `checklist_photos`
+      row flagged for their job), confirm `DispatcherView.jsx`'s
+      technician roster shows a "Reliability: Watch/Review (score)" badge
+      under their name — a technician with neither signal should show no
+      badge at all (that's expected, not a bug)
+- [ ] Outreach prospect priority (added 2026-09-28): in the admin console
+      Outreach tab, set `replied_at` on one drafted/approved prospect
+      (Table Editor → `outreach_prospects`) → confirm it sorts to the top
+      of the list with a "Hot" badge, and that the badge's tooltip lists
+      the reason
 
 ## 12. Voice receptionist (`voice-intake-agent`, added 2026-09-13 — genuinely
 ##     blocked on Twilio's own number-verification step; skip entirely

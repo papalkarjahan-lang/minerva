@@ -46,6 +46,21 @@ serve(async (req: Request) => {
 
       if (item.low_stock_alert_sent_at) continue // already alerted for this episode
 
+      // Atomically claim this item before sending the Slack alert — same
+      // time-of-check/time-of-use race chase-unpaid-invoices had (fixed
+      // 2026-09-24): without this, an overlapping/duplicate run could see
+      // the same not-yet-alerted item and send a duplicate low-stock
+      // Slack alert for the same episode. This conditional update only
+      // succeeds for whichever invocation gets there first.
+      const { data: claimed, error: claimErr } = await supabase
+        .from('inventory_items')
+        .update({ low_stock_alert_sent_at: new Date().toISOString() })
+        .eq('id', item.id)
+        .is('low_stock_alert_sent_at', null)
+        .select('id')
+      if (claimErr) { console.error('check-inventory-levels: claim failed:', claimErr.message); continue }
+      if (!claimed || claimed.length === 0) continue // already claimed by a concurrent run
+
       const supplierNote = item.supplier_name ? ` Usual supplier: ${item.supplier_name}.` : ''
       await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
         method: 'POST',
@@ -56,7 +71,6 @@ serve(async (req: Request) => {
         }),
       }).catch(() => {})
 
-      await supabase.from('inventory_items').update({ low_stock_alert_sent_at: new Date().toISOString() }).eq('id', item.id)
       alerted++
     }
 

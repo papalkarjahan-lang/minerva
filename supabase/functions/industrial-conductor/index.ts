@@ -87,6 +87,22 @@ serve(async (req: Request) => {
       const { data: lead } = await supabase.from('industrial_leads').select('id, business_id, company_name, equipment_need').eq('id', leadId).maybeSingle()
       if (!lead) continue
 
+      // Cron-sweep dedup only — the direct-invocation path (explicit,
+      // single-fire request) always suggests regardless. Without this, a
+      // lead that stays status='new' for the full 1-hour window got a
+      // fresh Slack suggestion every 15-minute run. Atomic claim before
+      // notifying, same pattern as chase-unpaid-invoices (fixed 2026-09-24).
+      if (!directLeadId) {
+        const { data: claimed, error: claimErr } = await supabase
+          .from('industrial_leads')
+          .update({ conductor_suggested_at: new Date().toISOString() })
+          .eq('id', leadId)
+          .is('conductor_suggested_at', null)
+          .select('id')
+        if (claimErr) { console.error('industrial-conductor: claim failed:', claimErr.message); continue }
+        if (!claimed || claimed.length === 0) continue // already suggested by a prior sweep
+      }
+
       const { data: assets } = await supabase.from('industrial_assets')
         .select('id, name, status')
         .eq('business_id', lead.business_id)

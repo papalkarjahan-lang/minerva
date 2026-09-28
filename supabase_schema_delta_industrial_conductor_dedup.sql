@@ -1,0 +1,22 @@
+-- ============================================================
+-- MINERVA — industrial-conductor cron-sweep suggestion dedup (2026-09-28).
+--
+-- industrial-conductor's cron sweep (every 15 min, no body) re-scans every
+-- industrial_leads row with status='new' created in the last hour. Nothing
+-- marked a lead as "already suggested", so a lead that legitimately stays
+-- status='new' for the full hour (nobody has actioned it yet) got a fresh
+-- Slack "Conductor" suggestion re-sent every 15 minutes — up to 4 duplicate
+-- pings for the same lead, contradicting the "suggests once, a human
+-- confirms" design already documented in index.ts's own header comment.
+--
+-- conductor_suggested_at lets the cron-sweep path atomically claim a lead
+-- before sending its Slack suggestion (same claim-before-notify pattern as
+-- chase-unpaid-invoices, fixed 2026-09-24), so each lead is only ever
+-- suggested once by the sweep. The direct-invocation { leadId } path (an
+-- explicit, single, human/system-triggered request) is untouched — it
+-- always suggests immediately regardless of this column.
+--
+-- Run once in the Supabase SQL Editor, or via the Management API.
+-- ============================================================
+
+alter table industrial_leads add column if not exists conductor_suggested_at timestamptz;

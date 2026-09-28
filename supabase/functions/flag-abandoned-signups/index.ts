@@ -43,6 +43,20 @@ serve(async (req: Request) => {
 
     let flagged = 0
     for (const biz of stale || []) {
+      // Atomically claim this business before writing the insight — same
+      // time-of-check/time-of-use race chase-unpaid-invoices had (fixed
+      // 2026-09-24): without this, an overlapping/duplicate run could see
+      // the same not-yet-flagged business and insert a duplicate
+      // abandoned-signup insight.
+      const { data: claimed, error: claimErr } = await supabase
+        .from('businesses')
+        .update({ abandoned_flagged_at: new Date().toISOString() })
+        .eq('id', biz.id)
+        .is('abandoned_flagged_at', null)
+        .select('id')
+      if (claimErr) { console.error('flag-abandoned-signups: claim failed:', claimErr.message); continue }
+      if (!claimed || claimed.length === 0) continue // already claimed by a concurrent run
+
       const { count } = await supabase
         .from('technicians')
         .select('id', { count: 'exact', head: true })
@@ -57,7 +71,6 @@ serve(async (req: Request) => {
         related_id: biz.id,
       }).then(() => {}, (err) => console.error('flag-abandoned-signups: insight insert failed', err))
 
-      await supabase.from('businesses').update({ abandoned_flagged_at: new Date().toISOString() }).eq('id', biz.id)
       flagged++
     }
 

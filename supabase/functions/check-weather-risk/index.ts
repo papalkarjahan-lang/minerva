@@ -92,13 +92,26 @@ serve(async (req: Request) => {
 
           const summary = `Tomorrow (${tomorrowDateStr}): ${reasons.join(', ')}.`
 
+          // Atomically claim this job before writing the draft/notifying —
+          // same time-of-check/time-of-use race chase-unpaid-invoices had
+          // (fixed 2026-09-24): without this, an overlapping/duplicate run
+          // could see the same not-yet-flagged job and create a duplicate
+          // reschedule draft + duplicate Slack notification.
+          const { data: claimed, error: claimErr } = await supabase
+            .from('jobs')
+            .update({ weather_risk_flagged_at: new Date().toISOString() })
+            .eq('id', job.id)
+            .is('weather_risk_flagged_at', null)
+            .select('id')
+          if (claimErr) { console.error('check-weather-risk: claim failed:', claimErr.message); continue }
+          if (!claimed || claimed.length === 0) continue // already claimed by a concurrent run
+
           await supabase.from('weather_reschedule_drafts').insert({
             job_id: job.id,
             business_id: biz.id,
             forecast_summary: summary,
             status: 'pending',
           })
-          await supabase.from('jobs').update({ weather_risk_flagged_at: new Date().toISOString() }).eq('id', job.id)
           drafted++
 
           await notifySlack(supabaseUrl, supabaseServiceKey, biz.id,
