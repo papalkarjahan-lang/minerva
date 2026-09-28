@@ -38,6 +38,13 @@ export default function Onboarding() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [agreedToTerms, setAgreedToTerms] = useState(false)
+  // Set as soon as each step's insert succeeds so a retry after a later
+  // step fails (e.g. create-checkout-session has a transient error) resumes
+  // from where it broke instead of re-inserting the business/technicians
+  // and re-texting technicians who already got a setup SMS the first time.
+  const [createdBusiness, setCreatedBusiness] = useState(null)
+  const [createdTechs, setCreatedTechs] = useState(null)
+  const [smsSent, setSmsSent] = useState(false)
 
   function selectTier(id) {
     setTier(id)
@@ -57,37 +64,54 @@ export default function Onboarding() {
     setLoading(true)
     setError(null)
     try {
-      // 1. Create business
-      const { data: bizData, error: bizErr } = await supabase
-        .from('businesses')
-        .insert({ ...biz, subscription_tier: tier, sector, feature_priorities: featurePriorities })
-        .select()
-        .single()
-      if (bizErr) throw new Error(bizErr.message)
+      // 1. Create business — skipped on a retry if it already succeeded
+      // once (see createdBusiness comment above).
+      let bizData = createdBusiness
+      if (!bizData) {
+        const { data, error: bizErr } = await supabase
+          .from('businesses')
+          .insert({ ...biz, subscription_tier: tier, sector, feature_priorities: featurePriorities })
+          .select()
+          .single()
+        if (bizErr) throw new Error(bizErr.message)
+        bizData = data
+        setCreatedBusiness(data)
+      }
 
-      // 2. Create technicians with PINs
-      const techRows = techs.filter(t => t.name.trim()).map(t => ({
-        business_id: bizData.id,
-        name: t.name.trim(),
-        phone: t.phone.trim(),
-      }))
-      const { data: techData, error: techErr } = await insertTechniciansWithPinRetry(supabase, techRows)
-      if (techErr) throw new Error(techErr.message)
+      // 2. Create technicians with PINs — skipped on a retry for the same
+      // reason.
+      let techData = createdTechs
+      if (!techData) {
+        const techRows = techs.filter(t => t.name.trim()).map(t => ({
+          business_id: bizData.id,
+          name: t.name.trim(),
+          phone: t.phone.trim(),
+        }))
+        const { data, error: techErr } = await insertTechniciansWithPinRetry(supabase, techRows)
+        if (techErr) throw new Error(techErr.message)
+        techData = data
+        setCreatedTechs(data)
+      }
 
       // 3. Send each technician their setup SMS. A failed send here isn't
       // fatal — the PIN link is safely recoverable later from
       // DispatcherView's technician list ("Copy setup link"/"Resend text")
       // once the owner logs in after payment — but it's tracked so they
       // know to actually go check, instead of assuming every text arrived.
-      const failedSmsNames = []
-      for (const tech of techData) {
-        const { data: smsData, error: smsError } = await supabase.functions.invoke('send-setup-sms', {
-          body: { technicianId: tech.id }
-        })
-        if (smsError || smsData?.error) failedSmsNames.push(tech.name)
-      }
-      if (failedSmsNames.length > 0) {
-        alert(`Setup texts didn't send to: ${failedSmsNames.join(', ')}. After payment, open the technician list in your dashboard and use "Copy setup link" or "Resend text" for them.`)
+      // Skipped on a retry (smsSent) so a later-step failure doesn't
+      // re-text everyone who already got their first setup SMS.
+      if (!smsSent) {
+        const failedSmsNames = []
+        for (const tech of techData) {
+          const { data: smsData, error: smsError } = await supabase.functions.invoke('send-setup-sms', {
+            body: { technicianId: tech.id }
+          })
+          if (smsError || smsData?.error) failedSmsNames.push(tech.name)
+        }
+        setSmsSent(true)
+        if (failedSmsNames.length > 0) {
+          alert(`Setup texts didn't send to: ${failedSmsNames.join(', ')}. After payment, open the technician list in your dashboard and use "Copy setup link" or "Resend text" for them.`)
+        }
       }
 
       // 4. Redirect to Stripe checkout
