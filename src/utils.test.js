@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { haversineKm, generatePin, generateReferralCode, timeAgo, insertTechniciansWithPinRetry, classifyPriority, normalizeAddressForGeocoding, pickBestGeocodeFeature, isMapboxTokenConfigured, computeReplayStats, interpolateReplayPosition, describeAuditEntry } from './utils'
+import { haversineKm, generatePin, generateReferralCode, timeAgo, insertTechniciansWithPinRetry, classifyPriority, normalizeAddressForGeocoding, pickBestGeocodeFeature, isMapboxTokenConfigured, computeReplayStats, interpolateReplayPosition, describeAuditEntry, computeTechnicianReliability, RELIABILITY_FATIGUE_BASELINE_HOURS } from './utils'
 
 describe('haversineKm', () => {
   it('returns 0 for identical points', () => {
@@ -379,5 +379,51 @@ describe('describeAuditEntry', () => {
   it('falls back to the raw action string for an unknown action', () => {
     expect(describeAuditEntry({ action: 'something.unlisted', details: {} }))
       .toBe('something.unlisted')
+  })
+})
+
+describe('computeTechnicianReliability', () => {
+  it('returns null when there are no flagged photos and no fatigue', () => {
+    expect(computeTechnicianReliability({ rolling_week_hours: 20 }, 0)).toBeNull()
+    expect(computeTechnicianReliability({}, 0)).toBeNull()
+    expect(computeTechnicianReliability(null, 0)).toBeNull()
+  })
+
+  it('returns null when hours are at or under the baseline, even with no flags', () => {
+    expect(computeTechnicianReliability({ rolling_week_hours: RELIABILITY_FATIGUE_BASELINE_HOURS }, 0)).toBeNull()
+  })
+
+  it('scores flagged photos only, with correct singular/plural wording', () => {
+    const oneFlag = computeTechnicianReliability({ rolling_week_hours: 10 }, 1)
+    expect(oneFlag).toEqual({ score: 92, label: 'Good', reasons: ['1 flagged checklist photo'] })
+
+    const twoFlags = computeTechnicianReliability({ rolling_week_hours: 10 }, 2)
+    expect(twoFlags).toEqual({ score: 84, label: 'Watch', reasons: ['2 flagged checklist photos'] })
+  })
+
+  it('scores fatigue only, using the shared fatigue baseline', () => {
+    const result = computeTechnicianReliability({ rolling_week_hours: 50 }, 0)
+    expect(result).toEqual({ score: 85, label: 'Good', reasons: ['10h over the 40h/week baseline'] })
+  })
+
+  it('combines flagged photos and fatigue into one score with both reasons', () => {
+    const result = computeTechnicianReliability({ rolling_week_hours: 50 }, 1)
+    expect(result).toEqual({
+      score: 77,
+      label: 'Watch',
+      reasons: ['1 flagged checklist photo', '10h over the 40h/week baseline'],
+    })
+  })
+
+  it('labels a heavily flagged technician as "Review"', () => {
+    const result = computeTechnicianReliability({ rolling_week_hours: 0 }, 6)
+    expect(result.label).toBe('Review')
+    expect(result.score).toBe(52)
+  })
+
+  it('never returns a negative score', () => {
+    const result = computeTechnicianReliability({ rolling_week_hours: 200 }, 20)
+    expect(result.score).toBe(0)
+    expect(result.label).toBe('Review')
   })
 })

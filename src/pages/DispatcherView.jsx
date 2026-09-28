@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import Map, { Marker, NavigationControl, FullscreenControl, ScaleControl, Popup, Source, Layer } from 'react-map-gl'
 import { supabase } from '../supabaseClient'
-import { timeAgo, geocodeAddress, insertTechniciansWithPinRetry, haversineKm, isMapboxTokenConfigured, computeReplayStats, interpolateReplayPosition, describeAuditEntry } from '../utils'
+import { timeAgo, geocodeAddress, insertTechniciansWithPinRetry, haversineKm, isMapboxTokenConfigured, computeReplayStats, interpolateReplayPosition, describeAuditEntry, computeTechnicianReliability } from '../utils'
 import ContactSupportModal from '../components/ContactSupportModal'
 import LoadingScreen from '../components/LoadingScreen'
 import { MAX_ADDONS, hasAddon, isTrialing, trialDaysLeft, hasUsedTrial, enableAddonPatch, disableAddonPatch, startTrialPatch } from '../maxAddons'
@@ -92,6 +92,7 @@ export default function DispatcherView() {
   const [completedJobs, setCompletedJobs] = useState([])
   const [expandedJobId, setExpandedJobId] = useState(null)
   const [jobPhotos, setJobPhotos] = useState({}) // job_id -> checklist_photos rows, fetched lazily
+  const [flaggedPhotoCounts, setFlaggedPhotoCounts] = useState({}) // technician_id -> count of flagged checklist photos, feeds computeTechnicianReliability
   const [jobCorrectiveActions, setJobCorrectiveActions] = useState({}) // job_id -> corrective_actions rows (source_type='checklist_photo'), fetched lazily
   const [jobMaterials, setJobMaterials] = useState({}) // job_id -> job_materials rows, fetched lazily
   const [jobIncidents, setJobIncidents] = useState({}) // job_id -> technician_incidents rows, fetched lazily
@@ -273,6 +274,24 @@ export default function DispatcherView() {
       .eq('business_id', businessId)
       .eq('is_active', true)
     setTechnicians(techs || [])
+
+    // Flagged-checklist-photo counts per technician, feeding
+    // computeTechnicianReliability's roster badge below. Joined through
+    // jobs.technician_id since checklist_photos itself has no technician
+    // column.
+    const { data: flaggedPhotoRows, error: flaggedPhotoErr } = await supabase
+      .from('checklist_photos')
+      .select('jobs(technician_id)')
+      .eq('business_id', businessId)
+      .eq('verification_status', 'flagged')
+    if (flaggedPhotoErr) console.error('flagged checklist_photos fetch failed', flaggedPhotoErr)
+    const flaggedCounts = {}
+    for (const row of flaggedPhotoRows || []) {
+      const techId = row.jobs?.technician_id
+      if (!techId) continue
+      flaggedCounts[techId] = (flaggedCounts[techId] || 0) + 1
+    }
+    setFlaggedPhotoCounts(flaggedCounts)
 
     const { data: jobList } = await supabase
       .from('jobs')
@@ -1970,6 +1989,7 @@ export default function DispatcherView() {
           </p>
           {technicians.map((tech, i) => {
             const job = jobs.find(j => j.id === tech.current_job_id)
+            const reliability = computeTechnicianReliability(tech, flaggedPhotoCounts[tech.id])
             return (
               <div key={tech.id}
                 style={{ ...styles.techRow, borderLeft: `3px solid ${techColors[i % techColors.length]}` }}>
@@ -1990,6 +2010,16 @@ export default function DispatcherView() {
                       <p style={{ ...styles.techMeta, color: tech.rolling_week_hours >= 55 ? '#A87C16' : '#666' }}
                         title="Estimated from GPS activity over the last 7 days — a signal, not a timesheet.">
                         {tech.rolling_week_hours >= 55 ? '⚠️ ' : ''}{tech.rolling_week_hours}h this wk
+                      </p>
+                    )}
+                    {reliability && (
+                      <p style={{
+                        ...styles.techMeta,
+                        color: reliability.label === 'Review' ? '#B3261E' : reliability.label === 'Watch' ? '#A87C16' : '#2E7D32',
+                        fontWeight: 600,
+                      }}
+                        title={`Reliability signals: ${reliability.reasons.join('; ')}. Based only on data Minerva tracks (flagged checklist photos + fatigue) — not a timesheet or performance review.`}>
+                        {reliability.label === 'Review' ? '⚠️ ' : ''}Reliability: {reliability.label} ({reliability.score})
                       </p>
                     )}
                   </div>

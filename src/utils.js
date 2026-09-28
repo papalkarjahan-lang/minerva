@@ -275,6 +275,34 @@ export function interpolateReplayPosition(sortedLocations, elapsedMs) {
 // write a row) so every caller's `details` shape only has to be decided
 // once, and so it's unit-testable without a real DB row.
 // ============================================================
+// Technician reliability score — the composite signal named as a still-
+// unbuilt gap in COMPETITIVE_FEATURE_ANALYSIS.md ("a lightweight
+// technician risk/reliability score derived from data Minerva already
+// has"). Deliberately built ONLY from signals this app genuinely tracks
+// today — flagged checklist photos (verify-checklist-photos' AI review)
+// and fatigue (technicians.rolling_week_hours, the same GPS-derived
+// estimate auto-assign-technician already uses as a dispatch tiebreak,
+// baseline matched to that same function's FATIGUE_BASELINE_HOURS=40).
+// Late-arrival tracking doesn't exist anywhere in this codebase (no
+// promised-ETA-vs-actual-arrival comparison is recorded), so it's
+// honestly left out rather than faked. Returns null when there's no
+// negative signal at all, so a technician with nothing flagged shows
+// nothing rather than a "100/Good" badge cluttering every row.
+export const RELIABILITY_FATIGUE_BASELINE_HOURS = 40
+export function computeTechnicianReliability(tech, flaggedPhotoCount) {
+  const flagged = flaggedPhotoCount || 0
+  const hoursOverBaseline = Math.max(0, (tech?.rolling_week_hours || 0) - RELIABILITY_FATIGUE_BASELINE_HOURS)
+  if (flagged === 0 && hoursOverBaseline === 0) return null
+
+  const score = Math.max(0, 100 - flagged * 8 - hoursOverBaseline * 1.5)
+  const label = score >= 85 ? 'Good' : score >= 60 ? 'Watch' : 'Review'
+  const reasons = []
+  if (flagged > 0) reasons.push(`${flagged} flagged checklist photo${flagged === 1 ? '' : 's'}`)
+  if (hoursOverBaseline > 0) reasons.push(`${Math.round(hoursOverBaseline)}h over the ${RELIABILITY_FATIGUE_BASELINE_HOURS}h/week baseline`)
+
+  return { score: Math.round(score), label, reasons }
+}
+
 export function describeAuditEntry(entry) {
   if (!entry || !entry.action) return ''
   const d = entry.details || {}
