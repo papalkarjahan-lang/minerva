@@ -58,35 +58,49 @@ serve(async (req: Request) => {
         hasCurrentJob: !!tech?.current_job_id,
       }, thresholds)
 
+      // Each threshold below atomically claims its own warning_*_sent_at
+      // column before notifying — same claim-before-notify pattern as
+      // chase-unpaid-invoices (fixed 2026-09-24) — so an overlapping/
+      // duplicate run can't send the same threshold's Slack alert twice.
+
       // 30-day threshold
       if (evalResult.should30) {
-        await notifySlack(supabaseUrl, supabaseServiceKey, cred.business_id,
-          `📋 *${techName}*'s ${cred.credential_name || 'credential'} expires ${cred.expiry_date} (30 days away).`)
-        await supabase.from('technician_credentials').update({ warning_30_sent_at: new Date().toISOString() }).eq('id', cred.id)
-        warned30++
-        await writeCredentialInsight(supabase, anthropicKey, cred, techName,
-          `Renewal not yet due but worth starting: ${techName}'s ${cred.credential_name || 'credential'} expires in 30 days (${cred.expiry_date}).`,
-          `A dispatcher for a home-services business just got a 30-day heads-up that technician "${techName}"'s credential "${cred.credential_name || 'credential'}" expires on ${cred.expiry_date}. Give one short, practical sentence on what to check or do first at this early stage.`)
+        const { data: claimed30 } = await supabase.from('technician_credentials')
+          .update({ warning_30_sent_at: new Date().toISOString() }).eq('id', cred.id).is('warning_30_sent_at', null).select('id')
+        if (claimed30 && claimed30.length > 0) {
+          await notifySlack(supabaseUrl, supabaseServiceKey, cred.business_id,
+            `📋 *${techName}*'s ${cred.credential_name || 'credential'} expires ${cred.expiry_date} (30 days away).`)
+          warned30++
+          await writeCredentialInsight(supabase, anthropicKey, cred, techName,
+            `Renewal not yet due but worth starting: ${techName}'s ${cred.credential_name || 'credential'} expires in 30 days (${cred.expiry_date}).`,
+            `A dispatcher for a home-services business just got a 30-day heads-up that technician "${techName}"'s credential "${cred.credential_name || 'credential'}" expires on ${cred.expiry_date}. Give one short, practical sentence on what to check or do first at this early stage.`)
+        }
       }
       // 14-day threshold
       if (evalResult.should14) {
-        await notifySlack(supabaseUrl, supabaseServiceKey, cred.business_id,
-          `📋 *${techName}*'s ${cred.credential_name || 'credential'} expires ${cred.expiry_date} (14 days away).`)
-        await supabase.from('technician_credentials').update({ warning_14_sent_at: new Date().toISOString() }).eq('id', cred.id)
-        warned14++
-        await writeCredentialInsight(supabase, anthropicKey, cred, techName,
-          `Renewal window closing: ${techName}'s ${cred.credential_name || 'credential'} expires in 14 days (${cred.expiry_date}).`,
-          `A dispatcher for a home-services business just got a 14-day warning that technician "${techName}"'s credential "${cred.credential_name || 'credential'}" expires on ${cred.expiry_date}. Give one short, practical sentence on what to check or do first now that the window is closing.`)
+        const { data: claimed14 } = await supabase.from('technician_credentials')
+          .update({ warning_14_sent_at: new Date().toISOString() }).eq('id', cred.id).is('warning_14_sent_at', null).select('id')
+        if (claimed14 && claimed14.length > 0) {
+          await notifySlack(supabaseUrl, supabaseServiceKey, cred.business_id,
+            `📋 *${techName}*'s ${cred.credential_name || 'credential'} expires ${cred.expiry_date} (14 days away).`)
+          warned14++
+          await writeCredentialInsight(supabase, anthropicKey, cred, techName,
+            `Renewal window closing: ${techName}'s ${cred.credential_name || 'credential'} expires in 14 days (${cred.expiry_date}).`,
+            `A dispatcher for a home-services business just got a 14-day warning that technician "${techName}"'s credential "${cred.credential_name || 'credential'}" expires on ${cred.expiry_date}. Give one short, practical sentence on what to check or do first now that the window is closing.`)
+        }
       }
       // 7-day threshold
       if (evalResult.should7) {
-        await notifySlack(supabaseUrl, supabaseServiceKey, cred.business_id,
-          `📋 *${techName}*'s ${cred.credential_name || 'credential'} expires ${cred.expiry_date} (7 days or less).`)
-        await supabase.from('technician_credentials').update({ warning_7_sent_at: new Date().toISOString() }).eq('id', cred.id)
-        warned7++
-        await writeCredentialInsight(supabase, anthropicKey, cred, techName,
-          `Urgent renewal window: ${techName}'s ${cred.credential_name || 'credential'} expires within 7 days (${cred.expiry_date}).`,
-          `A dispatcher for a home-services business just got a 7-day-or-less warning that technician "${techName}"'s credential "${cred.credential_name || 'credential'}" expires on ${cred.expiry_date}. Give one short, practical sentence on the single most useful thing to do right now.`)
+        const { data: claimed7 } = await supabase.from('technician_credentials')
+          .update({ warning_7_sent_at: new Date().toISOString() }).eq('id', cred.id).is('warning_7_sent_at', null).select('id')
+        if (claimed7 && claimed7.length > 0) {
+          await notifySlack(supabaseUrl, supabaseServiceKey, cred.business_id,
+            `📋 *${techName}*'s ${cred.credential_name || 'credential'} expires ${cred.expiry_date} (7 days or less).`)
+          warned7++
+          await writeCredentialInsight(supabase, anthropicKey, cred, techName,
+            `Urgent renewal window: ${techName}'s ${cred.credential_name || 'credential'} expires within 7 days (${cred.expiry_date}).`,
+            `A dispatcher for a home-services business just got a 7-day-or-less warning that technician "${techName}"'s credential "${cred.credential_name || 'credential'}" expires on ${cred.expiry_date}. Give one short, practical sentence on the single most useful thing to do right now.`)
+        }
       }
 
       // Urgent: expired-or-expiring-within-3-days AND currently on a job.

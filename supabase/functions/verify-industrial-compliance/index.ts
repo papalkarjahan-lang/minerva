@@ -42,13 +42,25 @@ serve(async (req: Request) => {
 
     let escalated = 0
     for (const inc of stale || []) {
+      // Atomically claim this incident before escalating — same
+      // claim-before-notify pattern as chase-unpaid-invoices (fixed
+      // 2026-09-24) — so an overlapping/duplicate hourly run can't send a
+      // duplicate escalation Slack ping for the same incident.
+      const { data: claimed, error: claimErr } = await supabase
+        .from('safety_incidents')
+        .update({ escalated_at: new Date().toISOString() })
+        .eq('id', inc.id)
+        .is('escalated_at', null)
+        .select('id')
+      if (claimErr) { console.error('verify-industrial-compliance: claim failed:', claimErr.message); continue }
+      if (!claimed || claimed.length === 0) continue // already escalated by a concurrent run
+
       const siteName = (inc as any).site_projects?.name || 'a site'
       await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
         body: JSON.stringify({ businessId: inc.business_id, text: `🛡️ *Sentry*: unresolved ${inc.severity} at *${siteName}*, open 24h+: "${inc.description}". Needs sign-off before this site's work is considered compliant.` }),
       }).catch(() => {})
-      await supabase.from('safety_incidents').update({ escalated_at: new Date().toISOString() }).eq('id', inc.id)
       escalated++
     }
 

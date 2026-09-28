@@ -69,8 +69,26 @@ serve(async (req: Request) => {
       })
     }
 
-    const { error: updateError } = await supabase.from('quotes').update({ status }).eq('id', quoteId)
+    // Atomically claim this quote before firing the workflow trigger — the
+    // .eq('status', quote.status) guard means only the first of two
+    // concurrent requests (e.g. a double-clicked Accept, or a retried
+    // request) actually transitions the row; the loser gets zero rows back
+    // and is treated the same as canRespond() already false above, instead
+    // of also firing a duplicate workflow trigger. Same claim-before-side-
+    // effect pattern as chase-unpaid-invoices (fixed 2026-09-24).
+    const { data: claimed, error: updateError } = await supabase
+      .from('quotes')
+      .update({ status })
+      .eq('id', quoteId)
+      .eq('status', quote.status)
+      .select('id')
     if (updateError) throw updateError
+    if (!claimed || claimed.length === 0) {
+      return new Response(JSON.stringify({ success: true, status: quote.status, alreadyResolved: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
 
     // Fire-and-forget: a workflow misconfiguration/outage on the business's
     // end must never block the client's own accept/decline from succeeding.

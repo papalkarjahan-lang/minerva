@@ -238,7 +238,28 @@ serve(async (req: Request) => {
         })
       }
 
-      await supabase.from('jobs').update({ assigned_subcontractor_id: nearestSub!.id }).eq('id', job.id)
+      // Atomically claim the job before assigning/notifying — without this,
+      // two overlapping invocations for the same job (e.g. the trigger's
+      // net.http_post retrying, or a duplicate delivery) could both read
+      // technician_id as null and both proceed, double-booking two
+      // different subcontractors/technicians onto the same job. Same
+      // claim-before-write pattern as chase-unpaid-invoices (fixed
+      // 2026-09-24).
+      const { data: subClaimed, error: subClaimErr } = await supabase
+        .from('jobs')
+        .update({ assigned_subcontractor_id: nearestSub!.id })
+        .eq('id', job.id)
+        .is('technician_id', null)
+        .is('assigned_subcontractor_id', null)
+        .select('id')
+      if (subClaimErr) throw subClaimErr
+      if (!subClaimed || subClaimed.length === 0) {
+        supabase.rpc('record_agent_run', { fn_name: 'auto-assign-technician', status: 'ok' }).then(() => {}, () => {})
+        return new Response(JSON.stringify({ success: true, skipped: 'already_assigned' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        })
+      }
       await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
@@ -273,7 +294,24 @@ serve(async (req: Request) => {
       })
     }
 
-    await supabase.from('jobs').update({ technician_id: nearest!.id }).eq('id', job.id)
+    // Atomically claim the job before assigning/notifying — see the
+    // subcontractor branch above for why (double-booking risk on
+    // overlapping invocations for the same job).
+    const { data: techClaimed, error: techClaimErr } = await supabase
+      .from('jobs')
+      .update({ technician_id: nearest!.id })
+      .eq('id', job.id)
+      .is('technician_id', null)
+      .is('assigned_subcontractor_id', null)
+      .select('id')
+    if (techClaimErr) throw techClaimErr
+    if (!techClaimed || techClaimed.length === 0) {
+      supabase.rpc('record_agent_run', { fn_name: 'auto-assign-technician', status: 'ok' }).then(() => {}, () => {})
+      return new Response(JSON.stringify({ success: true, skipped: 'already_assigned' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
     await supabase.from('technicians').update({ current_job_id: job.id }).eq('id', nearest!.id)
 
     await fetch(`${supabaseUrl}/functions/v1/send-job-assignment-sms`, {
