@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import Map, { Marker, Source, Layer } from 'react-map-gl'
 import { supabase } from '../supabaseClient'
@@ -34,8 +34,36 @@ export default function DisputeView() {
   const [viewState, setViewState] = useState({
     latitude: -33.87, longitude: 151.21, zoom: 15, pitch: 0, bearing: 0
   })
+  // Route replay: lets whoever views this pack watch the technician's
+  // on-site GPS breadcrumbs play back in order, rather than only seeing a
+  // static first/last-point line — makes "did they actually go where/when
+  // they said" much faster to check for a dispute or insurer. Purely a
+  // view over the same `locations` already loaded above; no new data.
+  const [replayIndex, setReplayIndex] = useState(0)
+  const [replaying, setReplaying] = useState(false)
+  const replayTimerRef = useRef(null)
 
   useEffect(() => { loadAll() }, [jobId])
+
+  useEffect(() => {
+    if (!replaying) return
+    replayTimerRef.current = setInterval(() => {
+      setReplayIndex(i => {
+        if (i >= locations.length - 1) {
+          setReplaying(false)
+          return i
+        }
+        return i + 1
+      })
+    }, 350)
+    return () => clearInterval(replayTimerRef.current)
+  }, [replaying, locations.length])
+
+  function toggleReplay() {
+    if (locations.length < 2) return
+    if (!replaying && replayIndex >= locations.length - 1) setReplayIndex(0)
+    setReplaying(prev => !prev)
+  }
 
   async function loadAll() {
     const { data: jobData, error: jobErr } = await supabase
@@ -62,6 +90,8 @@ export default function DisputeView() {
       .order('recorded_at', { ascending: true })
     if (locsErr) console.error('DisputeView: locations fetch failed', locsErr)
     setLocations(locs || [])
+    setReplayIndex(0)
+    setReplaying(false)
     if (locs && locs.length > 0) {
       setViewState(prev => ({ ...prev, latitude: locs[0].lat, longitude: locs[0].lng }))
     } else if (jobData.client_lat) {
@@ -176,6 +206,11 @@ export default function DisputeView() {
                 <Marker latitude={locations[locations.length - 1].lat} longitude={locations[locations.length - 1].lng} anchor="center">
                   <div style={styles.routeDot('#8A2525')} title="Last recorded point" />
                 </Marker>
+                {locations.length > 1 && (
+                  <Marker latitude={locations[replayIndex].lat} longitude={locations[replayIndex].lng} anchor="center">
+                    <div style={styles.replayDot} title={new Date(locations[replayIndex].recorded_at).toLocaleString('en-AU')} />
+                  </Marker>
+                )}
               </Map>
               )}
               <p style={{ ...styles.lineMuted, marginTop: 8 }}>
@@ -185,6 +220,22 @@ export default function DisputeView() {
                 Last point {new Date(locations[locations.length - 1].recorded_at).toLocaleString('en-AU')}
                 {job.client_lat != null && ` (${haversineKm(locations[locations.length - 1].lat, locations[locations.length - 1].lng, job.client_lat, job.client_lng).toFixed(2)} km from client address)`}
               </p>
+              {locations.length > 1 && isMapboxTokenConfigured() && (
+                <div style={styles.replayBar}>
+                  <button type="button" style={styles.replayBtn} onClick={toggleReplay}>
+                    {replaying ? '⏸ Pause' : '▶ Replay route'}
+                  </button>
+                  <input
+                    type="range"
+                    min={0}
+                    max={locations.length - 1}
+                    value={replayIndex}
+                    onChange={e => { setReplaying(false); setReplayIndex(Number(e.target.value)) }}
+                    style={styles.replaySlider}
+                  />
+                  <span style={styles.replayTime}>{new Date(locations[replayIndex].recorded_at).toLocaleTimeString('en-AU')}</span>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -257,6 +308,11 @@ const styles = {
   lineMuted: { color: '#888', fontSize: 13, margin: '2px 0' },
   photoThumb: { width: 72, height: 72, objectFit: 'cover', borderRadius: 8, border: '1px solid #eee' },
   routeDot: (color) => ({ width: 14, height: 14, borderRadius: '50%', background: color, border: '2px solid #fff', boxShadow: '0 1px 4px rgba(0,0,0,0.4)' }),
+  replayDot: { width: 18, height: 18, borderRadius: '50%', background: '#2D5FA8', border: '3px solid #fff', boxShadow: '0 0 0 4px rgba(45,95,168,0.35), 0 1px 4px rgba(0,0,0,0.4)' },
+  replayBar: { display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 },
+  replayBtn: { flexShrink: 0, background: '#2D5FA8', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 12px', fontSize: 12, fontWeight: 'bold', cursor: 'pointer' },
+  replaySlider: { flex: 1 },
+  replayTime: { flexShrink: 0, color: '#888', fontSize: 12, minWidth: 64, textAlign: 'right' },
   invoiceLink: { color: '#2D5FA8', fontSize: 13, fontWeight: 'bold', textDecoration: 'none' },
   footerNote: { color: '#aaa', fontSize: 11, textAlign: 'center', marginTop: 8 }
 }
