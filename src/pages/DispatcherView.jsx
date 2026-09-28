@@ -64,6 +64,7 @@ export default function DispatcherView() {
   const [googleReviewLinkInput, setGoogleReviewLinkInput] = useState('')
   const [requestingReviewId, setRequestingReviewId] = useState(null)
   const [resendingReferralId, setResendingReferralId] = useState(null)
+  const [markingPaidId, setMarkingPaidId] = useState(null)
   // Round-2 batch: seasonal demand forecasting — most recent business-scoped insight, or null.
   const [demandForecast, setDemandForecast] = useState(null)
   // Minerva Max add-on tier (2026-09-04) — gates the Minerva Max batch +
@@ -1167,8 +1168,11 @@ export default function DispatcherView() {
   // itself (see InvoiceView.jsx), the business takes payment on-site
   // (EFTPOS, cash, etc.) and records it here once received.
   async function markInvoicePaid(invoiceId) {
+    if (markingPaidId === invoiceId) return
+    setMarkingPaidId(invoiceId)
     const paidAt = new Date().toISOString()
     const { error } = await supabase.from('invoices').update({ status: 'paid', paid_at: paidAt }).eq('id', invoiceId)
+    setMarkingPaidId(null)
     if (error) { alert(`Couldn't mark invoice paid: ${error.message}`); return }
     setInvoices(prev => prev.map(i => i.id === invoiceId ? { ...i, status: 'paid', paid_at: paidAt } : i))
     // Paid-Invoice Referral Loop: fire-and-forget, same invocation pattern
@@ -2714,7 +2718,7 @@ export default function DispatcherView() {
                   )}
                   {inv.status === 'unpaid' && (
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <button style={styles.leadActionPrimary} onClick={() => markInvoicePaid(inv.id)}>Mark paid</button>
+                      <button style={styles.leadActionPrimary} disabled={markingPaidId === inv.id} onClick={() => markInvoicePaid(inv.id)}>{markingPaidId === inv.id ? 'Marking...' : 'Mark paid'}</button>
                       <button style={styles.leadActionSecondary} onClick={() => voidInvoice(inv.id)}>Void</button>
                     </div>
                   )}
