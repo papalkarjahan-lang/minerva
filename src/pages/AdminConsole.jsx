@@ -50,7 +50,18 @@ export default function AdminConsole() {
   const [unsubEmail, setUnsubEmail] = useState('')
   const [unsubBusy, setUnsubBusy] = useState(false)
   const [unsubStatus, setUnsubStatus] = useState('')
-  const [roiBusyId, setRoiBusyId] = useState(null)
+  // A single shared "busy id" here meant that starting a generate-roi-
+  // proposal call for prospect B while prospect A's own call was still
+  // in flight would overwrite roiBusyId to B — prospect A's button then
+  // showed as no-longer-busy (roiBusyId !== A.id) despite its request
+  // still being in flight, letting it be clicked again. A Set fixes this:
+  // each card is busy independently. Fixed 2026-09-29.
+  const [roiBusyIds, setRoiBusyIds] = useState(() => new Set())
+  const setRoiBusy = (id, busy) => setRoiBusyIds(prev => {
+    const next = new Set(prev)
+    if (busy) next.add(id); else next.delete(id)
+    return next
+  })
   const [bigAccounts, setBigAccounts] = useState([])
   const [newTarget, setNewTarget] = useState({ company_name: '', company_type: 'multi_van', contact_name: '', contact_title: '', contact_email: '', contact_phone: '', estimated_fleet_size: '', region: '' })
   const [bigAccountBusy, setBigAccountBusy] = useState(null)
@@ -125,7 +136,14 @@ export default function AdminConsole() {
     setRequests((data || []).sort((a, b) => rank(a) - rank(b) || new Date(b.created_at) - new Date(a.created_at)))
   }
 
-  async function overrideTier(businessId, newTier) {
+  async function overrideTier(businessId, newTier, businessName) {
+    // Confirmation added 2026-09-29: this was wired directly to a <select>
+    // onChange with no confirmation step, so a stray click/scroll on the
+    // dropdown could silently override a real business's billing tier —
+    // this bypasses Stripe entirely (see the header note on that table),
+    // so an accidental change here has real billing consequences until
+    // manually caught and reverted.
+    if (!window.confirm(`Override ${businessName || 'this business'}'s subscription tier to "${newTier}"? This bypasses Stripe and only affects Minerva's own tier field.`)) return
     setSavingId(businessId)
     const { error } = await supabase.from('businesses').update({ subscription_tier: newTier }).eq('id', businessId)
     if (error) { alert(`Couldn't update subscription tier: ${error.message}`); setSavingId(null); return }
@@ -211,11 +229,11 @@ export default function AdminConsole() {
   async function generateProposal(prospect, fleetSize) {
     const n = Number(fleetSize)
     if (!n || n <= 0) { alert('Enter a fleet size (number of vehicles/technicians) first.'); return }
-    setRoiBusyId(prospect.id)
+    setRoiBusy(prospect.id, true)
     const { data, error } = await supabase.functions.invoke('generate-roi-proposal', {
       body: { prospectId: prospect.id, companyName: prospect.company_name, contactName: prospect.contact_name, tradeType: prospect.trade_type, fleetSize: n },
     })
-    setRoiBusyId(null)
+    setRoiBusy(prospect.id, false)
     if (error) { alert(`Couldn't generate proposal: ${error.message}`); return }
     setProposalLinks(prev => ({ ...prev, [prospect.id]: data.proposalId }))
   }
@@ -274,11 +292,11 @@ export default function AdminConsole() {
   async function generateProposalForTarget(target, fleetSize) {
     const n = Number(fleetSize) || target.estimated_fleet_size
     if (!n || n <= 0) { alert('Enter a fleet size first.'); return }
-    setRoiBusyId(target.id)
+    setRoiBusy(target.id, true)
     const { data, error } = await supabase.functions.invoke('generate-roi-proposal', {
       body: { bigAccountTargetId: target.id, companyName: target.company_name, contactName: target.contact_name, tradeType: target.company_type, fleetSize: n },
     })
-    setRoiBusyId(null)
+    setRoiBusy(target.id, false)
     if (error) { alert(`Couldn't generate proposal: ${error.message}`); return }
     setProposalLinks(prev => ({ ...prev, [target.id]: data.proposalId }))
     loadBigAccounts() // pick up the auto-advanced stage
@@ -507,7 +525,7 @@ export default function AdminConsole() {
                     <select
                       value={biz.subscription_tier || ''}
                       disabled={savingId === biz.id}
-                      onChange={e => overrideTier(biz.id, e.target.value)}
+                      onChange={e => overrideTier(biz.id, e.target.value, biz.name)}
                       style={{ background: '#0a0f1d', color: '#fff', border: '1px solid #1e293b', borderRadius: 6, padding: '4px 8px' }}
                     >
                       {TIERS.map(t => <option key={t} value={t}>{t}</option>)}
@@ -635,7 +653,7 @@ export default function AdminConsole() {
                 savingId={savingId}
                 onGenerateProposal={generateProposal}
                 proposalId={proposalLinks[p.id]}
-                roiBusy={roiBusyId === p.id}
+                roiBusy={roiBusyIds.has(p.id)}
                 selected={selectedIds.has(p.id)}
                 onToggleSelect={() => toggleSelect(p.id)}
                 expanded={expandedIds.has(p.id)}
@@ -706,7 +724,7 @@ export default function AdminConsole() {
                 onSave={saveBigAccount}
                 onGenerateProposal={generateProposalForTarget}
                 proposalId={proposalLinks[t.id]}
-                roiBusy={roiBusyId === t.id}
+                roiBusy={roiBusyIds.has(t.id)}
                 busy={bigAccountBusy === t.id}
               />
             ))}

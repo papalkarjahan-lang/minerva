@@ -10,6 +10,15 @@
 //
 // Required secrets: same Twilio secrets as the other SMS functions.
 //
+// Win-back re-draft dedup added 2026-09-29: for outreach_sms drafts sourced
+// from generate-growth-drafts' cold-lead win-back segment, recipients now
+// carry a leadId; once a message actually sends, that lead's
+// growth_winback_sent_at is stamped so generate-growth-drafts stops
+// re-selecting it next week (see that function's header + supabase_schema_
+// delta_growth_winback_dedup.sql). Older drafts created before this fix
+// won't have a leadId on their recipients — those are just skipped (no
+// crash, no behavior change for them).
+//
 // Ownership check added 2026-09-27: this had no caller-identity check of
 // any kind, despite taking a bare draftId and using it to blast a real
 // Twilio SMS to every recipient on that draft — the exact same
@@ -94,9 +103,10 @@ serve(async (req: Request) => {
     if (claimErr) throw claimErr
     if (!claimed || claimed.length === 0) throw new Error('Draft already being sent — refusing to send twice')
 
-    const recipients: { name?: string; phone?: string }[] = draft.recipients || []
+    const recipients: { leadId?: string; name?: string; phone?: string }[] = draft.recipients || []
     let sent = 0
     let failed = 0
+    const sentLeadIds: string[] = []
 
     try {
       if (TWILIO_SID && TWILIO_TOKEN && TWILIO_FROM) {
@@ -104,8 +114,10 @@ serve(async (req: Request) => {
         for (const r of recipients) {
           if (!r.phone) { failed++; continue }
           const smsOk = await sendTwilioSms(twilio, r.phone, draft.body_text, 'send-growth-message')
-          if (smsOk) sent++
-          else failed++
+          if (smsOk) {
+            sent++
+            if (r.leadId) sentLeadIds.push(r.leadId)
+          } else failed++
         }
       } else {
         throw new Error('Twilio secrets not configured')
@@ -124,6 +136,10 @@ serve(async (req: Request) => {
       delivered_count: sent,
       failed_count: failed,
     }).eq('id', draftId)
+
+    if (sentLeadIds.length > 0) {
+      await supabase.from('leads').update({ growth_winback_sent_at: new Date().toISOString() }).in('id', sentLeadIds).then(() => {}, (e) => console.error('send-growth-message: growth_winback_sent_at update failed', e))
+    }
 
     await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
       method: 'POST',

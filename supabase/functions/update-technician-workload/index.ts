@@ -24,7 +24,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
-import { computeRollingWeekHours, shouldFlagBurnout, BURNOUT_HOURS_THRESHOLD } from "./logic.ts"
+import { computeRollingWeekHours, shouldFlagBurnout, BURNOUT_HOURS_THRESHOLD, RE_ALERT_DAYS } from "./logic.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -80,10 +80,24 @@ serve(async (req: Request) => {
       updated++
 
       if (shouldFlagBurnout(totalHours, tech.burnout_flag_sent_at)) {
-        await notifySlack(supabaseUrl, supabaseServiceKey, tech.business_id,
-          `⚠️ *${tech.name}* has logged an estimated ${totalHours}h over the last 7 days (threshold ${BURNOUT_HOURS_THRESHOLD}h) — might be worth checking in or spreading the roster out a bit. (Internal note — not sent to the technician.)`)
-        await supabase.from('technicians').update({ burnout_flag_sent_at: new Date().toISOString() }).eq('id', tech.id)
-        flagged++
+        // Atomically claim before notifying — the check above reads
+        // burnout_flag_sent_at from the initial SELECT, so two overlapping
+        // runs could otherwise both pass it and both post a duplicate
+        // internal burnout alert for the same technician. Fixed 2026-09-29,
+        // same claim-before-notify pattern used across this project.
+        const reAlertSuppressSince = new Date(Date.now() - RE_ALERT_DAYS * 24 * 60 * 60 * 1000).toISOString()
+        const { data: claimed, error: claimErr } = await supabase
+          .from('technicians')
+          .update({ burnout_flag_sent_at: new Date().toISOString() })
+          .eq('id', tech.id)
+          .or(`burnout_flag_sent_at.is.null,burnout_flag_sent_at.lt.${reAlertSuppressSince}`)
+          .select('id')
+        if (claimErr) { console.error('update-technician-workload: claim failed', claimErr) }
+        else if (claimed && claimed.length > 0) {
+          await notifySlack(supabaseUrl, supabaseServiceKey, tech.business_id,
+            `⚠️ *${tech.name}* has logged an estimated ${totalHours}h over the last 7 days (threshold ${BURNOUT_HOURS_THRESHOLD}h) — might be worth checking in or spreading the roster out a bit. (Internal note — not sent to the technician.)`)
+          flagged++
+        }
       }
     }
 

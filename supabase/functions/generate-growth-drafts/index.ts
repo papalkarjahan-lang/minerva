@@ -30,6 +30,16 @@
 //
 // Deploy with: supabase functions deploy generate-growth-drafts
 // Required secrets: ANTHROPIC_API_KEY (same as ai-intake-chat)
+//
+// Win-back re-draft dedup added 2026-09-29 (see supabase_schema_delta_
+// growth_winback_dedup.sql): the "still pending draft" cap only stopped a
+// NEW draft while an old one sat unreviewed — once approved and sent via
+// send-growth-message, the same near-miss leads (still 'contacted'/
+// 'quoted', still 14+ days old) came right back the following week,
+// meaning a client could get re-texted indefinitely. Now excludes leads
+// with leads.growth_winback_sent_at already set (set by send-growth-message
+// once it actually sends), same one-touch-only guarantee as nurture-stale-
+// leads/winback-lost-leads.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
@@ -175,6 +185,7 @@ serve(async (req: Request) => {
         .in('status', ['contacted', 'quoted'])
         .lt('created_at', fourteenDaysAgo)
         .not('client_phone', 'is', null)
+        .is('growth_winback_sent_at', null) // don't re-draft leads already win-back'd — see supabase_schema_delta_growth_winback_dedup.sql
         .limit(20)
 
       if (!topSuburb && (!coldLeads || coldLeads.length === 0)) continue // nothing worth drafting this week
@@ -222,7 +233,7 @@ serve(async (req: Request) => {
             type: 'outreach_sms',
             body_text: copy.body,
             rationale: `${coldLeads.length} lead(s) were quoted more than 14 days ago and never booked. A short check-in SMS can recover some of these before they go elsewhere.`,
-            recipients: coldLeads.map(l => ({ name: l.client_name, phone: l.client_phone })),
+            recipients: coldLeads.map(l => ({ leadId: l.id, name: l.client_name, phone: l.client_phone })),
             platform: 'twilio',
             quality_notes: qualityNotes,
           })

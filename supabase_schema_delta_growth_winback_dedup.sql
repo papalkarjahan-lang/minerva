@@ -1,0 +1,22 @@
+-- ============================================================
+-- MINERVA - Delta: stop re-texting the same cold leads every week (2026-09-29)
+-- Run this entire block once in the Supabase SQL Editor (or via the
+-- Management API /database/query endpoint).
+--
+-- What this fixes: generate-growth-drafts' "Draft 2" (outreach_sms win-back
+-- for leads quoted 14+ days ago, still 'contacted'/'quoted') re-selects the
+-- SAME leads every single week, because nothing ever marked a lead as
+-- "already win-backed" once send-growth-message actually sent it. The
+-- existing "skip if 2+ pending drafts" cap only prevents a NEW draft while
+-- the old one is still unreviewed — once an owner approves and sends it,
+-- the exact same near-miss leads (still sitting in 'contacted'/'quoted',
+-- created 14+ days ago) come right back the following week, so a client
+-- who was already sent a win-back text could get another one indefinitely.
+--
+-- Fix: adds a per-lead timestamp the edge functions now set/check, mirroring
+-- the existing leads.nurture_sent_at / lost_winback_sent_at pattern already
+-- used for the exact same "send this SMS at most once" guarantee elsewhere
+-- in this table.
+-- ============================================================
+
+alter table leads add column if not exists growth_winback_sent_at timestamptz;

@@ -182,6 +182,22 @@ serve(async (req: Request) => {
         if (!tech) continue
         if (tech.overload_alert_date === date) continue // already flagged this technician for this date
 
+        // Atomically claim this technician+date before inserting — this
+        // runs every ~15 min (the tightest cadence in the app), so the
+        // previous check-then-insert-then-update sequence was a real TOCTOU
+        // race: two overlapping runs could both pass the check above before
+        // either wrote overload_alert_date, both inserting a duplicate
+        // agent_insights row for the same technician/date. Fixed 2026-09-29,
+        // same claim-before-notify pattern as this file's no-show fix above.
+        const { data: claimed, error: claimErr } = await supabase
+          .from('technicians')
+          .update({ overload_alert_date: date })
+          .eq('id', technicianId)
+          .or(`overload_alert_date.is.null,overload_alert_date.neq.${date}`)
+          .select('id')
+        if (claimErr) { console.error('detect-wasted-trips: overload claim failed', claimErr); continue }
+        if (!claimed || claimed.length === 0) continue // already claimed by a concurrent/prior run
+
         await supabase.from('agent_insights').insert({
           agent: 'scheduling',
           insight_type: 'anomaly',
@@ -190,8 +206,6 @@ serve(async (req: Request) => {
           related_table: 'technicians',
           related_id: technicianId,
         }).then(() => {}, (insErr) => console.error('detect-wasted-trips: overload insight insert failed', insErr))
-
-        await supabase.from('technicians').update({ overload_alert_date: date }).eq('id', technicianId)
       }
     }
 
