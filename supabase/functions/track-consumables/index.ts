@@ -40,10 +40,24 @@ serve(async (req: Request) => {
       // threshold, so an item sitting exactly at reorder_threshold never
       // alerted.
       if (item.quantity_on_hand > item.reorder_threshold) continue
-      const { data: current } = await supabase.from('consumables_items').select('reorder_requested_at').eq('id', item.id).maybeSingle()
-      if (current?.reorder_requested_at) continue // already flagged, waiting on restock
 
-      await supabase.from('consumables_items').update({ reorder_requested_at: new Date().toISOString() }).eq('id', item.id)
+      // Atomically claim this item before flagging — same claim-before-notify
+      // pattern as industrial-conductor/chase-unpaid-invoices/stripe-webhook.
+      // The previous design checked "already flagged?" with a plain SELECT
+      // and only UPDATEd reorder_requested_at afterward — two overlapping
+      // hourly runs (a slow prior run still in flight when the next tick
+      // fires) could both pass that check before either had written the
+      // flag, both Slack-alerting and both inserting a duplicate
+      // agent_insights row for the same low-stock item. (Fixed 2026-09-29 —
+      // same TOCTOU class as the other idempotency fixes this session.)
+      const { data: claimed, error: claimErr } = await supabase
+        .from('consumables_items')
+        .update({ reorder_requested_at: new Date().toISOString() })
+        .eq('id', item.id)
+        .is('reorder_requested_at', null)
+        .select('id')
+      if (claimErr) { console.error('track-consumables: claim failed:', claimErr.message); continue }
+      if (!claimed || claimed.length === 0) continue // already flagged by a concurrent/prior run
       // Also written as an agent_insights row so a business repeatedly
       // running low on the same consumable shows up as a pattern in the
       // weekly agent-council-report.

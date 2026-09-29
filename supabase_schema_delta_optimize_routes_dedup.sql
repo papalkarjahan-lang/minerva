@@ -1,0 +1,24 @@
+-- ============================================================
+-- MINERVA - Delta: suppress repeat route-optimizer Slack spam (2026-09-29)
+-- Adds 1 column only. Run this entire block once in the Supabase SQL
+-- Editor (or via the Management API /database/query endpoint).
+--
+-- What this fixes: optimize-industrial-routes ("Route Optimizer") runs
+-- every 30 minutes and, for every active site_project with no asset
+-- geofenced to it, unconditionally Slacks a "nearest free asset" suggestion.
+-- Unlike every other repeating-alert agent in this codebase (detect-idle-
+-- assets' RENOTIFY_SUPPRESS_DAYS, predict-asset-maintenance's own suppress
+-- window, track-consumables' reorder_requested_at, verify-industrial-
+-- compliance's escalated_at, industrial-conductor's conductor_suggested_at),
+-- this function had no suppression at all — a site sitting without an
+-- asset for a day would get 48 identical Slack pings, training the team to
+-- mute the channel and undermining every other (correctly-throttled) alert
+-- in it.
+--
+-- This column lets optimize-industrial-routes suggest once per site, then
+-- go quiet for ROUTE_SUGGEST_SUPPRESS_HOURS before re-suggesting (in case
+-- the situation is still unresolved and worth a nudge again), matching the
+-- single-nudge-then-re-arm pattern used everywhere else in this codebase.
+-- ============================================================
+
+alter table site_projects add column if not exists route_suggested_at timestamptz;
