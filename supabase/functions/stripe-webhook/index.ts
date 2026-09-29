@@ -121,16 +121,31 @@ serve(async (req: Request) => {
   }
 
   try {
-    const { data: alreadyProcessed } = await supabaseAdmin
+    // Atomically claim this event before doing any processing — an INSERT
+    // into processed_stripe_events (event_id is the primary key) either
+    // succeeds (this request owns the event) or fails on a unique-
+    // violation (a concurrent/retried delivery of the same event.id
+    // already claimed it). The previous design checked "already
+    // processed?" with a plain SELECT and only inserted the claim AFTER
+    // the switch below ran — leaving a window where two near-simultaneous
+    // deliveries of the same event.id could both pass the check and both
+    // run the full branch. Every branch's own DB write is itself
+    // idempotent (plain UPDATEs re-writing the same values), but the
+    // checkout.session.completed welcome email and invoice.payment_failed
+    // operator alert are NOT, and would double-send. (Fixed 2026-09-29.)
+    const { error: claimError } = await supabaseAdmin
       .from('processed_stripe_events')
-      .select('event_id')
-      .eq('event_id', event.id)
-      .maybeSingle()
-    if (alreadyProcessed) {
-      return new Response(JSON.stringify({ received: true, duplicate: true }), { status: 200 })
+      .insert({ event_id: event.id, event_type: event.type })
+    if (claimError) {
+      if (claimError.code === '23505') {
+        // Unique-violation — another request already claimed this event.
+        return new Response(JSON.stringify({ received: true, duplicate: true }), { status: 200 })
+      }
+      throw new Error(`Failed to claim event ${event.id}: ${claimError.message}`)
     }
 
-    switch (event.type) {
+    try {
+      switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session
 
@@ -282,13 +297,14 @@ serve(async (req: Request) => {
         // Ignore other event types.
         break
     }
-
-    // Best-effort: a duplicate-key conflict here just means a near-simultaneous
-    // retry of the same event won this race too — the side effects for THIS
-    // request have already fully run above, so a conflict on marking it
-    // processed must never surface as a 500 (that would make Stripe retry an
-    // event that already succeeded).
-    await supabaseAdmin.from('processed_stripe_events').insert({ event_id: event.id, event_type: event.type }).then(() => {}, () => {})
+    } catch (branchErr) {
+      // The branch failed after the claim above already succeeded —
+      // release it so a legitimate Stripe retry (after a real transient
+      // failure) can actually re-run the branch, instead of being
+      // silently swallowed as "already processed" forever.
+      await supabaseAdmin.from('processed_stripe_events').delete().eq('event_id', event.id).then(() => {}, () => {})
+      throw branchErr
+    }
 
     supabaseAdmin.rpc('record_agent_run', { fn_name: 'stripe-webhook', status: 'ok' }).then(() => {}, () => {})
 
