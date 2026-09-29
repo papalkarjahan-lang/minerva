@@ -79,14 +79,22 @@ serve(async (req: Request) => {
       if (!prediction) continue
       const { dailyRate, roundedDays } = prediction
 
-      // Throttle: skip if we already predicted this within the suppress window
-      const { data: recentPrediction } = await supabase.from('asset_telemetry_events')
+      // Atomically claim this asset before predicting — the previous design
+      // checked "predicted within the suppress window?" with a plain SELECT
+      // against asset_telemetry_events and only inserted the prediction
+      // event afterward, so two overlapping daily runs could both pass the
+      // check and both insert a prediction event + Slack-alert for the same
+      // asset. Fixed 2026-09-29 via industrial_assets.maintenance_
+      // predicted_at, same claim-before-notify pattern as detect-idle-
+      // assets'/optimize-industrial-routes' claim columns (added the same day).
+      const { data: claimed, error: claimErr } = await supabase
+        .from('industrial_assets')
+        .update({ maintenance_predicted_at: new Date().toISOString() })
+        .eq('id', asset.id)
+        .or(`maintenance_predicted_at.is.null,maintenance_predicted_at.lt.${suppressSince}`)
         .select('id')
-        .eq('asset_id', asset.id)
-        .eq('event_type', 'maintenance_predicted')
-        .gte('created_at', suppressSince)
-        .limit(1)
-      if (recentPrediction && recentPrediction.length > 0) continue
+      if (claimErr) { console.error('predict-asset-maintenance: claim failed:', claimErr.message); continue }
+      if (!claimed || claimed.length === 0) continue // already predicted recently by a concurrent/prior run
 
       await supabase.from('asset_telemetry_events').insert({
         asset_id: asset.id, business_id: asset.business_id, event_type: 'maintenance_predicted',

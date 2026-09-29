@@ -57,13 +57,22 @@ serve(async (req: Request) => {
 
     let flagged = 0
     for (const asset of candidates) {
-      const { data: recentFlag } = await supabase.from('asset_telemetry_events')
+      // Atomically claim this asset before flagging — the previous design
+      // checked "flagged within the suppress window?" with a plain SELECT
+      // against asset_telemetry_events and only inserted the flag event
+      // afterward, so two overlapping daily runs could both pass the check
+      // and both insert a flag event + Slack-alert for the same idle asset.
+      // Fixed 2026-09-29 via industrial_assets.idle_flagged_at, same
+      // claim-before-notify pattern as optimize-industrial-routes'
+      // route_suggested_at (added earlier the same day).
+      const { data: claimed, error: claimErr } = await supabase
+        .from('industrial_assets')
+        .update({ idle_flagged_at: new Date().toISOString() })
+        .eq('id', asset.id)
+        .or(`idle_flagged_at.is.null,idle_flagged_at.lt.${suppressSince}`)
         .select('id')
-        .eq('asset_id', asset.id)
-        .eq('event_type', 'idle_flagged')
-        .gte('created_at', suppressSince)
-        .limit(1)
-      if (recentFlag && recentFlag.length > 0) continue
+      if (claimErr) { console.error('detect-idle-assets: claim failed:', claimErr.message); continue }
+      if (!claimed || claimed.length === 0) continue // already flagged recently by a concurrent/prior run
 
       await supabase.from('asset_telemetry_events').insert({
         asset_id: asset.id, business_id: asset.business_id, event_type: 'idle_flagged',

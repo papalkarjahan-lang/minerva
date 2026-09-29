@@ -55,17 +55,26 @@ serve(async (req: Request) => {
       // go undetected. (Fixed 2026-09-07 — see logic.ts/logic.test.ts.)
       if (!hasHumanMachineOverlap(checkins || [])) continue
 
-      // Avoid re-flagging the same still-open overlap every 15 min.
-      const { data: existing } = await supabase.from('safety_incidents')
-        .select('id').eq('site_id', site.id).is('acknowledged_at', null)
-        .eq('description', `Human technician and automated process both active on site simultaneously.`)
-        .limit(1)
-      if (existing && existing.length > 0) continue
-
-      const { data: newIncident } = await supabase.from('safety_incidents').insert({
+      // Claim-as-insert: a database-level partial unique index (site_id,
+      // description WHERE acknowledged_at IS NULL — see
+      // supabase_schema_delta_industrial_alert_dedup_toctou.sql) enforces
+      // "at most one open incident per site for this exact hazard" directly,
+      // so the insert itself IS the atomic claim. The previous design
+      // checked "already flagged?" with a plain SELECT and only inserted
+      // afterward, so two overlapping 15-min runs could both pass the check
+      // and both create a duplicate safety_incidents ticket needing
+      // independent triage. Fixed 2026-09-29 — a unique-violation (23505)
+      // here just means a concurrent/prior run already owns this site's
+      // open overlap; skip quietly rather than erroring.
+      const { data: newIncident, error: insertErr } = await supabase.from('safety_incidents').insert({
         site_id: site.id, business_id: site.business_id, severity: 'warning',
         description: `Human technician and automated process both active on site simultaneously.`,
       }).select('id').single()
+
+      if (insertErr) {
+        if (insertErr.code !== '23505') console.error('detect-safety-hazards: insert failed:', insertErr.message)
+        continue
+      }
 
       if (newIncident) {
         await supabase.from('corrective_actions').insert({
