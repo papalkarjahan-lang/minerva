@@ -47,7 +47,7 @@ serve(async (req: Request) => {
     if (!assetId) throw new Error('assetId is required')
 
     const { data: asset, error } = await supabase.from('industrial_assets')
-      .select('id, business_id, name, geofence_site_id, maintenance_interval_hours, last_maintenance_at_hours, businesses(ingestion_key)')
+      .select('id, business_id, name, geofence_site_id, maintenance_interval_hours, last_maintenance_at_hours, geofence_breach_flagged_at, maintenance_due_flagged_at, businesses(ingestion_key)')
       .eq('id', assetId).maybeSingle()
     if (error || !asset) throw new Error('asset not found')
 
@@ -71,31 +71,60 @@ serve(async (req: Request) => {
       asset_id: assetId, business_id: asset.business_id, event_type: 'ping', lat, lng, engine_hours: engineHours,
     })
 
-    // Geofence check
+    // Geofence check — alert once on the transition into breach (claimed
+    // via geofence_breach_flagged_at), then clear the flag as soon as a
+    // later ping shows the asset back inside the geofence, so the NEXT
+    // genuine breach still alerts fresh. Without this, every ping while
+    // the asset stays outside the geofence would re-insert an event and
+    // re-fire Slack — this is a real-time ingestion endpoint that could
+    // receive pings every few minutes, not a once-a-day cron sweep, so
+    // that's a guaranteed flood rather than a rare race. Fixed 2026-09-29,
+    // see supabase_schema_delta_telemetry_alert_dedup.sql.
     if (asset.geofence_site_id && lat != null && lng != null) {
       const { data: site } = await supabase.from('site_projects').select('site_lat, site_lng, geofence_radius_m').eq('id', asset.geofence_site_id).maybeSingle()
       if (site?.site_lat != null && site?.site_lng != null) {
         const { breached, distanceMeters: distanceM } = checkGeofence(lat, lng, site.site_lat, site.site_lng, site.geofence_radius_m)
         if (breached) {
-          await supabase.from('asset_telemetry_events').insert({
-            asset_id: assetId, business_id: asset.business_id, event_type: 'geofence_breach',
-            lat, lng, detail: `${Math.round(distanceM)}m outside assigned site geofence`,
-          })
-          await notify(supabaseUrl, supabaseServiceKey, asset.business_id,
-            `🚨 *Audit*: asset *${asset.name}* is ${Math.round(distanceM)}m outside its assigned site geofence.`)
+          if (!asset.geofence_breach_flagged_at) {
+            const { data: claimed } = await supabase.from('industrial_assets')
+              .update({ geofence_breach_flagged_at: new Date().toISOString() })
+              .eq('id', assetId).is('geofence_breach_flagged_at', null).select('id')
+            if (claimed && claimed.length > 0) {
+              await supabase.from('asset_telemetry_events').insert({
+                asset_id: assetId, business_id: asset.business_id, event_type: 'geofence_breach',
+                lat, lng, detail: `${Math.round(distanceM)}m outside assigned site geofence`,
+              })
+              await notify(supabaseUrl, supabaseServiceKey, asset.business_id,
+                `🚨 *Audit*: asset *${asset.name}* is ${Math.round(distanceM)}m outside its assigned site geofence.`)
+            }
+          }
+        } else if (asset.geofence_breach_flagged_at) {
+          await supabase.from('industrial_assets').update({ geofence_breach_flagged_at: null }).eq('id', assetId)
         }
       }
     }
 
-    // Maintenance threshold check
+    // Maintenance threshold check — same alert-once-on-transition,
+    // clear-on-resolve shape as the geofence check above. Resolves once
+    // last_maintenance_at_hours is updated (asset actually serviced),
+    // making isMaintenanceDue() false again on a later ping.
     if (engineHours != null) {
       if (isMaintenanceDue(engineHours, asset.last_maintenance_at_hours, asset.maintenance_interval_hours)) {
-        await supabase.from('asset_telemetry_events').insert({
-          asset_id: assetId, business_id: asset.business_id, event_type: 'maintenance_due',
-          engine_hours: engineHours, detail: `${engineHours}h reached, interval ${asset.maintenance_interval_hours}h`,
-        })
-        await notify(supabaseUrl, supabaseServiceKey, asset.business_id,
-          `🔧 *Audit*: asset *${asset.name}* has hit its preventative-maintenance threshold (${engineHours}h).`)
+        if (!asset.maintenance_due_flagged_at) {
+          const { data: claimed } = await supabase.from('industrial_assets')
+            .update({ maintenance_due_flagged_at: new Date().toISOString() })
+            .eq('id', assetId).is('maintenance_due_flagged_at', null).select('id')
+          if (claimed && claimed.length > 0) {
+            await supabase.from('asset_telemetry_events').insert({
+              asset_id: assetId, business_id: asset.business_id, event_type: 'maintenance_due',
+              engine_hours: engineHours, detail: `${engineHours}h reached, interval ${asset.maintenance_interval_hours}h`,
+            })
+            await notify(supabaseUrl, supabaseServiceKey, asset.business_id,
+              `🔧 *Audit*: asset *${asset.name}* has hit its preventative-maintenance threshold (${engineHours}h).`)
+          }
+        }
+      } else if (asset.maintenance_due_flagged_at) {
+        await supabase.from('industrial_assets').update({ maintenance_due_flagged_at: null }).eq('id', assetId)
       }
     }
 

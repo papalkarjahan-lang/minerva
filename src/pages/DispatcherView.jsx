@@ -1048,6 +1048,7 @@ export default function DispatcherView() {
   // Customer review/reputation loop — human-approval-per-send, same as every
   // other Sales & Marketing message: only fires on this explicit click.
   async function requestReview(invoiceId) {
+    if (requestingReviewId === invoiceId) return
     setRequestingReviewId(invoiceId)
     try {
       const { data, error } = await supabase.functions.invoke('send-review-request-sms', { body: { invoiceId } })
@@ -1305,6 +1306,7 @@ export default function DispatcherView() {
   }
 
   async function resendTechSMS(tech) {
+    if (resendingTechId === tech.id) return
     setResendingTechId(tech.id)
     const { data, error } = await supabase.functions.invoke('send-setup-sms', {
       body: { technicianId: tech.id }
@@ -1853,6 +1855,7 @@ export default function DispatcherView() {
   // Never sends or files anything itself; see generate-compliance-package's
   // header comment for the full boundary.
   async function generateCompliancePackage(jobId) {
+    if (generatingPackageForJobId === jobId) return
     setGeneratingPackageForJobId(jobId)
     try {
       const { data, error } = await supabase.functions.invoke('generate-compliance-package', { body: { jobId } })
@@ -4680,10 +4683,10 @@ function CustomWorkflowsPanel({ businessId, onLogAudit }) {
               {!runLogLoading && runLog.length === 0 && <p style={{ color: '#aaa', fontSize: 12 }}>No runs recorded yet.</p>}
               {!runLogLoading && runLog.map(run => (
                 <div key={run.id} style={{ padding: '5px 0', borderBottom: '1px solid #f0f0f0' }}>
-                  <p style={{ margin: 0, fontSize: 11, color: run.status === 'error' ? '#8A2525' : '#1D9E75' }}>
-                    {run.status === 'error' ? '✗' : '✓'} {run.trigger_event} → {run.action_type} · {new Date(run.created_at).toLocaleString('en-AU')}
+                  <p style={{ margin: 0, fontSize: 11, color: run.status === 'failed' ? '#8A2525' : '#1D9E75' }}>
+                    {run.status === 'failed' ? '✗' : '✓'} {run.trigger_event} · {new Date(run.created_at).toLocaleString('en-AU')}
                   </p>
-                  {run.error_message && <p style={{ margin: 0, fontSize: 11, color: '#999' }}>{run.error_message}</p>}
+                  {run.detail && <p style={{ margin: 0, fontSize: 11, color: '#999' }}>{run.detail}</p>}
                 </div>
               ))}
             </div>
