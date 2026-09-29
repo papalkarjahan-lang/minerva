@@ -159,6 +159,15 @@ function PayNowForm({ invoiceId, onPaid }) {
   const elements = useElements()
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState(null)
+  // Set the instant stripe.confirmPayment succeeds — the card has already
+  // been charged at that point regardless of how long the webhook takes to
+  // mark invoices.status 'paid'. Kept true even if the confirmation poll
+  // below (pollUntilPaid, capped at 5 x 1.5s) times out before the webhook
+  // lands — without this, a slow webhook meant submitting flipped back to
+  // false and this form re-rendered its raw "Confirm payment" button,
+  // inviting the client to pay a second time for an invoice that was
+  // already successfully charged.
+  const [paidPendingSync, setPaidPendingSync] = useState(false)
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -175,11 +184,16 @@ function PayNowForm({ invoiceId, onPaid }) {
       setSubmitting(false)
       return
     }
+    setPaidPendingSync(true)
     // Webhook (payment_intent.succeeded) marks the invoice paid server-side;
     // onPaid polls for it so the UI reflects it without needing a manual
     // page refresh, and "Processing..." stays shown for the duration.
     await onPaid()
     setSubmitting(false)
+  }
+
+  if (paidPendingSync) {
+    return <p style={{ color: '#1D9E75', fontSize: 14 }}>✓ Payment received — confirming with your bank now. This page will update automatically when that finishes.</p>
   }
 
   return (
