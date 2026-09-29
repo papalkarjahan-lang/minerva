@@ -81,8 +81,23 @@ serve(async (req: Request) => {
 
       if (!wasOnSite(pings, job.client_lat!, job.client_lng!, ARRIVAL_RADIUS_KM)) continue
 
+      // Atomically claim this job before sending anything — the initial
+      // query above already filters .is('no_show_detected_at', null), but
+      // that's a point-in-time SELECT; if a previous run is still mid-flight
+      // when this 15-min tick fires again (e.g. a slow Twilio round-trip),
+      // both runs could pass that same filter before either had written the
+      // flag, and both would text the client AND the technician a duplicate
+      // "wasted trip" no-show message. Fixed 2026-09-29 — same claim-before-
+      // notify pattern as this project's other idempotency fixes.
       const detectedAt = new Date().toISOString()
-      await supabase.from('jobs').update({ no_show_detected_at: detectedAt }).eq('id', job.id)
+      const { data: claimed, error: claimErr } = await supabase
+        .from('jobs')
+        .update({ no_show_detected_at: detectedAt })
+        .eq('id', job.id)
+        .is('no_show_detected_at', null)
+        .select('id')
+      if (claimErr) { console.error('detect-wasted-trips: claim failed', claimErr); continue }
+      if (!claimed || claimed.length === 0) continue // already claimed by a concurrent/prior run
       detected++
 
       const bizName = (job as any).businesses?.name || 'the business'

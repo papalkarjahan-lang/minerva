@@ -1,0 +1,23 @@
+-- ============================================================
+-- MINERVA - Delta: idempotency claim column for xero-sync-invoice (2026-09-29)
+-- Run this entire block once in the Supabase SQL Editor (or via the
+-- Management API /database/query endpoint).
+--
+-- What this fixes: xero-sync-invoice had NO idempotency check at all — a
+-- double-click of DispatcherView's "Sync to Xero" button, or a retried
+-- fire-and-forget frontend call, could push the SAME invoice to the
+-- business's real connected Xero org twice, creating two duplicate draft
+-- invoices (Xero's Accounting API has no client-supplied idempotency key
+-- on this endpoint, so Xero itself won't dedupe it). The function also
+-- never checked whether invoice.xero_invoice_id was already set, so even
+-- an invoice that had already synced successfully could be re-pushed.
+--
+-- Fix: adds a claim column the edge function atomically claims before
+-- doing any Xero work (same claim-before-notify pattern used across this
+-- project's other idempotency fixes), with a short suppress window so a
+-- crashed/timed-out run doesn't block a legitimate retry forever, and an
+-- explicit release-on-failure so a genuine transient error can be retried
+-- immediately rather than waiting out the suppress window.
+-- ============================================================
+
+alter table invoices add column if not exists xero_sync_started_at timestamptz;

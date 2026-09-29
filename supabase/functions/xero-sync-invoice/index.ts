@@ -28,6 +28,19 @@
 // invoiceId could force-push that business's invoice to their connected
 // Xero org. Fixed using the same isOwner pattern xero-oauth-connect already
 // used for the identical forged-request risk.
+//
+// Sync idempotency added 2026-09-29 (see supabase_schema_delta_xero_sync_
+// dedup.sql): this function had NO idempotency check at all — a
+// double-click of DispatcherView's "Sync to Xero" button, or a retried
+// fire-and-forget frontend call, could push the SAME invoice to Xero
+// twice, creating two duplicate draft invoices in the business's real
+// Xero org (Xero has no client-supplied idempotency key on this endpoint).
+// Also: nothing ever checked whether invoice.xero_invoice_id was already
+// set, so even a single already-synced invoice could be re-pushed. Fixed
+// with the same claim-before-work pattern used elsewhere, plus an explicit
+// release of the claim if the Xero call itself fails, so a genuine retry
+// after a real transient failure isn't permanently blocked.
+const SYNC_CLAIM_SUPPRESS_MINUTES = 5 // long enough to cover a real Xero round-trip; short enough that a crashed run doesn't block retries forever
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
@@ -62,6 +75,13 @@ serve(async (req: Request) => {
 
     const { data: invoice, error: invErr } = await supabase.from('invoices').select('*, businesses(owner_user_id, contact_email, max_addons, max_addon_trials)').eq('id', invoiceId).maybeSingle()
     if (invErr || !invoice) throw new Error('invoice not found')
+
+    if (invoice.xero_invoice_id) {
+      return new Response(JSON.stringify({ success: true, skipped: true, reason: 'already synced to Xero', xeroInvoiceId: invoice.xero_invoice_id }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
 
     const bizAddons = (invoice as any).businesses
 
@@ -101,59 +121,87 @@ serve(async (req: Request) => {
       })
     }
 
-    let accessToken = cred.access_token
-    if (!cred.expires_at || new Date(cred.expires_at).getTime() < Date.now() + 60_000) {
-      const refreshRes = await fetch('https://identity.xero.com/connect/token', {
+    // Atomically claim this invoice before doing any Xero work — closes the
+    // double-push gap described in the header comment above.
+    const suppressSince = new Date(Date.now() - SYNC_CLAIM_SUPPRESS_MINUTES * 60 * 1000).toISOString()
+    const { data: claimed, error: claimErr } = await supabase
+      .from('invoices')
+      .update({ xero_sync_started_at: new Date().toISOString() })
+      .eq('id', invoiceId)
+      .is('xero_invoice_id', null)
+      .or(`xero_sync_started_at.is.null,xero_sync_started_at.lt.${suppressSince}`)
+      .select('id')
+    if (claimErr) throw claimErr
+    if (!claimed || claimed.length === 0) {
+      return new Response(JSON.stringify({ success: true, skipped: true, reason: 'sync already in progress or completed by a concurrent request' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+
+    let xeroInvoiceId: string | null = null
+    try {
+      let accessToken = cred.access_token
+      if (!cred.expires_at || new Date(cred.expires_at).getTime() < Date.now() + 60_000) {
+        const refreshRes = await fetch('https://identity.xero.com/connect/token', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Authorization': `Basic ${btoa(`${clientId}:${clientSecret}`)}`,
+          },
+          body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: cred.refresh_token }),
+        })
+        if (!refreshRes.ok) throw new Error(`Xero token refresh failed (HTTP ${refreshRes.status}) — business may need to reconnect Xero.`)
+        const refreshed = await refreshRes.json()
+        accessToken = refreshed.access_token
+        await supabase.from('integration_credentials').update({
+          access_token: refreshed.access_token,
+          refresh_token: refreshed.refresh_token,
+          expires_at: new Date(Date.now() + (refreshed.expires_in || 1800) * 1000).toISOString(),
+        }).eq('id', cred.id)
+      }
+
+      const lineItems = Array.isArray(invoice.line_items) ? invoice.line_items : []
+      const xeroInvoice = {
+        Type: 'ACCREC',
+        Contact: { Name: invoice.client_name || 'Client' },
+        LineItems: lineItems.map((li: any) => ({
+          Description: li.description,
+          Quantity: 1,
+          UnitAmount: li.amount,
+          AccountCode: '200', // default Xero chart-of-accounts sales code — the business should
+                               // remap this in Xero if they use a different code, see header note
+        })),
+        Status: 'DRAFT',
+      }
+
+      const xeroRes = await fetch('https://api.xero.com/api.xro/2.0/Invoices', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Authorization': `Basic ${btoa(`${clientId}:${clientSecret}`)}`,
+          'Authorization': `Bearer ${accessToken}`,
+          'Xero-tenant-id': cred.tenant_id,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
         },
-        body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: cred.refresh_token }),
+        body: JSON.stringify({ Invoices: [xeroInvoice] }),
       })
-      if (!refreshRes.ok) throw new Error(`Xero token refresh failed (HTTP ${refreshRes.status}) — business may need to reconnect Xero.`)
-      const refreshed = await refreshRes.json()
-      accessToken = refreshed.access_token
-      await supabase.from('integration_credentials').update({
-        access_token: refreshed.access_token,
-        refresh_token: refreshed.refresh_token,
-        expires_at: new Date(Date.now() + (refreshed.expires_in || 1800) * 1000).toISOString(),
-      }).eq('id', cred.id)
+
+      if (!xeroRes.ok) {
+        const detail = await xeroRes.text().catch(() => '')
+        throw new Error(`Xero API rejected the invoice (HTTP ${xeroRes.status}): ${detail.slice(0, 300)}`)
+      }
+      const xeroData = await xeroRes.json()
+      xeroInvoiceId = xeroData?.Invoices?.[0]?.InvoiceID || null
+
+      await supabase.from('invoices').update({ xero_invoice_id: xeroInvoiceId }).eq('id', invoiceId)
+    } catch (syncErr) {
+      // Release the claim on failure so a genuine retry (after fixing a
+      // transient Xero/network issue) isn't permanently blocked for
+      // SYNC_CLAIM_SUPPRESS_MINUTES for no reason — same claim-then-
+      // release-on-failure pattern as stripe-webhook.
+      await supabase.from('invoices').update({ xero_sync_started_at: null }).eq('id', invoiceId).then(() => {}, () => {})
+      throw syncErr
     }
-
-    const lineItems = Array.isArray(invoice.line_items) ? invoice.line_items : []
-    const xeroInvoice = {
-      Type: 'ACCREC',
-      Contact: { Name: invoice.client_name || 'Client' },
-      LineItems: lineItems.map((li: any) => ({
-        Description: li.description,
-        Quantity: 1,
-        UnitAmount: li.amount,
-        AccountCode: '200', // default Xero chart-of-accounts sales code — the business should
-                             // remap this in Xero if they use a different code, see header note
-      })),
-      Status: 'DRAFT',
-    }
-
-    const xeroRes = await fetch('https://api.xero.com/api.xro/2.0/Invoices', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Xero-tenant-id': cred.tenant_id,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      body: JSON.stringify({ Invoices: [xeroInvoice] }),
-    })
-
-    if (!xeroRes.ok) {
-      const detail = await xeroRes.text().catch(() => '')
-      throw new Error(`Xero API rejected the invoice (HTTP ${xeroRes.status}): ${detail.slice(0, 300)}`)
-    }
-    const xeroData = await xeroRes.json()
-    const xeroInvoiceId = xeroData?.Invoices?.[0]?.InvoiceID || null
-
-    await supabase.from('invoices').update({ xero_invoice_id: xeroInvoiceId }).eq('id', invoiceId)
 
     supabase.rpc('record_agent_run', { fn_name: 'xero-sync-invoice', status: 'ok' }).then(() => {}, () => {})
 

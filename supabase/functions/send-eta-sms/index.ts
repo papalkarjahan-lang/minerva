@@ -33,6 +33,14 @@
 // owner-only). No frontend change to worry about breaking real usage:
 // TechnicianView.jsx's own session token is already attached automatically
 // by supabase.functions.invoke().
+//
+// Idempotency added 2026-09-29: this had no server-side check at all
+// against jobs.sms_sent before sending — a retried "within 2km" trigger
+// firing twice in quick succession (e.g. two GPS pings both landing inside
+// the 2km radius before the first Twilio call completes) could text the
+// same client twice. Now atomically claims jobs.sms_sent before calling
+// Twilio, same claim-before-notify pattern used across this project's other
+// idempotency fixes.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
@@ -61,7 +69,7 @@ serve(async (req: Request) => {
 
     const { data: job, error: jobErr } = await supabase
       .from('jobs')
-      .select('id, client_name, client_phone, business_id, technician_id, businesses(name, owner_user_id, contact_email), technicians!jobs_technician_id_fkey(id, name, auth_user_id)')
+      .select('id, client_name, client_phone, business_id, technician_id, sms_sent, businesses(name, owner_user_id, contact_email), technicians!jobs_technician_id_fkey(id, name, auth_user_id)')
       .eq('id', jobId)
       .maybeSingle()
     if (jobErr || !job) throw new Error('Job not found')
@@ -90,6 +98,28 @@ serve(async (req: Request) => {
       })
     }
 
+    if (job.sms_sent) {
+      return new Response(JSON.stringify({ success: true, skipped: 'already_sent' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+
+    // Atomically claim the send before calling Twilio — see header note.
+    const { data: claimed, error: claimErr } = await supabase
+      .from('jobs')
+      .update({ sms_sent: true })
+      .eq('id', job.id)
+      .is('sms_sent', false)
+      .select('id')
+    if (claimErr) throw claimErr
+    if (!claimed || claimed.length === 0) {
+      return new Response(JSON.stringify({ success: true, skipped: 'already_sent' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+
     const techName = (job as any).technicians?.name || 'your technician'
     const businessName = (job as any).businesses?.name || 'us'
     const trackingUrl = `${APP_URL}/track/${job.id}`
@@ -102,29 +132,39 @@ serve(async (req: Request) => {
     const TWILIO_FROM = Deno.env.get('TWILIO_PHONE_NUMBER')
 
     if (!TWILIO_SID || !TWILIO_TOKEN || !TWILIO_FROM) {
+      await supabase.from('jobs').update({ sms_sent: false }).eq('id', job.id).then(() => {}, () => {})
       throw new Error('Twilio credentials not configured in Supabase secrets')
     }
 
-    const response = await fetch(
-      `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': 'Basic ' + btoa(`${TWILIO_SID}:${TWILIO_TOKEN}`),
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          To: phone,
-          From: TWILIO_FROM,
-          Body: message,
-        }).toString(),
+    let result: any
+    try {
+      const response = await fetch(
+        `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': 'Basic ' + btoa(`${TWILIO_SID}:${TWILIO_TOKEN}`),
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: new URLSearchParams({
+            To: phone,
+            From: TWILIO_FROM,
+            Body: message,
+          }).toString(),
+        }
+      )
+
+      result = await response.json()
+
+      if (result.error_code) {
+        throw new Error(`Twilio error ${result.error_code}: ${result.message}`)
       }
-    )
-
-    const result = await response.json()
-
-    if (result.error_code) {
-      throw new Error(`Twilio error ${result.error_code}: ${result.message}`)
+    } catch (sendErr) {
+      // Release the claim on failure so a genuine retry after a transient
+      // Twilio/network error isn't permanently blocked — same claim-then-
+      // release-on-failure pattern as stripe-webhook/xero-sync-invoice.
+      await supabase.from('jobs').update({ sms_sent: false }).eq('id', job.id).then(() => {}, () => {})
+      throw sendErr
     }
 
     supabase.rpc('record_agent_run', { fn_name: 'send-eta-sms', status: 'ok' }).then(() => {}, () => {})

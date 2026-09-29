@@ -43,6 +43,13 @@
 // (and is still unhealthy), not on every 15-min sweep for the same
 // unresolved episode.
 //
+// Self-monitoring added 2026-09-29: despite watching every OTHER agent's
+// last_run_at/error_count via record_agent_run(), this function never
+// called record_agent_run() for ITSELF — so if test-agent-health silently
+// stopped running (or started erroring every time), nothing would ever
+// flag that fact; the one function whose whole job is "notice when an
+// agent stops working" was itself invisible to that same check.
+//
 // Deploy with: supabase functions deploy test-agent-health
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
@@ -78,6 +85,11 @@ const CADENCE_MINUTES: Record<string, number> = {
   'generate-growth-drafts': 7 * 24 * 60,
   'test-agent-health': 15,
   'followup-outreach': 24 * 60,
+  // Added 2026-09-29 — both were missing from this map despite having a
+  // known cron cadence (see their own *_cron.sql delta files), so a real
+  // outage in either would never have been flagged as stale.
+  'reconcile-technician-state': 24 * 60,
+  'agent-council-report': 7 * 24 * 60,
 }
 
 serve(async (req: Request) => {
@@ -145,12 +157,18 @@ serve(async (req: Request) => {
       alerted++
     }
 
+    supabase.rpc('record_agent_run', { fn_name: 'test-agent-health', status: 'ok' }).then(() => {}, () => {})
+
     return new Response(JSON.stringify({ success: true, checked, unhealthy, alerted }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     })
   } catch (err) {
     console.error('test-agent-health error:', err)
+    try {
+      const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+      supabase.rpc('record_agent_run', { fn_name: 'test-agent-health', status: 'error', error_msg: err.message }).then(() => {}, () => {})
+    } catch (_) { /* never let health tracking break the actual error response */ }
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },

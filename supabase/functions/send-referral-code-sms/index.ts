@@ -95,9 +95,33 @@ serve(async (req: Request) => {
       })
     }
 
-    const code = invoice.referral_code || generateReferralCode()
-    if (!invoice.referral_code) {
-      await supabase.from('invoices').update({ referral_code: code }).eq('id', invoiceId)
+    // Atomically claim the code slot before using it — the previous design
+    // read invoice.referral_code once above, and if two concurrent
+    // invocations (e.g. the frontend fire-and-forget call racing a manual
+    // "Resend" click) both saw it null, each generated its OWN candidate
+    // code and unconditionally overwrote the column, so whichever update
+    // landed last silently invalidated the code the other request had
+    // already texted to the client — the client's SMS and the DB's stored
+    // code could permanently disagree. Fixed 2026-09-29: the update is now
+    // conditioned on the column still being null, so only one invocation's
+    // candidate can ever win; the loser re-reads the winner's code instead
+    // of using its own.
+    let code = invoice.referral_code
+    if (!code) {
+      const candidate = generateReferralCode()
+      const { data: claimed, error: claimErr } = await supabase
+        .from('invoices')
+        .update({ referral_code: candidate })
+        .eq('id', invoiceId)
+        .is('referral_code', null)
+        .select('referral_code')
+      if (claimErr) throw claimErr
+      if (claimed && claimed.length > 0) {
+        code = candidate
+      } else {
+        const { data: winner } = await supabase.from('invoices').select('referral_code').eq('id', invoiceId).single()
+        code = winner?.referral_code || candidate
+      }
     }
 
     if (!invoice.client_phone) {
