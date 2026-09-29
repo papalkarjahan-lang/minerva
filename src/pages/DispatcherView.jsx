@@ -31,6 +31,19 @@ export default function DispatcherView() {
   const [leadAttribution, setLeadAttribution] = useState([]) // from lead_attribution_summary view — which channel is actually converting
   const [expandedLeadId, setExpandedLeadId] = useState(null) // which lead's activity timeline is open, if any
   const [convertingLeadId, setConvertingLeadId] = useState(null)
+  // Per-job in-flight guard for assignJob/assignJobSubcontractor — a Set
+  // (not a single id) so assigning two different jobs at once doesn't
+  // block each other. Without this, a rapid re-select on the same job's
+  // assignment dropdown (or two dispatcher tabs open on the same job)
+  // could fire two overlapping assignJob calls, leaving jobs.technician_id
+  // and technicians.current_job_id inconsistent across two technicians for
+  // the same job. Added 2026-09-29.
+  const [assigningJobIds, setAssigningJobIds] = useState(() => new Set())
+  const setAssigningJob = (id, busy) => setAssigningJobIds(prev => {
+    const next = new Set(prev)
+    if (busy) next.add(id); else next.delete(id)
+    return next
+  })
   const [leadActivities, setLeadActivities] = useState({}) // leadId -> lead_activities[] loaded on demand
   const [leadActivitySummary, setLeadActivitySummary] = useState({}) // leadId -> { count, lastAt }, loaded upfront for every visible lead so the list itself shows engagement momentum without expanding each one
   const [newLeadNote, setNewLeadNote] = useState('')
@@ -918,12 +931,14 @@ export default function DispatcherView() {
 
   // Assign job to technician
   async function assignJob(jobId, techId) {
+    if (assigningJobIds.has(jobId)) return
+    setAssigningJob(jobId, true)
     const job = jobs.find(j => j.id === jobId)
     const previousTechId = job?.technician_id || null
     const { error: jobErr } = await supabase.from('jobs').update({ technician_id: techId }).eq('id', jobId)
-    if (jobErr) { alert(`Couldn't assign job: ${jobErr.message}`); return }
+    if (jobErr) { alert(`Couldn't assign job: ${jobErr.message}`); setAssigningJob(jobId, false); return }
     const { error: techErr } = await supabase.from('technicians').update({ current_job_id: jobId }).eq('id', techId)
-    if (techErr) { alert(`Job assigned, but couldn't update technician state: ${techErr.message}`); await loadAll(); return }
+    if (techErr) { alert(`Job assigned, but couldn't update technician state: ${techErr.message}`); await loadAll(); setAssigningJob(jobId, false); return }
     // Fire-and-forget — never blocks the assignment itself on SMS delivery.
     supabase.functions.invoke('send-job-assignment-sms', {
       body: { jobId, technicianId: techId, previousTechnicianId: previousTechId && previousTechId !== techId ? previousTechId : undefined },
@@ -935,12 +950,15 @@ export default function DispatcherView() {
     }).catch(() => {})
     logAudit('job.assigned', { entityType: 'job', entityId: jobId, details: { client_name: job?.client_name, assignee_name: technicianName } })
     await loadAll()
+    setAssigningJob(jobId, false)
   }
 
   async function assignJobSubcontractor(jobId, subcontractorId) {
+    if (assigningJobIds.has(jobId)) return
+    setAssigningJob(jobId, true)
     const job = jobs.find(j => j.id === jobId)
     const { error } = await supabase.from('jobs').update({ assigned_subcontractor_id: subcontractorId }).eq('id', jobId)
-    if (error) { alert(`Couldn't assign subcontractor: ${error.message}`); return }
+    if (error) { alert(`Couldn't assign subcontractor: ${error.message}`); setAssigningJob(jobId, false); return }
     // Custom Workflows: fire the 'job.assigned' trigger for this business, if any are configured.
     const technicianName = subcontractors.find(s => s.id === subcontractorId)?.name || null
     supabase.functions.invoke('run-custom-workflows', {
@@ -948,6 +966,7 @@ export default function DispatcherView() {
     }).catch(() => {})
     logAudit('job.assigned', { entityType: 'job', entityId: jobId, details: { client_name: job?.client_name, assignee_name: technicianName } })
     await loadAll()
+    setAssigningJob(jobId, false)
   }
 
   // Multi-technician job splitting — crew members get their own
@@ -1341,11 +1360,20 @@ export default function DispatcherView() {
 
   async function dismissWeatherDraft(draftId) {
     setWeatherActionId(draftId)
-    const { error } = await supabase
+    // Scoped to status='pending' so this can't silently overwrite a draft
+    // that a concurrent session already approved (approveWeatherDraft's
+    // edge function claims the row via its own atomic status check before
+    // sending anything) — without this, a stale "pending" view in this tab
+    // could dismiss a draft that was actually just sent moments ago in
+    // another tab, masking the real outcome in the UI. Fixed 2026-09-29.
+    const { data: updated, error } = await supabase
       .from('weather_reschedule_drafts')
       .update({ status: 'dismissed', reviewed_at: new Date().toISOString() })
       .eq('id', draftId)
+      .eq('status', 'pending')
+      .select('id')
     if (error) alert(`Couldn't dismiss: ${error.message}`)
+    else if (!updated || updated.length === 0) alert(`This draft was already actioned (approved or dismissed) — refreshing.`)
     await loadAll()
     setWeatherActionId(null)
   }
@@ -1371,11 +1399,22 @@ export default function DispatcherView() {
 
   async function rejectDraft(draftId) {
     setMarketingActionId(draftId)
-    const { error } = await supabase
+    // Scoped to status='pending' — same reasoning as dismissWeatherDraft
+    // above: approveDraft's edge function (launch-ad-campaign/send-growth-
+    // message) atomically claims the row from 'pending' to 'launching'/
+    // 'sending' before spending real ad budget or sending a real SMS. An
+    // unconditional reject here could otherwise overwrite that outcome in
+    // the UI (a stale "pending" view rejecting a draft that was actually
+    // just approved and sent moments ago in another session/tab), masking
+    // that money was spent or a message was sent. Fixed 2026-09-29.
+    const { data: updated, error } = await supabase
       .from('marketing_drafts')
       .update({ status: 'rejected', reviewed_at: new Date().toISOString() })
       .eq('id', draftId)
+      .eq('status', 'pending')
+      .select('id')
     if (error) alert(`Couldn't reject: ${error.message}`)
+    else if (!updated || updated.length === 0) alert(`This draft was already actioned (approved or rejected) — refreshing.`)
     await loadAll()
     setMarketingActionId(null)
   }
@@ -2214,7 +2253,7 @@ export default function DispatcherView() {
                   )}
                   <p style={styles.jobStatus(job.status)}>{job.status.toUpperCase()}</p>
                   {job.status === 'scheduled' && !job.technician_id && !job.assigned_subcontractor_id && (
-                    <select style={styles.assignSelect}
+                    <select style={styles.assignSelect} disabled={assigningJobIds.has(job.id)}
                       onChange={(e) => e.target.value && assignJob(job.id, e.target.value)}>
                       <option value="">Assign tech...</option>
                       {technicians.map(t => (
@@ -2223,7 +2262,7 @@ export default function DispatcherView() {
                     </select>
                   )}
                   {hasAddon(business, 'subcontractor_pool') && job.status === 'scheduled' && !job.technician_id && !job.assigned_subcontractor_id && subcontractors.length > 0 && (
-                    <select style={{ ...styles.assignSelect, marginTop: 4 }}
+                    <select style={{ ...styles.assignSelect, marginTop: 4 }} disabled={assigningJobIds.has(job.id)}
                       onChange={(e) => e.target.value && assignJobSubcontractor(job.id, e.target.value)}>
                       <option value="">Assign subcontractor...</option>
                       {subcontractors.map(s => (
