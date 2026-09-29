@@ -214,6 +214,14 @@ export default function IndustrialDispatcherView() {
   }
 
   async function runConductor(leadId) {
+    // Guard added 2026-09-29: the disabled={busyId === l.id} attribute at
+    // the call site alone doesn't close the window between two
+    // synchronous clicks, and industrial-conductor's direct-invocation
+    // {leadId} path has no server-side dedup of its own (only the
+    // cron-sweep path is protected via conductor_suggested_at — see that
+    // function's own header comment) — so a fast double-click here would
+    // fire a real duplicate Slack suggestion for the same lead.
+    if (busyId === leadId) return
     setBusyId(leadId)
     const { data, error } = await supabase.functions.invoke('industrial-conductor', { body: { leadId } })
     setBusyId(null)
@@ -221,6 +229,12 @@ export default function IndustrialDispatcherView() {
   }
 
   async function generatePackage(siteId) {
+    // Same reasoning as runConductor above — package-client-verification
+    // has no idempotency check before inserting a client_verification_
+    // packages row and firing Slack, and there's no unique constraint on
+    // site_id in the schema, so a double-click would create two duplicate
+    // package rows and two duplicate client-facing notifications.
+    if (busyId === siteId) return
     setBusyId(siteId)
     const { data, error } = await supabase.functions.invoke('package-client-verification', { body: { siteId } })
     setBusyId(null)
@@ -229,7 +243,10 @@ export default function IndustrialDispatcherView() {
   }
 
   async function acknowledgeIncident(id) {
+    if (busyId === id) return
+    setBusyId(id)
     const { error } = await supabase.from('safety_incidents').update({ acknowledged_at: new Date().toISOString() }).eq('id', id)
+    setBusyId(null)
     if (error) { alert(`Couldn't acknowledge incident: ${error.message}`); return }
     loadAll()
   }
@@ -238,24 +255,36 @@ export default function IndustrialDispatcherView() {
   // loadAll(). All three are direct row updates (same "anon all" RLS model
   // as safety_incidents), not a separate edge function, matching how
   // acknowledgeIncident/restockItem above already write straight to their
-  // tables from this console.
+  // tables from this console. Each write is idempotent (re-setting the
+  // same status/date/close timestamp causes no distinct harm), but the
+  // busyId guard is added anyway for consistency with the rest of this
+  // console's mutating handlers and to avoid redundant network calls.
   async function assignCorrectiveAction(id, technicianId) {
+    if (busyId === id) return
+    setBusyId(id)
     const { error } = await supabase.from('corrective_actions')
       .update({ assigned_to_technician_id: technicianId || null, status: technicianId ? 'in_progress' : 'open' })
       .eq('id', id)
+    setBusyId(null)
     if (error) { alert(`Couldn't assign: ${error.message}`); return }
     loadAll()
   }
 
   async function setCorrectiveActionDueDate(id, dueDate) {
+    if (busyId === id) return
+    setBusyId(id)
     const { error } = await supabase.from('corrective_actions').update({ due_date: dueDate || null }).eq('id', id)
+    setBusyId(null)
     if (error) { alert(`Couldn't set due date: ${error.message}`); return }
     loadAll()
   }
 
   async function closeCorrectiveAction(id) {
+    if (busyId === id) return
+    setBusyId(id)
     const { error } = await supabase.from('corrective_actions')
       .update({ status: 'closed', closed_at: new Date().toISOString() }).eq('id', id)
+    setBusyId(null)
     if (error) { alert(`Couldn't close: ${error.message}`); return }
     loadAll()
   }
@@ -266,7 +295,10 @@ export default function IndustrialDispatcherView() {
   // clearing it is what re-arms the alert for next time (see
   // track-consumables' header comment).
   async function restockItem(id) {
+    if (busyId === id) return
+    setBusyId(id)
     const { error } = await supabase.from('consumables_items').update({ reorder_requested_at: null }).eq('id', id)
+    setBusyId(null)
     if (error) { alert(`Couldn't mark item restocked: ${error.message}`); return }
     loadAll()
   }
@@ -441,7 +473,7 @@ export default function IndustrialDispatcherView() {
                           <span style={styles.statusBadge(c.role === 'human_technician' ? 'available' : 'pending sign-off')}>
                             {c.role === 'human_technician' ? 'HUMAN' : 'AUTOMATED'}
                           </span>
-                          {' '}{c.person_name || 'unknown'} — {c.checkin_type.replace('_', ' ')}
+                          {' '}{c.person_name || 'unknown'} — {(c.checkin_type || 'unknown').replace('_', ' ')}
                           {c.detail ? ` (${c.detail})` : ''}
                           <span style={{ color: '#444' }}> · {timeAgo(c.created_at)}</span>
                         </p>
@@ -516,7 +548,7 @@ export default function IndustrialDispatcherView() {
                   {c.reorder_requested_at && (
                     <div style={styles.rowActions}>
                       <p style={styles.rowMeta}>Reorder flagged {timeAgo(c.reorder_requested_at)}</p>
-                      <button style={styles.smallBtn} onClick={() => restockItem(c.id)}>Mark restocked</button>
+                      <button style={styles.smallBtn} disabled={busyId === c.id} onClick={() => restockItem(c.id)}>Mark restocked</button>
                     </div>
                   )}
                 </div>
@@ -546,7 +578,7 @@ export default function IndustrialDispatcherView() {
                   <div style={styles.rowActions}>
                     <span style={styles.statusBadge(i.acknowledged_at ? 'acknowledged' : 'open')}>{i.acknowledged_at ? 'acknowledged' : 'open'}</span>
                     {!i.acknowledged_at && (
-                      <button style={styles.smallBtn} onClick={() => acknowledgeIncident(i.id)}>Acknowledge</button>
+                      <button style={styles.smallBtn} disabled={busyId === i.id} onClick={() => acknowledgeIncident(i.id)}>Acknowledge</button>
                     )}
                   </div>
                   {ticket && (
@@ -560,6 +592,7 @@ export default function IndustrialDispatcherView() {
                         <div style={styles.rowActions}>
                           <select
                             style={styles.smallSelect}
+                            disabled={busyId === ticket.id}
                             defaultValue={ticket.assigned_to_technician_id || ''}
                             onChange={e => assignCorrectiveAction(ticket.id, e.target.value)}
                           >
@@ -569,10 +602,11 @@ export default function IndustrialDispatcherView() {
                           <input
                             type="date"
                             style={styles.smallSelect}
+                            disabled={busyId === ticket.id}
                             defaultValue={ticket.due_date || ''}
                             onChange={e => setCorrectiveActionDueDate(ticket.id, e.target.value)}
                           />
-                          <button style={styles.smallBtn} onClick={() => closeCorrectiveAction(ticket.id)}>Close</button>
+                          <button style={styles.smallBtn} disabled={busyId === ticket.id} onClick={() => closeCorrectiveAction(ticket.id)}>Close</button>
                         </div>
                       )}
                     </div>
