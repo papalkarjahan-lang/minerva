@@ -31,6 +31,7 @@ export default function DispatcherView() {
   const [leadAttribution, setLeadAttribution] = useState([]) // from lead_attribution_summary view — which channel is actually converting
   const [expandedLeadId, setExpandedLeadId] = useState(null) // which lead's activity timeline is open, if any
   const [convertingLeadId, setConvertingLeadId] = useState(null)
+  const [voidingId, setVoidingId] = useState(null)
   // Per-job in-flight guard for assignJob/assignJobSubcontractor — a Set
   // (not a single id) so assigning two different jobs at once doesn't
   // block each other. Without this, a rapid re-select on the same job's
@@ -676,6 +677,7 @@ export default function DispatcherView() {
   // — the record-keeping counterpart to Export CSV, which hands the same
   // numbers off but keeps nothing on Minerva's side.
   async function savePayrollRun() {
+    if (payrollSaving) return
     if (!payrollRows || payrollRows.length === 0) return
     setPayrollSaving(true)
     const { data, error } = await supabase.from('payroll_runs').insert({
@@ -1255,10 +1257,13 @@ export default function DispatcherView() {
   // gone. Voided invoices fall out of chase-unpaid-invoices automatically
   // (it only queries status = 'unpaid').
   async function voidInvoice(invoiceId) {
+    if (voidingId === invoiceId) return
     const reason = window.prompt('Why is this invoice being voided? (shown in the audit trail, e.g. "created by mistake" or "duplicate")')
     if (reason === null) return // cancelled
+    setVoidingId(invoiceId)
     const voidedAt = new Date().toISOString()
     const { error } = await supabase.from('invoices').update({ status: 'void', voided_at: voidedAt, voided_reason: reason || null }).eq('id', invoiceId)
+    setVoidingId(null)
     if (error) { alert(`Couldn't void invoice: ${error.message}`); return }
     setInvoices(prev => prev.map(i => i.id === invoiceId ? { ...i, status: 'void', voided_at: voidedAt, voided_reason: reason || null } : i))
   }
@@ -1309,6 +1314,7 @@ export default function DispatcherView() {
   }
 
   async function saveSettings({ slackWebhookUrl, autoDispatchEnabled, autoDispatchMaxKm, metaAccessToken, metaAdAccountId, metaPageId, weatherSensitiveTradeTypes, googleReviewLink, twilioNumber }) {
+    if (savingSettings) return
     setSavingSettings(true)
     const { data, error } = await supabase
       .from('businesses')
@@ -1734,12 +1740,39 @@ export default function DispatcherView() {
       else { days[day].min = Math.min(days[day].min, t); days[day].max = Math.max(days[day].max, t) }
     }
 
-    const rows = technicians.map(tech => {
+    // technicians (component state) is is_active=true only — a technician
+    // who was deactivated (e.g. left the business) partway through the
+    // chosen period still has real technician_locations rows for the days
+    // they worked, but mapping over `technicians` alone would silently
+    // drop their hours from this report/export/saved snapshot entirely,
+    // with no error or indication anything is missing. Fixed 2026-09-29:
+    // fetch names for any technician_id present in the location data but
+    // not in the active roster, so departed technicians' final-period
+    // hours still show up (labelled inactive) instead of vanishing.
+    const activeIds = new Set(technicians.map(t => t.id))
+    const missingIds = Object.keys(byTech).filter(id => !activeIds.has(id))
+    let inactiveTechs = []
+    if (missingIds.length > 0) {
+      const { data } = await supabase.from('technicians').select('id, name').in('id', missingIds)
+      inactiveTechs = data || []
+    }
+
+    const allTechs = [
+      ...technicians.map(t => ({ id: t.id, name: t.name, inactive: false })),
+      ...inactiveTechs.map(t => ({ id: t.id, name: t.name, inactive: true })),
+    ]
+
+    const rows = allTechs.map(tech => {
       const days = byTech[tech.id] || {}
       const dayKeys = Object.keys(days)
       let totalHours = 0
       for (const d of dayKeys) totalHours += (days[d].max - days[d].min) / (1000 * 60 * 60)
-      return { id: tech.id, name: tech.name, hours: Math.round(totalHours * 10) / 10, daysActive: dayKeys.length }
+      return {
+        id: tech.id,
+        name: tech.inactive ? `${tech.name} (inactive)` : tech.name,
+        hours: Math.round(totalHours * 10) / 10,
+        daysActive: dayKeys.length,
+      }
     })
     setPayrollRows(rows)
     setPayrollLoading(false)
@@ -2802,7 +2835,7 @@ export default function DispatcherView() {
                   {inv.status === 'unpaid' && (
                     <div style={{ display: 'flex', gap: 8 }}>
                       <button style={styles.leadActionPrimary} disabled={markingPaidId === inv.id} onClick={() => markInvoicePaid(inv.id)}>{markingPaidId === inv.id ? 'Marking...' : 'Mark paid'}</button>
-                      <button style={styles.leadActionSecondary} onClick={() => voidInvoice(inv.id)}>Void</button>
+                      <button style={styles.leadActionSecondary} disabled={voidingId === inv.id} onClick={() => voidInvoice(inv.id)}>Void</button>
                     </div>
                   )}
                   {inv.status !== 'void' && hasAddon(business, 'xero_sync') && business?.xero_connected && (
