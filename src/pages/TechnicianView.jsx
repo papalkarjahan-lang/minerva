@@ -10,15 +10,25 @@ import LoadingScreen from '../components/LoadingScreen'
 const GPS_INTERVAL_MS = 15000 // 15 seconds
 // SMS trigger distance in kilometres
 const SMS_TRIGGER_KM = 2.0
-// localStorage key for GPS points that failed to reach Supabase (offline/
-// network error) so they survive a page reload until they can be flushed.
-const GPS_QUEUE_KEY = 'minerva_gps_queue'
-// localStorage key for the last successfully loaded job — lets a technician
-// who loses signal mid-job still see the address/client/checklist instead
-// of a blank/error screen (the GPS queue above already protects writes;
-// this protects the one read that matters most). Never used to make a
-// decision, purely a fallback render source — see loadJob() below.
-const JOB_CACHE_KEY = 'minerva_last_job_cache'
+// localStorage key prefix for GPS points that failed to reach Supabase
+// (offline/network error) so they survive a page reload until they can be
+// flushed. Suffixed with the technician's own PIN (see `pin` below) rather
+// than a single shared key — a shared device (e.g. a company tablet handed
+// between technicians, or two technicians' PIN links open in separate tabs
+// on the same phone) would otherwise have technician A's queued points
+// flushed against whichever job technician B currently has open.
+const GPS_QUEUE_KEY_PREFIX = 'minerva_gps_queue_'
+// localStorage key prefix for the last successfully loaded job — lets a
+// technician who loses signal mid-job still see the address/client/
+// checklist instead of a blank/error screen (the GPS queue above already
+// protects writes; this protects the one read that matters most). Never
+// used to make a decision, purely a fallback render source — see loadJob()
+// below. Also suffixed by PIN, for the same shared-device reason above.
+const JOB_CACHE_KEY_PREFIX = 'minerva_last_job_cache_'
+// localStorage key prefix for the dismissed-PWA-install-banner flag — same
+// per-PIN scoping reason as above, so one technician dismissing the banner
+// doesn't hide it for a different technician sharing the same device.
+const PWA_DISMISSED_KEY_PREFIX = 'minerva_pwa_install_dismissed_'
 // Feature-detect the Web Speech API once. Most non-Chrome-based mobile
 // browsers don't implement it — the voice note button is hidden entirely
 // when unsupported rather than throwing at click time.
@@ -28,18 +38,18 @@ const SpeechRecognitionAPI =
 // ── OFFLINE GPS QUEUE HELPERS ──────────────────────────────────
 // Small localStorage-backed helpers so a queued GPS backlog survives a
 // page reload (e.g. technician's phone screen locks/reloads while offline).
-function loadQueuedPoints() {
+function loadQueuedPoints(pin) {
   try {
-    const raw = localStorage.getItem(GPS_QUEUE_KEY)
+    const raw = localStorage.getItem(GPS_QUEUE_KEY_PREFIX + pin)
     return raw ? JSON.parse(raw) : []
   } catch (_) {
     return []
   }
 }
 
-function saveQueuedPoints(points) {
+function saveQueuedPoints(pin, points) {
   try {
-    localStorage.setItem(GPS_QUEUE_KEY, JSON.stringify(points))
+    localStorage.setItem(GPS_QUEUE_KEY_PREFIX + pin, JSON.stringify(points))
   } catch (_) {
     // localStorage unavailable (private browsing etc) — the in-memory
     // queue still works for the current session, just won't survive reload.
@@ -50,9 +60,9 @@ function saveQueuedPoints(points) {
 // Keyed by job id so switching jobs (or a stale cache from a previous job)
 // never shows the wrong job's details — only ever read back for the same
 // jobId that's currently being requested.
-function loadCachedJob(jobId) {
+function loadCachedJob(pin, jobId) {
   try {
-    const raw = localStorage.getItem(JOB_CACHE_KEY)
+    const raw = localStorage.getItem(JOB_CACHE_KEY_PREFIX + pin)
     if (!raw) return null
     const cached = JSON.parse(raw)
     return cached && cached.id === jobId ? cached : null
@@ -61,9 +71,9 @@ function loadCachedJob(jobId) {
   }
 }
 
-function saveCachedJob(job) {
+function saveCachedJob(pin, job) {
   try {
-    localStorage.setItem(JOB_CACHE_KEY, JSON.stringify(job))
+    localStorage.setItem(JOB_CACHE_KEY_PREFIX + pin, JSON.stringify(job))
   } catch (_) {
     // localStorage unavailable — no offline fallback this session, but the
     // live fetch path is completely unaffected.
@@ -164,13 +174,13 @@ export default function TechnicianView() {
   // never appears rather than showing a broken button.
   const [installPrompt, setInstallPrompt] = useState(null)
   const [installDismissed, setInstallDismissed] = useState(
-    typeof localStorage !== 'undefined' && localStorage.getItem('minerva_pwa_install_dismissed') === '1'
+    typeof localStorage !== 'undefined' && !!pin && localStorage.getItem(PWA_DISMISSED_KEY_PREFIX + pin) === '1'
   )
 
   const intervalRef = useRef(null)
   // In-memory queue of GPS points that failed to reach Supabase. Mirrored to
   // localStorage so a backlog survives a page reload while offline.
-  const queueRef = useRef(loadQueuedPoints())
+  const queueRef = useRef(loadQueuedPoints(pin))
   // Guards against calling sync-technician-billing on every 15-second GPS
   // tick — only needs to fire once per page load, since the sync function
   // recomputes the full count server-side anyway.
@@ -255,7 +265,7 @@ export default function TechnicianView() {
 
   function dismissInstallBanner() {
     setInstallDismissed(true)
-    try { localStorage.setItem('minerva_pwa_install_dismissed', '1') } catch (_) {}
+    try { localStorage.setItem(PWA_DISMISSED_KEY_PREFIX + pin, '1') } catch (_) {}
   }
 
   // Load technician by PIN on mount
@@ -368,7 +378,7 @@ export default function TechnicianView() {
         setInvoiceItems([{ description: '', amount: '' }])
       }
       setCurrentJob(data)
-      saveCachedJob(data)
+      saveCachedJob(pin, data)
     } else if (error) {
       // Network/offline failure (not "job doesn't exist" — that would come
       // back as no error + no data) — fall back to whatever was last
@@ -376,7 +386,7 @@ export default function TechnicianView() {
       // sees the address/checklist instead of a blank screen. Writes (job
       // status, GPS, notes) still queue/retry via the existing offline
       // logic elsewhere in this file — this only covers the read.
-      const cached = loadCachedJob(jobId)
+      const cached = loadCachedJob(pin, jobId)
       if (cached) setCurrentJob(cached)
     }
   }
@@ -415,13 +425,13 @@ export default function TechnicianView() {
   function enqueuePoint(lat, lng, timestamp) {
     const next = [...queueRef.current, { lat, lng, timestamp }]
     queueRef.current = next
-    saveQueuedPoints(next)
+    saveQueuedPoints(pin, next)
     setPendingCount(next.length)
   }
 
   function clearQueue() {
     queueRef.current = []
-    saveQueuedPoints([])
+    saveQueuedPoints(pin, [])
     setPendingCount(0)
   }
 

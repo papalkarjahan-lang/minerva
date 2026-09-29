@@ -44,7 +44,6 @@ export default function Onboarding() {
   // and re-texting technicians who already got a setup SMS the first time.
   const [createdBusiness, setCreatedBusiness] = useState(null)
   const [createdTechs, setCreatedTechs] = useState(null)
-  const [smsSent, setSmsSent] = useState(false)
 
   function selectTier(id) {
     setTier(id)
@@ -61,6 +60,12 @@ export default function Onboarding() {
   function removeTech(i) { setTechs(prev => prev.filter((_, idx) => idx !== i)) }
 
   async function handleSubmit() {
+    // Guard against a double-tap/double-click firing two concurrent
+    // submissions before React re-renders the disabled button — same
+    // in-function guard pattern used for savingId/sendingQuoteId etc.
+    // elsewhere in the app, since a disabled attribute alone doesn't close
+    // the window between two synchronous click events.
+    if (loading) return
     setLoading(true)
     setError(null)
     try {
@@ -78,37 +83,49 @@ export default function Onboarding() {
         setCreatedBusiness(data)
       }
 
-      // 2. Create technicians with PINs — skipped on a retry for the same
-      // reason.
-      let techData = createdTechs
-      if (!techData) {
-        const techRows = techs.filter(t => t.name.trim()).map(t => ({
-          business_id: bizData.id,
-          name: t.name.trim(),
-          phone: t.phone.trim(),
-        }))
+      // 2. Create technicians with PINs. Diffed against createdTechs (by
+      // name+phone) rather than a simple "already have createdTechs, skip"
+      // guard — a retry after a step-3/4 failure can follow a trip back to
+      // step 2 where the technician list was edited, and the old guard
+      // silently dropped any technician added during that edit (never
+      // inserted, never texted, never billed for) while still charging for
+      // the stale original techData.length. Technicians removed on the
+      // retry are excluded from techData/billing too, but their existing
+      // DB row is left alone rather than deleted (no destructive action).
+      const currentRows = techs.filter(t => t.name.trim()).map(t => ({ name: t.name.trim(), phone: t.phone.trim() }))
+      const existingTechs = createdTechs || []
+      const alreadyCreated = existingTechs.filter(existing =>
+        currentRows.some(r => r.name === existing.name && r.phone === existing.phone)
+      )
+      const newRows = currentRows.filter(r =>
+        !existingTechs.some(existing => existing.name === r.name && existing.phone === r.phone)
+      )
+      let newlyInserted = []
+      if (newRows.length > 0) {
+        const techRows = newRows.map(t => ({ business_id: bizData.id, name: t.name, phone: t.phone }))
         const { data, error: techErr } = await insertTechniciansWithPinRetry(supabase, techRows)
         if (techErr) throw new Error(techErr.message)
-        techData = data
-        setCreatedTechs(data)
+        newlyInserted = data
       }
+      const techData = [...alreadyCreated, ...newlyInserted]
+      setCreatedTechs(techData)
 
-      // 3. Send each technician their setup SMS. A failed send here isn't
-      // fatal — the PIN link is safely recoverable later from
-      // DispatcherView's technician list ("Copy setup link"/"Resend text")
-      // once the owner logs in after payment — but it's tracked so they
-      // know to actually go check, instead of assuming every text arrived.
-      // Skipped on a retry (smsSent) so a later-step failure doesn't
-      // re-text everyone who already got their first setup SMS.
-      if (!smsSent) {
+      // 3. Send each NEWLY inserted technician their setup SMS. A failed
+      // send here isn't fatal — the PIN link is safely recoverable later
+      // from DispatcherView's technician list ("Copy setup link"/"Resend
+      // text") once the owner logs in after payment — but it's tracked so
+      // they know to actually go check, instead of assuming every text
+      // arrived. Technicians already created on an earlier attempt
+      // (alreadyCreated) already got theirs — re-sending here would
+      // duplicate-text them.
+      if (newlyInserted.length > 0) {
         const failedSmsNames = []
-        for (const tech of techData) {
+        for (const tech of newlyInserted) {
           const { data: smsData, error: smsError } = await supabase.functions.invoke('send-setup-sms', {
             body: { technicianId: tech.id }
           })
           if (smsError || smsData?.error) failedSmsNames.push(tech.name)
         }
-        setSmsSent(true)
         if (failedSmsNames.length > 0) {
           alert(`Setup texts didn't send to: ${failedSmsNames.join(', ')}. After payment, open the technician list in your dashboard and use "Copy setup link" or "Resend text" for them.`)
         }
