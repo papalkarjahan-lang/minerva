@@ -155,6 +155,7 @@ export default function TechnicianView() {
   // all — but only the lead may drive status-changing actions below.
   const isCrew = !!(currentJob && tech && currentJob.technician_id && currentJob.technician_id !== tech.id)
   const [leavingJob, setLeavingJob] = useState(false)
+  const [startingJob, setStartingJob] = useState(false)
   // PWA install prompt (2026-09-05): captured from the browser's
   // 'beforeinstallprompt' event so we can trigger it from our own button
   // instead of relying on the browser's native mini-infobar. Not every
@@ -181,6 +182,18 @@ export default function TechnicianView() {
   // duplicate 'job.completed' custom-workflow invocations, and a second,
   // redundant crew-release pass.
   const finishingJobRef = useRef(false)
+  // Guards triggerSMS() against a cross-tick stale-closure race: the GPS
+  // useEffect below only tears down/rebuilds its setInterval when
+  // `currentJob`'s object reference changes, which happens only after
+  // triggerSMS's own setCurrentJob at the end of a successful run. If the
+  // send-eta-sms invoke + jobs update round-trip takes longer than one
+  // GPS_INTERVAL_MS tick, the next tick still runs the same stale
+  // `currentJob` closure, sees sms_sent still false, and calls triggerSMS a
+  // second time — the 2026-09-07 in-function guard below only catches
+  // synchronous re-entrancy, not this. This ref is set synchronously before
+  // any await, so the second call returns immediately instead of firing a
+  // duplicate ETA text.
+  const smsSendingRef = useRef(false)
 
   // Reflect any backlog restored from localStorage in the UI on first render.
   useEffect(() => {
@@ -352,6 +365,7 @@ export default function TechnicianView() {
         setMaterialsDone(false)
         setMaterialLines([{ inventory_item_id: '', quantity_used: '' }])
         setMaterialsSubmitting(false)
+        setInvoiceItems([{ description: '', amount: '' }])
       }
       setCurrentJob(data)
       saveCachedJob(data)
@@ -512,19 +526,25 @@ export default function TechnicianView() {
     // 15s GPS tick) could both pass the sms_sent check at the call site
     // and send the client two ETA texts. (Fixed 2026-09-07.)
     if (!currentJob || currentJob.sms_sent || !currentJob.client_phone) return
-    const { data: smsData, error: smsError } = await supabase.functions.invoke('send-eta-sms', {
-      body: { jobId: currentJob.id }
-    })
-    if (smsError || smsData?.error) {
-      setSyncWarning("The ETA text didn't send — the client won't know you're on the way.")
-      return
+    if (smsSendingRef.current) return
+    smsSendingRef.current = true
+    try {
+      const { data: smsData, error: smsError } = await supabase.functions.invoke('send-eta-sms', {
+        body: { jobId: currentJob.id }
+      })
+      if (smsError || smsData?.error) {
+        setSyncWarning("The ETA text didn't send — the client won't know you're on the way.")
+        return
+      }
+      // Mark SMS sent to prevent duplicate fires
+      const { error } = await supabase.from('jobs').update({ sms_sent: true }).eq('id', currentJob.id)
+      if (error) {
+        setSyncWarning("The ETA text sent, but marking it as sent failed — if the client gets a duplicate text later, that's why.")
+      }
+      setCurrentJob(prev => ({ ...prev, sms_sent: true }))
+    } finally {
+      smsSendingRef.current = false
     }
-    // Mark SMS sent to prevent duplicate fires
-    const { error } = await supabase.from('jobs').update({ sms_sent: true }).eq('id', currentJob.id)
-    if (error) {
-      setSyncWarning("The ETA text sent, but marking it as sent failed — if the client gets a duplicate text later, that's why.")
-    }
-    setCurrentJob(prev => ({ ...prev, sms_sent: true }))
   }
 
   async function triggerCompletionSMS() {
@@ -623,16 +643,22 @@ export default function TechnicianView() {
 
   async function handleStartJob() {
     if (!currentJob || isCrew) return
-    const { error } = await supabase.from('jobs').update({
-      status: 'active',
-      started_at: new Date().toISOString()
-    }).eq('id', currentJob.id)
-    if (error) {
-      setSyncWarning("Couldn't confirm job start with the office — you can keep working, but let your office know if this doesn't update.")
+    if (startingJob) return
+    setStartingJob(true)
+    try {
+      const { error } = await supabase.from('jobs').update({
+        status: 'active',
+        started_at: new Date().toISOString()
+      }).eq('id', currentJob.id)
+      if (error) {
+        setSyncWarning("Couldn't confirm job start with the office — you can keep working, but let your office know if this doesn't update.")
+      }
+      setCurrentJob(prev => ({ ...prev, status: 'active', started_at: new Date().toISOString() }))
+      setTracking(true)
+      setStatus('job_active')
+    } finally {
+      setStartingJob(false)
     }
-    setCurrentJob(prev => ({ ...prev, status: 'active', started_at: new Date().toISOString() }))
-    setTracking(true)
-    setStatus('job_active')
   }
 
   async function handleCompleteJob() {
@@ -754,8 +780,8 @@ export default function TechnicianView() {
 
   // For each valid material line: insert a job_materials row, then decrement
   // the matching inventory_items.quantity. Both writes are fire-and-forget-
-  // safe (never block job completion) — errors just get logged, same
-  // pattern as the technician_locations insert above.
+  // safe (never block job completion) — errors surface via setSyncWarning,
+  // same pattern as the technician_locations insert above.
   async function confirmMaterials() {
     if (materialsSubmitting) return
     setMaterialsSubmitting(true)
@@ -767,11 +793,10 @@ export default function TechnicianView() {
           inventory_item_id: l.inventory_item_id,
           item_name: item?.name || 'Unknown item',
           quantity_used: Number(l.quantity_used),
-          currentQty: item?.quantity ?? 0
         }
       })
 
-    validLines.forEach(line => {
+    validLines.forEach(async (line) => {
       supabase.from('job_materials').insert({
         job_id: currentJob.id,
         business_id: tech.business_id,
@@ -780,10 +805,28 @@ export default function TechnicianView() {
         quantity_used: line.quantity_used
       }).then(({ error }) => { if (error) console.error('job_materials insert failed', error) })
 
-      supabase.from('inventory_items').update({
-        quantity: Math.max(0, line.currentQty - line.quantity_used)
-      }).eq('id', line.inventory_item_id)
-        .then(({ error }) => { if (error) console.error('inventory_items decrement failed', error) })
+      // Re-fetch the current quantity right before decrementing instead of
+      // using the inventoryItems snapshot captured once in loadTech() — that
+      // snapshot goes stale after the first job's decrement in a session, so
+      // a second job finished on the same shift would decrement from the
+      // wrong starting quantity (lost decrements). Also refreshes local
+      // inventoryItems state so a later job in this same session sees the
+      // updated count.
+      const { data: freshItem, error: fetchError } = await supabase
+        .from('inventory_items').select('quantity').eq('id', line.inventory_item_id).maybeSingle()
+      if (fetchError) {
+        console.error('inventory_items refetch failed', fetchError)
+        setSyncWarning("A material quantity couldn't be recorded against inventory — let your office know if stock counts look off.")
+        return
+      }
+      const newQty = Math.max(0, (freshItem?.quantity ?? 0) - line.quantity_used)
+      const { error: decError } = await supabase.from('inventory_items').update({ quantity: newQty }).eq('id', line.inventory_item_id)
+      if (decError) {
+        console.error('inventory_items decrement failed', decError)
+        setSyncWarning("A material quantity couldn't be recorded against inventory — let your office know if stock counts look off.")
+      } else {
+        setInventoryItems(prev => prev.map(i => i.id === line.inventory_item_id ? { ...i, quantity: newQty } : i))
+      }
     })
 
     setMaterialsDone(true)
@@ -863,6 +906,11 @@ export default function TechnicianView() {
 
   function skipInvoice() {
     setShowInvoiceBuilder(false)
+    // Same reason as the materialLines reset below: without this, a line
+    // item typed here but skipped would carry straight into the next job's
+    // invoice builder, since submitInvoice() only resets on its own success
+    // path.
+    setInvoiceItems([{ description: '', amount: '' }])
     finishTheJob()
   }
 
@@ -1277,8 +1325,8 @@ export default function TechnicianView() {
           </button>
         )}
         {!isCrew && status === 'tracking' && currentJob && currentJob.status === 'scheduled' && (
-          <button style={styles.btnBlue} onClick={handleStartJob}>
-            Start Job
+          <button style={styles.btnBlue} onClick={handleStartJob} disabled={startingJob}>
+            {startingJob ? 'Starting...' : 'Start Job'}
           </button>
         )}
         {!isCrew && status === 'job_active' && !showInvoiceBuilder && !showChecklist && !showMaterials && (
@@ -1300,6 +1348,7 @@ export default function TechnicianView() {
               setMaterialsDone(false)
               setMaterialLines([{ inventory_item_id: '', quantity_used: '' }])
               setMaterialsSubmitting(false)
+              setInvoiceItems([{ description: '', amount: '' }])
             }}>Ready for Next Job</button>
           </div>
         )}
