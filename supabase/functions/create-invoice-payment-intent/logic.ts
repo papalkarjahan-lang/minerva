@@ -13,10 +13,15 @@ export interface InvoiceForPayment {
 
 export type InvoiceValidation = { ok: true } | { ok: false; error: string }
 
-// Guards against paying an already-paid invoice or one with no payable
-// amount — checked before ever calling Stripe.
+// Guards against paying an already-paid invoice, a voided one, or one with
+// no payable amount — checked before ever calling Stripe. Only 'unpaid' is
+// payable: this used to only check `=== 'paid'`, which meant a business
+// voiding an invoice (status -> 'void', see
+// supabase_schema_delta_operational_fixes.sql) did not stop a client who
+// still had the SMS link from paying it anyway.
 export function validateInvoiceForPayment(invoice: InvoiceForPayment): InvoiceValidation {
   if (invoice.status === 'paid') return { ok: false, error: 'Invoice is already paid' }
+  if (invoice.status === 'void') return { ok: false, error: 'Invoice has been voided' }
   if (!invoice.total || invoice.total <= 0) return { ok: false, error: 'Invoice has no payable amount' }
   return { ok: true }
 }

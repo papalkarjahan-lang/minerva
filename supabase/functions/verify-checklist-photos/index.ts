@@ -67,6 +67,21 @@ serve(async (req: Request) => {
     for (const photo of pending || []) {
       if (photo.job_id) touchedJobIds.add(photo.job_id)
 
+      // Claim this photo before doing any (slow, awaited) work on it — this
+      // runs every 15 min via pg_cron, and up to 20 sequential Claude vision
+      // calls can easily overlap with the next scheduled tick. Without this,
+      // two overlapping invocations would both SELECT the same still-
+      // 'pending' photo, both review it, and (if flagged) both insert a
+      // duplicate corrective_actions ticket for the same source_id.
+      // verification_status has no CHECK constraint, so 'reviewing' is a
+      // safe transient claim value reusing the existing column rather than
+      // adding a new one — same approach as launch-ad-campaign's
+      // status='launching' claim.
+      const { data: claimed } = await supabase.from('checklist_photos')
+        .update({ verification_status: 'reviewing' })
+        .eq('id', photo.id).eq('verification_status', 'pending').select('id')
+      if (!claimed || claimed.length === 0) continue // another run already claimed it
+
       if (!anthropicKey) {
         await supabase.from('checklist_photos').update({
           verification_status: 'unavailable',
@@ -77,7 +92,12 @@ serve(async (req: Request) => {
 
       const { data: pub } = supabase.storage.from('checklist-photos').getPublicUrl(photo.storage_path)
       const imageUrl = pub?.publicUrl
-      if (!imageUrl) continue
+      if (!imageUrl) {
+        // Release the claim — nothing was actually reviewed, so leave it
+        // 'pending' for a future run once/if storage_path gets fixed.
+        await supabase.from('checklist_photos').update({ verification_status: 'pending' }).eq('id', photo.id)
+        continue
+      }
 
       const result = await reviewPhoto(anthropicKey, imageUrl, photo.checklist_item || 'checklist item')
       await supabase.from('checklist_photos').update({

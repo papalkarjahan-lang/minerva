@@ -53,18 +53,24 @@ serve(async (req: Request) => {
     const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY')
 
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
-    const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString()
 
-    // Completed 30-60 days ago (a window, not "30+ forever", so this agent
-    // doesn't keep re-scanning years-old jobs every week once retention_sent_at
-    // logic below already excludes them anyway — the window just keeps the
-    // query cheap).
+    // Completed 30+ days ago. This used to also require completed_at >=
+    // 60 days ago (a "window", purely to keep the query cheap since
+    // retention_sent_at IS NULL already excludes anyone already checked in
+    // on) — but that upper bound meant a job completing DURING an extended
+    // cron outage/disabled period (agent_functions.enabled=false, a
+    // pg_cron failure — a real failure mode this codebase has hit before)
+    // could age straight past 60 days without this ever running, and would
+    // then be silently and permanently skipped forever with no record and
+    // no alert. Relying solely on retention_sent_at IS NULL for the
+    // ceiling (same lower-bound-only design as winback-lost-leads) means a
+    // gap in cron execution just means the backlog is caught on the next
+    // run instead of being lost.
     const { data: candidates, error } = await supabase
       .from('jobs')
       .select('id, business_id, client_name, client_phone, completed_at, notes, businesses(name)')
       .eq('status', 'complete')
       .is('retention_sent_at', null)
-      .gte('completed_at', sixtyDaysAgo)
       .lt('completed_at', thirtyDaysAgo)
 
     if (error) throw error

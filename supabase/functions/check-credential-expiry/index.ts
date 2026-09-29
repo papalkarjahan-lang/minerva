@@ -42,7 +42,7 @@ serve(async (req: Request) => {
 
     const { data: credentials, error } = await supabase
       .from('technician_credentials')
-      .select('id, business_id, technician_id, credential_name, expiry_date, warning_30_sent_at, warning_14_sent_at, warning_7_sent_at, technicians(name, current_job_id)')
+      .select('id, business_id, technician_id, credential_name, expiry_date, warning_30_sent_at, warning_14_sent_at, warning_7_sent_at, urgent_notified_at, technicians(name, current_job_id)')
     if (error) throw error
 
     let warned30 = 0, warned14 = 0, warned7 = 0, urgentPings = 0
@@ -55,6 +55,7 @@ serve(async (req: Request) => {
         warning30SentAt: cred.warning_30_sent_at,
         warning14SentAt: cred.warning_14_sent_at,
         warning7SentAt: cred.warning_7_sent_at,
+        urgentNotifiedAt: (cred as any).urgent_notified_at,
         hasCurrentJob: !!tech?.current_job_id,
       }, thresholds)
 
@@ -104,13 +105,26 @@ serve(async (req: Request) => {
       }
 
       // Urgent: expired-or-expiring-within-3-days AND currently on a job.
-      if (evalResult.urgent) {
-        await notifySlack(supabaseUrl, supabaseServiceKey, cred.business_id,
-          `🚨 *${techName}* is currently on a job with ${evalResult.expired ? 'an EXPIRED' : 'a credential expiring within 3 days'}: ${cred.credential_name || 'credential'} (expiry ${cred.expiry_date}). Worth a same-day check.`)
-        urgentPings++
-        await writeCredentialInsight(supabase, anthropicKey, cred, techName,
-          `${techName} is currently on a job with ${evalResult.expired ? 'an EXPIRED' : 'a credential expiring within 3 days'} (${cred.credential_name || 'credential'}, expiry ${cred.expiry_date}) — worth a same-day check.`,
-          `A dispatcher for a home-services business just got an urgent alert: technician "${techName}" is CURRENTLY assigned to a job while their credential "${cred.credential_name || 'credential'}" is ${evalResult.expired ? 'already EXPIRED' : 'expiring within 3 days'} (expiry ${cred.expiry_date}). Give one short, practical sentence on the single most useful same-day action.`)
+      // Unlike the 30/14/7-day thresholds, this condition can persist across
+      // many daily runs (a lapsed credential doesn't resolve itself), so it
+      // uses the same "claim on transition, clear on resolve" shape as
+      // monitor-asset-telemetry's geofence/maintenance flags — alert once
+      // when urgent_notified_at transitions null -> set, then clear it once
+      // the technician is renewed/off the job so the NEXT genuine crossing
+      // still alerts fresh, instead of re-Slacking this every single day.
+      if (evalResult.shouldNotifyUrgent) {
+        const { data: claimedUrgent } = await supabase.from('technician_credentials')
+          .update({ urgent_notified_at: new Date().toISOString() }).eq('id', cred.id).is('urgent_notified_at', null).select('id')
+        if (claimedUrgent && claimedUrgent.length > 0) {
+          await notifySlack(supabaseUrl, supabaseServiceKey, cred.business_id,
+            `🚨 *${techName}* is currently on a job with ${evalResult.expired ? 'an EXPIRED' : 'a credential expiring within 3 days'}: ${cred.credential_name || 'credential'} (expiry ${cred.expiry_date}). Worth a same-day check.`)
+          urgentPings++
+          await writeCredentialInsight(supabase, anthropicKey, cred, techName,
+            `${techName} is currently on a job with ${evalResult.expired ? 'an EXPIRED' : 'a credential expiring within 3 days'} (${cred.credential_name || 'credential'}, expiry ${cred.expiry_date}) — worth a same-day check.`,
+            `A dispatcher for a home-services business just got an urgent alert: technician "${techName}" is CURRENTLY assigned to a job while their credential "${cred.credential_name || 'credential'}" is ${evalResult.expired ? 'already EXPIRED' : 'expiring within 3 days'} (expiry ${cred.expiry_date}). Give one short, practical sentence on the single most useful same-day action.`)
+        }
+      } else if (evalResult.shouldClearUrgent) {
+        await supabase.from('technician_credentials').update({ urgent_notified_at: null }).eq('id', cred.id)
       }
     }
 

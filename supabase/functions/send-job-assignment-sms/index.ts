@@ -75,7 +75,7 @@ serve(async (req: Request) => {
     if (!jobId || !technicianId) throw new Error('jobId and technicianId are required')
 
     const { data: job, error: jobErr } = await supabase.from('jobs')
-      .select('id, client_name, client_address, scheduled_time, urgency, businesses(name, owner_user_id, contact_email)')
+      .select('id, client_name, client_address, scheduled_time, urgency, technician_id, technician_notified_at, businesses(name, owner_user_id, contact_email)')
       .eq('id', jobId).maybeSingle()
     if (jobErr || !job) throw new Error('job not found')
 
@@ -104,10 +104,33 @@ serve(async (req: Request) => {
       }
     }
 
+    // Atomically claim this exact assignment before sending anything — same
+    // claim-before-notify pattern as send-eta-sms/send-invoice-sms. Without
+    // this, a flaky-connection resubmit from DispatcherView's assignJob(),
+    // a duplicate DB-trigger fire from auto-assign-technician, or a manual
+    // replay of this same {jobId, technicianId} pair could text the same
+    // real technician (and the same bumped-off previous technician) twice.
+    // Scoped to technician_notified_for so a GENUINE reassignment (a
+    // different technicianId than last notified) is still allowed through.
+    const { data: claimed, error: claimErr } = await supabase
+      .from('jobs')
+      .update({ technician_notified_at: new Date().toISOString(), technician_notified_for: technicianId })
+      .eq('id', jobId)
+      .or(`technician_notified_for.is.null,technician_notified_for.neq.${technicianId}`)
+      .select('id')
+    if (claimErr) throw claimErr
+    if (!claimed || claimed.length === 0) {
+      return new Response(JSON.stringify({ success: true, alreadyNotified: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+
     const TWILIO_SID = Deno.env.get('TWILIO_ACCOUNT_SID')
     const TWILIO_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN')
     const TWILIO_FROM = Deno.env.get('TWILIO_PHONE_NUMBER')
     if (!TWILIO_SID || !TWILIO_TOKEN || !TWILIO_FROM) {
+      await supabase.from('jobs').update({ technician_notified_at: null, technician_notified_for: null }).eq('id', jobId).then(() => {}, () => {})
       throw new Error('Twilio credentials not configured in Supabase secrets')
     }
 
@@ -139,6 +162,14 @@ serve(async (req: Request) => {
       } catch (err) {
         console.error('send-job-assignment-sms: new technician send failed', err)
         results.newTechnician = 'failed'
+        // Release the claim so a genuine retry after a transient Twilio/
+        // network error isn't permanently blocked — same claim-then-release-
+        // on-failure pattern as send-eta-sms/send-invoice-sms. Only released
+        // here (not on a previous-technician send failure below) since the
+        // new-technician text is the one this claim actually gates a retry
+        // of; re-releasing after a successful new-tech send would risk a
+        // retry double-texting the technician who already got it.
+        await supabase.from('jobs').update({ technician_notified_at: null, technician_notified_for: null }).eq('id', jobId).then(() => {}, () => {})
       }
     } else {
       results.newTechnician = 'no_phone'

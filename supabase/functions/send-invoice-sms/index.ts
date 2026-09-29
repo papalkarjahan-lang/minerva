@@ -54,7 +54,7 @@ serve(async (req: Request) => {
 
     const { data: invoice, error: invErr } = await supabase
       .from('invoices')
-      .select('id, client_name, client_phone, total, business_id, job_id, businesses(name, owner_user_id, contact_email), jobs(technician_id, technicians!jobs_technician_id_fkey(id, auth_user_id))')
+      .select('id, client_name, client_phone, total, business_id, job_id, invoice_sms_sent, businesses(name, owner_user_id, contact_email), jobs(technician_id, technicians!jobs_technician_id_fkey(id, auth_user_id))')
       .eq('id', invoiceId)
       .maybeSingle()
     if (invErr || !invoice) throw new Error('Invoice not found')
@@ -85,6 +85,25 @@ serve(async (req: Request) => {
       })
     }
 
+    // Atomically claim the send before calling Twilio — same claim-before-
+    // notify pattern as send-eta-sms/send-completion-sms (fixed 2026-09-29;
+    // this had no dedup at all, unlike its siblings). Without this, a
+    // flaky-connection resubmit from TechnicianView, or a manual replay,
+    // could text the same real client the same invoice/payment link twice.
+    const { data: claimed, error: claimErr } = await supabase
+      .from('invoices')
+      .update({ invoice_sms_sent: true })
+      .eq('id', invoice.id)
+      .is('invoice_sms_sent', false)
+      .select('id')
+    if (claimErr) throw claimErr
+    if (!claimed || claimed.length === 0) {
+      return new Response(JSON.stringify({ success: true, alreadySent: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+
     const businessName = (invoice as any).businesses?.name || 'us'
     const invoiceUrl = `${APP_URL}/invoice/${invoice.id}`
 
@@ -95,24 +114,33 @@ serve(async (req: Request) => {
     const TWILIO_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN')
     const TWILIO_FROM = Deno.env.get('TWILIO_PHONE_NUMBER')
     if (!TWILIO_SID || !TWILIO_TOKEN || !TWILIO_FROM) {
+      await supabase.from('invoices').update({ invoice_sms_sent: false }).eq('id', invoice.id).then(() => {}, () => {})
       throw new Error('Twilio credentials not configured in Supabase secrets')
     }
 
-    const response = await fetch(
-      `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json`,
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': 'Basic ' + btoa(`${TWILIO_SID}:${TWILIO_TOKEN}`),
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({ To: phone, From: TWILIO_FROM, Body: message }).toString(),
+    let result: any
+    try {
+      const response = await fetch(
+        `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': 'Basic ' + btoa(`${TWILIO_SID}:${TWILIO_TOKEN}`),
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: new URLSearchParams({ To: phone, From: TWILIO_FROM, Body: message }).toString(),
+        }
+      )
+      result = await response.json()
+      if (result.error_code) {
+        throw new Error(`Twilio error ${result.error_code}: ${result.message}`)
       }
-    )
-
-    const result = await response.json()
-    if (result.error_code) {
-      throw new Error(`Twilio error ${result.error_code}: ${result.message}`)
+    } catch (sendErr) {
+      // Release the claim on failure so a genuine retry after a transient
+      // Twilio/network error isn't permanently blocked — same claim-then-
+      // release-on-failure pattern as send-eta-sms.
+      await supabase.from('invoices').update({ invoice_sms_sent: false }).eq('id', invoice.id).then(() => {}, () => {})
+      throw sendErr
     }
 
     supabase.rpc('record_agent_run', { fn_name: 'send-invoice-sms', status: 'ok' }).then(() => {}, () => {})

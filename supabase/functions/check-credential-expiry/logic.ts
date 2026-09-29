@@ -28,6 +28,7 @@ export interface CredentialEvalInput {
   warning30SentAt: string | null | undefined
   warning14SentAt: string | null | undefined
   warning7SentAt: string | null | undefined
+  urgentNotifiedAt: string | null | undefined
   hasCurrentJob: boolean
 }
 
@@ -36,21 +37,33 @@ export interface CredentialEvalResult {
   should14: boolean
   should7: boolean
   urgent: boolean
+  shouldNotifyUrgent: boolean
+  shouldClearUrgent: boolean
   expired: boolean
 }
 
 // Non-overlapping 30/14/7-day threshold checks (each gated on its own
 // "already warned" flag so a credential can't re-fire the same threshold),
 // plus a same-day urgent check for expired-or-within-3-days credentials
-// belonging to a technician currently on a job.
+// belonging to a technician currently on a job. The urgent condition can
+// persist across many daily runs (a lapsed credential doesn't resolve
+// itself), so — same "claim on transition, clear on resolve" shape as
+// monitor-asset-telemetry's geofence/maintenance flags — shouldNotifyUrgent
+// only fires once per crossing (urgentNotifiedAt unset) and
+// shouldClearUrgent resets it once the condition genuinely resolves
+// (renewed, or the technician is no longer on a job), so the NEXT genuine
+// crossing still alerts fresh.
 export function evaluateCredential(input: CredentialEvalInput, thresholds: CredentialThresholds): CredentialEvalResult {
-  const { expiryDate, warning30SentAt, warning14SentAt, warning7SentAt, hasCurrentJob } = input
+  const { expiryDate, warning30SentAt, warning14SentAt, warning7SentAt, urgentNotifiedAt, hasCurrentJob } = input
   const { in30, in14, in7, in3, today } = thresholds
+  const urgent = expiryDate <= in3 && hasCurrentJob
   return {
     should30: !warning30SentAt && expiryDate <= in30 && expiryDate > in14,
     should14: !warning14SentAt && expiryDate <= in14 && expiryDate > in7,
     should7: !warning7SentAt && expiryDate <= in7,
-    urgent: expiryDate <= in3 && hasCurrentJob,
+    urgent,
+    shouldNotifyUrgent: urgent && !urgentNotifiedAt,
+    shouldClearUrgent: !urgent && !!urgentNotifiedAt,
     expired: expiryDate < today,
   }
 }

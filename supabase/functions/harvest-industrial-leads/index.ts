@@ -64,8 +64,16 @@ serve(async (req: Request) => {
       })
     }
 
+    // This endpoint ingests caller-supplied, quality-uncertain data (a CSV
+    // export of a third-party registry, or a future vendor webhook) — a
+    // realistic CSV->JSON conversion artifact (e.g. a stray blank/null
+    // element) used to crash the whole batch here (`l.company_name` on a
+    // null element throws), silently losing every otherwise-valid lead in
+    // that same request too. Guarded with `l &&` first. Also now reports
+    // how many rows were skipped for missing company_name instead of
+    // silently discarding them with zero visibility.
     const rows = leads
-      .filter((l: any) => l.company_name)
+      .filter((l: any) => l && l.company_name)
       .map((l: any) => ({
         business_id: businessId,
         company_name: l.company_name,
@@ -74,8 +82,11 @@ serve(async (req: Request) => {
         equipment_need: l.equipment_need || null,
         estimated_size: l.estimated_size || null,
       }))
+    const skipped = leads.length - rows.length
 
-    const { data, error } = await supabase.from('industrial_leads').insert(rows).select('id')
+    const { data, error } = rows.length > 0
+      ? await supabase.from('industrial_leads').insert(rows).select('id')
+      : { data: [], error: null }
     if (error) throw error
 
     await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
@@ -85,7 +96,7 @@ serve(async (req: Request) => {
     }).catch(() => {})
 
     supabase.rpc('record_agent_run', { fn_name: 'harvest-industrial-leads', status: 'ok' }).then(() => {}, () => {})
-    return new Response(JSON.stringify({ success: true, inserted: data?.length || 0 }), {
+    return new Response(JSON.stringify({ success: true, inserted: data?.length || 0, skipped }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     })

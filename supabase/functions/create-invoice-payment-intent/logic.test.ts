@@ -11,20 +11,24 @@ describe('validateInvoiceForPayment', () => {
     expect(validateInvoiceForPayment({ status: 'paid', total: 100 })).toEqual({ ok: false, error: 'Invoice is already paid' })
   })
 
+  it('rejects a voided invoice even though the client link still works', () => {
+    expect(validateInvoiceForPayment({ status: 'void', total: 100 })).toEqual({ ok: false, error: 'Invoice has been voided' })
+  })
+
   it('rejects a zero-total invoice', () => {
-    expect(validateInvoiceForPayment({ status: 'sent', total: 0 })).toEqual({ ok: false, error: 'Invoice has no payable amount' })
+    expect(validateInvoiceForPayment({ status: 'unpaid', total: 0 })).toEqual({ ok: false, error: 'Invoice has no payable amount' })
   })
 
   it('rejects a negative-total invoice', () => {
-    expect(validateInvoiceForPayment({ status: 'sent', total: -50 })).toEqual({ ok: false, error: 'Invoice has no payable amount' })
+    expect(validateInvoiceForPayment({ status: 'unpaid', total: -50 })).toEqual({ ok: false, error: 'Invoice has no payable amount' })
   })
 
   it('rejects a null total', () => {
-    expect(validateInvoiceForPayment({ status: 'sent', total: null })).toEqual({ ok: false, error: 'Invoice has no payable amount' })
+    expect(validateInvoiceForPayment({ status: 'unpaid', total: null })).toEqual({ ok: false, error: 'Invoice has no payable amount' })
   })
 
   it('accepts a valid unpaid invoice with a positive total', () => {
-    expect(validateInvoiceForPayment({ status: 'sent', total: 110.5 })).toEqual({ ok: true })
+    expect(validateInvoiceForPayment({ status: 'unpaid', total: 110.5 })).toEqual({ ok: true })
   })
 })
 

@@ -75,7 +75,7 @@ serve(async (req: Request) => {
     let clientSecret: string | null = null
     let paymentIntentId = invoice.stripe_payment_intent_id
 
-    if (paymentIntentId) {
+    if (paymentIntentId && paymentIntentId !== 'pending') {
       const existing = await fetch(`https://api.stripe.com/v1/payment_intents/${paymentIntentId}`, {
         headers: { 'Authorization': `Bearer ${STRIPE_KEY}` },
       })
@@ -88,35 +88,76 @@ serve(async (req: Request) => {
     }
 
     if (!clientSecret) {
-      const amountCents = centsFromDollars(invoice.total)
-      const params = new URLSearchParams({
-        'amount': String(amountCents),
-        'currency': 'aud',
-        'automatic_payment_methods[enabled]': 'true',
-        'metadata[invoice_id]': invoice.id,
-        'metadata[business_id]': invoice.business_id,
-        'description': buildPaymentIntentDescription(invoice.client_name),
-      })
+      // This invoice's public pay link has no login, so nothing stops it
+      // being opened twice at once (two tabs/devices). Without a claim
+      // here, two concurrent requests could both read stripe_payment_
+      // intent_id as null, both mint a separate Stripe PaymentIntent, and
+      // whichever DB write lands last silently discards the other PI's id
+      // — if the client actually pays on the "lost" one, stripe-webhook's
+      // exact-match update finds 0 rows and the invoice is stuck unpaid
+      // forever with no alert, or (if both are paid) the client is
+      // double-charged. Claim atomically first so only one request can
+      // proceed to create a PaymentIntent for this invoice at a time.
+      const claimUpdate = supabase.from('invoices').update({ stripe_payment_intent_id: 'pending' }).eq('id', invoice.id)
+      const { data: claimed } = await (invoice.stripe_payment_intent_id
+        ? claimUpdate.eq('stripe_payment_intent_id', invoice.stripe_payment_intent_id)
+        : claimUpdate.is('stripe_payment_intent_id', null)
+      ).select('id')
 
-      const response = await fetch('https://api.stripe.com/v1/payment_intents', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${STRIPE_KEY}`,
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: params.toString(),
-      })
-      const pi = await response.json()
-      if (pi.error) throw new Error(pi.error.message)
+      if (!claimed || claimed.length === 0) {
+        // Lost the race — another concurrent request is already creating
+        // (or just created) a PaymentIntent for this invoice. Re-fetch and
+        // try to reuse it rather than minting a second one.
+        const { data: fresh } = await supabase.from('invoices').select('stripe_payment_intent_id').eq('id', invoice.id).maybeSingle()
+        if (fresh?.stripe_payment_intent_id && fresh.stripe_payment_intent_id !== 'pending') {
+          const existing = await fetch(`https://api.stripe.com/v1/payment_intents/${fresh.stripe_payment_intent_id}`, {
+            headers: { 'Authorization': `Bearer ${STRIPE_KEY}` },
+          })
+          const existingPi = await existing.json()
+          if (shouldReuseExistingPaymentIntent(existingPi)) clientSecret = existingPi.client_secret
+        }
+        if (!clientSecret) {
+          return new Response(JSON.stringify({ error: 'Payment setup already in progress for this invoice — please try again in a few seconds.' }), {
+            status: 409,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders },
+          })
+        }
+      } else {
+        // We hold the claim — safe to create a new PaymentIntent.
+        const amountCents = centsFromDollars(invoice.total)
+        const params = new URLSearchParams({
+          'amount': String(amountCents),
+          'currency': 'aud',
+          'automatic_payment_methods[enabled]': 'true',
+          'metadata[invoice_id]': invoice.id,
+          'metadata[business_id]': invoice.business_id,
+          'description': buildPaymentIntentDescription(invoice.client_name),
+        })
 
-      clientSecret = pi.client_secret
-      paymentIntentId = pi.id
+        const response = await fetch('https://api.stripe.com/v1/payment_intents', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${STRIPE_KEY}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: params.toString(),
+        })
+        const pi = await response.json()
+        if (pi.error) {
+          // Release the claim so a retry isn't stuck behind "pending" forever.
+          await supabase.from('invoices').update({ stripe_payment_intent_id: invoice.stripe_payment_intent_id || null }).eq('id', invoice.id)
+          throw new Error(pi.error.message)
+        }
 
-      const { error: updateErr } = await supabase
-        .from('invoices')
-        .update({ stripe_payment_intent_id: paymentIntentId })
-        .eq('id', invoice.id)
-      if (updateErr) console.error('Failed to save stripe_payment_intent_id:', updateErr.message)
+        clientSecret = pi.client_secret
+        paymentIntentId = pi.id
+
+        const { error: updateErr } = await supabase
+          .from('invoices')
+          .update({ stripe_payment_intent_id: paymentIntentId })
+          .eq('id', invoice.id)
+        if (updateErr) console.error('Failed to save stripe_payment_intent_id:', updateErr.message)
+      }
     }
 
     supabase.rpc('record_agent_run', { fn_name: 'create-invoice-payment-intent', status: 'ok' }).then(() => {}, () => {})

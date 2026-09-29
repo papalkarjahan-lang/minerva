@@ -80,13 +80,22 @@ serve(async (req: Request) => {
 
       if (!bodyText.includes('unsubscribe')) bodyText += UNSUBSCRIBE_LINE
 
-      await supabase.from('outreach_prospects').update({
+      // Atomically re-check status/followup_stage haven't moved since the
+      // SELECT above before writing — unlike the sibling outreach functions
+      // (nurture-stale-leads, retention-checkin, winback-lost-leads,
+      // sequence-handoffs), this final write had no state guard at all. An
+      // overlapping/duplicate invocation (or simply a human clicking "Send
+      // approved" in the admin console between this run's SELECT and this
+      // UPDATE) could otherwise have this write silently revert an
+      // already-sent prospect back to status='drafted' with stale content,
+      // resurfacing it for a human to re-approve and duplicate-send.
+      const { data: claimed } = await supabase.from('outreach_prospects').update({
         draft_subject: subject,
         draft_body: bodyText,
         status: 'drafted',
         followup_stage: nextStage,
-      }).eq('id', p.id)
-      drafted++
+      }).eq('id', p.id).eq('status', 'sent').eq('followup_stage', p.followup_stage || 0).select('id')
+      if (claimed && claimed.length > 0) drafted++
     }
 
     await supabase.rpc('record_agent_run', { fn_name: 'followup-outreach', status: 'ok' })

@@ -27,7 +27,9 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
-import { evaluateForecastRisk } from "./logic.ts"
+import { evaluateForecastRisk, addLocalDays, localMidnightUTC } from "./logic.ts"
+
+const BUSINESS_TIMEZONE = 'Australia/Sydney'
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -50,11 +52,10 @@ serve(async (req: Request) => {
       .not('weather_sensitive_trade_types', 'is', null)
     if (error) throw error
 
-    const tomorrowStart = new Date()
-    tomorrowStart.setUTCDate(tomorrowStart.getUTCDate() + 1)
-    tomorrowStart.setUTCHours(0, 0, 0, 0)
-    const tomorrowEnd = new Date(tomorrowStart.getTime() + 24 * 60 * 60 * 1000)
-    const tomorrowDateStr = tomorrowStart.toISOString().slice(0, 10)
+    const todayLocalYMD = new Intl.DateTimeFormat('en-CA', { timeZone: BUSINESS_TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
+    const tomorrowDateStr = addLocalDays(todayLocalYMD, 1)
+    const tomorrowStart = localMidnightUTC(tomorrowDateStr, BUSINESS_TIMEZONE)
+    const tomorrowEnd = localMidnightUTC(addLocalDays(tomorrowDateStr, 1), BUSINESS_TIMEZONE)
 
     let checked = 0, drafted = 0
 

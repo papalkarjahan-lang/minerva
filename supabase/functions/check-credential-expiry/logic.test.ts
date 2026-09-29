@@ -15,7 +15,7 @@ describe('computeThresholds', () => {
 
 describe('evaluateCredential', () => {
   const thresholds = computeThresholds(new Date('2026-01-01T00:00:00.000Z'))
-  const base = { warning30SentAt: null, warning14SentAt: null, warning7SentAt: null, hasCurrentJob: false }
+  const base = { warning30SentAt: null, warning14SentAt: null, warning7SentAt: null, urgentNotifiedAt: null, hasCurrentJob: false }
 
   it('flags the 30-day threshold when expiring between 14 and 30 days out', () => {
     const result = evaluateCredential({ ...base, expiryDate: '2026-01-20' }, thresholds)
@@ -63,5 +63,24 @@ describe('evaluateCredential', () => {
   it('is not urgent when expiry is more than 3 days out even if on a job', () => {
     const result = evaluateCredential({ ...base, expiryDate: '2026-01-10', hasCurrentJob: true }, thresholds)
     expect(result.urgent).toBe(false)
+  })
+
+  it('should notify urgent on first crossing (not yet notified)', () => {
+    const result = evaluateCredential({ ...base, expiryDate: '2026-01-02', hasCurrentJob: true }, thresholds)
+    expect(result.shouldNotifyUrgent).toBe(true)
+    expect(result.shouldClearUrgent).toBe(false)
+  })
+
+  it('does not re-notify urgent once already notified, while condition persists', () => {
+    const result = evaluateCredential({ ...base, expiryDate: '2026-01-02', hasCurrentJob: true, urgentNotifiedAt: '2026-01-01T00:00:00Z' }, thresholds)
+    expect(result.urgent).toBe(true)
+    expect(result.shouldNotifyUrgent).toBe(false)
+    expect(result.shouldClearUrgent).toBe(false)
+  })
+
+  it('clears the urgent flag once the condition resolves (renewed or off the job)', () => {
+    const result = evaluateCredential({ ...base, expiryDate: '2026-01-10', hasCurrentJob: true, urgentNotifiedAt: '2026-01-01T00:00:00Z' }, thresholds)
+    expect(result.urgent).toBe(false)
+    expect(result.shouldClearUrgent).toBe(true)
   })
 })

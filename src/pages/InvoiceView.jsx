@@ -92,7 +92,7 @@ export default function InvoiceView() {
             <p style={styles.bizName}>{business?.name}</p>
             <h1 style={styles.title}>Invoice</h1>
           </div>
-          <span style={styles.statusBadge(invoice.status)}>{invoice.status === 'paid' ? 'PAID' : 'UNPAID'}</span>
+          <span style={styles.statusBadge(invoice.status)}>{invoice.status === 'paid' ? 'PAID' : invoice.status === 'void' ? 'VOID' : 'UNPAID'}</span>
         </div>
 
         {invoice.ai_verified && (
@@ -126,11 +126,11 @@ export default function InvoiceView() {
           <span style={styles.totalValue}>${Number(invoice.total).toFixed(2)}</span>
         </div>
 
-        {invoice.status !== 'paid' && stripePromise && !payOpen && (
+        {invoice.status === 'unpaid' && stripePromise && !payOpen && (
           <button style={styles.payButton} onClick={startPayNow}>Pay now with card</button>
         )}
 
-        {invoice.status !== 'paid' && payOpen && (
+        {invoice.status === 'unpaid' && payOpen && (
           <div style={{ marginTop: 16 }}>
             {payError && <p style={{ color: '#8A2525', fontSize: 13, marginBottom: 10 }}>{payError}</p>}
             {clientSecret ? (
@@ -146,6 +146,8 @@ export default function InvoiceView() {
         <p style={styles.footerNote}>
           {invoice.status === 'paid'
             ? 'This invoice has been marked as paid. Thank you!'
+            : invoice.status === 'void'
+            ? 'This invoice has been voided and is no longer payable.'
             : `Or arrange payment with ${business?.name || 'your provider'} directly.`}
         </p>
       </div>
@@ -217,7 +219,10 @@ const styles = {
   card: { background: '#0a0f1d', border: '1px solid #1e293b', borderRadius: 20, padding: 32, maxWidth: 420, width: '100%' },
   bizName: { color: '#555', fontSize: 12, letterSpacing: 2, textTransform: 'uppercase', margin: '0 0 4px' },
   title: { color: '#fff', fontSize: 24, fontWeight: 'bold', margin: 0 },
-  statusBadge: (status) => ({ fontSize: 11, fontWeight: 'bold', letterSpacing: 1, padding: '4px 12px', borderRadius: 20, color: status === 'paid' ? '#1D9E75' : '#A87C16', background: status === 'paid' ? '#1D9E7522' : '#A87C1622', border: `1px solid ${status === 'paid' ? '#1D9E75' : '#A87C16'}` }),
+  statusBadge: (status) => {
+    const color = status === 'paid' ? '#1D9E75' : status === 'void' ? '#666' : '#A87C16'
+    return { fontSize: 11, fontWeight: 'bold', letterSpacing: 1, padding: '4px 12px', borderRadius: 20, color, background: `${color}22`, border: `1px solid ${color}` }
+  },
   verifiedNote: { color: '#1D9E75', fontSize: 12, margin: '0 0 10px' },
   clientLine: { color: '#ccc', fontSize: 14, margin: '0 0 2px' },
   dateLine: { color: '#666', fontSize: 12, margin: '0 0 16px' },

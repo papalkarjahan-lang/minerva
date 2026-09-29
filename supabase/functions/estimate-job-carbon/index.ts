@@ -87,14 +87,25 @@ serve(async (req: Request) => {
       if (!estimate) continue // fewer than 2 stops, or zero distance between them
 
       const lastJob = jobsForTech[jobsForTech.length - 1]
-      await supabase.from('carbon_estimates').insert({
+      // Upsert on job_id rather than a plain insert — this cron's window is
+      // a rolling "last 24h", not a strict once-per-calendar-day guarantee,
+      // so an overlapping/duplicate run (manual retrigger, or two cron
+      // firings close together) would otherwise see the exact same set of
+      // jobs for a technician and insert a SECOND carbon_estimates row
+      // anchored to the same lastJob.id, double-counting that day's CO2-e
+      // in any report/tender that sums this table. job_id already uniquely
+      // anchors one estimate per technician-day (each job has exactly one
+      // technician), so it's a safe, always-available dedup key — no new
+      // schema delta needed since the column already exists.
+      const { error: upsertErr } = await supabase.from('carbon_estimates').upsert({
         business_id: lastJob.business_id,
         job_id: lastJob.id,
         distance_km: estimate.distanceKm,
         vehicle_type: 'light_commercial',
         estimated_kg_co2e: estimate.estimatedKgCo2e,
         factor_basis: FACTOR_BASIS,
-      })
+      }, { onConflict: 'job_id' })
+      if (upsertErr) { console.error('estimate-job-carbon: upsert failed', upsertErr); continue }
       estimatesCreated++
     }
 
