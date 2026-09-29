@@ -55,6 +55,7 @@ export default function TrackingView() {
   const [rebookError, setRebookError] = useState(null)
 
   async function submitRebooking() {
+    if (rebookSubmitting) return
     setRebookSubmitting(true)
     setRebookError(null)
     const { error } = await supabase.from('leads').insert({

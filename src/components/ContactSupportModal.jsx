@@ -24,6 +24,7 @@ export default function ContactSupportModal({ businessId, defaultName = '', defa
 
   async function handleSubmit(e) {
     e.preventDefault()
+    if (sending) return
     setSending(true)
     setError(null)
     const { error: insertErr } = await supabase.from('support_requests').insert({

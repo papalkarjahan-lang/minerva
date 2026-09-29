@@ -621,6 +621,7 @@ export default function TechnicianView() {
   // optional (null) so a technician can log a near-miss/hazard/note even
   // when not currently on a job.
   async function submitIncident() {
+    if (incidentSubmitting) return
     const description = incidentDescription.trim()
     if (!description || !tech) return
     setIncidentSubmitting(true)
@@ -806,7 +807,19 @@ export default function TechnicianView() {
         }
       })
 
-    validLines.forEach(async (line) => {
+    // job_materials rows stay one-per-original-line (audit trail keeps full
+    // granularity — e.g. "2x used at 10am, 1x more used at 2pm" is still
+    // visible as two rows), but inventory_items must be decremented exactly
+    // once per unique item. The previous validLines.forEach(async...) fired
+    // every line's read-modify-write concurrently and unawaited; if two
+    // lines referenced the same inventory_item_id, both read the same
+    // stale `quantity` via SELECT before either UPDATE landed, so one
+    // decrement was silently lost (inventory ends up overstated — a real
+    // stock-accuracy bug, not just a double-decrement risk). Fixed
+    // 2026-09-29 by summing quantity_used per inventory_item_id first, then
+    // awaiting each item's fetch-and-decrement sequentially so no two
+    // decrements for the same item can race each other.
+    validLines.forEach((line) => {
       supabase.from('job_materials').insert({
         job_id: currentJob.id,
         business_id: tech.business_id,
@@ -814,7 +827,14 @@ export default function TechnicianView() {
         item_name: line.item_name,
         quantity_used: line.quantity_used
       }).then(({ error }) => { if (error) console.error('job_materials insert failed', error) })
+    })
 
+    const usedByItem = new Map()
+    for (const line of validLines) {
+      usedByItem.set(line.inventory_item_id, (usedByItem.get(line.inventory_item_id) || 0) + line.quantity_used)
+    }
+
+    for (const [inventoryItemId, totalUsed] of usedByItem) {
       // Re-fetch the current quantity right before decrementing instead of
       // using the inventoryItems snapshot captured once in loadTech() — that
       // snapshot goes stale after the first job's decrement in a session, so
@@ -823,21 +843,21 @@ export default function TechnicianView() {
       // inventoryItems state so a later job in this same session sees the
       // updated count.
       const { data: freshItem, error: fetchError } = await supabase
-        .from('inventory_items').select('quantity').eq('id', line.inventory_item_id).maybeSingle()
+        .from('inventory_items').select('quantity').eq('id', inventoryItemId).maybeSingle()
       if (fetchError) {
         console.error('inventory_items refetch failed', fetchError)
         setSyncWarning("A material quantity couldn't be recorded against inventory — let your office know if stock counts look off.")
-        return
+        continue
       }
-      const newQty = Math.max(0, (freshItem?.quantity ?? 0) - line.quantity_used)
-      const { error: decError } = await supabase.from('inventory_items').update({ quantity: newQty }).eq('id', line.inventory_item_id)
+      const newQty = Math.max(0, (freshItem?.quantity ?? 0) - totalUsed)
+      const { error: decError } = await supabase.from('inventory_items').update({ quantity: newQty }).eq('id', inventoryItemId)
       if (decError) {
         console.error('inventory_items decrement failed', decError)
         setSyncWarning("A material quantity couldn't be recorded against inventory — let your office know if stock counts look off.")
       } else {
-        setInventoryItems(prev => prev.map(i => i.id === line.inventory_item_id ? { ...i, quantity: newQty } : i))
+        setInventoryItems(prev => prev.map(i => i.id === inventoryItemId ? { ...i, quantity: newQty } : i))
       }
-    })
+    }
 
     setMaterialsDone(true)
     setShowMaterials(false)

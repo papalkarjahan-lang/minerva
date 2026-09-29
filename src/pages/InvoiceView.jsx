@@ -31,6 +31,7 @@ export default function InvoiceView() {
   const [clientSecret, setClientSecret] = useState(null)
   const [payError, setPayError] = useState(null)
   const [payOpen, setPayOpen] = useState(false)
+  const [payLoading, setPayLoading] = useState(false)
 
   useEffect(() => { loadInvoice() }, [invoiceId])
 
@@ -60,10 +61,13 @@ export default function InvoiceView() {
   }
 
   async function startPayNow() {
+    if (payLoading) return
     setPayError(null)
     setPayOpen(true)
     if (clientSecret) return // already fetched
+    setPayLoading(true)
     const { data, error: err } = await supabase.functions.invoke('create-invoice-payment-intent', { body: { invoiceId } })
+    setPayLoading(false)
     if (err || data?.error) { setPayError(data?.error || 'Could not start payment. Please try again.'); return }
     setClientSecret(data.clientSecret)
   }
