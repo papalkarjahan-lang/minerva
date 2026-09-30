@@ -44,6 +44,21 @@
 // first written for). Registered in agent_functions for dashboard
 // visibility only. See supabase_schema_delta_agent_registration_round2.sql
 // for the new row.
+//
+// Rate limiting added 2026-09-30: this is a public, --verify-jwt-with-
+// anon-key-only endpoint that checks a bare PIN with no rate limiting at
+// all — unlike ai-intake-chat/client-support-chat, which both already use
+// the check_rate_limit() RPC (supabase_schema_delta_rate_limits.sql) for
+// the same defense-in-depth reasoning. Practical brute-force risk is low
+// (generatePin() draws from a large alphanumeric space, see src/utils.js),
+// but this closes the gap rather than leaving it as the one PIN-checking
+// endpoint with no cap on guess volume. Keyed by client IP
+// (x-forwarded-for, set by the Deno Deploy edge proxy this runs behind)
+// so one attacker's guessing doesn't rate-limit anyone else; if that
+// header is ever absent, the check is skipped (fails open) rather than
+// keying on a shared bucket that could lock out every real technician at
+// once — same "never let observability/defense-in-depth machinery break
+// the real request" posture used throughout this codebase.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
@@ -72,6 +87,23 @@ serve(async (req: Request) => {
         status: 400,
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
       })
+    }
+
+    const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+    if (clientIp) {
+      const { data: withinLimit, error: rlErr } = await supabase.rpc('check_rate_limit', {
+        p_key: `techlogin:${clientIp}`,
+        p_window_seconds: 300,
+        p_max_requests: 30,
+      })
+      if (rlErr) {
+        console.error('technician-login: rate limit check failed, allowing request through', rlErr)
+      } else if (withinLimit === false) {
+        return new Response(JSON.stringify({ error: 'Too many attempts — please try again in a few minutes.' }), {
+          status: 429,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        })
+      }
     }
 
     const { data: tech, error: techErr } = await supabase

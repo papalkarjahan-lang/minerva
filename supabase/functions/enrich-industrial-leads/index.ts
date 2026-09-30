@@ -121,15 +121,30 @@ serve(async (req: Request) => {
         .lt('created_at', dayAgo)
 
       if (!unenriched || unenriched.length === 0) continue
-      const names = unenriched.slice(0, 3).map((l: any) => l.company_name).join(', ')
+
+      // Atomically claim these leads BEFORE Slacking, not after — same
+      // claim-before-notify pattern used across this codebase's other
+      // alerting agents (e.g. verify-industrial-compliance). The previous
+      // order (Slack first, flag second) left a TOCTOU window where an
+      // overlapping/duplicate daily cron run could re-select the same
+      // still-unflagged leads and send a second Slack nudge for the same
+      // batch. Re-selecting with .is('enrichment_nudge_sent_at', null) in
+      // the WHERE clause (not just the initial SELECT) means a concurrent
+      // run's claim already flipped the flag, so this update affects 0 of
+      // those rows and they're excluded from the notification text below.
+      const { data: claimed } = await supabase.from('industrial_leads')
+        .update({ enrichment_nudge_sent_at: new Date().toISOString() })
+        .in('id', unenriched.map((l: any) => l.id))
+        .is('enrichment_nudge_sent_at', null)
+        .select('id, company_name')
+      if (!claimed || claimed.length === 0) continue
+
+      const names = claimed.slice(0, 3).map((l: any) => l.company_name).join(', ')
       await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
-        body: JSON.stringify({ businessId: biz.id, text: `📇 *Enrich*: ${unenriched.length} lead(s) still missing a decision-maker contact — ${names}${unenriched.length > 3 ? ', ...' : ''}.` }),
+        body: JSON.stringify({ businessId: biz.id, text: `📇 *Enrich*: ${claimed.length} lead(s) still missing a decision-maker contact — ${names}${claimed.length > 3 ? ', ...' : ''}.` }),
       }).catch(() => {})
-      await supabase.from('industrial_leads')
-        .update({ enrichment_nudge_sent_at: new Date().toISOString() })
-        .in('id', unenriched.map((l: any) => l.id))
       nudged++
     }
 

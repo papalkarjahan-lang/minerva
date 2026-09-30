@@ -20,6 +20,16 @@
 // by track-review-click.
 //
 // Deploy with: supabase functions deploy respond-to-quote --no-verify-jwt
+//
+// No agent_functions.enabled kill-switch check here — deliberately, same
+// reasoning as track-review-click: this fires when a real client clicks
+// Accept/Decline on a link already sent to their own phone/inbox, so a
+// kill switch could only ever turn a working response link into a broken
+// one for someone who already has it, not prevent an unwanted send. The
+// one real external side-effect this triggers (run-custom-workflows,
+// which can fire a business's own SMS/email/Slack rules) already has its
+// own enabled check, so that path stays governable without gating the
+// client's own accept/decline action itself.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"

@@ -51,6 +51,18 @@
 // agent stops working" was itself invisible to that same check.
 //
 // Deploy with: supabase functions deploy test-agent-health
+//
+// No agent_functions.enabled self-check here — deliberately, and matched
+// by the frontend: test-agent-health is NOT in DispatcherView.jsx's
+// KILL_SWITCH_GATED_FUNCTIONS list, so there's no UI toggle for it at all.
+// This is the one function whose whole job is noticing when OTHER agents
+// have gone silent or unhealthy — giving it its own off switch would mean
+// a single misclick (or a copy-paste error extending the gated-functions
+// list) could silently disable the one thing that would otherwise flag
+// exactly that kind of problem. The 2026-09-29 self-monitoring fix above
+// (calling record_agent_run for itself) is the intended safety net for
+// "did test-agent-health itself stop running" instead — visible in the
+// Agent Ops dashboard's health data even without a kill switch.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
