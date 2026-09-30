@@ -212,6 +212,8 @@ export default function AdminConsole() {
   // listing/LinkedIn page/etc. rather than typed as clean CSV — see
   // parse-prospect-text/index.ts's HONESTY NOTE for why this is not scraping.
   async function importPastedText() {
+    // Same double-submit-race guard as importCsv() above.
+    if (pasteBusy) return
     if (!pasteText.trim()) { setPasteStatus('Paste some text first.'); return }
     setPasteBusy(true)
     const { data, error } = await supabase.functions.invoke('parse-prospect-text', { body: { text: pasteText } })
@@ -227,6 +229,11 @@ export default function AdminConsole() {
   // prospect — see generate-roi-proposal/index.ts. Never sent automatically;
   // the operator copies the resulting link and shares it personally.
   async function generateProposal(prospect, fleetSize) {
+    // Same double-submit-race guard as addBigAccount() — the disabled={roiBusy}
+    // button attribute alone doesn't close the race window between two
+    // synchronous clicks, and a double-fire here creates a duplicate
+    // roi_proposals row.
+    if (roiBusyIds.has(prospect.id)) return
     const n = Number(fleetSize)
     if (!n || n <= 0) { alert('Enter a fleet size (number of vehicles/technicians) first.'); return }
     setRoiBusy(prospect.id, true)
@@ -290,6 +297,8 @@ export default function AdminConsole() {
   }
 
   async function generateProposalForTarget(target, fleetSize) {
+    // Same double-submit-race guard as generateProposal() above.
+    if (roiBusyIds.has(target.id)) return
     const n = Number(fleetSize) || target.estimated_fleet_size
     if (!n || n <= 0) { alert('Enter a fleet size first.'); return }
     setRoiBusy(target.id, true)

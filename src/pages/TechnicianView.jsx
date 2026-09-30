@@ -945,6 +945,13 @@ export default function TechnicianView() {
   }
 
   async function submitInvoice() {
+    // Same double-submit-race guard as checklistSubmitting/materialsSubmitting
+    // above — the disabled={invoiceSubmitting} button attribute alone doesn't
+    // close the race window between two synchronous clicks before re-render,
+    // and a double-fire here creates a duplicate invoices row AND sends the
+    // client a duplicate invoice SMS via send-invoice-sms.
+    if (invoiceSubmitting) return
+
     const validItems = invoiceItems
       .filter(item => item.description.trim() && Number(item.amount) > 0)
       .map(item => ({ description: item.description.trim(), amount: Number(item.amount) }))
