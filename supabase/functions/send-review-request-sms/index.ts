@@ -21,6 +21,13 @@
 // invoiceId could force-send a real review-request SMS to that invoice's
 // client. Fixed using the same isOwner pattern xero-oauth-connect already
 // used for the identical forged-request risk.
+//
+// Health wiring added 2026-09-30: never called record_agent_run on either
+// path — a Twilio failure, a missing google_review_link, an add-on-gate
+// rejection, or a duplicate-request unique-violation were all invisible on
+// the agent health dashboard. Same gap already fixed once for this exact
+// reason on several sibling SMS functions (e.g. send-invoice-sms,
+// send-setup-sms) — this function was simply missed at the time.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
@@ -132,12 +139,17 @@ serve(async (req: Request) => {
 
     await supabase.from('review_requests').update({ sent_at: new Date().toISOString() }).eq('id', reviewReq.id)
 
+    supabase.rpc('record_agent_run', { fn_name: 'send-review-request-sms', status: 'ok' }).then(() => {}, () => {})
+
     return new Response(JSON.stringify({ success: true }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     })
   } catch (err) {
     console.error('send-review-request-sms error:', err)
+    try {
+      supabase.rpc('record_agent_run', { fn_name: 'send-review-request-sms', status: 'error', error_msg: err.message }).then(() => {}, () => {})
+    } catch (_) { /* never let health tracking break the actual error response */ }
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },

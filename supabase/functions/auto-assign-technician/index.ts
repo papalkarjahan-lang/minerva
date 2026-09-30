@@ -108,7 +108,34 @@
 // assignJob fires the same trigger for the human-assigned path, so a
 // business's 'job.assigned' workflow rules fire consistently regardless of
 // whether auto-dispatch or a dispatcher's own click assigned the job.
+//
+// Recency window added 2026-09-30: this function's only legitimate caller
+// (trigger_auto_assign_technician() in supabase_schema.sql) fires via
+// net.http_post with the anon key baked into the trigger body — it has to
+// be the anon key, since a Postgres trigger function's SQL is committed to
+// git and can never safely hold the real service-role secret (this
+// codebase never puts that key in any .sql file, confirmed by grep — same
+// reason the internal-service-key check used by send-job-assignment-sms/
+// run-custom-workflows can't be reused verbatim here). That means anyone
+// holding the public anon key can also POST straight to this function with
+// any job_id — and since `jobs` SELECT is intentionally anon `using(true)`
+// (the public tracking/invoice/quote-link model, see SECURITY_NOTES.md
+// "Phase 2 priority: The big one" — a documented, deliberately-deferred
+// gap, not something this delta re-opens or attempts to close), a job_id
+// belonging to a business the caller doesn't own isn't even a secret to
+// guess. The real risk isn't reading it — it's forging a call that fires a
+// REAL SMS to a real technician and a REAL Slack post for a business that
+// never asked for this dispatch to happen right now, most plausibly by
+// replaying an old job that a business deliberately left unassigned (e.g.
+// enabled auto-dispatch only after the fact) for a human to route by hand.
+// The legitimate trigger always fires within milliseconds of insert, so
+// requiring the job to still be within a short window of its own
+// created_at closes that replay case without inventing new shared-secret
+// infrastructure this function's one real caller has no safe way to
+// present anyway.
 // Deploy with: supabase functions deploy auto-assign-technician
+
+const RECENT_JOB_WINDOW_MS = 5 * 60 * 1000 // 5 minutes
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
@@ -140,10 +167,21 @@ serve(async (req: Request) => {
 
     const { data: job, error: jobErr } = await supabase
       .from('jobs')
-      .select('id, business_id, technician_id, client_lat, client_lng, client_name, client_address, required_credential_name, required_skill')
+      .select('id, business_id, technician_id, client_lat, client_lng, client_name, client_address, required_credential_name, required_skill, created_at')
       .eq('id', job_id)
       .single()
     if (jobErr || !job) throw new Error('Job not found')
+
+    // See header comment (recency window) — reject a call for a job that's
+    // no longer fresh, rather than trusting a bare job_id from a caller we
+    // can't otherwise verify is really the insert trigger.
+    if (!job.created_at || Date.now() - new Date(job.created_at).getTime() > RECENT_JOB_WINDOW_MS) {
+      supabase.rpc('record_agent_run', { fn_name: 'auto-assign-technician', status: 'ok' }).then(() => {}, () => {})
+      return new Response(JSON.stringify({ success: true, skipped: 'job_not_recent' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
 
     // Already assigned (e.g. dispatcher beat the agent to it) — nothing to do.
     if (job.technician_id) {

@@ -59,6 +59,15 @@
 // ai-intake-chat (already registered/gated) — found via a
 // directory-vs-agent_functions diff. See
 // supabase_schema_delta_agent_registration_round2.sql for the new row.
+//
+// Lead-capture TOCTOU fix added 2026-09-30: the lead_captured transition
+// (step 3 above) had no claim guard — a Twilio retry of the same turn's
+// webhook POST (documented to happen on timeout/non-2xx, same as
+// missed-call-webhook's CallSid retries) would re-run the leads insert +
+// business SMS + Slack notify + workflow trigger a second time for the
+// same call. Now claimed atomically (lead_captured false->true) before any
+// of that fires, same claim-before-notify pattern used throughout this
+// codebase.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
@@ -315,15 +324,38 @@ serve(async (req: Request) => {
       parsed = runTemplateVoiceIntake({ name: businessName }, userTurns)
     }
 
+    // The transcript update itself is harmless to repeat (Twilio is
+    // documented to retry a webhook POST on timeout/non-2xx, same as
+    // missed-call-webhook's CallSid retries) — it's not a real-world side
+    // effect, so it's safe to run on every turn unconditionally.
     const updatedMessages: ChatMessage[] = [...messages, { role: 'assistant', content: parsed.reply }]
     await supabaseAdmin.from('voice_call_sessions').update({
       messages: updatedMessages,
-      lead_captured: !!parsed.lead_captured,
       updated_at: new Date().toISOString(),
     }).eq('call_sid', callSid)
 
     if (!parsed.lead_captured || !parsed.lead) {
       return new Response(gatherTwiml(parsed.reply, 0), {
+        status: 200, headers: { 'Content-Type': 'text/xml' },
+      })
+    }
+
+    // Atomically claim the lead-capture transition before persisting
+    // anything — without this, a Twilio retry of this same turn's webhook
+    // POST (timeout waiting on the Claude call, etc.) would re-run the
+    // block below, inserting a duplicate leads row and double-notifying
+    // the business (SMS + Slack + workflow trigger). Same claim-before-
+    // notify pattern as send-job-assignment-sms/enrich-industrial-leads —
+    // only the request that actually flips lead_captured false->true
+    // proceeds; a retry sees 0 rows claimed and just hangs up quietly.
+    const { data: claimed } = await supabaseAdmin
+      .from('voice_call_sessions')
+      .update({ lead_captured: true })
+      .eq('call_sid', callSid)
+      .eq('lead_captured', false)
+      .select('id')
+    if (!claimed || claimed.length === 0) {
+      return new Response(sayAndHangupTwiml(parsed.reply), {
         status: 200, headers: { 'Content-Type': 'text/xml' },
       })
     }
