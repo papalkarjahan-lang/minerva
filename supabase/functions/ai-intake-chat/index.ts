@@ -32,6 +32,19 @@
 // widget, disabling it returns a graceful chat reply (200, leadCaptured:
 // false) rather than a raw error, consistent with missed-call-webhook's
 // treatment of the other inbound customer-facing capture path.
+//
+// Lead-capture idempotency added 2026-09-30: there's no server-side session
+// row to claim against here (unlike voice-intake-agent's voice_call_sessions,
+// keyed by Twilio CallSid) — the full transcript is passed fresh from the
+// browser every turn. If the browser's response was lost after the
+// lead-capture turn's server-side work completed, a resend of that same
+// terminal turn would re-insert the lead and re-fire the SMS/Slack/workflow
+// notifications. Fixed with the same insert-as-claim technique as
+// detect-safety-hazards (supabase_schema_delta_ai_intake_chat_dedup.sql):
+// leads.intake_dedup_key, a SHA-256 hash of the exact transcript content,
+// under a partial unique index on (business_id, intake_dedup_key) — a
+// genuinely new conversation always has different transcript content, so
+// this can only collide on a true duplicate of the same capture turn.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
@@ -47,6 +60,13 @@ interface ChatPayload {
 }
 
 const CLAUDE_MODEL = 'claude-opus-4-6'
+
+// See "Lead-capture idempotency" header note above.
+async function hashTranscript(businessId: string, transcript: ChatMessage[]): Promise<string> {
+  const data = new TextEncoder().encode(JSON.stringify({ businessId, transcript }))
+  const digest = await crypto.subtle.digest('SHA-256', data)
+  return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('')
+}
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -246,7 +266,13 @@ if not yet captured}`
         if (matchedInvoice) referredByCode = rawCode
       }
 
-      await supabase.from('leads').insert({
+      const fullTranscript = [...messages, { role: 'assistant', content: parsed.reply }]
+      const dedupKey = await hashTranscript(businessId, fullTranscript)
+
+      // Insert-as-claim (see header note) — a resend of this exact terminal
+      // turn hits the partial unique index on (business_id,
+      // intake_dedup_key) and is skipped below rather than re-notifying.
+      const { error: leadInsertErr } = await supabase.from('leads').insert({
         business_id: businessId,
         client_name: name,
         client_phone: phone,
@@ -257,12 +283,26 @@ if not yet captured}`
         score_reason: scoreReason,
         estimated_value_tier: parsed.lead.estimated_value_tier || null,
         is_repeat_client: isRepeatClient,
-        transcript: [...messages, { role: 'assistant', content: parsed.reply }],
+        transcript: fullTranscript,
         utm_source: cleanUtm(utmSource),
         utm_medium: cleanUtm(utmMedium),
         utm_campaign: cleanUtm(utmCampaign),
+        intake_dedup_key: dedupKey,
         ...(referredByCode ? { referred_by_code: referredByCode, source: 'referral' } : {}),
       })
+      if (leadInsertErr && leadInsertErr.code !== '23505') {
+        console.error('ai-intake-chat: leads insert failed:', leadInsertErr.message)
+      }
+      if (leadInsertErr) {
+        // Either a genuine insert error (already logged above) or a
+        // 23505 duplicate-turn replay — either way, don't fire a second
+        // round of SMS/Slack/workflow notifications for the same capture.
+        supabase.rpc('record_agent_run', { fn_name: 'ai-intake-chat', status: 'ok' }).then(() => {}, () => {})
+        return new Response(JSON.stringify({ reply: parsed.reply, leadCaptured: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        })
+      }
 
       // Custom Workflows: fire the 'lead.created' trigger for this business, if any are configured.
       fetch(`${supabaseUrl}/functions/v1/run-custom-workflows`, {
