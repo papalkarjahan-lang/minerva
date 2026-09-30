@@ -4503,6 +4503,10 @@ const WORKFLOW_CONDITION_FIELDS = {
     { value: 'trade_type', label: 'Trade type' },
     { value: 'client_address', label: 'Client address' },
   ],
+  'invoice.created': [
+    { value: 'total', label: 'Invoice total' },
+    { value: 'client_name', label: 'Client name' },
+  ],
   'invoice.paid': [
     { value: 'total', label: 'Invoice total' },
     { value: 'client_name', label: 'Client name' },
@@ -4608,6 +4612,7 @@ function CustomWorkflowsPanel({ businessId, onLogAudit }) {
           >
             <option value="lead.created">When a new lead comes in</option>
             <option value="job.completed">When a job is completed</option>
+            <option value="invoice.created">When an invoice is created</option>
             <option value="invoice.paid">When an invoice is paid</option>
             <option value="invoice.overdue">When an invoice goes unpaid 3+ days</option>
             <option value="quote.accepted">When a client accepts a quote</option>

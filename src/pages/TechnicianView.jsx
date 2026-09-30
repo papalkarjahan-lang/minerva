@@ -986,6 +986,16 @@ export default function TechnicianView() {
       }).select().single()
       if (insertError) throw insertError
 
+      // Custom Workflows: fire the 'invoice.created' trigger for this
+      // business, if any are configured — added 2026-09-30 (the only
+      // invoice lifecycle event with no trigger point; invoice.paid and
+      // invoice.overdue already existed). Fire-and-forget, same pattern as
+      // every other trigger call in this codebase — never blocks invoice
+      // creation on workflow execution.
+      supabase.functions.invoke('run-custom-workflows', {
+        body: { businessId: tech.business_id, event: 'invoice.created', payload: { total, client_name: currentJob.client_name } },
+      }).catch(() => {})
+
       // SMS failure here must never block invoice creation or job
       // completion — the invoice already exists in the DB either way. But a
       // silently-failed send means the client never gets their payment
@@ -1203,6 +1213,17 @@ export default function TechnicianView() {
       {showOnboardingChecklist && onboardingTemplate && (
         <div style={styles.invoiceCard}>
           <p style={styles.jobLabel}>{onboardingTemplate.name || 'ONBOARDING CHECKLIST'}</p>
+          {/* Progress indicator — added 2026-09-30 so a new technician can see
+              how much is left instead of an undifferentiated checkbox list. */}
+          <p style={{ color: '#8899a6', fontSize: 12, margin: '0 0 8px' }}>
+            {onboardingChecks.filter(Boolean).length} of {onboardingTemplate.items.length} complete
+          </p>
+          <div style={styles.onboardingProgressTrack}>
+            <div style={{
+              ...styles.onboardingProgressFill,
+              width: `${onboardingTemplate.items.length ? (onboardingChecks.filter(Boolean).length / onboardingTemplate.items.length) * 100 : 0}%`,
+            }} />
+          </div>
           {onboardingTemplate.items.map((item, i) => (
             <label key={i} style={styles.checklistRow}>
               <input
@@ -1214,6 +1235,11 @@ export default function TechnicianView() {
               <span style={{ color: '#ccc', fontSize: 14 }}>{item}</span>
             </label>
           ))}
+          {onboardingChecks.length > 0 && onboardingChecks.every(Boolean) && (
+            <p style={{ color: '#2E7D32', fontSize: 13, fontWeight: 'bold', margin: '4px 0 10px' }}>
+              You're all set — tap Continue to start tracking.
+            </p>
+          )}
           <button
             type="button"
             style={styles.btnGreenSmall}
@@ -1507,6 +1533,8 @@ const styles = {
   errorBox: { background: '#FAEAEA', border: '1px solid #8A2525', borderRadius: 12, padding: 20, maxWidth: 340, textAlign: 'center' },
   invoiceCard: { background: '#0a0f1d', border: '1px solid #1e293b', borderRadius: 16, padding: 20, width: '100%', maxWidth: 360, marginBottom: 20 },
   checklistRow: { display: 'flex', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #1e293b', cursor: 'pointer' },
+  onboardingProgressTrack: { background: '#1e293b', borderRadius: 4, height: 6, overflow: 'hidden', margin: '0 0 12px' },
+  onboardingProgressFill: { background: '#2E7D32', height: '100%', borderRadius: 4, transition: 'width 0.3s ease' },
   invoiceRow: { display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' },
   invoiceDescInput: { flex: 2, background: '#050811', border: '1px solid #1e293b', borderRadius: 8, padding: '10px 12px', color: '#fff', fontSize: 13 },
   invoiceAmountInput: { flex: 1, background: '#050811', border: '1px solid #1e293b', borderRadius: 8, padding: '10px 12px', color: '#fff', fontSize: 13, width: 0 },
