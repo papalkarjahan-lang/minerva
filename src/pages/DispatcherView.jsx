@@ -1102,9 +1102,13 @@ export default function DispatcherView() {
   }
 
   async function updateLeadNextAction(leadId, next_action_at, next_action_note) {
-    const { error } = await supabase.from('leads').update({ next_action_at, next_action_note }).eq('id', leadId)
+    // Clear next_action_reminded_at whenever the date changes — this is
+    // the "reschedule the follow-up" flow, and the lead-followup-reminder
+    // agent should alert again for the new date rather than treating it as
+    // already-reminded because an earlier date on this same lead was.
+    const { error } = await supabase.from('leads').update({ next_action_at, next_action_note, next_action_reminded_at: null }).eq('id', leadId)
     if (error) { alert(`Couldn't update next action: ${error.message}`); return }
-    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, next_action_at, next_action_note } : l))
+    setLeads(prev => prev.map(l => l.id === leadId ? { ...l, next_action_at, next_action_note, next_action_reminded_at: null } : l))
   }
 
   async function toggleLeadActivity(leadId) {
@@ -1931,6 +1935,7 @@ export default function DispatcherView() {
   const KILL_SWITCH_GATED_FUNCTIONS = [
     'chase-unpaid-invoices', 'check-inventory-levels', 'check-weather-risk',
     'detect-wasted-trips', 'generate-growth-drafts', 'nurture-stale-leads',
+    'lead-followup-reminder',
     'retention-checkin', 'winback-lost-leads', 'agent-council-report',
     'reconcile-billing', 'update-technician-workload',
     'optimize-industrial-routes', 'track-consumables', 'detect-safety-hazards',

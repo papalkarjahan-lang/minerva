@@ -102,6 +102,7 @@ const CADENCE_MINUTES: Record<string, number> = {
   // outage in either would never have been flagged as stale.
   'reconcile-technician-state': 24 * 60,
   'agent-council-report': 7 * 24 * 60,
+  'lead-followup-reminder': 15,
 }
 
 serve(async (req: Request) => {
