@@ -1935,7 +1935,7 @@ export default function DispatcherView() {
   const KILL_SWITCH_GATED_FUNCTIONS = [
     'chase-unpaid-invoices', 'check-inventory-levels', 'check-weather-risk',
     'detect-wasted-trips', 'generate-growth-drafts', 'nurture-stale-leads',
-    'lead-followup-reminder',
+    'lead-followup-reminder', 'notify-addon-trial-ending',
     'retention-checkin', 'winback-lost-leads', 'agent-council-report',
     'reconcile-billing', 'update-technician-workload',
     'optimize-industrial-routes', 'track-consumables', 'detect-safety-hazards',

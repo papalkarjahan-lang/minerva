@@ -103,6 +103,7 @@ const CADENCE_MINUTES: Record<string, number> = {
   'reconcile-technician-state': 24 * 60,
   'agent-council-report': 7 * 24 * 60,
   'lead-followup-reminder': 15,
+  'notify-addon-trial-ending': 24 * 60,
 }
 
 serve(async (req: Request) => {
