@@ -20,6 +20,20 @@
 -- redirect a business's own webhook/email automation to an attacker's
 -- endpoint), and forge workflow_runs log rows.
 --
+-- NOTE ON RECONCILIATION (2026-09-30): the live database already had most
+-- of this applied under slightly different policy names/shapes (one
+-- consolidated "owner all custom_workflows" ALL policy instead of 4
+-- separate ones; "owner select"/"technician insert own incident" on
+-- technician_incidents) from an earlier round of this exact audit whose
+-- schema delta file was apparently never committed. Running this file's
+-- original draft against the live DB hit a real, live gap it exposed:
+-- technician_incidents had NO owner-INSERT policy at all, meaning
+-- DispatcherView's addIncident() (dispatcher logging a note/dispute) was
+-- silently failing RLS in production. This file has been rewritten to
+-- exactly match the corrected live state (including the missing INSERT
+-- policy, added live 2026-09-30) rather than the originally-drafted
+-- (and now superseded) policy names, so git and the live DB agree.
+--
 -- Same owner-scoping pattern as audit_log/payroll_runs (2026-09-28
 -- deltas) and the technician-session pattern already established in
 -- supabase_schema_delta_technician_auth_rls_v1.sql. Confirmed via grep
@@ -30,17 +44,21 @@
 --     themselves (TechnicianView submitIncident). No UPDATE/DELETE
 --     anywhere in the frontend — none granted.
 --   custom_workflows — owner: SELECT/INSERT/UPDATE/DELETE
---     (CustomWorkflowsPanel). No technician-side access anywhere.
+--     (CustomWorkflowsPanel) — consolidated into one ALL policy.
 --   workflow_runs — owner: SELECT only (run-log viewer). Written only by
 --     run-custom-workflows via the service-role key (bypasses RLS
 --     entirely) — no anon/authenticated INSERT policy needed.
 --
--- Safe to run any time — `drop policy if exists` before each replacement,
--- so re-running this file is harmless. No data changes.
+-- Safe to run any time — `drop policy if exists` before each create, so
+-- re-running this file (including against a DB that already has the
+-- exact live state above) is harmless. No data changes.
 -- ============================================================
 
 -- ---------- TECHNICIAN_INCIDENTS ----------
 drop policy if exists "anon all technician_incidents" on technician_incidents;
+drop policy if exists "owner select technician_incidents" on technician_incidents;
+drop policy if exists "owner insert technician_incidents" on technician_incidents;
+drop policy if exists "technician insert own incident" on technician_incidents;
 
 create policy "owner select technician_incidents" on technician_incidents
   for select using (
@@ -52,41 +70,29 @@ create policy "owner insert technician_incidents" on technician_incidents
     exists (select 1 from businesses b where b.id = technician_incidents.business_id and b.owner_user_id = auth.uid())
   );
 
-create policy "technician insert own incidents" on technician_incidents
+create policy "technician insert own incident" on technician_incidents
   for insert with check (
     exists (
       select 1 from technicians t
       where t.auth_user_id = auth.uid()
         and t.id = technician_incidents.technician_id
-        and t.business_id = technician_incidents.business_id
     )
   );
 
 -- ---------- CUSTOM_WORKFLOWS ----------
 drop policy if exists "anon all custom_workflows" on custom_workflows;
+drop policy if exists "owner all custom_workflows" on custom_workflows;
 
-create policy "owner select custom_workflows" on custom_workflows
-  for select using (
+create policy "owner all custom_workflows" on custom_workflows
+  for all using (
     exists (select 1 from businesses b where b.id = custom_workflows.business_id and b.owner_user_id = auth.uid())
-  );
-
-create policy "owner insert custom_workflows" on custom_workflows
-  for insert with check (
-    exists (select 1 from businesses b where b.id = custom_workflows.business_id and b.owner_user_id = auth.uid())
-  );
-
-create policy "owner update custom_workflows" on custom_workflows
-  for update using (
-    exists (select 1 from businesses b where b.id = custom_workflows.business_id and b.owner_user_id = auth.uid())
-  );
-
-create policy "owner delete custom_workflows" on custom_workflows
-  for delete using (
+  ) with check (
     exists (select 1 from businesses b where b.id = custom_workflows.business_id and b.owner_user_id = auth.uid())
   );
 
 -- ---------- WORKFLOW_RUNS ----------
 drop policy if exists "anon all workflow_runs" on workflow_runs;
+drop policy if exists "owner select workflow_runs" on workflow_runs;
 
 create policy "owner select workflow_runs" on workflow_runs
   for select using (
