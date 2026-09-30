@@ -50,3 +50,19 @@ export function buildReviewRequestMessage(opts: { clientName?: string | null; bu
 export function buildMissedCallSmsMessage(businessName: string): string {
   return `Thanks for calling ${businessName}! We missed you - reply here or call back and we'll help book your job.`
 }
+
+export function buildJobCancelledMessage(opts: { clientName?: string | null; businessName: string }): string {
+  return `Hi ${opts.clientName || 'there'}, your job with ${opts.businessName} has been cancelled. Get in touch if you'd like to rebook.`
+}
+
+export function buildJobCancelledTechMessage(opts: { techName?: string | null; clientAddress?: string | null }): string {
+  return `Hi ${opts.techName || ''}, the job at ${opts.clientAddress || 'the scheduled address'} has been cancelled — no need to go. Contact your dispatcher with any questions.`.trim()
+}
+
+export function buildJobRescheduledMessage(opts: { clientName?: string | null; businessName: string; when: string }): string {
+  return `Hi ${opts.clientName || 'there'}, your appointment with ${opts.businessName} has been rescheduled to ${opts.when}. Reply here if that doesn't work for you.`
+}
+
+export function buildJobRescheduledTechMessage(opts: { techName?: string | null; clientAddress?: string | null; when: string }): string {
+  return `Hi ${opts.techName || ''}, the job at ${opts.clientAddress || 'the scheduled address'} has been rescheduled to ${opts.when}.`.trim()
+}

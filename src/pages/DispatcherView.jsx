@@ -1005,6 +1005,47 @@ export default function DispatcherView() {
     await loadAll()
   }
 
+  // Cancel a job outright — added 2026-09-30, closing a real gap: until
+  // now there was no way to cancel a job after creation at all, so a
+  // client who called to cancel just sat forever in the active list with
+  // no one (client or technician) ever told. Frees up the assigned
+  // technician the same way removeCrewMember does, and texts both the
+  // client and (if one was assigned) the technician so nobody shows up to
+  // a job that no longer exists.
+  async function cancelJob(jobId) {
+    const job = jobs.find(j => j.id === jobId)
+    if (!confirm(`Cancel the job for "${job?.client_name || 'this client'}"? This can't be undone.`)) return
+    const { error } = await supabase.from('jobs').update({ status: 'cancelled' }).eq('id', jobId)
+    if (error) { alert(`Couldn't cancel job: ${error.message}`); return }
+    if (job?.technician_id) {
+      const tech = technicians.find(t => t.id === job.technician_id)
+      if (tech?.current_job_id === jobId) {
+        const { error: techErr } = await supabase.from('technicians').update({ current_job_id: null }).eq('id', job.technician_id)
+        if (techErr) console.error('cancelJob: failed to clear current_job_id', techErr)
+      }
+    }
+    // Fire-and-forget — never blocks the cancellation itself on SMS delivery.
+    supabase.functions.invoke('send-job-cancelled-sms', { body: { jobId } }).catch(() => {})
+    logAudit('job.cancelled', { entityType: 'job', entityId: jobId, details: { client_name: job?.client_name } })
+    await loadAll()
+  }
+
+  // Reschedule a job to a new scheduled_time — added 2026-09-30 alongside
+  // cancelJob, same "nobody was ever told" gap. previousScheduledTime is
+  // passed through so the SMS can be honest about what actually changed
+  // ("moved from X to Y") rather than only stating the new time.
+  async function rescheduleJob(jobId, newScheduledTimeIso) {
+    const job = jobs.find(j => j.id === jobId)
+    if (!job || newScheduledTimeIso === job.scheduled_time) return
+    const previousScheduledTime = job.scheduled_time
+    const { error } = await supabase.from('jobs').update({ scheduled_time: newScheduledTimeIso }).eq('id', jobId)
+    if (error) { alert(`Couldn't reschedule job: ${error.message}`); return }
+    // Fire-and-forget — never blocks the reschedule itself on SMS delivery.
+    supabase.functions.invoke('send-job-rescheduled-sms', { body: { jobId, previousScheduledTime } }).catch(() => {})
+    logAudit('job.rescheduled', { entityType: 'job', entityId: jobId, details: { client_name: job.client_name, previousScheduledTime, newScheduledTime: newScheduledTimeIso } })
+    await loadAll()
+  }
+
   // Quote-to-job AI estimator — calls draft-quote (Claude-drafted line items
   // with an honest deterministic fallback), then refreshes the list.
   async function createQuote() {
@@ -1952,6 +1993,7 @@ export default function DispatcherView() {
     'send-weather-reschedule-sms', 'notify-slack', 'ai-intake-chat',
     'calendar-feed', 'package-client-verification',
     'generate-compliance-package', 'send-job-assignment-sms', 'send-quote-sms',
+    'send-job-cancelled-sms', 'send-job-rescheduled-sms',
     'send-review-request-sms', 'send-outreach-batch', 'client-support-chat',
     'voice-intake-agent', 'send-email', 'draft-quote', 'draft-outreach-batch',
     'parse-prospect-text', 'xero-sync-invoice', 'generate-roi-proposal',
@@ -2293,6 +2335,18 @@ export default function DispatcherView() {
                     </p>
                   )}
                   <p style={styles.jobStatus(job.status)}>{job.status.toUpperCase()}</p>
+                  <div style={{ display: 'flex', gap: 6, marginBottom: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <input
+                      type="datetime-local" defaultValue={job.scheduled_time ? job.scheduled_time.slice(0, 16) : ''}
+                      title="Reschedule this job"
+                      onBlur={e => e.target.value && rescheduleJob(job.id, new Date(e.target.value).toISOString())}
+                      style={{ ...styles.dealValueInput, flex: 1, minWidth: 140 }}
+                    />
+                    <button style={{ ...styles.leadActionSecondary, fontSize: 11, padding: '3px 8px' }}
+                      onClick={() => cancelJob(job.id)}>
+                      ✕ Cancel job
+                    </button>
+                  </div>
                   {job.status === 'scheduled' && !job.technician_id && !job.assigned_subcontractor_id && (
                     <select style={styles.assignSelect} disabled={assigningJobIds.has(job.id)}
                       onChange={(e) => e.target.value && assignJob(job.id, e.target.value)}>

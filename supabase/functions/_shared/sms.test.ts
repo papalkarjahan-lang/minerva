@@ -8,6 +8,10 @@ import {
   buildInvoiceMessage,
   buildReviewRequestMessage,
   buildMissedCallSmsMessage,
+  buildJobCancelledMessage,
+  buildJobCancelledTechMessage,
+  buildJobRescheduledMessage,
+  buildJobRescheduledTechMessage,
 } from './sms'
 
 describe('formatAuPhone', () => {
@@ -132,5 +136,53 @@ describe('buildMissedCallSmsMessage', () => {
   it('names the business in the auto-reply', () => {
     const msg = buildMissedCallSmsMessage('Acme Plumbing')
     expect(msg).toBe("Thanks for calling Acme Plumbing! We missed you - reply here or call back and we'll help book your job.")
+  })
+})
+
+describe('buildJobCancelledMessage', () => {
+  it('names the business and invites a rebook', () => {
+    const msg = buildJobCancelledMessage({ clientName: 'Jane', businessName: 'Acme Plumbing' })
+    expect(msg).toBe("Hi Jane, your job with Acme Plumbing has been cancelled. Get in touch if you'd like to rebook.")
+  })
+
+  it('falls back to "there" when clientName is missing', () => {
+    const msg = buildJobCancelledMessage({ businessName: 'Acme Plumbing' })
+    expect(msg).toContain('Hi there')
+  })
+})
+
+describe('buildJobCancelledTechMessage', () => {
+  it('tells the technician not to go', () => {
+    const msg = buildJobCancelledTechMessage({ techName: 'Sam', clientAddress: '1 Main St' })
+    expect(msg).toBe("Hi Sam, the job at 1 Main St has been cancelled — no need to go. Contact your dispatcher with any questions.")
+  })
+
+  it('falls back to a generic phrase when clientAddress is missing', () => {
+    const msg = buildJobCancelledTechMessage({ techName: 'Sam' })
+    expect(msg).toContain('the scheduled address')
+  })
+})
+
+describe('buildJobRescheduledMessage', () => {
+  it('includes the business name and new time', () => {
+    const msg = buildJobRescheduledMessage({ clientName: 'Jane', businessName: 'Acme Plumbing', when: 'Mon, 10am' })
+    expect(msg).toBe("Hi Jane, your appointment with Acme Plumbing has been rescheduled to Mon, 10am. Reply here if that doesn't work for you.")
+  })
+
+  it('falls back to "there" when clientName is missing', () => {
+    const msg = buildJobRescheduledMessage({ businessName: 'Acme Plumbing', when: 'Mon, 10am' })
+    expect(msg).toContain('Hi there')
+  })
+})
+
+describe('buildJobRescheduledTechMessage', () => {
+  it('includes the client address and new time', () => {
+    const msg = buildJobRescheduledTechMessage({ techName: 'Sam', clientAddress: '1 Main St', when: 'Mon, 10am' })
+    expect(msg).toBe('Hi Sam, the job at 1 Main St has been rescheduled to Mon, 10am.')
+  })
+
+  it('falls back to a generic phrase when clientAddress is missing', () => {
+    const msg = buildJobRescheduledTechMessage({ techName: 'Sam', when: 'Mon, 10am' })
+    expect(msg).toContain('the scheduled address')
   })
 })
