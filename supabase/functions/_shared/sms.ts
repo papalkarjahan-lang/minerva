@@ -59,10 +59,12 @@ export function buildJobCancelledTechMessage(opts: { techName?: string | null; c
   return `Hi ${opts.techName || ''}, the job at ${opts.clientAddress || 'the scheduled address'} has been cancelled — no need to go. Contact your dispatcher with any questions.`.trim()
 }
 
-export function buildJobRescheduledMessage(opts: { clientName?: string | null; businessName: string; when: string }): string {
-  return `Hi ${opts.clientName || 'there'}, your appointment with ${opts.businessName} has been rescheduled to ${opts.when}. Reply here if that doesn't work for you.`
+export function buildJobRescheduledMessage(opts: { clientName?: string | null; businessName: string; when: string; previousWhen?: string | null }): string {
+  const movedPhrase = opts.previousWhen ? `moved from ${opts.previousWhen} to ${opts.when}` : `rescheduled to ${opts.when}`
+  return `Hi ${opts.clientName || 'there'}, your appointment with ${opts.businessName} has been ${movedPhrase}. Reply here if that doesn't work for you.`
 }
 
-export function buildJobRescheduledTechMessage(opts: { techName?: string | null; clientAddress?: string | null; when: string }): string {
-  return `Hi ${opts.techName || ''}, the job at ${opts.clientAddress || 'the scheduled address'} has been rescheduled to ${opts.when}.`.trim()
+export function buildJobRescheduledTechMessage(opts: { techName?: string | null; clientAddress?: string | null; when: string; previousWhen?: string | null }): string {
+  const movedPhrase = opts.previousWhen ? `moved from ${opts.previousWhen} to ${opts.when}` : `rescheduled to ${opts.when}`
+  return `Hi ${opts.techName || ''}, the job at ${opts.clientAddress || 'the scheduled address'} has been ${movedPhrase}.`.trim()
 }

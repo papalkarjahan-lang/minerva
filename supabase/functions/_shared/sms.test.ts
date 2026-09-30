@@ -173,6 +173,11 @@ describe('buildJobRescheduledMessage', () => {
     const msg = buildJobRescheduledMessage({ businessName: 'Acme Plumbing', when: 'Mon, 10am' })
     expect(msg).toContain('Hi there')
   })
+
+  it('states the move from the previous time to the new time when previousWhen is provided', () => {
+    const msg = buildJobRescheduledMessage({ clientName: 'Jane', businessName: 'Acme Plumbing', when: 'Mon, 10am', previousWhen: 'Fri, 2pm' })
+    expect(msg).toBe("Hi Jane, your appointment with Acme Plumbing has been moved from Fri, 2pm to Mon, 10am. Reply here if that doesn't work for you.")
+  })
 })
 
 describe('buildJobRescheduledTechMessage', () => {
@@ -184,5 +189,10 @@ describe('buildJobRescheduledTechMessage', () => {
   it('falls back to a generic phrase when clientAddress is missing', () => {
     const msg = buildJobRescheduledTechMessage({ techName: 'Sam', when: 'Mon, 10am' })
     expect(msg).toContain('the scheduled address')
+  })
+
+  it('states the move from the previous time to the new time when previousWhen is provided', () => {
+    const msg = buildJobRescheduledTechMessage({ techName: 'Sam', clientAddress: '1 Main St', when: 'Mon, 10am', previousWhen: 'Fri, 2pm' })
+    expect(msg).toBe('Hi Sam, the job at 1 Main St has been moved from Fri, 2pm to Mon, 10am.')
   })
 })

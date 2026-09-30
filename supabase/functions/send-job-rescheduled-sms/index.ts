@@ -2,8 +2,10 @@
 // Direct invocation: { jobId, previousScheduledTime? }
 // Fires automatically whenever a dispatcher reschedules a job
 // (DispatcherView's rescheduleJob) — the first reschedule path this app
-// has ever had. Texts the client the new time, and (if one was assigned)
-// the technician too.
+// has ever had. Texts the client and (if one was assigned) the technician.
+// previousScheduledTime is optional and, when supplied, lets the message
+// honestly say "moved from X to Y" instead of only stating the new time —
+// older/internal callers that omit it still get a "rescheduled to Y" text.
 // Deploy with: supabase functions deploy send-job-rescheduled-sms
 //
 // Same ownership-check pattern as send-job-cancelled-sms/send-job-assignment-sms.
@@ -32,7 +34,7 @@ serve(async (req: Request) => {
       return new Response(JSON.stringify({ success: true, skipped: true, reason: 'disabled via agent_functions.enabled' }), { status: 200, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } })
     }
 
-    const { jobId } = await req.json()
+    const { jobId, previousScheduledTime } = await req.json()
     if (!jobId) throw new Error('jobId is required')
 
     const { data: job, error: jobErr } = await supabase.from('jobs')
@@ -87,7 +89,11 @@ serve(async (req: Request) => {
     }
 
     const bizName = jobBusiness?.name || 'your dispatcher'
-    const when = new Date(job.scheduled_time).toLocaleString('en-AU', { weekday: 'short', hour: 'numeric', minute: '2-digit', day: 'numeric', month: 'short' })
+    const fmt = (iso: string) => new Date(iso).toLocaleString('en-AU', { weekday: 'short', hour: 'numeric', minute: '2-digit', day: 'numeric', month: 'short' })
+    const when = fmt(job.scheduled_time)
+    // previousScheduledTime is optional (older/internal callers may omit it) — when present,
+    // it lets the message honestly say "moved from X to Y" instead of only the new time.
+    const previousWhen = previousScheduledTime ? fmt(previousScheduledTime) : null
 
     async function sendSms(to: string, body: string) {
       const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json`, {
@@ -106,7 +112,7 @@ serve(async (req: Request) => {
 
     if (job.client_phone) {
       try {
-        await sendSms(formatAuPhone(job.client_phone), buildJobRescheduledMessage({ clientName: job.client_name, businessName: bizName, when }))
+        await sendSms(formatAuPhone(job.client_phone), buildJobRescheduledMessage({ clientName: job.client_name, businessName: bizName, when, previousWhen }))
         results.client = 'sent'
       } catch (err) {
         console.error('send-job-rescheduled-sms: client send failed', err)
@@ -120,7 +126,7 @@ serve(async (req: Request) => {
       const { data: tech } = await supabase.from('technicians').select('phone, name').eq('id', job.technician_id).maybeSingle()
       if (tech?.phone) {
         try {
-          await sendSms(formatAuPhone(tech.phone), buildJobRescheduledTechMessage({ techName: tech.name, clientAddress: job.client_address, when }))
+          await sendSms(formatAuPhone(tech.phone), buildJobRescheduledTechMessage({ techName: tech.name, clientAddress: job.client_address, when, previousWhen }))
           results.technician = 'sent'
         } catch (err) {
           console.error('send-job-rescheduled-sms: technician send failed', err)
