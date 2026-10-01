@@ -19,8 +19,14 @@ alter table leads add column if not exists next_action_at timestamptz;
 alter table leads add column if not exists next_action_note text;
 -- What a human decided to do next for this lead, and when — e.g. "call
 -- back Thursday" — surfaced in the pipeline view sorted by next_action_at,
--- same concept as a Salesforce task/follow-up reminder. Purely a display
--- aid; nothing autonomous reads or acts on this field.
+-- same concept as a Salesforce task/follow-up reminder.
+-- CORRECTION (2026-10-02): no longer just a display aid — the
+-- lead-followup-reminder cron agent (added 2026-09-30) now reads this
+-- field directly and Slack-alerts the dispatcher once next_action_at
+-- comes due, so a "call back Thursday" note doesn't just sit in the
+-- pipeline view waiting to be noticed. See that function's own header,
+-- which quotes this exact original comment as the gap it closed —
+-- the comment here just never got updated to match.
 
 alter table leads add column if not exists deal_value_estimate_low numeric;
 alter table leads add column if not exists deal_value_estimate_high numeric;

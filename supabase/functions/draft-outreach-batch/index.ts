@@ -58,11 +58,18 @@ const REAL_FEATURES = `
 `.trim()
 
 // Spam Act 2003 (Cth) requires every commercial electronic message to carry
-// a functional unsubscribe facility and accurate sender ID. There's no
-// reply-parsing webhook in this codebase, so "reply" is the honest
-// mechanism — a human then flips outreach_prospects.unsubscribed_at via the
-// admin console's "Mark unsubscribed" control, which send-outreach-batch
-// and followup-outreach both check before ever touching a row again.
+// a functional unsubscribe facility and accurate sender ID.
+// UPDATED 2026-09-25 (was stale here until 2026-10-02 — see
+// send-outreach-batch/index.ts for the fix that actually shipped this):
+// the real mechanism is now a genuine one-click link (outreach-unsubscribe,
+// appended to every outbound email's fixed footer) that sets
+// outreach_prospects.unsubscribed_at automatically, no human involved. The
+// line below ("reply unsubscribe") is kept as a second, lower-friction
+// channel for anyone who'd rather just hit reply — a human then flips the
+// same unsubscribed_at via the admin console's "Mark unsubscribed" control
+// for that case. Either path sets the same column; send-outreach-batch and
+// followup-outreach both check it before ever touching a row again,
+// regardless of which path set it.
 const UNSUBSCRIBE_LINE = "\n\nIf you'd rather not hear from us again, just reply \"unsubscribe\" and we'll stop emailing you — no more follow-ups.\n\n— The Minerva team, sent by Minerva (Antikythera / Krios AI)"
 
 serve(async (req: Request) => {

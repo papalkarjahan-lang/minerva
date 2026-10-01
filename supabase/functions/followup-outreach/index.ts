@@ -20,9 +20,13 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { computeFollowupDecision, fallbackFollowup } from "./logic.ts"
 
 // Spam Act 2003 (Cth) opt-out line — see draft-outreach-batch/index.ts for
-// the full rationale. A prospect who replied "unsubscribe" gets marked via
-// unsubscribed_at in the admin console; this function must never draft a
-// further follow-up for them.
+// the full rationale (updated 2026-10-02 — was stale here too). As of
+// 2026-09-25 the primary opt-out path is a one-click link
+// (outreach-unsubscribe) that sets unsubscribed_at automatically with no
+// human involved; replying "unsubscribe" to this line is the secondary
+// path, marked via the admin console instead. Either way this function
+// must never draft a further follow-up for them — it checks
+// unsubscribed_at regardless of which path set it.
 const UNSUBSCRIBE_LINE = "\n\nIf you'd rather not hear from us again, just reply \"unsubscribe\" and we'll stop emailing you — no more follow-ups.\n\n— The Minerva team, sent by Minerva (Antikythera / Krios AI)"
 
 serve(async (req: Request) => {
