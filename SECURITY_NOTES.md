@@ -614,6 +614,40 @@ full reasoning.
 
 ## Phase 2 priority: before scaling past ~10-15 trusted pilot clients
 
+**CORRECTION (2026-10-02): the bullet below ("the big one") is now
+fully resolved and should not be read as current — confirmed by a live
+`pg_policies` query against the actual production database, not
+assumed. Both of its stated reasons are gone:**
+1. **"Technicians authenticate via PIN (no Supabase auth session at
+   all)"** — resolved the same day this section was written, by "Fixed
+   2026-09-14: real technician authentication + RLS write-scoping, pass
+   3" a little further down this file (that pass's own text says it
+   closed most of this list — this section was just never edited to
+   match, so it sat here contradicting a fix documented later in the
+   same file for weeks). `technician-login` + `auth_user_id` give every
+   technician a real `auth.uid()`-bearing session today.
+2. **"~45 background agent edge functions run on the `anon` key"** —
+   also false: every background agent spot-checked (`nurture-stale-leads`,
+   `daily-digest`, `chase-unpaid-invoices`, and everything else touched
+   this session) runs on `SUPABASE_SERVICE_ROLE_KEY`, which bypasses RLS
+   entirely — it was never actually blocked on anon-permissive policies
+   to do its job.
+
+**Live-verified 2026-10-02 (`select tablename, policyname, cmd, qual
+from pg_policies`): every single table this bullet names — `jobs`,
+`technicians`, `leads`, `invoices`, `technician_locations`,
+`checklist_templates`, `inventory_items`, `technician_credentials`,
+`marketing_drafts`, and all 7 `industrial_*`/`site_*`/`safety_incidents`/
+`consumables_items`/`client_verification_packages` tables — now carries
+an owner-scoped (`businesses.owner_user_id = auth.uid()`) policy, not
+open anon `using (true)`.** Leaving the original bullet text below as
+the historical record of the reasoning (same policy as the
+react-router-dom CVE note above), but the conclusion it reaches is
+obsolete. The `businesses`-anon-select-all and Realtime/
+`technician_locations` SELECT points in the other two bullets below are
+separate, narrower concerns — not re-verified in this pass, don't
+assume either way.
+
 Real per-owner authentication now exists (`/login`, see "What's already
 fixed" above) and RLS read-scoping pass 1 has landed on the handful of
 tables where it was safe to do without breaking anything. What's still
