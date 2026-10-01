@@ -35,8 +35,25 @@ export default function ProposalView() {
   const fmt = n => Number(n).toLocaleString('en-AU', { maximumFractionDigits: 0 })
 
   return (
-    <div style={styles.screen}>
-      <div style={styles.card}>
+    <div style={styles.screen} className="invoice-screen">
+      {/* Same print treatment as InvoiceView/QuoteView — see InvoiceView.jsx
+          for the full comment. A sales ROI pitch is plausibly something a
+          prospect wants to print or forward internally to whoever signs off
+          on the deal. */}
+      <style>{`
+        @media print {
+          .no-print { display: none !important; }
+          .invoice-screen { display: block !important; min-height: 0 !important; padding: 0 !important; background: #fff !important; }
+          .invoice-print-card, .invoice-print-card * {
+            color: #000 !important;
+            background: transparent !important;
+            border-color: #ccc !important;
+            box-shadow: none !important;
+          }
+          .invoice-print-card { border: 1px solid #ccc !important; max-width: none !important; }
+        }
+      `}</style>
+      <div style={styles.card} className="invoice-print-card">
         <p style={styles.bizName}>Prepared for {proposal.company_name}</p>
         <h1 style={styles.title}>What Minerva could save your fleet</h1>
         <p style={styles.subtitle}>
@@ -76,7 +93,10 @@ export default function ProposalView() {
           technician credential tracking.
         </p>
 
-        <Link to="/start" style={styles.ctaBtn}>Start a free 7-day trial</Link>
+        <Link to="/start" className="no-print" style={styles.ctaBtn}>Start a free 7-day trial</Link>
+        <button className="no-print" style={styles.printButton} onClick={() => window.print()}>
+          🖨️ Print / Save as PDF
+        </button>
       </div>
     </div>
   )
@@ -95,4 +115,5 @@ const styles = {
   statValue: { color: '#fff', fontSize: 17, fontWeight: 'bold', whiteSpace: 'nowrap' },
   disclaimer: { color: '#555', fontSize: 11, lineHeight: 1.6, marginTop: 20 },
   ctaBtn: { display: 'block', textAlign: 'center', background: '#1D9E75', color: '#fff', textDecoration: 'none', borderRadius: 10, padding: '14px 0', fontSize: 15, fontWeight: 'bold', marginTop: 24 },
+  printButton: { display: 'block', width: '100%', textAlign: 'center', background: 'transparent', color: '#8fd0e8', border: '1px solid #1e293b', borderRadius: 10, padding: '11px 0', fontSize: 13, fontWeight: 'bold', cursor: 'pointer', marginTop: 10 },
 }
