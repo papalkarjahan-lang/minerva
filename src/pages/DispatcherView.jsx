@@ -137,7 +137,7 @@ export default function DispatcherView() {
   const [incidentDraft, setIncidentDraft] = useState({ category: 'note', description: '' })
   const [showSettingsModal, setShowSettingsModal] = useState(false)
   const [showSupportModal, setShowSupportModal] = useState(false)
-  const [queueTab, setQueueTab] = useState('jobs') // 'jobs' | 'leads' | 'assets' | 'invoices' | 'inventory' | 'marketing' | 'credentials' | 'weather' | 'payroll' | 'agents' | 'records'
+  const [queueTab, setQueueTab] = useState('overview') // 'overview' | 'jobs' | 'leads' | 'assets' | 'invoices' | 'inventory' | 'marketing' | 'credentials' | 'weather' | 'payroll' | 'agents' | 'records'
   // Leads tab has two display modes: the existing flat 'list' (unchanged
   // default) and a new Salesforce/HubSpot-style drag-and-drop 'board' view
   // grouped by pipeline_stage — see the Kanban board render below.
@@ -2120,6 +2120,30 @@ export default function DispatcherView() {
     if (!duplicatePhoneGroups[l.client_phone]) duplicatePhoneGroups[l.client_phone] = []
     duplicatePhoneGroups[l.client_phone].push(l)
   }
+  // At-a-glance dashboard (OVERVIEW tab) — every figure here comes from
+  // state already loaded for other tabs (invoices/jobs/leads/quotes/
+  // technicians), so this adds zero new queries. invoices/assets are only
+  // ever fetched for Pro tier (see loadAll), so revenue/outstanding would
+  // silently read as $0 for other tiers — gated off entirely below rather
+  // than show a misleading zero.
+  const now = new Date()
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+  const paidInvoicesThisMonth = invoices.filter(i => i.status === 'paid' && i.paid_at && new Date(i.paid_at) >= monthStart)
+  const unpaidInvoices = invoices.filter(i => i.status === 'unpaid')
+  const overviewStats = {
+    revenueThisMonth: paidInvoicesThisMonth.reduce((sum, i) => sum + (Number(i.total) || 0), 0),
+    paidCountThisMonth: paidInvoicesThisMonth.length,
+    outstandingTotal: unpaidInvoices.reduce((sum, i) => sum + (Number(i.total) || 0), 0),
+    unpaidCount: unpaidInvoices.length,
+    overdueCount: unpaidInvoices.filter(i => i.reminder_count > 0).length,
+    jobsToday: jobs.filter(j => j.scheduled_time && new Date(j.scheduled_time).toDateString() === now.toDateString()).length,
+    jobsUpcoming: jobs.length,
+    activeTechCount: technicians.filter(t => t.current_job_id).length,
+    totalTechCount: technicians.length,
+    leadsNew: leads.filter(l => l.status === 'new').length,
+    leadsTotal: leads.length,
+    quotesAwaiting: quotes.filter(q => q.status === 'sent').length,
+  }
   const isUnhealthyFn = (fn) => fn.error_count >= 5 || fn.last_status === 'error'
   const unhealthyAgentFunctions = agentFunctions.filter(isUnhealthyFn)
   const sortedAgentFunctions = [...agentFunctions].sort((a, b) => {
@@ -2288,7 +2312,10 @@ export default function DispatcherView() {
         <div style={styles.section}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-              <span style={styles.deptLabel}>Front Desk</span>
+              <button style={styles.tabBtn(queueTab === 'overview')} onClick={() => setQueueTab('overview')}>
+                OVERVIEW
+              </button>
+              <span style={{ ...styles.deptLabel, marginLeft: 8 }}>Front Desk</span>
               <button style={styles.tabBtn(queueTab === 'leads')} onClick={() => setQueueTab('leads')}>
                 LEADS ({leads.length})
               </button>
@@ -2366,6 +2393,49 @@ export default function DispatcherView() {
             {queueTab === 'inventory' && <button style={styles.addJobBtn} onClick={() => setShowAddInventory(true)}>+ Add</button>}
             {queueTab === 'credentials' && <button style={styles.addJobBtn} onClick={() => setShowAddCredential(true)}>+ Add</button>}
           </div>
+
+          {queueTab === 'overview' && (
+            <div style={styles.overviewGrid}>
+              {business?.subscription_tier === 'pro' && (
+                <button style={styles.overviewCard} onClick={() => setQueueTab('invoices')}>
+                  <p style={styles.overviewCardValue(overviewStats.revenueThisMonth > 0 ? '#1D9E75' : '#fff')}>
+                    ${overviewStats.revenueThisMonth.toFixed(0)}
+                  </p>
+                  <p style={styles.overviewCardLabel}>Revenue this month</p>
+                  <p style={styles.overviewCardSub}>{overviewStats.paidCountThisMonth} invoice{overviewStats.paidCountThisMonth === 1 ? '' : 's'} paid</p>
+                </button>
+              )}
+              {business?.subscription_tier === 'pro' && (
+                <button style={styles.overviewCard} onClick={() => setQueueTab('invoices')}>
+                  <p style={styles.overviewCardValue(overviewStats.overdueCount > 0 ? '#8A2525' : overviewStats.unpaidCount > 0 ? '#A87C16' : '#fff')}>
+                    ${overviewStats.outstandingTotal.toFixed(0)}
+                  </p>
+                  <p style={styles.overviewCardLabel}>Outstanding</p>
+                  <p style={styles.overviewCardSub}>{overviewStats.unpaidCount} unpaid{overviewStats.overdueCount > 0 ? ` · ${overviewStats.overdueCount} overdue` : ''}</p>
+                </button>
+              )}
+              <button style={styles.overviewCard} onClick={() => setQueueTab('jobs')}>
+                <p style={styles.overviewCardValue('#2D5FA8')}>{overviewStats.jobsToday}</p>
+                <p style={styles.overviewCardLabel}>Jobs today</p>
+                <p style={styles.overviewCardSub}>{overviewStats.jobsUpcoming} scheduled or active total</p>
+              </button>
+              <button style={styles.overviewCard} onClick={() => setQueueTab('jobs')}>
+                <p style={styles.overviewCardValue('#2D5FA8')}>{overviewStats.activeTechCount}/{overviewStats.totalTechCount}</p>
+                <p style={styles.overviewCardLabel}>Technicians on a job</p>
+                <p style={styles.overviewCardSub}>{overviewStats.totalTechCount - overviewStats.activeTechCount} free right now</p>
+              </button>
+              <button style={styles.overviewCard} onClick={() => setQueueTab('leads')}>
+                <p style={styles.overviewCardValue(overviewStats.leadsNew > 0 ? '#A87C16' : '#fff')}>{overviewStats.leadsTotal}</p>
+                <p style={styles.overviewCardLabel}>Active leads</p>
+                <p style={styles.overviewCardSub}>{overviewStats.leadsNew} not yet contacted</p>
+              </button>
+              <button style={styles.overviewCard} onClick={() => setQueueTab('quotes')}>
+                <p style={styles.overviewCardValue(overviewStats.quotesAwaiting > 0 ? '#A87C16' : '#fff')}>{overviewStats.quotesAwaiting}</p>
+                <p style={styles.overviewCardLabel}>Quotes awaiting reply</p>
+                <p style={styles.overviewCardSub}>sent, not yet accepted or declined</p>
+              </button>
+            </div>
+          )}
 
           {queueTab === 'quotes' && !hasAddon(business, 'ai_quotes') && addonLockCard('ai_quotes')}
           {queueTab === 'quotes' && hasAddon(business, 'ai_quotes') && (
@@ -5010,6 +5080,11 @@ const styles = {
   }),
   incidentSelect: { background: '#050811', color: '#ddd', border: '1px solid #1e293b', borderRadius: 6, fontSize: 11, padding: '5px 4px' },
   incidentInput: { flex: 1, background: '#050811', color: '#ddd', border: '1px solid #1e293b', borderRadius: 6, fontSize: 12, padding: '5px 8px' },
+  overviewGrid: { display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 16 },
+  overviewCard: { background: '#050811', border: '1px solid #1e293b', borderRadius: 10, padding: '12px 16px', minWidth: 150, flex: '1 1 150px', cursor: 'pointer', textAlign: 'left', display: 'block', font: 'inherit' },
+  overviewCardValue: (color) => ({ color: color || '#fff', fontSize: 24, fontWeight: 'bold', margin: '0 0 2px' }),
+  overviewCardLabel: { color: '#8899a6', fontSize: 11, letterSpacing: 0.5, textTransform: 'uppercase', margin: '0 0 2px' },
+  overviewCardSub: { color: '#555', fontSize: 11, margin: 0 },
   watchtowerDot: (status) => ({
     position: 'absolute',
     top: 2,
