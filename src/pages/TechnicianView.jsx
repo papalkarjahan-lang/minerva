@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 import { haversineKm } from '../utils'
 import { hasAddon } from '../maxAddons'
@@ -29,6 +29,17 @@ const JOB_CACHE_KEY_PREFIX = 'minerva_last_job_cache_'
 // per-PIN scoping reason as above, so one technician dismissing the banner
 // doesn't hide it for a different technician sharing the same device.
 const PWA_DISMISSED_KEY_PREFIX = 'minerva_pwa_install_dismissed_'
+// NOT pin-prefixed, deliberately — this is the one key whose entire job is
+// to be looked up when the pin ISN'T already known. manifest.json's
+// start_url is a fixed "/tech" with no pin, which is exactly what every
+// installed-PWA launch (home-screen icon) opens to — a technician who used
+// the "Install Minerva" banner would otherwise hit the unconditional "No
+// PIN provided" dead end below on literally every single launch, with no
+// way back short of digging up their original setup SMS. Written once a
+// pin is confirmed valid in loadTech() below; read on mount if the URL
+// itself has no pin, to silently redirect to the same pin that last worked
+// on this device. (Fixed 2026-10-02.)
+const LAST_PIN_KEY = 'minerva_last_pin'
 // Feature-detect the Web Speech API once. Most non-Chrome-based mobile
 // browsers don't implement it — the voice note button is hidden entirely
 // when unsupported rather than throwing at click time.
@@ -82,6 +93,7 @@ function saveCachedJob(pin, job) {
 
 export default function TechnicianView() {
   const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
   const pin = searchParams.get('pin')
 
   const [tech, setTech] = useState(null)
@@ -268,9 +280,18 @@ export default function TechnicianView() {
     try { localStorage.setItem(PWA_DISMISSED_KEY_PREFIX + pin, '1') } catch (_) {}
   }
 
-  // Load technician by PIN on mount
+  // Load technician by PIN on mount. See LAST_PIN_KEY above — an installed
+  // PWA always launches to the bare /tech with no pin, so that case gets
+  // one silent, automatic chance to resume as whichever pin last worked on
+  // this device before falling back to the dead-end error.
   useEffect(() => {
-    if (!pin) { setError('No PIN provided. Use the link from your setup SMS.'); return }
+    if (!pin) {
+      let rememberedPin = null
+      try { rememberedPin = localStorage.getItem(LAST_PIN_KEY) } catch (_) {}
+      if (rememberedPin) { navigate(`/tech?pin=${encodeURIComponent(rememberedPin)}`, { replace: true }); return }
+      setError('No PIN provided. Use the link from your setup SMS.')
+      return
+    }
     loadTech()
   }, [pin])
 
@@ -304,6 +325,10 @@ export default function TechnicianView() {
       .eq('is_active', true)
       .single()
     if (error || !data) { setError('PIN not recognised. Contact your manager.'); return }
+    // Remember this confirmed-valid pin — see LAST_PIN_KEY above. Only ever
+    // written here, after the pin has actually been verified, never from
+    // an unvalidated URL value.
+    try { localStorage.setItem(LAST_PIN_KEY, pin) } catch (_) {}
     setTech(data)
     setBusiness(data.businesses)
     if (data.current_job_id) loadJob(data.current_job_id)

@@ -30,6 +30,17 @@
     return
   }
 
+  // Guards against the snippet accidentally ending up twice on the same
+  // host page (a sloppy theme edit, or two plugins/platforms both
+  // injecting it) — without this, a duplicate <script> tag mounted two
+  // stacked floating bubbles on a real customer's live website, which
+  // reflects on Minerva, not just the business. Scoped per businessId
+  // rather than blanket-one-ever, so a page intentionally embedding two
+  // different businesses' widgets (unusual, but not invalid) still works.
+  var mountedKey = '__minervaWidgetMounted_' + businessId
+  if (window[mountedKey]) return
+  window[mountedKey] = true
+
   var origin
   try {
     origin = new URL(currentScript.src).origin
