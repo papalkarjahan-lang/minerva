@@ -1345,7 +1345,7 @@ export default function TechnicianView() {
                 style={styles.invoiceAmountInput}
               />
               {materialLines.length > 1 && (
-                <button type="button" style={styles.invoiceRemoveBtn} onClick={() => removeMaterialLine(i)}>✕</button>
+                <button type="button" aria-label="Remove this material line" style={styles.invoiceRemoveBtn} onClick={() => removeMaterialLine(i)}>✕</button>
               )}
             </div>
           ))}
@@ -1378,7 +1378,7 @@ export default function TechnicianView() {
                 style={styles.invoiceAmountInput}
               />
               {invoiceItems.length > 1 && (
-                <button type="button" style={styles.invoiceRemoveBtn} onClick={() => removeInvoiceItem(i)}>✕</button>
+                <button type="button" aria-label="Remove this line item" style={styles.invoiceRemoveBtn} onClick={() => removeInvoiceItem(i)}>✕</button>
               )}
             </div>
           ))}

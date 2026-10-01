@@ -2277,7 +2277,7 @@ export default function DispatcherView() {
                       </p>
                     )}
                   </div>
-                  <button style={styles.techRemoveBtn} title="Remove technician"
+                  <button style={styles.techRemoveBtn} title="Remove technician" aria-label="Remove technician"
                     onClick={(e) => { e.stopPropagation(); deactivateTech(tech.id) }}>✕</button>
                 </div>
                 {!tech.last_seen && (
@@ -4476,7 +4476,7 @@ function ChecklistModal({ businessId, template, type = 'completion', onSaved, on
                 placeholder={`Item ${i + 1}`}
               />
               {items.length > 1 && (
-                <button type="button" onClick={() => removeItem(i)}
+                <button type="button" aria-label={`Remove item ${i + 1}`} onClick={() => removeItem(i)}
                   style={{ background: 'none', border: 'none', color: '#8A2525', fontSize: 16, cursor: 'pointer' }}>✕</button>
               )}
             </div>

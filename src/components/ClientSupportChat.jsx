@@ -42,7 +42,7 @@ export default function ClientSupportChat({ jobId, invoiceId, businessName }) {
     <div style={styles.panel}>
       <div style={styles.header}>
         <span style={styles.headerText}>Ask {businessName || 'a question'}</span>
-        <button style={styles.closeBtn} onClick={() => setOpen(false)}>✕</button>
+        <button aria-label="Close chat" style={styles.closeBtn} onClick={() => setOpen(false)}>✕</button>
       </div>
       <div style={styles.messages}>
         {messages.length === 0 && (

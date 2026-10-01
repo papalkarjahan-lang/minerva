@@ -249,7 +249,7 @@ export default function Onboarding() {
                 <input aria-label={`Technician ${i + 1} mobile number`} placeholder="Mobile (04xx...)" value={tech.phone} onChange={updateTech(i, 'phone')}
                   type="tel" style={{ ...styles.input, flex: 1 }} />
                 {techs.length > 1 && (
-                  <button onClick={() => removeTech(i)} style={styles.removeBtn}>✕</button>
+                  <button aria-label={`Remove technician ${i + 1}`} onClick={() => removeTech(i)} style={styles.removeBtn}>✕</button>
                 )}
               </div>
             ))}
