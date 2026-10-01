@@ -22,7 +22,7 @@ export default function IndustrialDispatcherView() {
   const [correctiveActions, setCorrectiveActions] = useState([])
   const [technicians, setTechnicians] = useState([])
   const [packages, setPackages] = useState([])
-  const [tab, setTab] = useState('leads') // 'leads' | 'sites' | 'assets' | 'inventory' | 'safety' | 'verification'
+  const [tab, setTab] = useState('overview') // 'overview' | 'leads' | 'sites' | 'assets' | 'inventory' | 'safety' | 'verification'
   const [showAddLead, setShowAddLead] = useState(false)
   const [showAddSite, setShowAddSite] = useState(false)
   const [showAddAsset, setShowAddAsset] = useState(false)
@@ -431,6 +431,21 @@ export default function IndustrialDispatcherView() {
   }
 
   const openIncidents = incidents.filter(i => !i.acknowledged_at)
+  // At-a-glance dashboard (OVERVIEW tab) — same approach as DispatcherView's
+  // Overview tab: every figure comes from state already loaded by loadAll
+  // for the other 6 tabs, so this adds zero new queries.
+  const today = new Date().toISOString().slice(0, 10)
+  const openCorrectiveActions = correctiveActions.filter(a => a.status !== 'closed')
+  const overviewStats = {
+    openIncidentCount: openIncidents.length,
+    escalatedUnacked: openIncidents.filter(i => i.escalated_at).length,
+    openActionCount: openCorrectiveActions.length,
+    overdueActionCount: openCorrectiveActions.filter(a => a.due_date && a.due_date < today).length,
+    activeSiteCount: sites.filter(s => s.status === 'active').length,
+    assetsNeedingAttention: assets.filter(a => a.status === 'maintenance' || a.status === 'out_of_service').length,
+    lowStockCount: consumables.filter(c => c.quantity_on_hand <= c.reorder_threshold).length,
+    newLeadCount: leads.filter(l => l.status === 'new').length,
+  }
 
   if (businessLoadError) {
     return (
@@ -478,6 +493,7 @@ export default function IndustrialDispatcherView() {
         </div>
         <div style={styles.tabRow}>
           {[
+            ['overview', 'Overview', 0],
             ['leads', 'Signal & Enrich', leads.length],
             ['sites', 'Site Ops', sites.length],
             ['assets', 'Telemetry & Audit', assets.length],
@@ -493,6 +509,40 @@ export default function IndustrialDispatcherView() {
       </div>
 
       <div style={styles.body}>
+        {tab === 'overview' && (
+          <div style={styles.overviewGrid}>
+            <button style={styles.overviewCard} onClick={() => setTab('safety')}>
+              <p style={styles.overviewCardValue(overviewStats.openIncidentCount > 0 ? '#8A2525' : '#fff')}>{overviewStats.openIncidentCount}</p>
+              <p style={styles.overviewCardLabel}>Unacknowledged incidents</p>
+              <p style={styles.overviewCardSub}>{overviewStats.escalatedUnacked > 0 ? `${overviewStats.escalatedUnacked} already escalated` : 'none escalated'}</p>
+            </button>
+            <button style={styles.overviewCard} onClick={() => setTab('safety')}>
+              <p style={styles.overviewCardValue(overviewStats.overdueActionCount > 0 ? '#8A2525' : overviewStats.openActionCount > 0 ? '#A87C16' : '#fff')}>{overviewStats.openActionCount}</p>
+              <p style={styles.overviewCardLabel}>Open corrective actions</p>
+              <p style={styles.overviewCardSub}>{overviewStats.overdueActionCount} overdue</p>
+            </button>
+            <button style={styles.overviewCard} onClick={() => setTab('sites')}>
+              <p style={styles.overviewCardValue('#2D5FA8')}>{overviewStats.activeSiteCount}</p>
+              <p style={styles.overviewCardLabel}>Active sites</p>
+              <p style={styles.overviewCardSub}>{sites.length} total</p>
+            </button>
+            <button style={styles.overviewCard} onClick={() => setTab('assets')}>
+              <p style={styles.overviewCardValue(overviewStats.assetsNeedingAttention > 0 ? '#A87C16' : '#fff')}>{overviewStats.assetsNeedingAttention}</p>
+              <p style={styles.overviewCardLabel}>Assets needing attention</p>
+              <p style={styles.overviewCardSub}>in maintenance or out of service</p>
+            </button>
+            <button style={styles.overviewCard} onClick={() => setTab('inventory')}>
+              <p style={styles.overviewCardValue(overviewStats.lowStockCount > 0 ? '#A87C16' : '#fff')}>{overviewStats.lowStockCount}</p>
+              <p style={styles.overviewCardLabel}>Low-stock items</p>
+              <p style={styles.overviewCardSub}>at or below reorder threshold</p>
+            </button>
+            <button style={styles.overviewCard} onClick={() => setTab('leads')}>
+              <p style={styles.overviewCardValue(overviewStats.newLeadCount > 0 ? '#A87C16' : '#fff')}>{overviewStats.newLeadCount}</p>
+              <p style={styles.overviewCardLabel}>New leads</p>
+              <p style={styles.overviewCardSub}>not yet enriched or contacted</p>
+            </button>
+          </div>
+        )}
         {tab === 'leads' && (
           <>
             <div style={styles.sectionHead}>
@@ -878,4 +928,9 @@ const styles = {
   modalActions: { display: 'flex', gap: 10, marginTop: 8 },
   submitBtn: { flex: 1, background: '#2D5FA8', color: '#fff', border: 'none', borderRadius: 10, padding: '12px 0', fontSize: 15, fontWeight: 'bold', cursor: 'pointer' },
   cancelBtn: { flex: 1, background: '#f5f5f5', color: '#555', border: 'none', borderRadius: 10, padding: '12px 0', fontSize: 15, cursor: 'pointer' },
+  overviewGrid: { display: 'flex', flexWrap: 'wrap', gap: 10 },
+  overviewCard: { background: '#0a0f1d', border: '1px solid #1e293b', borderRadius: 12, padding: '14px 16px', minWidth: 150, flex: '1 1 150px', cursor: 'pointer', textAlign: 'left', display: 'block', font: 'inherit' },
+  overviewCardValue: (color) => ({ color: color || '#fff', fontSize: 24, fontWeight: 'bold', margin: '0 0 2px' }),
+  overviewCardLabel: { color: '#8899a6', fontSize: 11, letterSpacing: 0.5, textTransform: 'uppercase', margin: '0 0 2px' },
+  overviewCardSub: { color: '#555', fontSize: 11, margin: 0 },
 }
