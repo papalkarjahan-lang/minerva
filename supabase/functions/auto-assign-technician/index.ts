@@ -85,9 +85,15 @@
 //
 // Skill-based hard filter (added 2026-09-27, supabase_schema_delta_
 // skill_dispatch.sql): jobs.required_skill, null by default (= no
-// requirement, unchanged behaviour). technicians.skills (text[]) already
-// existed as a free-text tag list (supabase_schema_delta_minerva_max.sql)
-// but nothing read it until now. If a dispatcher sets a required skill on
+// requirement, unchanged behaviour). technicians.skills (text[]) was
+// INCORRECTLY believed to already exist via supabase_schema_delta_
+// minerva_max.sql — that delta only added `skills` to the separate
+// `subcontractors` table, never to `technicians`. The column was actually
+// missing on the live DB from 2026-09-27 until this was caught and the
+// migration applied directly (2026-10-01); see the `techsErr` check a few
+// lines below in the code for how this silently degraded every
+// auto-dispatch in the meantime instead of erroring loudly. If a
+// dispatcher sets a required skill on
 // the job (e.g. "confined_space"), any free technician whose skills list
 // doesn't contain that exact tag (case-insensitive) is excluded from the
 // candidate pool — same hard-exclude treatment as the credential filter,
@@ -213,12 +219,22 @@ serve(async (req: Request) => {
       })
     }
 
-    const { data: techs } = await supabase
+    // Error intentionally checked and thrown here (unlike a bare `const {
+    // data } = ...`) — a prior version of this query silently discarded
+    // its error, so when technicians.skills briefly didn't exist on the
+    // live DB (see supabase_schema_delta_skill_dispatch.sql's now-corrected
+    // comment), this select failed on every call but `(techs || [])`
+    // masked it as "no technician free," silently degrading every
+    // auto-dispatch to the subcontractor/no_technician_available fallback
+    // with no error ever recorded. Fail loud instead, consistent with
+    // every other query in this function (see job/subClaim/techClaim above).
+    const { data: techs, error: techsErr } = await supabase
       .from('technicians')
       .select('id, name, current_lat, current_lng, current_job_id, is_active, rolling_emergency_job_count, rolling_week_hours, skills')
       .eq('business_id', job.business_id)
       .eq('is_active', true)
       .is('current_job_id', null)
+    if (techsErr) throw techsErr
 
     let free = (techs || []).filter(t => t.current_lat != null && t.current_lng != null)
 

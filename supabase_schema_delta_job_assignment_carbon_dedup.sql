@@ -37,3 +37,20 @@ alter table jobs add column if not exists technician_notified_for uuid reference
 -- count(*) > 1` and delete the extras (keep the earliest `created_at` per
 -- job_id) before re-running this line.
 alter table carbon_estimates add constraint carbon_estimates_job_id_key unique (job_id);
+
+-- CORRECTION (2026-10-01): this same commit (f284330) also added a
+-- claim-before-send guard to send-invoice-sms (invoices.invoice_sms_sent)
+-- and a claim-on-transition flag to check-credential-expiry
+-- (technician_credentials.urgent_notified_at), but this delta file was
+-- never updated to include either column — so both functions silently ran
+-- against a live DB missing the exact column their new code depended on.
+-- send-invoice-sms failed loudly (its claim query's error is checked and
+-- thrown); check-credential-expiry's main select also failed loudly
+-- (confirmed via agent_functions.last_error = "column
+-- technician_credentials.urgent_notified_at does not exist", logged
+-- 2026-09-30 — meaning every 30/14/7-day AND urgent credential-expiry
+-- warning silently stopped firing from that point until this was found
+-- and fixed 2026-10-01). Applied directly to the live DB on discovery;
+-- added here so a fresh environment/staging DB stays in sync.
+alter table invoices add column if not exists invoice_sms_sent boolean default false;
+alter table technician_credentials add column if not exists urgent_notified_at timestamptz;
