@@ -89,7 +89,7 @@ serve(async (req: Request) => {
 
     const { data: business, error: bizErr } = await supabaseAdmin
       .from('businesses')
-      .select('owner_user_id, contact_email, stripe_sub_id, max_addons, max_addon_stripe_items')
+      .select('owner_user_id, contact_email, stripe_sub_id, max_addons, max_addon_stripe_items, subscription_tier')
       .eq('id', businessId)
       .maybeSingle()
     if (bizErr) throw new Error(bizErr.message)
@@ -119,6 +119,17 @@ serve(async (req: Request) => {
 
     if (!business.stripe_sub_id) {
       throw new Error('No active subscription on file for this business yet — this usually means checkout has not completed. Contact support if this seems wrong.')
+    }
+
+    // stripe-webhook's customer.subscription.deleted handler sets
+    // subscription_tier to 'cancelled' but deliberately leaves stripe_sub_id
+    // in place (it's a historical record of which subscription existed) —
+    // so the check above alone doesn't catch a cancelled business. Without
+    // this, 'enable' would call stripe.subscriptionItems.create against a
+    // subscription Stripe has already deleted and surface a raw Stripe API
+    // error to the dispatcher instead of a clear one.
+    if (action === 'enable' && business.subscription_tier === 'cancelled') {
+      throw new Error("This business's subscription is cancelled — resubscribe before enabling a new add-on.")
     }
 
     let patch: Record<string, unknown>
