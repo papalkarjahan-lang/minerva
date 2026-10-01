@@ -233,7 +233,13 @@ export default function IndustrialDispatcherView() {
       name: f.get('name'),
       asset_type: f.get('asset_type'),
       tag_id: f.get('tag_id') || null,
-      status: 'available',
+      // Schema enum is 'active' | 'maintenance' | 'idle' | 'out_of_service'
+      // (see supabase_schema_delta_industrial.sql) — detect-idle-assets,
+      // predict-asset-maintenance and optimize-industrial-routes all filter
+      // industrial_assets on status='active'. This previously inserted
+      // 'available' (not a value in that enum at all), so every asset
+      // created here was silently invisible to all three cron jobs.
+      status: 'active',
     })
     setFormSubmitting(false)
     if (error) { alert(`Couldn't add asset: ${error.message}`); return }
