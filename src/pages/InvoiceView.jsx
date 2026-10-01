@@ -90,8 +90,27 @@ export default function InvoiceView() {
   const items = Array.isArray(invoice.line_items) ? invoice.line_items : []
 
   return (
-    <div style={styles.screen}>
-      <div style={styles.card}>
+    <div style={styles.screen} className="invoice-screen">
+      {/* Dark theme throughout this page (white text on #050811/#0a0f1d)
+          was never given any print handling — hitting Ctrl/Cmd+P printed a
+          near-black page wasting ink, with the floating chat bubble and
+          Pay-now button included. .no-print/.invoice-print-card hook into
+          the print stylesheet below; inline styles still win on-screen
+          since this <style> block only applies under @media print. */}
+      <style>{`
+        @media print {
+          .no-print { display: none !important; }
+          .invoice-screen { display: block !important; min-height: 0 !important; padding: 0 !important; background: #fff !important; }
+          .invoice-print-card, .invoice-print-card * {
+            color: #000 !important;
+            background: transparent !important;
+            border-color: #ccc !important;
+            box-shadow: none !important;
+          }
+          .invoice-print-card { border: 1px solid #ccc !important; max-width: none !important; }
+        }
+      `}</style>
+      <div style={styles.card} className="invoice-print-card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
           <div>
             <p style={styles.bizName}>{business?.name}</p>
@@ -132,11 +151,11 @@ export default function InvoiceView() {
         </div>
 
         {invoice.status === 'unpaid' && stripePromise && !payOpen && (
-          <button style={styles.payButton} onClick={startPayNow}>Pay now with card</button>
+          <button className="no-print" style={styles.payButton} onClick={startPayNow}>Pay now with card</button>
         )}
 
         {invoice.status === 'unpaid' && payOpen && (
-          <div style={{ marginTop: 16 }}>
+          <div className="no-print" style={{ marginTop: 16 }}>
             {payError ? (
               <>
                 <p style={{ color: '#8A2525', fontSize: 13, marginBottom: 10 }}>{payError}</p>
@@ -161,8 +180,14 @@ export default function InvoiceView() {
             ? 'This invoice has been voided and is no longer payable.'
             : `Or arrange payment with ${business?.name || 'your provider'} directly.`}
         </p>
+
+        <button className="no-print" style={styles.printButton} onClick={() => window.print()}>
+          🖨️ Print / Save as PDF
+        </button>
       </div>
-      <ClientSupportChat invoiceId={invoiceId} businessName={business?.name} />
+      <div className="no-print">
+        <ClientSupportChat invoiceId={invoiceId} businessName={business?.name} />
+      </div>
     </div>
   )
 }
@@ -278,5 +303,6 @@ const styles = {
   totalLabel: { color: '#fff', fontSize: 17, fontWeight: 'bold' },
   totalValue: { color: '#1D9E75', fontSize: 17, fontWeight: 'bold' },
   footerNote: { color: '#555', fontSize: 12, textAlign: 'center', marginTop: 24 },
-  payButton: { width: '100%', marginTop: 20, padding: '13px 0', background: '#1D9E75', color: '#fff', border: 'none', borderRadius: 10, fontSize: 15, fontWeight: 'bold', cursor: 'pointer' }
+  payButton: { width: '100%', marginTop: 20, padding: '13px 0', background: '#1D9E75', color: '#fff', border: 'none', borderRadius: 10, fontSize: 15, fontWeight: 'bold', cursor: 'pointer' },
+  printButton: { width: '100%', marginTop: 10, padding: '11px 0', background: 'transparent', color: '#8fd0e8', border: '1px solid #1e293b', borderRadius: 10, fontSize: 13, fontWeight: 'bold', cursor: 'pointer' }
 }

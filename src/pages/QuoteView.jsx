@@ -60,8 +60,22 @@ export default function QuoteView() {
   const items = Array.isArray(quote.line_items) ? quote.line_items : []
 
   return (
-    <div style={styles.screen}>
-      <div style={styles.card}>
+    <div style={styles.screen} className="invoice-screen">
+      {/* Same print treatment as InvoiceView.jsx — see its comment for why. */}
+      <style>{`
+        @media print {
+          .no-print { display: none !important; }
+          .invoice-screen { display: block !important; min-height: 0 !important; padding: 0 !important; background: #fff !important; }
+          .invoice-print-card, .invoice-print-card * {
+            color: #000 !important;
+            background: transparent !important;
+            border-color: #ccc !important;
+            box-shadow: none !important;
+          }
+          .invoice-print-card { border: 1px solid #ccc !important; max-width: none !important; }
+        }
+      `}</style>
+      <div style={styles.card} className="invoice-print-card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
           <div>
             <p style={styles.bizName}>{business?.name}</p>
@@ -101,7 +115,7 @@ export default function QuoteView() {
         {quote.status === 'sent' && (
           <>
             {respondError && <p style={{ color: '#8A2525', fontSize: 13, margin: '14px 0 0' }}>{respondError}</p>}
-            <div style={{ display: 'flex', gap: 10, marginTop: respondError ? 10 : 20 }}>
+            <div className="no-print" style={{ display: 'flex', gap: 10, marginTop: respondError ? 10 : 20 }}>
               <button type="button" style={styles.declineBtn} onClick={() => respond('declined')} disabled={submitting}>
                 Decline
               </button>
@@ -117,6 +131,10 @@ export default function QuoteView() {
         {quote.status === 'declined' && (
           <p style={styles.footerNote}>You've declined this quote.</p>
         )}
+
+        <button className="no-print" style={styles.printButton} onClick={() => window.print()}>
+          🖨️ Print / Save as PDF
+        </button>
       </div>
     </div>
   )
@@ -141,6 +159,7 @@ const styles = {
   totalLabel: { color: '#fff', fontSize: 17, fontWeight: 'bold' },
   totalValue: { color: '#1D9E75', fontSize: 17, fontWeight: 'bold' },
   footerNote: { color: '#555', fontSize: 12, textAlign: 'center', marginTop: 24 },
+  printButton: { width: '100%', marginTop: 16, padding: '11px 0', background: 'transparent', color: '#8fd0e8', border: '1px solid #1e293b', borderRadius: 10, fontSize: 13, fontWeight: 'bold', cursor: 'pointer' },
   acceptBtn: { flex: 2, background: '#1D9E75', color: '#fff', border: 'none', borderRadius: 8, padding: '12px 0', fontSize: 14, fontWeight: 'bold', cursor: 'pointer' },
   declineBtn: { flex: 1, background: '#1e293b', color: '#ccc', border: 'none', borderRadius: 8, padding: '12px 0', fontSize: 14, fontWeight: 'bold', cursor: 'pointer' },
 }
