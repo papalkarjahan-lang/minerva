@@ -329,13 +329,19 @@ export default function AdminConsole() {
   }
 
   async function approveProspect(id) {
+    if (savingId === id) return
+    setSavingId(id)
     const { error } = await supabase.from('outreach_prospects').update({ status: 'approved' }).eq('id', id)
+    setSavingId(null)
     if (error) { alert(`Couldn't approve: ${error.message}`); return }
     loadProspects()
   }
 
   async function rejectProspect(id) {
+    if (savingId === id) return
+    setSavingId(id)
     const { error } = await supabase.from('outreach_prospects').update({ status: 'closed_lost' }).eq('id', id)
+    setSavingId(null)
     if (error) { alert(`Couldn't reject: ${error.message}`); return }
     loadProspects()
   }
@@ -816,12 +822,12 @@ function ProspectCard({ prospect: p, onSaveDraft, onApprove, onReject, savingId,
           </button>
         )}
         {p.status === 'drafted' && !dirty && (
-          <button onClick={() => onApprove(p.id)} style={{ background: '#1D9E75', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13 }}>
+          <button onClick={() => onApprove(p.id)} disabled={savingId === p.id} style={{ background: '#1D9E75', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13 }}>
             Approve for sending
           </button>
         )}
         {p.status !== 'closed_lost' && (
-          <button onClick={() => onReject(p.id)} style={{ background: 'none', border: '1px solid #1e293b', color: '#888', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13 }}>
+          <button onClick={() => onReject(p.id)} disabled={savingId === p.id} style={{ background: 'none', border: '1px solid #1e293b', color: '#888', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontSize: 13 }}>
             Discard
           </button>
         )}

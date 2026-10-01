@@ -81,6 +81,14 @@ export default function DispatcherView() {
   const [requestingReviewId, setRequestingReviewId] = useState(null)
   const [resendingReferralId, setResendingReferralId] = useState(null)
   const [markingPaidId, setMarkingPaidId] = useState(null)
+  // Double-submit guards for markLeadStatus/markLeadDuplicate/setAssetStatus —
+  // these were plain fire-and-forget updates with no busy state, so a double
+  // click (or a slow network making a user click twice) could fire two
+  // concurrent updates on the same row (and, for markLeadDuplicate, a
+  // duplicate lead_activities insert too) with an unpredictable final value
+  // depending on response order.
+  const [busyLeadId, setBusyLeadId] = useState(null)
+  const [busyAssetId, setBusyAssetId] = useState(null)
   const [syncingXeroId, setSyncingXeroId] = useState(null)
   // Round-2 batch: seasonal demand forecasting — most recent business-scoped insight, or null.
   const [demandForecast, setDemandForecast] = useState(null)
@@ -1120,22 +1128,34 @@ export default function DispatcherView() {
 
   // Lead pipeline actions
   async function markLeadStatus(leadId, status) {
-    const { error } = await supabase.from('leads').update({ status }).eq('id', leadId)
-    if (error) { alert(`Couldn't update lead: ${error.message}`); return }
-    setLeads(prev => prev.filter(l => l.id !== leadId)) // leaves the active pipeline view
+    if (busyLeadId === leadId) return
+    setBusyLeadId(leadId)
+    try {
+      const { error } = await supabase.from('leads').update({ status }).eq('id', leadId)
+      if (error) { alert(`Couldn't update lead: ${error.message}`); return }
+      setLeads(prev => prev.filter(l => l.id !== leadId)) // leaves the active pipeline view
+    } finally {
+      setBusyLeadId(null)
+    }
   }
 
   // See duplicatePhoneGroups above — marks the duplicate as lost and logs
   // which other lead it duplicated, so the reason is visible later in
   // LOST LEADS/the timeline rather than just silently disappearing.
   async function markLeadDuplicate(lead, otherLead) {
-    const { error } = await supabase.from('leads').update({ status: 'lost' }).eq('id', lead.id)
-    if (error) { alert(`Couldn't update lead: ${error.message}`); return }
-    await supabase.from('lead_activities').insert({
-      lead_id: lead.id, business_id: businessId, activity_type: 'note', created_by: 'dispatcher',
-      body: `Marked as a duplicate of another open lead (${otherLead.client_name || 'unnamed'}, captured ${timeAgo(otherLead.created_at)}).`,
-    })
-    setLeads(prev => prev.filter(l => l.id !== lead.id))
+    if (busyLeadId === lead.id) return
+    setBusyLeadId(lead.id)
+    try {
+      const { error } = await supabase.from('leads').update({ status: 'lost' }).eq('id', lead.id)
+      if (error) { alert(`Couldn't update lead: ${error.message}`); return }
+      await supabase.from('lead_activities').insert({
+        lead_id: lead.id, business_id: businessId, activity_type: 'note', created_by: 'dispatcher',
+        body: `Marked as a duplicate of another open lead (${otherLead.client_name || 'unnamed'}, captured ${timeAgo(otherLead.created_at)}).`,
+      })
+      setLeads(prev => prev.filter(l => l.id !== lead.id))
+    } finally {
+      setBusyLeadId(null)
+    }
   }
 
   // CRM pipeline_stage — a finer-grained lens on top of the existing status
@@ -1255,9 +1275,15 @@ export default function DispatcherView() {
   }
 
   async function setAssetStatus(assetId, status) {
-    const { error } = await supabase.from('assets').update({ status }).eq('id', assetId)
-    if (error) { alert(`Couldn't update asset status: ${error.message}`); return }
-    setAssets(prev => prev.map(a => a.id === assetId ? { ...a, status } : a))
+    if (busyAssetId === assetId) return
+    setBusyAssetId(assetId)
+    try {
+      const { error } = await supabase.from('assets').update({ status }).eq('id', assetId)
+      if (error) { alert(`Couldn't update asset status: ${error.message}`); return }
+      setAssets(prev => prev.map(a => a.id === assetId ? { ...a, status } : a))
+    } finally {
+      setBusyAssetId(null)
+    }
   }
 
   // Quantity edits clear any pending low-stock alert flag if the new count
@@ -2695,7 +2721,7 @@ export default function DispatcherView() {
                       <p style={{ color: '#e0a94e', fontSize: 11, margin: 0, flex: 1 }}>
                         ⚠ Possible duplicate of &quot;{otherDuplicate.client_name || 'Unnamed'}&quot; (same phone, {timeAgo(otherDuplicate.created_at)})
                       </p>
-                      <button style={{ ...styles.leadActionSecondary, padding: '3px 8px', fontSize: 11 }} onClick={() => markLeadDuplicate(lead, otherDuplicate)}>Mark duplicate</button>
+                      <button style={{ ...styles.leadActionSecondary, padding: '3px 8px', fontSize: 11 }} disabled={busyLeadId === lead.id} onClick={() => markLeadDuplicate(lead, otherDuplicate)}>{busyLeadId === lead.id ? '...' : 'Mark duplicate'}</button>
                     </div>
                   )}
                   <p style={styles.jobAddr}>{lead.suburb} · {lead.client_phone}</p>
@@ -2775,9 +2801,9 @@ export default function DispatcherView() {
                   <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
                     <button style={styles.leadActionPrimary} disabled={convertingLeadId === lead.id} onClick={() => convertLeadToJob(lead)}>{convertingLeadId === lead.id ? 'Converting...' : 'Convert to job'}</button>
                     {lead.status === 'new' && (
-                      <button style={styles.leadActionSecondary} onClick={() => markLeadStatus(lead.id, 'contacted')}>Contacted</button>
+                      <button style={styles.leadActionSecondary} disabled={busyLeadId === lead.id} onClick={() => markLeadStatus(lead.id, 'contacted')}>Contacted</button>
                     )}
-                    <button style={styles.leadActionSecondary} onClick={() => markLeadStatus(lead.id, 'lost')}>Lost</button>
+                    <button style={styles.leadActionSecondary} disabled={busyLeadId === lead.id} onClick={() => markLeadStatus(lead.id, 'lost')}>Lost</button>
                     <button style={styles.leadActionSecondary} onClick={() => toggleLeadActivity(lead.id)}>
                       {expandedLeadId === lead.id ? 'Hide timeline' : 'Timeline'}
                     </button>
@@ -2896,9 +2922,9 @@ export default function DispatcherView() {
                   </select>
                   <div style={{ marginTop: 6 }}>
                     {asset.status !== 'maintenance' ? (
-                      <button style={styles.leadActionSecondary} onClick={() => setAssetStatus(asset.id, 'maintenance')}>Send to maintenance</button>
+                      <button style={styles.leadActionSecondary} disabled={busyAssetId === asset.id} onClick={() => setAssetStatus(asset.id, 'maintenance')}>Send to maintenance</button>
                     ) : (
-                      <button style={styles.leadActionSecondary} onClick={() => setAssetStatus(asset.id, 'available')}>Mark available</button>
+                      <button style={styles.leadActionSecondary} disabled={busyAssetId === asset.id} onClick={() => setAssetStatus(asset.id, 'available')}>Mark available</button>
                     )}
                   </div>
                 </div>
