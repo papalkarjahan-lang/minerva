@@ -3053,6 +3053,17 @@ export default function DispatcherView() {
                     </span>
                   </div>
                   <p style={styles.jobAddr}>${Number(inv.total).toFixed(2)} · {new Date(inv.created_at).toLocaleDateString('en-AU')}{inv.ai_verified ? ' · ✓ AI-verified' : ''}</p>
+                  {/* invoices.payment_method ('manual' | 'stripe_card') has been
+                      written by stripe-webhook since the 2026-09-14 "Pay now with
+                      card" feature shipped, but had no UI surface anywhere — the
+                      schema delta that added it specifically said this was "useful
+                      for reconciliation," which it can't be if it's never shown.
+                      Only called out for the non-default case (the client paid by
+                      card themselves) — a manually-marked-paid invoice (the
+                      original, still-default flow) needs no extra label. */}
+                  {inv.status === 'paid' && inv.payment_method === 'stripe_card' && (
+                    <p style={{ ...styles.jobAddr, color: '#8fd0e8' }}>💳 Paid by card (client self-serve)</p>
+                  )}
                   {inv.status === 'void' && (
                     <p style={{ ...styles.jobAddr, color: '#888' }}>
                       Voided {inv.voided_at ? new Date(inv.voided_at).toLocaleDateString('en-AU') : ''}{inv.voided_reason ? ` — "${inv.voided_reason}"` : ''}
