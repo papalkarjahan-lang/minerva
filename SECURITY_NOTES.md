@@ -196,6 +196,20 @@ appropriate to scale indefinitely without revisiting.
   `auth.uid()`, and legitimately need cross-business or unauthenticated
   reads to work).
 
+  **CORRECTION (2026-10-02), live-verified against `pg_policies`: this
+  is no longer true, same stale-claim pattern as the "Phase 2 priority"
+  correction further down this file — a later pass closed the gap this
+  note describes without this note being updated to match.** `assets`,
+  `subcontractors`, and `upsell_nudge_dismissals` now have owner-scoped
+  INSERT/UPDATE (and DELETE, where a policy exists at all — `upsell_
+  nudge_dismissals` has no UPDATE/DELETE policy left at all, since
+  nothing in the app ever called either). `technician_incidents` INSERT
+  is owner-or-the-reporting-technician-themselves, not open anon.
+  `support_requests` INSERT remains genuinely anon `with check(true)` —
+  that one's intentional, not a gap: it's the public `/contact` and
+  in-app support-request forms, which by design need to accept a
+  submission from someone with no login at all.
+
   **Regression found and fixed 2026-09-07**: the "read exclusively from
   DispatcherView" claim for `subcontractors` turned out to be wrong —
   `auto-assign-technician`'s subcontractor-fallback dispatch code (added in
