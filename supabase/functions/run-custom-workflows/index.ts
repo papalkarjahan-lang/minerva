@@ -72,6 +72,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { matchesCondition, daysOverdue } from "./logic.ts"
 import { isOwnerOrTechnicianOfBusiness, getAuthenticatedCaller } from "../_shared/ownership.ts"
+import { escapeHtml } from "../_shared/html.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -264,13 +265,25 @@ async function runWorkflowsFor(
         // through send-email (the shared Resend choke point, gated on
         // RESEND_API_KEY exactly like every other email in this codebase)
         // rather than calling Resend directly.
+        //
+        // Both wf.name and payload are escaped before interpolation (fixed
+        // 2026-10-01): wf.name is business-owner-controlled free text, but
+        // payload can carry end-client-supplied fields (e.g. client_name
+        // from a public lead-intake form, forwarded via job.assigned/
+        // invoice.paid/lead.created) straight into this HTML body. <pre> is
+        // still parsed as real HTML in an email client, not literal text,
+        // so an unescaped payload value containing markup (e.g.
+        // `</pre><a href="...">...`) would have rendered live in the
+        // business owner's inbox — same stored-HTML-injection class
+        // escapeHtml() already guards against in stripe-webhook,
+        // send-outreach-batch, and test-agent-health.
         await fetch(`${supabaseUrl}/functions/v1/send-email`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
           body: JSON.stringify({
             to: wf.action_target,
             subject: `Minerva workflow triggered: ${wf.name}`,
-            html: `<p>Your workflow <strong>${wf.name}</strong> was triggered by <strong>${event}</strong>.</p><pre>${JSON.stringify(payload, null, 2)}</pre>`,
+            html: `<p>Your workflow <strong>${escapeHtml(wf.name)}</strong> was triggered by <strong>${escapeHtml(event)}</strong>.</p><pre>${escapeHtml(JSON.stringify(payload, null, 2))}</pre>`,
           }),
         })
       }
