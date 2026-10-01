@@ -28,20 +28,27 @@ export default function ClientHistoryView() {
     if (linkErr || !link) { setError('This link is invalid or has expired.'); return }
     setBusiness(link.businesses)
 
-    const { data: jobList } = await supabase
+    // Both errors checked explicitly (fixed 2026-10-02) — previously a
+    // failed fetch here (RLS hiccup, transient network error) left jobList/
+    // invoiceList undefined, which rendered identically to a real repeat
+    // customer having no history at all: "No history with {business} yet",
+    // a misleading thing to tell someone whose request just failed.
+    const { data: jobList, error: jobsErr } = await supabase
       .from('jobs')
       .select('*')
       .eq('business_id', link.business_id)
       .eq('client_phone', link.client_phone)
       .order('created_at', { ascending: false })
+    if (jobsErr) { setError("Couldn't load your history right now — please try refreshing."); return }
     setJobs(jobList || [])
 
-    const { data: invoiceList } = await supabase
+    const { data: invoiceList, error: invoicesErr } = await supabase
       .from('invoices')
       .select('*')
       .eq('business_id', link.business_id)
       .eq('client_phone', link.client_phone)
       .order('created_at', { ascending: false })
+    if (invoicesErr) { setError("Couldn't load your history right now — please try refreshing."); return }
     setInvoices(invoiceList || [])
     setLoaded(true)
   }

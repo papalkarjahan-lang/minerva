@@ -72,7 +72,7 @@ const styles = {
   panel: { position: 'fixed', bottom: 20, right: 20, width: 300, maxWidth: 'calc(100vw - 40px)', background: '#0a0f1d', border: '1px solid #1e293b', borderRadius: 14, display: 'flex', flexDirection: 'column', boxShadow: '0 4px 20px rgba(0,0,0,0.5)', zIndex: 50, maxHeight: 400 },
   header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', borderBottom: '1px solid #1e293b' },
   headerText: { color: '#fff', fontSize: 13, fontWeight: 'bold' },
-  closeBtn: { background: 'transparent', border: 'none', color: '#888', cursor: 'pointer', fontSize: 13 },
+  closeBtn: { background: 'transparent', border: 'none', color: '#888', cursor: 'pointer', fontSize: 16, padding: '8px 10px', lineHeight: 1 },
   messages: { flex: 1, overflowY: 'auto', padding: 10, display: 'flex', flexDirection: 'column', gap: 6, minHeight: 120 },
   placeholder: { color: '#555', fontSize: 12, margin: 0 },
   userBubble: { alignSelf: 'flex-end', background: '#2D5FA8', color: '#fff', borderRadius: 10, padding: '6px 10px', fontSize: 13, maxWidth: '85%' },

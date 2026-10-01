@@ -161,6 +161,22 @@ export default function TrackingView() {
 
   if (!tech) return <LoadingScreen label="Finding your technician..." />
 
+  // Cancelling a job (DispatcherView's cancelJob) only ever clears
+  // technicians.current_job_id, never jobs.technician_id itself — by
+  // design, so the record still shows who it was assigned to. Without this
+  // branch, a client re-opening their original tracking link after
+  // cancellation fell straight through to the live map below: a
+  // contradictory "your technician is on the way" with a real-time-updating
+  // GPS dot of wherever that technician currently is now, possibly on an
+  // unrelated job. (Fixed 2026-10-02.)
+  if (job.status === 'cancelled') return (
+    <div style={styles.screen}>
+      <div style={styles.errorCard}>
+        <p style={{ color: '#444', fontSize: 15, margin: 0 }}>This job has been cancelled. Contact {business?.name || 'the business'} if you believe this is a mistake.</p>
+      </div>
+    </div>
+  )
+
   if (job.status === 'complete') return (
     <div style={styles.screen}>
       <div style={styles.completeCard}>

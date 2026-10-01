@@ -52,12 +52,17 @@ export default function InvoiceView() {
   // show "UNPAID" right after a client just paid. Poll for a few seconds
   // instead of a single fetch; PayNowForm keeps its "Processing..." state
   // shown for the duration (see its onPaid caller below).
+  // Returns whether it actually saw 'paid' land — PayNowForm uses this to
+  // tell a genuinely-confirmed payment apart from a webhook that's just
+  // running slow, rather than showing the same "updating automatically"
+  // message forever in both cases. (Fixed 2026-10-02.)
   async function pollUntilPaid() {
     for (let i = 0; i < 5; i++) {
       const data = await loadInvoice()
-      if (data?.status === 'paid') return
+      if (data?.status === 'paid') return true
       if (i < 4) await new Promise(resolve => setTimeout(resolve, 1500))
     }
+    return false
   }
 
   async function startPayNow() {
@@ -132,12 +137,18 @@ export default function InvoiceView() {
 
         {invoice.status === 'unpaid' && payOpen && (
           <div style={{ marginTop: 16 }}>
-            {payError && <p style={{ color: '#8A2525', fontSize: 13, marginBottom: 10 }}>{payError}</p>}
-            {clientSecret ? (
+            {payError ? (
+              <>
+                <p style={{ color: '#8A2525', fontSize: 13, marginBottom: 10 }}>{payError}</p>
+                <button style={styles.payButton} onClick={startPayNow} disabled={payLoading}>
+                  {payLoading ? 'Retrying...' : 'Try again'}
+                </button>
+              </>
+            ) : clientSecret ? (
               <Elements stripe={stripePromise} options={{ clientSecret }}>
                 <PayNowForm invoiceId={invoiceId} onPaid={pollUntilPaid} />
               </Elements>
-            ) : !payError && (
+            ) : (
               <p style={{ color: '#888', fontSize: 13 }}>Loading payment form...</p>
             )}
           </div>
@@ -174,6 +185,14 @@ function PayNowForm({ invoiceId, onPaid }) {
   // inviting the client to pay a second time for an invoice that was
   // already successfully charged.
   const [paidPendingSync, setPaidPendingSync] = useState(false)
+  // Set if onPaid's poll gives up (~7.5s) without seeing the webhook land —
+  // previously paidPendingSync just stayed true forever in that case, so
+  // the page kept promising an "automatic" update that had already stopped
+  // trying. The card is still genuinely charged either way (that already
+  // happened above); this only affects whether the client is told the truth
+  // about this page needing a manual nudge to catch up. (Fixed 2026-10-02.)
+  const [syncTimedOut, setSyncTimedOut] = useState(false)
+  const [recheckingSync, setRecheckingSync] = useState(false)
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -194,12 +213,36 @@ function PayNowForm({ invoiceId, onPaid }) {
     // Webhook (payment_intent.succeeded) marks the invoice paid server-side;
     // onPaid polls for it so the UI reflects it without needing a manual
     // page refresh, and "Processing..." stays shown for the duration.
-    await onPaid()
+    const confirmed = await onPaid()
+    if (!confirmed) setSyncTimedOut(true)
     setSubmitting(false)
   }
 
+  async function recheckSync() {
+    if (recheckingSync) return
+    setRecheckingSync(true)
+    const confirmed = await onPaid()
+    setRecheckingSync(false)
+    // On success the parent's invoice.status flips to 'paid', which removes
+    // this whole form from the tree — nothing else to reset here.
+    if (!confirmed) setSyncTimedOut(true)
+  }
+
   if (paidPendingSync) {
-    return <p style={{ color: '#1D9E75', fontSize: 14 }}>✓ Payment received — confirming with your bank now. This page will update automatically when that finishes.</p>
+    return (
+      <div>
+        <p style={{ color: '#1D9E75', fontSize: 14 }}>
+          {syncTimedOut
+            ? "✓ Payment received — confirming with your bank is taking longer than usual."
+            : '✓ Payment received — confirming with your bank now. This page will update automatically when that finishes.'}
+        </p>
+        {syncTimedOut && (
+          <button type="button" style={{ ...styles.payButton, marginTop: 10 }} onClick={recheckSync} disabled={recheckingSync}>
+            {recheckingSync ? 'Checking...' : 'Check again'}
+          </button>
+        )}
+      </div>
+    )
   }
 
   return (

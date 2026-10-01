@@ -15,6 +15,7 @@ export default function QuoteView() {
   const [business, setBusiness] = useState(null)
   const [error, setError] = useState(null)
   const [submitting, setSubmitting] = useState(false)
+  const [respondError, setRespondError] = useState(null)
 
   useEffect(() => { loadQuote() }, [quoteId])
 
@@ -29,14 +30,21 @@ export default function QuoteView() {
   async function respond(status) {
     if (submitting) return
     setSubmitting(true)
+    setRespondError(null)
     // Routed through respond-to-quote (rather than updating quotes directly)
     // so the business's own 'quote.accepted'/'quote.declined' custom
     // workflows can fire — that requires the trusted service-role key,
     // which this public, unauthenticated page never holds.
     const { data, error: invokeError } = await supabase.functions.invoke('respond-to-quote', { body: { quoteId, status } })
     setSubmitting(false)
-    if (invokeError || data?.error) { alert("Couldn't send your response — please try again."); return }
-    setQuote(prev => ({ ...prev, status: data?.status || status }))
+    if (invokeError || data?.error) { setRespondError("Couldn't send your response — please try again."); return }
+    // Re-fetch rather than trust data.status directly: on the rare race
+    // where this same quote was just resolved by a concurrent request (e.g.
+    // open in two tabs/devices), respond-to-quote's "alreadyResolved"
+    // response echoes back the status it read BEFORE that concurrent
+    // update landed, not the real current one. A fresh read is correct in
+    // every case and costs nothing extra. (Fixed 2026-10-02.)
+    await loadQuote()
   }
 
   if (error) return (
@@ -91,14 +99,17 @@ export default function QuoteView() {
         </div>
 
         {quote.status === 'sent' && (
-          <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
-            <button type="button" style={styles.declineBtn} onClick={() => respond('declined')} disabled={submitting}>
-              Decline
-            </button>
-            <button type="button" style={styles.acceptBtn} onClick={() => respond('accepted')} disabled={submitting}>
-              Accept Quote
-            </button>
-          </div>
+          <>
+            {respondError && <p style={{ color: '#8A2525', fontSize: 13, margin: '14px 0 0' }}>{respondError}</p>}
+            <div style={{ display: 'flex', gap: 10, marginTop: respondError ? 10 : 20 }}>
+              <button type="button" style={styles.declineBtn} onClick={() => respond('declined')} disabled={submitting}>
+                Decline
+              </button>
+              <button type="button" style={styles.acceptBtn} onClick={() => respond('accepted')} disabled={submitting}>
+                Accept Quote
+              </button>
+            </div>
+          </>
         )}
         {quote.status === 'accepted' && (
           <p style={styles.footerNote}>You've accepted this quote — {business?.name || 'the business'} will be in touch to schedule.</p>

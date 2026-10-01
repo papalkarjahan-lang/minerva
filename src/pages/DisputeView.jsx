@@ -42,6 +42,16 @@ export default function DisputeView() {
   const [replayIndex, setReplayIndex] = useState(0)
   const [replaying, setReplaying] = useState(false)
   const replayTimerRef = useRef(null)
+  // TrackingView already guards against a runtime Mapbox tile/style error
+  // (as opposed to the token-not-configured case below, which this page
+  // already handled) — this page was missing the same fallback, so a
+  // transient map failure left whoever's viewing this evidence pack
+  // staring at a silently blank map box. (Fixed 2026-10-02.)
+  const [mapError, setMapError] = useState(false)
+  function handleMapTileError(e) {
+    console.error('DisputeView: map tile/style error', e?.error || e)
+    setMapError(true)
+  }
 
   useEffect(() => { loadAll() }, [jobId])
 
@@ -122,9 +132,16 @@ export default function DisputeView() {
     </div>
   )
 
+  // Static text here (unlike the shared, spinner-based LoadingScreen used
+  // by TrackingView/InvoiceView/QuoteView/ClientHistoryView) previously
+  // read as a frozen page on a slow connection — LoadingScreen itself is
+  // hardcoded to those pages' dark theme, so this reuses the same global
+  // `spin` keyframe (index.css) directly rather than making the shared
+  // component theme-aware for one light-themed caller. (Fixed 2026-10-02.)
   if (!job) return (
-    <div style={styles.screen}>
-      <p style={{ color: '#888', fontSize: 16 }}>Loading dispute pack...</p>
+    <div style={{ ...styles.screen, flexDirection: 'column', alignItems: 'center', gap: 14 }}>
+      <div style={{ width: 32, height: 32, borderRadius: '50%', border: '3px solid #e2e8f0', borderTopColor: '#2D5FA8', animation: 'spin 0.8s linear infinite' }} />
+      <p style={{ color: '#888', fontSize: 16, margin: 0 }}>Loading dispute pack...</p>
     </div>
   )
 
@@ -157,13 +174,14 @@ export default function DisputeView() {
             <p style={styles.lineMuted}>No GPS breadcrumbs recorded against this job.</p>
           ) : (
             <div style={{ height: 280, borderRadius: 10, overflow: 'hidden', marginTop: 10 }}>
-              {!isMapboxTokenConfigured() ? (
+              {!isMapboxTokenConfigured() || mapError ? (
                 // Same underlying gap as DispatcherView/TrackingView (see
                 // isMapboxTokenConfigured in utils.js) — this evidence page
                 // is read-only and shares no state with either of those, so
                 // it needs its own guard. The route's raw first/last-point
                 // timestamps are still printed below regardless, so a
-                // dispute pack viewed before Mapbox is connected is still
+                // dispute pack viewed before Mapbox is connected (or hitting
+                // a transient tile/style error, see mapError above) is still
                 // useful evidence, just without the visual route.
                 <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f5f5f5', color: '#888', fontSize: 13, textAlign: 'center', padding: 16 }}>
                   Map preview unavailable — GPS points are still listed below.
@@ -173,7 +191,7 @@ export default function DisputeView() {
                 mapboxAccessToken={MAPBOX_TOKEN}
                 {...viewState}
                 onMove={e => setViewState(e.viewState)}
-                onError={e => console.error('DisputeView: map tile/style error', e?.error || e)}
+                onError={handleMapTileError}
                 antialias
                 style={{ width: '100%', height: '100%' }}
                 mapStyle="mapbox://styles/mapbox/streets-v12"
@@ -220,7 +238,7 @@ export default function DisputeView() {
                 Last point {new Date(locations[locations.length - 1].recorded_at).toLocaleString('en-AU')}
                 {job.client_lat != null && ` (${haversineKm(locations[locations.length - 1].lat, locations[locations.length - 1].lng, job.client_lat, job.client_lng).toFixed(2)} km from client address)`}
               </p>
-              {locations.length > 1 && isMapboxTokenConfigured() && (
+              {locations.length > 1 && isMapboxTokenConfigured() && !mapError && (
                 <div style={styles.replayBar}>
                   <button type="button" style={styles.replayBtn} onClick={toggleReplay}>
                     {replaying ? '⏸ Pause' : '▶ Replay route'}
