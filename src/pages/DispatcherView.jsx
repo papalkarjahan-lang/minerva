@@ -1708,6 +1708,31 @@ export default function DispatcherView() {
       nudges.push({ key: 'subcontractor_pool', text: `You have unassigned jobs sitting in the queue — a subcontractor pool lets you cover overflow without hiring.` })
     }
 
+    if (!hasAddon(business, 'demand_forecast')) {
+      const addressCounts = {}
+      for (const job of completedJobs) {
+        if (!job.client_address) continue
+        addressCounts[job.client_address] = (addressCounts[job.client_address] || 0) + 1
+      }
+      const repeatAreas = Object.values(addressCounts).filter(c => c >= 2).length
+      if (completedJobs.length >= 10 && repeatAreas >= 1) {
+        nudges.push({ key: 'demand_forecast', text: `You've completed ${completedJobs.length} jobs with ${repeatAreas} repeat address${repeatAreas === 1 ? '' : 'es'} — Demand Trend Alerts surfaces which areas are picking up before you get the call.` })
+      }
+    }
+
+    if (!hasAddon(business, 'carbon_estimate')) {
+      const byTechDay = {}
+      for (const job of completedJobs) {
+        if (!job.technician_id || !job.completed_at) continue
+        const key = `${job.technician_id}_${job.completed_at.slice(0, 10)}`
+        byTechDay[key] = (byTechDay[key] || 0) + 1
+      }
+      const multiStopDays = Object.values(byTechDay).filter(c => c >= 2).length
+      if (multiStopDays >= 3) {
+        nudges.push({ key: 'carbon_estimate', text: `Your technicians have run ${multiStopDays} multi-job days recently — Carbon/ESG Estimate turns that travel into a reportable number for tender paperwork.` })
+      }
+    }
+
     return nudges.filter(n => !dismissedNudges.includes(n.key))
   }
 

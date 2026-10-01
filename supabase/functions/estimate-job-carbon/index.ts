@@ -64,7 +64,7 @@ serve(async (req: Request) => {
     const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
     const { data: rawCompletedJobs, error } = await supabase.from('jobs')
       .select('id, business_id, technician_id, client_lat, client_lng, completed_at')
-      .eq('status', 'completed')
+      .eq('status', 'complete')
       .gte('completed_at', dayAgo)
       .not('technician_id', 'is', null)
       .not('client_lat', 'is', null)
