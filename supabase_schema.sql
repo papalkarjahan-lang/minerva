@@ -187,9 +187,13 @@ create table assets (
 
 -- Table 6: invoices
 -- On-site invoices built by a technician on job completion (Pro tier).
--- Digital record/receipt only — Minerva does not collect payment itself.
--- The business marks an invoice paid once payment is taken by their own
--- means (EFTPOS, cash, etc.). See InvoiceView.jsx for the client-facing view.
+-- The business can mark an invoice paid once payment is taken by their own
+-- means (EFTPOS, cash, etc.) — the default, original flow. As of
+-- 2026-09-14, InvoiceView.jsx also offers an optional "Pay now with card"
+-- Stripe path (create-invoice-payment-intent + stripe-webhook's
+-- payment_intent.succeeded handler mark it paid automatically in that
+-- case) — this table doesn't care which path set status='paid', just that
+-- one did. See InvoiceView.jsx for the client-facing view.
 create table invoices (
   id            uuid primary key default gen_random_uuid(),
   business_id   uuid references businesses(id) on delete cascade,
