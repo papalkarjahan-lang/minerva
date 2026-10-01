@@ -39,6 +39,7 @@ export default function IndustrialDispatcherView() {
   const [expandedSiteId, setExpandedSiteId] = useState(null)
   const [siteCheckins, setSiteCheckins] = useState({}) // site_id -> site_checkins rows, fetched lazily
   const [ingestionKeyCopied, setIngestionKeyCopied] = useState(false)
+  const [regeneratingKey, setRegeneratingKey] = useState(false)
   // Minerva Max add-on management (Asset Intelligence only, so far, is
   // relevant to Track B) — mirrors DispatcherView's addonBusy pattern.
   const [addonBusy, setAddonBusy] = useState(null)
@@ -183,6 +184,27 @@ export default function IndustrialDispatcherView() {
     navigator.clipboard.writeText(business.ingestion_key)
     setIngestionKeyCopied(true)
     setTimeout(() => setIngestionKeyCopied(false), 2000)
+  }
+
+  // Rotation path for the key above — previously had none at all, so a
+  // leaked/compromised key (e.g. shared with the wrong telemetry vendor,
+  // or visible in a support screenshot) could never be revoked short of a
+  // direct DB edit. Generated client-side with crypto.randomUUID() (same
+  // shape as the Postgres gen_random_uuid() default used at signup) and
+  // written straight to businesses.ingestion_key — any hardware/webhook
+  // still sending the old key starts failing immediately, by design.
+  async function regenerateIngestionKey() {
+    if (regeneratingKey) return
+    if (!window.confirm('Generate a new ingestion key? Any telemetry hardware or webhook still using the old key will stop working until you update it with the new one.')) return
+    setRegeneratingKey(true)
+    const { data, error } = await supabase.from('businesses')
+      .update({ ingestion_key: crypto.randomUUID() })
+      .eq('id', businessId)
+      .select()
+      .single()
+    if (error) alert(`Couldn't regenerate the key: ${error.message}`)
+    if (data) setBusiness(data)
+    setRegeneratingKey(false)
   }
 
   async function addLead(e) {
@@ -444,9 +466,14 @@ export default function IndustrialDispatcherView() {
             </div>
           )}
           {business?.ingestion_key && (
-            <button type="button" onClick={copyIngestionKey} style={{ ...styles.smallBtn, marginBottom: 12 }}>
-              {ingestionKeyCopied ? 'Copied!' : '🔑 Copy telemetry ingestion key'}
-            </button>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+              <button type="button" onClick={copyIngestionKey} style={styles.smallBtn}>
+                {ingestionKeyCopied ? 'Copied!' : '🔑 Copy telemetry ingestion key'}
+              </button>
+              <button type="button" disabled={regeneratingKey} onClick={regenerateIngestionKey} style={styles.smallBtn}>
+                {regeneratingKey ? 'Regenerating…' : 'Regenerate'}
+              </button>
+            </div>
           )}
         </div>
         <div style={styles.tabRow}>

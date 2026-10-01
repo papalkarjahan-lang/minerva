@@ -97,6 +97,18 @@ export default function DispatcherView() {
   const [metaAdAccountIdInput, setMetaAdAccountIdInput] = useState('')
   const [metaPageIdInput, setMetaPageIdInput] = useState('')
   const [twilioNumberInput, setTwilioNumberInput] = useState('')
+  // Business profile fields (contact_phone/contact_email/city/trade_type) —
+  // set once at signup in Onboarding.jsx and read ever since by ai-intake-
+  // chat/voice-intake-agent (city/trade_type shape the AI's system prompt;
+  // contact_phone is where every new-lead/missed-call SMS alert gets sent),
+  // but had no edit path anywhere — a business that changed its phone
+  // number, relocated, or expanded its trade coverage had no way to update
+  // these short of a direct DB edit. Added here, same plain-text-input
+  // convention as the rest of this modal.
+  const [contactPhoneInput, setContactPhoneInput] = useState('')
+  const [contactEmailInput, setContactEmailInput] = useState('')
+  const [cityInput, setCityInput] = useState('')
+  const [tradeTypeInput, setTradeTypeInput] = useState('')
   const [checklistTemplate, setChecklistTemplate] = useState(null) // Pro tier only
   const [showChecklistModal, setShowChecklistModal] = useState(false)
   const [onboardingTemplate, setOnboardingTemplate] = useState(null) // Pro tier only
@@ -283,6 +295,10 @@ export default function DispatcherView() {
     setMetaPageIdInput(biz?.meta_page_id || '')
     setTwilioNumberInput(biz?.twilio_number || '')
     setWeatherTradesInput((biz?.weather_sensitive_trade_types || []).join(', '))
+    setContactPhoneInput(biz?.contact_phone || '')
+    setContactEmailInput(biz?.contact_email || '')
+    setCityInput(biz?.city || '')
+    setTradeTypeInput(biz?.trade_type || '')
     if (biz?.city) await setMapCenter(biz.city)
 
     const { data: techs } = await supabase
@@ -1360,7 +1376,7 @@ export default function DispatcherView() {
     if (error || data?.error) alert(`Couldn't resend the text: ${data?.error || error.message}. You can still copy their setup link directly.`)
   }
 
-  async function saveSettings({ slackWebhookUrl, autoDispatchEnabled, autoDispatchMaxKm, metaAccessToken, metaAdAccountId, metaPageId, weatherSensitiveTradeTypes, googleReviewLink, twilioNumber }) {
+  async function saveSettings({ slackWebhookUrl, autoDispatchEnabled, autoDispatchMaxKm, metaAccessToken, metaAdAccountId, metaPageId, weatherSensitiveTradeTypes, googleReviewLink, twilioNumber, contactPhone, contactEmail, city, tradeType }) {
     if (savingSettings) return
     setSavingSettings(true)
     const { data, error } = await supabase
@@ -1375,6 +1391,10 @@ export default function DispatcherView() {
         weather_sensitive_trade_types: weatherSensitiveTradeTypes && weatherSensitiveTradeTypes.length ? weatherSensitiveTradeTypes : null,
         google_review_link: googleReviewLink || null,
         twilio_number: twilioNumber || null,
+        contact_phone: contactPhone || null,
+        contact_email: contactEmail || null,
+        city: city || null,
+        trade_type: tradeType || null,
       })
       .eq('id', businessId)
       .select()
@@ -1390,6 +1410,7 @@ export default function DispatcherView() {
     if (data) {
       setBusiness(data)
       logAudit('business.settings_updated', { entityType: 'business', entityId: businessId })
+      if (data.city) await setMapCenter(data.city)
     }
     setSavingSettings(false)
     return !error
@@ -3847,6 +3868,14 @@ export default function DispatcherView() {
           setTwilioNumberInput={setTwilioNumberInput}
           weatherTradesInput={weatherTradesInput}
           setWeatherTradesInput={setWeatherTradesInput}
+          contactPhoneInput={contactPhoneInput}
+          setContactPhoneInput={setContactPhoneInput}
+          contactEmailInput={contactEmailInput}
+          setContactEmailInput={setContactEmailInput}
+          cityInput={cityInput}
+          setCityInput={setCityInput}
+          tradeTypeInput={tradeTypeInput}
+          setTradeTypeInput={setTradeTypeInput}
           saving={savingSettings}
           onSave={saveSettings}
           calendarLinkCopied={calendarLinkCopied}
@@ -4375,6 +4404,10 @@ function SettingsModal({
   metaPageIdInput, setMetaPageIdInput,
   twilioNumberInput, setTwilioNumberInput,
   weatherTradesInput, setWeatherTradesInput,
+  contactPhoneInput, setContactPhoneInput,
+  contactEmailInput, setContactEmailInput,
+  cityInput, setCityInput,
+  tradeTypeInput, setTradeTypeInput,
   saving, onSave, calendarLinkCopied, onCopyCalendarLink, onClose, onLogAudit,
 }) {
   const [autoDispatch, setAutoDispatch] = useState(business?.auto_dispatch_enabled || false)
@@ -4396,6 +4429,10 @@ function SettingsModal({
       weatherSensitiveTradeTypes: weatherTradesInput.split(',').map(t => t.trim()).filter(Boolean),
       googleReviewLink: googleReviewLinkInput.trim(),
       twilioNumber: twilioNumberInput.trim(),
+      contactPhone: contactPhoneInput.trim(),
+      contactEmail: contactEmailInput.trim(),
+      city: cityInput.trim(),
+      tradeType: tradeTypeInput.trim(),
     })
     if (ok) onClose()
   }
@@ -4405,6 +4442,61 @@ function SettingsModal({
       <div style={styles.modal}>
         <h3 style={{ margin: '0 0 20px', color: '#1B2B4B', fontSize: 20 }}>Settings</h3>
         <form onSubmit={handleSave}>
+          <div style={{ marginBottom: 14 }}>
+            <label style={styles.inputLabel}>Business contact phone</label>
+            <input
+              type="text"
+              value={contactPhoneInput}
+              onChange={e => setContactPhoneInput(e.target.value)}
+              style={styles.input}
+              placeholder="04xx xxx xxx"
+            />
+            <p style={{ color: '#888', fontSize: 12, margin: '6px 0 0' }}>
+              Where new-lead and missed-call alerts are texted. Keep this current — if it's
+              out of date, you'll stop hearing about new work.
+            </p>
+          </div>
+
+          <div style={{ marginBottom: 14 }}>
+            <label style={styles.inputLabel}>Business contact email</label>
+            <input
+              type="text"
+              value={contactEmailInput}
+              onChange={e => setContactEmailInput(e.target.value)}
+              style={styles.input}
+              placeholder="you@yourbusiness.com"
+            />
+          </div>
+
+          <div style={{ marginBottom: 14 }}>
+            <label style={styles.inputLabel}>City</label>
+            <input
+              type="text"
+              value={cityInput}
+              onChange={e => setCityInput(e.target.value)}
+              style={styles.input}
+              placeholder="e.g. Sydney"
+            />
+            <p style={{ color: '#888', fontSize: 12, margin: '6px 0 0' }}>
+              Centres your dispatch map and tells the AI intake assistant your service area.
+            </p>
+          </div>
+
+          <div style={{ marginBottom: 14 }}>
+            <label style={styles.inputLabel}>Trade type</label>
+            <input
+              type="text"
+              value={tradeTypeInput}
+              onChange={e => setTradeTypeInput(e.target.value)}
+              style={styles.input}
+              placeholder="e.g. Plumber, Electrician"
+            />
+            <p style={{ color: '#888', fontSize: 12, margin: '6px 0 0' }}>
+              Shapes how the AI intake assistant describes your business and scores leads.
+              Update this if you've expanded or changed trades since signing up.
+            </p>
+          </div>
+
           <div style={{ marginBottom: 14 }}>
             <label style={styles.inputLabel}>Slack webhook URL (optional)</label>
             <input
