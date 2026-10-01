@@ -5,6 +5,9 @@ import {
   buildMismatchSlackMessage,
   buildMismatchFallbackSummary,
   buildReasoningPrompt,
+  findStaleAddonItems,
+  buildAddonDriftSlackMessage,
+  buildAddonDriftFallbackSummary,
 } from './logic'
 
 describe('computeLocalQuantity', () => {
@@ -47,5 +50,45 @@ describe('buildReasoningPrompt', () => {
   it('describes stripe lower than local correctly', () => {
     const prompt = buildReasoningPrompt('Acme Plumbing', 2, 3)
     expect(prompt).toContain('lower than local by 1')
+  })
+})
+
+describe('findStaleAddonItems', () => {
+  it('returns an empty array for null/undefined storedItems', () => {
+    expect(findStaleAddonItems(null, new Set())).toEqual([])
+    expect(findStaleAddonItems(undefined, new Set())).toEqual([])
+  })
+
+  it('returns an empty array when every stored item id is still live', () => {
+    const storedItems = { ai_quotes: 'si_1', crew_splitting: 'si_2' }
+    const live = new Set(['si_1', 'si_2', 'si_3'])
+    expect(findStaleAddonItems(storedItems, live)).toEqual([])
+  })
+
+  it('flags keys whose stored item id is no longer live', () => {
+    const storedItems = { ai_quotes: 'si_1', crew_splitting: 'si_dead' }
+    const live = new Set(['si_1'])
+    expect(findStaleAddonItems(storedItems, live)).toEqual(['crew_splitting'])
+  })
+
+  it('flags every key when none are live', () => {
+    const storedItems = { ai_quotes: 'si_dead1', crew_splitting: 'si_dead2' }
+    expect(findStaleAddonItems(storedItems, new Set())).toEqual(['ai_quotes', 'crew_splitting'])
+  })
+})
+
+describe('buildAddonDriftSlackMessage', () => {
+  it('includes the business name and the stale addon keys', () => {
+    const msg = buildAddonDriftSlackMessage('Acme Plumbing', ['ai_quotes', 'crew_splitting'])
+    expect(msg).toContain('Acme Plumbing')
+    expect(msg).toContain('ai_quotes, crew_splitting')
+  })
+})
+
+describe('buildAddonDriftFallbackSummary', () => {
+  it('includes the business name and the stale addon keys', () => {
+    const summary = buildAddonDriftFallbackSummary('Acme Plumbing', ['ai_quotes'])
+    expect(summary).toContain('Acme Plumbing')
+    expect(summary).toContain('[ai_quotes]')
   })
 })

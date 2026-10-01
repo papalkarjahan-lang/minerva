@@ -8,6 +8,16 @@
 // Stripe subscription, compares local count vs Stripe's live quantity,
 // and Slack-alerts (does NOT auto-correct — a human should look at *why*
 // before changing what a client is billed) on any mismatch.
+//
+// Also checks Minerva Max add-on billing drift (added 2026-10-01): for any
+// business with entries in max_addon_stripe_items, confirms each stored
+// Stripe subscription item id still exists live on that business's
+// subscription. stripe-webhook doesn't handle customer.subscription.
+// updated, so a single add-on item removed directly in the Stripe
+// Dashboard (rather than through update-addon-billing) would otherwise go
+// undetected — the business keeps the add-on's max_addons flag (and the
+// feature it gates) with nothing actually being billed. Same
+// detect-and-alert-only philosophy as the seat-count check above.
 // Deploy with: supabase functions deploy reconcile-billing
 //
 // Required secrets: STRIPE_SECRET_KEY, SUPABASE_SERVICE_ROLE_KEY (same as
@@ -27,6 +37,9 @@ import {
   buildMismatchSlackMessage,
   buildMismatchFallbackSummary,
   buildReasoningPrompt,
+  findStaleAddonItems,
+  buildAddonDriftSlackMessage,
+  buildAddonDriftFallbackSummary,
 } from "./logic.ts"
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, {
@@ -80,13 +93,14 @@ serve(async (req: Request) => {
 
     const { data: businesses, error } = await supabaseAdmin
       .from('businesses')
-      .select('id, name, stripe_sub_item_id, subscription_tier')
+      .select('id, name, stripe_sub_id, stripe_sub_item_id, subscription_tier, max_addon_stripe_items')
       .not('stripe_sub_item_id', 'is', null)
       .neq('subscription_tier', 'cancelled')
     if (error) throw error
 
     let checked = 0
     let mismatches = 0
+    let addonDrift = 0
 
     for (const biz of businesses || []) {
       checked++
@@ -136,11 +150,45 @@ serve(async (req: Request) => {
           related_id: biz.id,
         }).then(() => {}, (insErr) => console.error('reconcile-billing: agent_insights insert failed', insErr))
       }
+
+      // Minerva Max add-on billing drift check — see findStaleAddonItems's
+      // header comment in logic.ts for why this exists (customer.
+      // subscription.updated isn't handled by stripe-webhook, so a single
+      // add-on item removed directly in Stripe goes otherwise undetected).
+      if (biz.max_addon_stripe_items && Object.keys(biz.max_addon_stripe_items).length > 0 && biz.stripe_sub_id) {
+        try {
+          const items = await stripe.subscriptionItems.list({ subscription: biz.stripe_sub_id })
+          const liveItemIds = new Set(items.data.map((item: { id: string }) => item.id))
+          const staleKeys = findStaleAddonItems(biz.max_addon_stripe_items, liveItemIds)
+          if (staleKeys.length > 0) {
+            addonDrift++
+            await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/notify-slack`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}` },
+              body: JSON.stringify({
+                businessId: biz.id,
+                text: buildAddonDriftSlackMessage(biz.name, staleKeys),
+              }),
+            }).catch(() => {})
+
+            await supabaseAdmin.from('agent_insights').insert({
+              agent: 'finance',
+              insight_type: 'anomaly',
+              summary: buildAddonDriftFallbackSummary(biz.name, staleKeys),
+              business_id: biz.id,
+              related_table: 'businesses',
+              related_id: biz.id,
+            }).then(() => {}, (insErr) => console.error('reconcile-billing: agent_insights insert failed (addon drift)', insErr))
+          }
+        } catch (stripeErr) {
+          console.error(`reconcile-billing: addon drift Stripe lookup failed for ${biz.id}`, stripeErr)
+        }
+      }
     }
 
     supabaseAdmin.rpc('record_agent_run', { fn_name: 'reconcile-billing', status: 'ok' }).then(() => {}, () => {})
 
-    return new Response(JSON.stringify({ success: true, checked, mismatches, backfilled }), {
+    return new Response(JSON.stringify({ success: true, checked, mismatches, addonDrift, backfilled }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', ...corsHeaders },
     })

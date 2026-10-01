@@ -1476,25 +1476,19 @@ Verified: lint clean, 16/16 tests passing, build clean.
   was pasted directly into chat — same rotate/revoke recommendation as
   above applies to whichever of these is still active once this round's
   work is confirmed done.
-- **New 2026-09-28, not yet run**: `supabase_schema_delta_audit_log.sql`
-  (new `audit_log` table — general "who did what, when" ledger, read from
-  DispatcherView's new RECORDS tab; owner-only SELECT **and INSERT**, both
-  via `owner_user_id`/`auth.uid()` — tightened from anon-insert same day,
-  before this file's first note about it went stale). Needed before the
-  RECORDS tab will show any real data — no other feature depends on it.
-  Idempotent-safe to run whenever; nothing breaks if it's delayed.
-- **New 2026-09-28, not yet run**: `supabase_schema_delta_payroll_runs.sql`
-  (new `payroll_runs` table — frozen snapshot behind the Payroll tab's
-  "Save this run" button, same owner-scoped RLS pattern as audit_log).
-  Also still pending: `supabase_schema_delta_skill_dispatch.sql` and
-  `supabase_schema_delta_workflow_invoice_overdue.sql` (both idempotent
-  `add column if not exists`). All four are safe to run in any order,
-  any time.
-- **New 2026-09-28, needs redeploy**: `generate-roi-proposal` edge
-  function's source changed (logs an error instead of silently swallowing
-  a failed `big_account_targets` lookup) — not yet redeployed live. Use
-  the multipart `/functions/deploy` Management API method (see
-  `minerva_supabase_function_deploy_method` memory), not PATCH+JSON.
+- ~~`supabase_schema_delta_audit_log.sql`, `supabase_schema_delta_payroll_runs.sql`,
+  `supabase_schema_delta_skill_dispatch.sql`,
+  `supabase_schema_delta_workflow_invoice_overdue.sql`~~ — **CONFIRMED
+  LIVE 2026-10-01.** Found already applied during this round's full
+  clean-slate Supabase CLI re-audit (`audit_log`/`payroll_runs` tables and
+  `jobs.required_skill`/`invoices.workflow_overdue_notified_at` columns all
+  verified present via `supabase db query --linked`). This file's own notes
+  had gone stale relative to actual DB state — always verify live schema
+  directly rather than trusting this checklist's "not yet run" language.
+- ~~`generate-roi-proposal` redeploy~~ — **CONFIRMED LIVE 2026-10-01.**
+  Verified deployed version (v7, updated 2026-09-30) postdates the
+  2026-09-28 source change — already redeployed via the CLI at some point
+  in this round's audit work, this entry just hadn't been struck through.
 - **New 2026-09-28, still genuinely outstanding**: a Supabase PAT
   (`sbp_fc60f643...`) was pasted directly into chat again — the 4th+
   consecutive round this has happened. Not used for anything (declined
