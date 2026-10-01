@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 import { timeAgo } from '../utils'
 import LoadingScreen from '../components/LoadingScreen'
+import { MAX_ADDONS, isTrialing, trialDaysLeft, hasUsedTrial, startTrialPatch } from '../maxAddons'
 
 // Industrial sector console (Track B) — mirrors DispatcherView's structure
 // and visual language, scoped to the industrial_* tables instead of the
@@ -38,6 +39,9 @@ export default function IndustrialDispatcherView() {
   const [expandedSiteId, setExpandedSiteId] = useState(null)
   const [siteCheckins, setSiteCheckins] = useState({}) // site_id -> site_checkins rows, fetched lazily
   const [ingestionKeyCopied, setIngestionKeyCopied] = useState(false)
+  // Minerva Max add-on management (Asset Intelligence only, so far, is
+  // relevant to Track B) — mirrors DispatcherView's addonBusy pattern.
+  const [addonBusy, setAddonBusy] = useState(null)
 
   useEffect(() => { loadAll() }, [businessId])
 
@@ -103,6 +107,48 @@ export default function IndustrialDispatcherView() {
         .limit(10)
       if (error) console.error('asset_telemetry_events fetch failed', error)
       setAssetEvents(prev => ({ ...prev, [assetId]: data || [] }))
+    }
+  }
+
+  // Minerva Max add-on management — see src/maxAddons.js. Enable/disable go
+  // through update-addon-billing, same as DispatcherView's identically-named
+  // functions, which actually adds/removes a Stripe subscription item before
+  // flipping the flag. startMaxAddonTrial stays a pure client-side write —
+  // trials are a free, unbilled preview by design.
+  async function enableMaxAddon(key) {
+    setAddonBusy(key)
+    try {
+      const { data, error } = await supabase.functions.invoke('update-addon-billing', {
+        body: { businessId, addonKey: key, action: 'enable' },
+      })
+      if (error || data?.error) throw new Error(data?.error || error.message)
+      if (data?.business) setBusiness(data.business)
+    } catch (err) {
+      alert(`Couldn't enable add-on: ${err.message}`)
+    } finally {
+      setAddonBusy(null)
+    }
+  }
+
+  async function startMaxAddonTrial(key) {
+    setAddonBusy(key)
+    const { data } = await supabase.from('businesses').update(startTrialPatch(business, key)).eq('id', businessId).select().single()
+    if (data) setBusiness(data)
+    setAddonBusy(null)
+  }
+
+  async function disableMaxAddon(key) {
+    setAddonBusy(key)
+    try {
+      const { data, error } = await supabase.functions.invoke('update-addon-billing', {
+        body: { businessId, addonKey: key, action: 'disable' },
+      })
+      if (error || data?.error) throw new Error(data?.error || error.message)
+      if (data?.business) setBusiness(data.business)
+    } catch (err) {
+      alert(`Couldn't disable add-on: ${err.message}`)
+    } finally {
+      setAddonBusy(null)
     }
   }
 
@@ -494,6 +540,38 @@ export default function IndustrialDispatcherView() {
               <p style={styles.sectionLabel}>Assets</p>
               <button style={styles.addBtn} onClick={() => setShowAddAsset(true)}>+ Add asset</button>
             </div>
+            {(() => {
+              const meta = MAX_ADDONS.find(a => a.key === 'asset_intelligence')
+              const enabled = business?.max_addons?.asset_intelligence === true
+              const trialing = isTrialing(business, 'asset_intelligence')
+              return (
+                <div style={{ ...styles.row, marginBottom: 16 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <p style={styles.rowTitle}>🔒 {meta.name} <span style={{ color: '#666', fontWeight: 'normal' }}>— Minerva Max add-on</span></p>
+                    {enabled && !trialing && <span style={styles.statusBadge('available')}>ENABLED</span>}
+                    {trialing && <span style={styles.statusBadge('in_use')}>TRIAL — {trialDaysLeft(business, 'asset_intelligence')}d left</span>}
+                  </div>
+                  <p style={styles.rowDesc}>{meta.description}</p>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4 }}>
+                    {!enabled && (
+                      <button style={styles.addBtn} disabled={addonBusy === 'asset_intelligence'} onClick={() => enableMaxAddon('asset_intelligence')}>
+                        {addonBusy === 'asset_intelligence' ? 'Working…' : `Enable — $${meta.price}/mo`}
+                      </button>
+                    )}
+                    {!enabled && !hasUsedTrial(business, 'asset_intelligence') && (
+                      <button style={styles.smallBtn} disabled={addonBusy === 'asset_intelligence'} onClick={() => startMaxAddonTrial('asset_intelligence')}>
+                        Try free for 30 days
+                      </button>
+                    )}
+                    {enabled && (
+                      <button style={styles.smallBtn} disabled={addonBusy === 'asset_intelligence'} onClick={() => disableMaxAddon('asset_intelligence')}>
+                        {addonBusy === 'asset_intelligence' ? 'Working…' : 'Disable'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
+            })()}
             {assets.length === 0 && <p style={styles.emptyText}>No assets registered yet.</p>}
             {assets.map(a => (
               <div key={a.id} style={styles.row}>

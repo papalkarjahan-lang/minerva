@@ -3275,8 +3275,9 @@ export default function DispatcherView() {
 
               <p style={{ color: '#888', fontSize: 11, letterSpacing: 1, marginBottom: 8 }}>ALL ADD-ONS</p>
               <p style={{ color: '#666', fontSize: 12, marginBottom: 10, lineHeight: 1.4 }}>
-                Enable individually as you need them, or trial any of them free for 30 days. Nothing here
-                is billed automatically yet — enabling just turns the feature on.
+                Enable individually as you need them, or trial any of them free for 30 days first.
+                Trials are free — enabling a paid add-on bills your card immediately (prorated for
+                the rest of this billing cycle).
               </p>
               {MAX_ADDONS.map(addon => {
                 const enabled = business?.max_addons?.[addon.key] === true
