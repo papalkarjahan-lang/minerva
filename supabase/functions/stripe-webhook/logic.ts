@@ -84,15 +84,26 @@ export interface SubscriptionLike {
 
 export interface SubscriptionCancelledPlan {
   subscriptionId: string
-  update: { subscription_tier: 'cancelled' }
+  update: { subscription_tier: 'cancelled'; max_addons: Record<string, never>; max_addon_stripe_items: Record<string, never> }
 }
 
 // customer.subscription.deleted — marks the matching business cancelled so
 // the app can show a "subscription ended" state instead of continuing
 // silently.
+//
+// Also resets max_addons/max_addon_stripe_items to empty (added 2026-10-01,
+// same round update-addon-billing shipped): when Stripe deletes a whole
+// subscription, every subscription item on it — including each paid
+// add-on's item — is deleted too, but nothing previously cleared the
+// matching `max_addons` flags on our side. Since isAddonActive()/hasAddon()
+// only ever check that jsonb flag, not subscription_tier, a business could
+// cancel their base plan and keep every add-on they'd enabled working for
+// free, indefinitely. Trial state (max_addon_trials) is deliberately left
+// alone — trials are an unbilled preview regardless of subscription state,
+// so cancellation shouldn't cut one short either way.
 export function planSubscriptionDeleted(subscription: SubscriptionLike): SubscriptionCancelledPlan | null {
   if (!subscription.id) return null
-  return { subscriptionId: subscription.id, update: { subscription_tier: 'cancelled' } }
+  return { subscriptionId: subscription.id, update: { subscription_tier: 'cancelled', max_addons: {}, max_addon_stripe_items: {} } }
 }
 
 export interface InvoiceLike {

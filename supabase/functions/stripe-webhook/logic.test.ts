@@ -66,10 +66,10 @@ describe('planSubscriptionDeleted', () => {
     expect(planSubscriptionDeleted({})).toBeNull()
   })
 
-  it('marks the matching subscription cancelled', () => {
+  it('marks the matching subscription cancelled and clears paid add-on state', () => {
     expect(planSubscriptionDeleted({ id: 'sub_1' })).toEqual({
       subscriptionId: 'sub_1',
-      update: { subscription_tier: 'cancelled' },
+      update: { subscription_tier: 'cancelled', max_addons: {}, max_addon_stripe_items: {} },
     })
   })
 })
