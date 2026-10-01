@@ -23,6 +23,10 @@ export default function Contact() {
 
   async function handleSubmit(e) {
     e.preventDefault()
+    // Same double-submit-race guard as the sibling ContactSupportModal.jsx —
+    // a double-click or double-Enter before the disabled attribute
+    // re-renders would otherwise insert a duplicate support_requests row.
+    if (sending) return
     setSending(true)
     setError(null)
     const { error: insertErr } = await supabase.from('support_requests').insert({

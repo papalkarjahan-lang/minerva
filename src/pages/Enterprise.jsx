@@ -55,6 +55,11 @@ export default function Enterprise() {
 
   async function handleSubmit(e) {
     e.preventDefault()
+    // Same double-submit-race guard as Contact.jsx — a double-click or
+    // double-Enter before the disabled attribute re-renders would
+    // otherwise insert a duplicate big_account_targets row into the
+    // sales pipeline.
+    if (sending) return
     setSending(true)
     setError(null)
     const { error: insertErr } = await supabase.from('big_account_targets').insert({
