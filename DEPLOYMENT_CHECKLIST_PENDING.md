@@ -1393,10 +1393,31 @@ Verified: lint clean, 16/16 tests passing, build clean.
   setup message — the OAuth code (`xero-oauth-connect`,
   `xero-oauth-callback`, `xero-sync-invoice`) is built and deployed, only
   the credentials are missing.
-- Real Stripe per-add-on billing wiring for the Minerva Max tier — the
-  add-on enable/trial flags and gating are live, but actually charging for
-  each add-on through Stripe still needs to be wired up and walked through
-  with the user (per the standing boundary on Stripe account changes).
+- ~~Real Stripe per-add-on billing wiring for the Minerva Max tier~~ —
+  **CODE DONE 2026-10-01.** New `update-addon-billing` edge function
+  (deployed, smoke-tested 200) adds/removes a real Stripe subscription item
+  on a business's existing `stripe_sub_id` when an add-on is enabled/
+  disabled — see `supabase_schema_delta_addon_billing.sql` and that
+  function's own header. `DispatcherView.jsx`'s `enableMaxAddon`/
+  `disableMaxAddon` now call it instead of writing `businesses.max_addons`
+  directly from the browser. `startMaxAddonTrial` is deliberately
+  untouched — trials stay a free, unbilled client-side preview.
+  **Still outstanding (needs the user's own Stripe Dashboard, same
+  boundary as the base-tier `STRIPE_PRICE_ID_STARTER`/`STD`/`PRO` setup):**
+  create one new recurring Stripe Price per add-on in
+  `src/maxAddons.js`'s `MAX_ADDONS` catalog, then add its Price ID as a
+  Supabase secret named `STRIPE_PRICE_ID_ADDON_<KEY>` (upper-cased addon
+  key) — e.g. `STRIPE_PRICE_ID_ADDON_AI_QUOTES` for the `ai_quotes` addon.
+  The 9 secrets needed: `STRIPE_PRICE_ID_ADDON_SURGE_PRICING`,
+  `STRIPE_PRICE_ID_ADDON_AI_QUOTES`, `STRIPE_PRICE_ID_ADDON_CREW_SPLITTING`,
+  `STRIPE_PRICE_ID_ADDON_REVIEW_LOOP`,
+  `STRIPE_PRICE_ID_ADDON_DEMAND_FORECAST`,
+  `STRIPE_PRICE_ID_ADDON_SUBCONTRACTOR_POOL`,
+  `STRIPE_PRICE_ID_ADDON_ASSET_INTELLIGENCE`,
+  `STRIPE_PRICE_ID_ADDON_CARBON_ESTIMATE`, `STRIPE_PRICE_ID_ADDON_XERO_SYNC`.
+  Until a given addon's secret is set, enabling that one addon will fail
+  with a clear "No Stripe price configured for addon ..." error — every
+  other already-configured addon is unaffected.
 - ~~`stripe-webhook` and `test-agent-health` operator email alerts~~ —
   **DONE 2026-09-10.** Redeployed via multipart API (`stripe-webhook` v6,
   `test-agent-health` v4), both smoke-tested ACTIVE/healthy. Still a

@@ -5,7 +5,7 @@ import { supabase } from '../supabaseClient'
 import { timeAgo, geocodeAddress, insertTechniciansWithPinRetry, haversineKm, isMapboxTokenConfigured, computeReplayStats, interpolateReplayPosition, describeAuditEntry, computeTechnicianReliability } from '../utils'
 import ContactSupportModal from '../components/ContactSupportModal'
 import LoadingScreen from '../components/LoadingScreen'
-import { MAX_ADDONS, hasAddon, isTrialing, trialDaysLeft, hasUsedTrial, enableAddonPatch, disableAddonPatch, startTrialPatch } from '../maxAddons'
+import { MAX_ADDONS, hasAddon, isTrialing, trialDaysLeft, hasUsedTrial, startTrialPatch } from '../maxAddons'
 import 'mapbox-gl/dist/mapbox-gl.css'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
@@ -1612,14 +1612,24 @@ export default function DispatcherView() {
     }
   }
 
-  // Minerva Max add-on management — see src/maxAddons.js. Enabling/trialing
-  // just flips a jsonb flag on `businesses`; no real billing wired yet (see
-  // honest-scope note in supabase_schema_delta_minerva_max_tier.sql).
+  // Minerva Max add-on management — see src/maxAddons.js. Enable/disable now
+  // go through update-addon-billing, which actually adds/removes a Stripe
+  // subscription item before flipping the flag (see that function's own
+  // header). startMaxAddonTrial stays a pure client-side write — trials are
+  // a free, unbilled preview by design, nothing to charge Stripe for yet.
   async function enableMaxAddon(key) {
     setAddonBusy(key)
-    const { data } = await supabase.from('businesses').update(enableAddonPatch(business, key)).eq('id', businessId).select().single()
-    if (data) setBusiness(data)
-    setAddonBusy(null)
+    try {
+      const { data, error } = await supabase.functions.invoke('update-addon-billing', {
+        body: { businessId, addonKey: key, action: 'enable' },
+      })
+      if (error || data?.error) throw new Error(data?.error || error.message)
+      if (data?.business) setBusiness(data.business)
+    } catch (err) {
+      alert(`Couldn't enable add-on: ${err.message}`)
+    } finally {
+      setAddonBusy(null)
+    }
   }
 
   async function startMaxAddonTrial(key) {
@@ -1631,9 +1641,17 @@ export default function DispatcherView() {
 
   async function disableMaxAddon(key) {
     setAddonBusy(key)
-    const { data } = await supabase.from('businesses').update(disableAddonPatch(business, key)).eq('id', businessId).select().single()
-    if (data) setBusiness(data)
-    setAddonBusy(null)
+    try {
+      const { data, error } = await supabase.functions.invoke('update-addon-billing', {
+        body: { businessId, addonKey: key, action: 'disable' },
+      })
+      if (error || data?.error) throw new Error(data?.error || error.message)
+      if (data?.business) setBusiness(data.business)
+    } catch (err) {
+      alert(`Couldn't disable add-on: ${err.message}`)
+    } finally {
+      setAddonBusy(null)
+    }
   }
 
   async function dismissNudge(nudgeKey) {
@@ -1997,7 +2015,7 @@ export default function DispatcherView() {
     'send-review-request-sms', 'send-outreach-batch', 'client-support-chat',
     'voice-intake-agent', 'send-email', 'draft-quote', 'draft-outreach-batch',
     'parse-prospect-text', 'xero-sync-invoice', 'generate-roi-proposal',
-    'xero-oauth-connect',
+    'xero-oauth-connect', 'update-addon-billing',
   ]
   const agentGroupCounts = AGENT_GROUPS.map(agent => ({
     agent,
