@@ -149,6 +149,22 @@ export default function DisputeView() {
 
   return (
     <div style={styles.screen}>
+      {/* This page's own header comment says its purpose is being forwarded
+          to "a client, insurer, or a payment platform's dispute process" —
+          about as strong a case for a clean printed/PDF'd version as any
+          page in this app has, yet it had none. Already light-themed
+          (unlike InvoiceView/QuoteView) so no color overrides needed —
+          just hide the interactive replay controls and the WebGL map
+          canvas itself (canvas/WebGL print support is unreliable across
+          browsers; the GPS summary paragraph right below the map is
+          already always rendered regardless of map success, same
+          fallback-to-text philosophy this page already uses when Mapbox
+          isn't configured at all). */}
+      <style>{`
+        @media print {
+          .no-print { display: none !important; }
+        }
+      `}</style>
       <div style={styles.wrap}>
         <div style={styles.header}>
           <p style={styles.bizName}>{business?.name}</p>
@@ -187,6 +203,7 @@ export default function DisputeView() {
                   Map preview unavailable — GPS points are still listed below.
                 </div>
               ) : (
+              <div className="no-print" style={{ width: '100%', height: '100%' }}>
               <Map
                 mapboxAccessToken={MAPBOX_TOKEN}
                 {...viewState}
@@ -230,6 +247,7 @@ export default function DisputeView() {
                   </Marker>
                 )}
               </Map>
+              </div>
               )}
               <p style={{ ...styles.lineMuted, marginTop: 8 }}>
                 First point {new Date(locations[0].recorded_at).toLocaleString('en-AU')}
@@ -239,7 +257,7 @@ export default function DisputeView() {
                 {job.client_lat != null && ` (${haversineKm(locations[locations.length - 1].lat, locations[locations.length - 1].lng, job.client_lat, job.client_lng).toFixed(2)} km from client address)`}
               </p>
               {locations.length > 1 && isMapboxTokenConfigured() && !mapError && (
-                <div style={styles.replayBar}>
+                <div className="no-print" style={styles.replayBar}>
                   <button type="button" style={styles.replayBtn} onClick={toggleReplay}>
                     {replaying ? '⏸ Pause' : '▶ Replay route'}
                   </button>
@@ -306,6 +324,10 @@ export default function DisputeView() {
           </div>
         )}
 
+        <button className="no-print" style={styles.printButton} onClick={() => window.print()}>
+          🖨️ Print / Save as PDF
+        </button>
+
         <p style={styles.footerNote}>Generated from Minerva job records. Share this link directly with the party who needs it.</p>
       </div>
     </div>
@@ -332,5 +354,6 @@ const styles = {
   replaySlider: { flex: 1 },
   replayTime: { flexShrink: 0, color: '#888', fontSize: 12, minWidth: 64, textAlign: 'right' },
   invoiceLink: { color: '#2D5FA8', fontSize: 13, fontWeight: 'bold', textDecoration: 'none' },
+  printButton: { width: '100%', marginTop: 20, padding: '11px 0', background: '#fff', color: '#2D5FA8', border: '1px solid #ddd', borderRadius: 10, fontSize: 13, fontWeight: 'bold', cursor: 'pointer' },
   footerNote: { color: '#aaa', fontSize: 11, textAlign: 'center', marginTop: 8 }
 }
