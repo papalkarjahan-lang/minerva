@@ -345,7 +345,11 @@
 .lp-price-card.lp-recommended::before {
   background: radial-gradient(circle at var(--mx, 50%) var(--my, 50%), rgba(29, 158, 117, .22), transparent 60%);
 }
-.lp-price-card:hover {
+/* Missing .lp-recommended scope here (fixed 2026-10-02) meant this
+   green shadow, at equal specificity and declared after the blue one
+   above, silently won the hover box-shadow for EVERY price card —
+   Starter/Pro hovered with a blue border but a mismatched green glow. */
+.lp-price-card.lp-recommended:hover {
   box-shadow: 0 16px 40px rgba(29, 158, 117, .18);
 }
 .lp-price-badge {
