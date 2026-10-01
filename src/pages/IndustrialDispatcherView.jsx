@@ -665,6 +665,16 @@ export default function IndustrialDispatcherView() {
                       <button style={styles.smallBtn} disabled={busyId === i.id} onClick={() => acknowledgeIncident(i.id)}>Acknowledge</button>
                     )}
                   </div>
+                  {/* verify-industrial-compliance auto-escalates an incident
+                      left unacknowledged for 24h+ via a Slack alert only —
+                      this row had no in-app trace of that having happened,
+                      so a missed/muted Slack message meant no one would
+                      ever know escalation had already fired. */}
+                  {i.escalated_at && !i.acknowledged_at && (
+                    <p style={{ ...styles.rowMeta, color: '#e07a7a' }}>
+                      ⚠ Escalated {timeAgo(i.escalated_at)} — still unacknowledged
+                    </p>
+                  )}
                   {ticket && (
                     <div style={styles.correctiveActionBox}>
                       <p style={styles.rowMeta}>

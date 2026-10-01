@@ -2688,6 +2688,16 @@ export default function DispatcherView() {
                   ) : (
                     <p style={{ color: '#3a3f4a', fontSize: 11, margin: '2px 0 0' }}>No activity logged yet</p>
                   )}
+                  {/* nurture-stale-leads' two automated SMS touches had no
+                      frontend surface at all — a dispatcher had no way to
+                      see whether a stale lead had already been auto-nurtured
+                      before deciding to chase it manually themselves. */}
+                  {lead.nurture_sent_at && (
+                    <p style={{ color: '#555', fontSize: 11, margin: '2px 0 0' }}>
+                      ✓ Auto-nurture SMS sent {timeAgo(lead.nurture_sent_at)}
+                      {lead.second_nurture_sent_at && ` · 2nd touch sent ${timeAgo(lead.second_nurture_sent_at)}`}
+                    </p>
+                  )}
 
                   {/* CRM pipeline controls — a richer lens on top of status,
                       see supabase_schema_delta_lead_crm_pipeline.sql */}
