@@ -34,7 +34,11 @@ const STATS = [
   { n: 20, suffix: ' min', label: 'Average setup time' },
   { n: 7, suffix: '-day', label: 'Free trial, no card required' },
   { n: 2, suffix: 'km', prefix: '~', label: 'Auto ETA-text trigger radius' },
-  { n: 5, suffix: '', label: 'Trades supported out of the box' },
+  // TRADES.length, not a hand-typed number — a visitor can literally count
+  // the marquee chips scrolling right above this stat, and a stale count
+  // here would be a self-falsifying claim on the same page. (Fixed
+  // 2026-10-02: this had drifted to 5 while TRADES itself had grown to 6.)
+  { n: TRADES.length, suffix: '', label: 'Trades supported out of the box' },
 ]
 
 // The job lifecycle, scripted — this is the actual product, not a
