@@ -99,7 +99,7 @@ export default function SuccessPage() {
               <li>Missed-call auto-text-back only fires for calls to a Minerva-managed number — to use your existing business number, ask your carrier to forward it "on no answer" to the number in your Twilio setup, rather than replacing it.</li>
               <li>Technician tracking runs in the browser, not a native app — ask techs to keep the tracking page open and their screen on; locking the phone pauses GPS updates.</li>
               <li>Xero sync (Pro/Max add-on) is a one-click "Connect Xero" in Settings — no setup on your end beyond logging into your own Xero account.</li>
-              <li>Minerva generates and syncs invoices but doesn't take payment itself — you still collect payment the way you do today.</li>
+              <li>Minerva generates invoices and can optionally take card payment right on the invoice page (a "Pay now" button next to your usual EFTPOS/cash/bank transfer) — nothing changes about how you collect payment unless a client chooses that option themselves.</li>
             </ul>
           </div>
         )}

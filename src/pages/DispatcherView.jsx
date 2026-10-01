@@ -1299,9 +1299,13 @@ export default function DispatcherView() {
     setInventory(prev => prev.map(i => i.id === itemId ? { ...i, ...update } : i))
   }
 
-  // Invoices are marked paid manually — Minerva doesn't collect payment
-  // itself (see InvoiceView.jsx), the business takes payment on-site
-  // (EFTPOS, cash, etc.) and records it here once received.
+  // This button is specifically for the on-site path (EFTPOS, cash, etc.) —
+  // the business takes payment themselves and records it here once
+  // received. Stale as of the 2026-09-14 InvoiceView.jsx "Pay now with
+  // card" addition: that path is auto-marked paid by stripe-webhook's
+  // payment_intent.succeeded handler and never needs this button at all,
+  // so don't read this as "Minerva never collects payment" — it just means
+  // this specific manual button is for the manual path only.
   async function markInvoicePaid(invoiceId) {
     if (markingPaidId === invoiceId) return
     setMarkingPaidId(invoiceId)

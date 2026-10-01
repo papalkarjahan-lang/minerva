@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
+import LoadingScreen from '../components/LoadingScreen'
 
 // Public, read-only ROI proposal page — see generate-roi-proposal/index.ts
 // for how the numbers are calculated and generate-roi-proposal's header
@@ -29,9 +30,7 @@ export default function ProposalView() {
       <div style={styles.errorCard}><p style={{ color: '#8A2525', fontSize: 15, margin: 0 }}>{error}</p></div>
     </div>
   )
-  if (!proposal) return (
-    <div style={styles.screen}><p style={{ color: '#888', fontSize: 16 }}>Loading...</p></div>
-  )
+  if (!proposal) return <LoadingScreen label="Loading proposal..." />
 
   const fmt = n => Number(n).toLocaleString('en-AU', { maximumFractionDigits: 0 })
 

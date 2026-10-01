@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
+import LoadingScreen from '../components/LoadingScreen'
 
 export default function IntakeAssistant() {
   const { businessId } = useParams()
@@ -67,9 +68,7 @@ export default function IntakeAssistant() {
     </div>
   )
 
-  if (!business) return (
-    <div style={styles.screen}><p style={{ color: '#888', fontSize: 16 }}>Loading...</p></div>
-  )
+  if (!business) return <LoadingScreen label="Loading chat..." />
 
   return (
     <div style={styles.screen}>
