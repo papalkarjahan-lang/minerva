@@ -366,7 +366,38 @@ serve(async (req: Request) => {
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
       })
     }
-    await supabase.from('technicians').update({ current_job_id: job.id }).eq('id', nearest!.id)
+    // Claim the technician side atomically too — the job claim above only
+    // protects two invocations racing over the SAME job. It does nothing
+    // for two DIFFERENT jobs created close together picking the same
+    // technician: both SELECTs above can see the same single free
+    // technician before either write lands, both independently win their
+    // own (different) job's claim, and an unconditional write here would
+    // just last-write-wins on current_job_id — leaving the other job's
+    // technician_id pointing at a technician who's actually busy
+    // elsewhere, with no error anywhere. The technician's own app only
+    // ever reads current_job_id, so that job would be invisible to them
+    // forever: no ETA/completion SMS, can't be started or completed from
+    // their phone, and nothing else in this codebase would catch it.
+    const { data: techLinked, error: techLinkErr } = await supabase
+      .from('technicians')
+      .update({ current_job_id: job.id })
+      .eq('id', nearest!.id)
+      .is('current_job_id', null)
+      .select('id')
+    if (techLinkErr) throw techLinkErr
+    if (!techLinked || techLinked.length === 0) {
+      // Lost the technician-side race — release the job claim we just won
+      // above instead of leaving it pointing at a technician who can't
+      // actually service it. This returns the job to the normal
+      // unassigned-job state the dispatch board already handles, rather
+      // than a silent, invisible double-booking.
+      await supabase.from('jobs').update({ technician_id: null }).eq('id', job.id).eq('technician_id', nearest!.id)
+      supabase.rpc('record_agent_run', { fn_name: 'auto-assign-technician', status: 'ok' }).then(() => {}, () => {})
+      return new Response(JSON.stringify({ success: true, skipped: 'technician_claimed_concurrently' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
 
     await fetch(`${supabaseUrl}/functions/v1/send-job-assignment-sms`, {
       method: 'POST',
