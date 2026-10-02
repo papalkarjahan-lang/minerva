@@ -15,7 +15,12 @@
 //                    invoice.payment_failed, invoice.payment_succeeded,
 //                    payment_intent.succeeded (needed only if the optional
 //                    "Pay now" invoice flow — create-invoice-payment-intent —
-//                    is used; see supabase_schema_delta_invoice_payments.sql)
+//                    is used; see supabase_schema_delta_invoice_payments.sql),
+//                    charge.dispute.created, charge.dispute.closed (added
+//                    2026-10-03 — if this endpoint is already registered in
+//                    Stripe from before, these two need adding to its event
+//                    list manually; Stripe does not backfill new event types
+//                    onto an existing webhook endpoint automatically)
 // Copy the signing secret into Supabase secrets as STRIPE_WEBHOOK_SECRET.
 //
 // Run supabase_schema_delta_payment_failed.sql once before relying on the
@@ -78,6 +83,27 @@
 // escapeHtml() (_shared/html.ts) before interpolation; a plain business
 // name like "Smith & Sons" still renders correctly once the email client
 // decodes the entities.
+//
+// Dispute/chargeback visibility (added 2026-10-03): this endpoint had zero
+// handling for charge.dispute.* — the default case silently ignores any
+// event type it doesn't explicitly list, which is indistinguishable from
+// "never configured" from the outside. A dispute carries a hard
+// evidence-submission deadline and Stripe deducts the amount immediately
+// pending resolution, so losing by default (no response) is the worst
+// outcome — this needed an actual human-facing alert, not just a missing
+// case. Alerts OPERATOR_EMAIL (same mechanism as invoice.payment_failed
+// above), not notify-slack — notify-slack posts to the TRADE BUSINESS's
+// own Slack webhook, but invoice payments aren't split via Stripe Connect
+// (see create-invoice-payment-intent), so a dispute is against Minerva's
+// own Stripe account and it's the operator who has to submit evidence, not
+// necessarily the business. Also writes an agent_insights row (same
+// "detect and alert, never auto-correct" posture as every other financial
+// anomaly in this codebase, e.g. reconcile-billing's drift checks) so it's
+// visible in-dashboard too, not just in an inbox. Resolves the matching
+// business/invoice via the dispute's payment_intent metadata (set by
+// create-invoice-payment-intent) on a best-effort basis — if that lookup
+// fails, the alert still fires, just without attribution, since "a
+// dispute happened" is worth knowing even unattributed.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import Stripe from "https://esm.sh/stripe@14?target=deno"
@@ -88,6 +114,11 @@ import {
   planInvoicePaymentFailed,
   planInvoicePaymentSucceeded,
   planPaymentIntentSucceeded,
+  planDisputeCreated,
+  planDisputeClosed,
+  buildDisputeMessage,
+  buildDisputeFallbackSummary,
+  buildDisputeClosedMessage,
   shouldAlertOperator,
   shouldApplyCheckoutCompletion,
 } from "./logic.ts"
@@ -293,6 +324,83 @@ serve(async (req: Request) => {
         break
       }
 
+      case 'charge.dispute.created': {
+        const dispute = event.data.object as Stripe.Dispute
+        // Normalize to plain primitives before handing to the pure planner
+        // — payment_intent is typed as string | Stripe.PaymentIntent | null
+        // in the SDK (only ever a bare string on an unexpanded webhook
+        // payload, which this is, but not worth relying on that silently).
+        const plan = planDisputeCreated({
+          id: dispute.id,
+          amount: dispute.amount,
+          currency: dispute.currency,
+          reason: dispute.reason,
+          payment_intent: typeof dispute.payment_intent === 'string' ? dispute.payment_intent : null,
+        })
+        if (plan) {
+          // Email, not Slack: notify-slack posts to the TRADE BUSINESS's own
+          // Slack (looked up by businessId) — but the dispute is against
+          // Minerva's own Stripe account (invoice payments aren't split via
+          // Connect, see create-invoice-payment-intent), so it's the
+          // operator who actually needs to submit evidence, not necessarily
+          // the business. Reuses the exact same OPERATOR_EMAIL mechanism
+          // invoice.payment_failed already established for this reason.
+          const { businessId, businessName, invoiceId } = await resolveDisputeAttribution(plan.paymentIntentId)
+
+          const operatorEmail = Deno.env.get('OPERATOR_EMAIL')
+          if (shouldAlertOperator(operatorEmail)) {
+            fetch(`${Deno.env.get('SUPABASE_URL')!}/functions/v1/send-email`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!}` },
+              body: JSON.stringify({
+                to: operatorEmail,
+                subject: `[Minerva] Dispute opened — ${businessName || plan.disputeId}`,
+                html: `<p>${escapeHtml(buildDisputeMessage(businessName, plan.amountCents, plan.currency, plan.reason, invoiceId))}</p>`,
+              }),
+            }).catch(err => console.error('stripe-webhook: dispute operator alert failed', err))
+          }
+
+          await supabaseAdmin.from('agent_insights').insert({
+            agent: 'finance',
+            insight_type: 'anomaly',
+            summary: buildDisputeFallbackSummary(businessName, plan.amountCents, plan.currency, plan.reason),
+            business_id: businessId,
+            related_table: invoiceId ? 'invoices' : null,
+            related_id: invoiceId,
+          }).then(() => {}, (err) => console.error('stripe-webhook: dispute insight insert failed', err))
+        }
+        break
+      }
+
+      case 'charge.dispute.closed': {
+        const dispute = event.data.object as Stripe.Dispute
+        const disputePaymentIntentId = typeof dispute.payment_intent === 'string' ? dispute.payment_intent : null
+        const plan = planDisputeClosed({
+          id: dispute.id,
+          status: dispute.status,
+          amount: dispute.amount,
+          currency: dispute.currency,
+          payment_intent: disputePaymentIntentId,
+        })
+        if (plan) {
+          const { businessName } = await resolveDisputeAttribution(disputePaymentIntentId)
+
+          const operatorEmail = Deno.env.get('OPERATOR_EMAIL')
+          if (shouldAlertOperator(operatorEmail)) {
+            fetch(`${Deno.env.get('SUPABASE_URL')!}/functions/v1/send-email`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!}` },
+              body: JSON.stringify({
+                to: operatorEmail,
+                subject: `[Minerva] Dispute resolved — ${businessName || plan.disputeId}`,
+                html: `<p>${escapeHtml(buildDisputeClosedMessage(businessName, plan.status, plan.amountCents, plan.currency))}</p>`,
+              }),
+            }).catch(err => console.error('stripe-webhook: dispute-closed operator alert failed', err))
+          }
+        }
+        break
+      }
+
       default:
         // Ignore other event types.
         break
@@ -317,3 +425,27 @@ serve(async (req: Request) => {
     return new Response(JSON.stringify({ error: err.message }), { status: 500 })
   }
 })
+
+// Best-effort: resolves a dispute's payment_intent back to the Minerva
+// invoice/business it paid, via the metadata create-invoice-payment-intent
+// set on the PaymentIntent at creation. Never throws — returns all-null
+// fields if the payment_intent is missing or either lookup fails, so a
+// dispute alert still fires unattributed rather than not at all (see the
+// dispute-visibility header comment above).
+async function resolveDisputeAttribution(paymentIntentId: string | null): Promise<{ businessId: string | null; businessName: string | null; invoiceId: string | null }> {
+  if (!paymentIntentId) return { businessId: null, businessName: null, invoiceId: null }
+  try {
+    const pi = await stripe.paymentIntents.retrieve(paymentIntentId)
+    const businessId = (pi.metadata?.business_id as string | undefined) || null
+    const invoiceId = (pi.metadata?.invoice_id as string | undefined) || null
+    let businessName: string | null = null
+    if (businessId) {
+      const { data: biz } = await supabaseAdmin.from('businesses').select('name').eq('id', businessId).maybeSingle()
+      businessName = biz?.name || null
+    }
+    return { businessId, businessName, invoiceId }
+  } catch (err) {
+    console.error('stripe-webhook: dispute attribution lookup failed', err)
+    return { businessId: null, businessName: null, invoiceId: null }
+  }
+}

@@ -425,9 +425,17 @@ when an invoice is marked paid.
 
 Then in Stripe Dashboard → Developers → Webhooks, add an endpoint:
 `https://YOUR_PROJECT_REF.supabase.co/functions/v1/stripe-webhook`, listening
-for `checkout.session.completed` and `customer.subscription.deleted`. Without
-this step, the Customer Portal cancellation link on the pricing page won't
-work — the business's Stripe subscription ID never gets saved.
+for `checkout.session.completed`, `customer.subscription.deleted`,
+`invoice.payment_failed`, `invoice.payment_succeeded`,
+`payment_intent.succeeded` (only needed if the optional "Pay now" invoice
+flow is used), and `charge.dispute.created` + `charge.dispute.closed` (added
+2026-10-03 — alerts `OPERATOR_EMAIL` on a chargeback, since Stripe deducts
+the disputed amount immediately and gives a response deadline). Without the
+first one, the Customer Portal cancellation link on the pricing page won't
+work — the business's Stripe subscription ID never gets saved. If this
+endpoint is already registered from an earlier setup, add any missing event
+types to its existing event list rather than re-creating it — Stripe doesn't
+backfill new event types onto an existing endpoint automatically.
 
 Then, for the missed-call auto-reply, go to the Twilio Console → **Phone
 Numbers → Manage → Active Numbers** → select the business's number →

@@ -5,6 +5,11 @@ import {
   planInvoicePaymentFailed,
   planInvoicePaymentSucceeded,
   planPaymentIntentSucceeded,
+  planDisputeCreated,
+  planDisputeClosed,
+  buildDisputeMessage,
+  buildDisputeFallbackSummary,
+  buildDisputeClosedMessage,
   shouldAlertOperator,
   shouldApplyCheckoutCompletion,
 } from './logic'
@@ -127,5 +132,88 @@ describe('planPaymentIntentSucceeded', () => {
       paymentIntentId: 'pi_1',
       update: { status: 'paid', paid_at: NOW, payment_method: 'stripe_card' },
     })
+  })
+})
+
+describe('planDisputeCreated', () => {
+  it('returns null when the dispute has no id', () => {
+    expect(planDisputeCreated({})).toBeNull()
+  })
+
+  it('builds the plan with sensible defaults for missing fields', () => {
+    expect(planDisputeCreated({ id: 'dp_1' })).toEqual({
+      disputeId: 'dp_1',
+      amountCents: 0,
+      currency: 'USD',
+      reason: 'unknown',
+      paymentIntentId: null,
+    })
+  })
+
+  it('carries through amount/currency/reason/payment_intent when present', () => {
+    expect(planDisputeCreated({ id: 'dp_1', amount: 4999, currency: 'aud', reason: 'fraudulent', payment_intent: 'pi_1' })).toEqual({
+      disputeId: 'dp_1',
+      amountCents: 4999,
+      currency: 'AUD',
+      reason: 'fraudulent',
+      paymentIntentId: 'pi_1',
+    })
+  })
+})
+
+describe('buildDisputeMessage', () => {
+  it('names the business and invoice when both are known', () => {
+    const msg = buildDisputeMessage('Acme Plumbing', 4999, 'AUD', 'fraudulent', 'inv_1')
+    expect(msg).toContain('Acme Plumbing')
+    expect(msg).toContain('$49.99 AUD')
+    expect(msg).toContain('fraudulent')
+    expect(msg).toContain('inv_1')
+  })
+
+  it('falls back to generic wording when business/invoice could not be resolved', () => {
+    const msg = buildDisputeMessage(null, 4999, 'AUD', 'fraudulent', null)
+    expect(msg).toContain('an unidentified business')
+    expect(msg).toContain('could not match to a specific invoice')
+  })
+})
+
+describe('buildDisputeFallbackSummary', () => {
+  it('includes the business name when known', () => {
+    expect(buildDisputeFallbackSummary('Acme Plumbing', 4999, 'AUD', 'fraudulent')).toContain('for Acme Plumbing')
+  })
+
+  it('omits the business clause when unknown rather than naming it falsely', () => {
+    const summary = buildDisputeFallbackSummary(null, 4999, 'AUD', 'fraudulent')
+    expect(summary).not.toContain('for null')
+    expect(summary).toContain('Dispute opened:')
+  })
+})
+
+describe('planDisputeClosed', () => {
+  it('returns null when the dispute has no id or no status', () => {
+    expect(planDisputeClosed({})).toBeNull()
+    expect(planDisputeClosed({ id: 'dp_1' })).toBeNull()
+  })
+
+  it('builds the plan when id and status are both present', () => {
+    expect(planDisputeClosed({ id: 'dp_1', status: 'won', amount: 4999, currency: 'aud' })).toEqual({
+      disputeId: 'dp_1',
+      status: 'won',
+      amountCents: 4999,
+      currency: 'AUD',
+    })
+  })
+})
+
+describe('buildDisputeClosedMessage', () => {
+  it('reports the business name and outcome', () => {
+    const msg = buildDisputeClosedMessage('Acme Plumbing', 'won', 4999, 'AUD')
+    expect(msg).toContain('Acme Plumbing')
+    expect(msg).toContain('$49.99 AUD')
+    expect(msg).toContain('won')
+  })
+
+  it('falls back to generic wording when the business could not be resolved', () => {
+    expect(buildDisputeClosedMessage(null, 'lost', 4999, 'AUD')).toContain('an unidentified business')
   })
 })

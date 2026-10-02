@@ -168,3 +168,80 @@ export function planPaymentIntentSucceeded(pi: PaymentIntentLike, nowIso: string
     update: { status: 'paid', paid_at: nowIso, payment_method: 'stripe_card' },
   }
 }
+
+export interface DisputeLike {
+  id?: string | null
+  amount?: number | null
+  currency?: string | null
+  reason?: string | null
+  status?: string | null
+  payment_intent?: string | null
+}
+
+export interface DisputePlan {
+  disputeId: string
+  amountCents: number
+  currency: string
+  reason: string
+  paymentIntentId: string | null
+}
+
+// charge.dispute.created — a client's bank has initiated a chargeback on a
+// Stripe-card invoice payment (create-invoice-payment-intent). Added
+// 2026-10-03: before this, Minerva had zero visibility into disputes —
+// index.ts's default case silently ignores any event type it doesn't
+// explicitly handle, same signature as a key never being configured at
+// all. Unlike a declined card (invoice.payment_failed, which just retries
+// automatically), a dispute has a hard evidence-submission deadline and
+// Stripe immediately deducts the amount from the account balance pending
+// resolution — losing by default (no response) is the worst outcome, so
+// this needs a human's attention, not just a log line.
+export function planDisputeCreated(dispute: DisputeLike): DisputePlan | null {
+  if (!dispute.id) return null
+  return {
+    disputeId: dispute.id,
+    amountCents: dispute.amount ?? 0,
+    currency: (dispute.currency || 'usd').toUpperCase(),
+    reason: dispute.reason || 'unknown',
+    paymentIntentId: dispute.payment_intent || null,
+  }
+}
+
+export function buildDisputeMessage(businessName: string | null, amountCents: number, currency: string, reason: string, invoiceId: string | null): string {
+  const amount = (amountCents / 100).toFixed(2)
+  const who = businessName ? businessName : 'an unidentified business'
+  const invoiceNote = invoiceId ? ` (invoice ${invoiceId})` : ' (could not match to a specific invoice — check Stripe directly)'
+  return `Payment dispute opened for ${who}${invoiceNote}: $${amount} ${currency}, reason: ${reason}. Stripe has already deducted this amount pending resolution — respond with evidence in the Stripe Dashboard before the deadline or it's lost automatically.`
+}
+
+export function buildDisputeFallbackSummary(businessName: string | null, amountCents: number, currency: string, reason: string): string {
+  const amount = (amountCents / 100).toFixed(2)
+  return `Dispute opened${businessName ? ` for ${businessName}` : ''}: $${amount} ${currency}, reason: ${reason}. Needs a response with evidence in the Stripe Dashboard before the deadline.`
+}
+
+export interface DisputeClosedPlan {
+  disputeId: string
+  status: string
+  amountCents: number
+  currency: string
+}
+
+// charge.dispute.closed — the dispute has been resolved (won, lost, or
+// withdrawn by the cardholder's bank). Alert-only, same as created above —
+// there's no local dispute record to update since nothing here stores
+// dispute state, only forwards the outcome to a human.
+export function planDisputeClosed(dispute: DisputeLike): DisputeClosedPlan | null {
+  if (!dispute.id || !dispute.status) return null
+  return {
+    disputeId: dispute.id,
+    status: dispute.status,
+    amountCents: dispute.amount ?? 0,
+    currency: (dispute.currency || 'usd').toUpperCase(),
+  }
+}
+
+export function buildDisputeClosedMessage(businessName: string | null, status: string, amountCents: number, currency: string): string {
+  const amount = (amountCents / 100).toFixed(2)
+  const who = businessName ? businessName : 'an unidentified business'
+  return `Dispute for ${who} ($${amount} ${currency}) is now resolved: ${status}.`
+}
