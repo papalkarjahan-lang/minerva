@@ -42,6 +42,7 @@ import {
   addonPriceEnvVar,
   isValidAction,
   existingStripeItemId,
+  findExistingItemForPrice,
   buildEnabledPatch,
   buildEnabledNoopPatch,
   buildDisabledPatch,
@@ -145,14 +146,24 @@ serve(async (req: Request) => {
         if (!priceId) {
           throw new Error(`No Stripe price configured for addon "${addonKey}" (expected secret ${addonPriceEnvVar(addonKey)})`)
         }
-        const item = await stripe.subscriptionItems.create({
-          subscription: business.stripe_sub_id,
-          price: priceId,
-          quantity: 1,
-          // Bill the new addon right away rather than waiting for the next
-          // invoice, same as sync-technician-billing's seat-count updates.
-          proration_behavior: 'always_invoice',
-        })
+        // Check Stripe itself before creating — see findExistingItemForPrice's
+        // comment. Closes the gap where a prior enable's create() succeeded
+        // but the DB write after it then failed, which otherwise left a
+        // retry blind to the item that already exists and billing twice.
+        const existingOnStripe = findExistingItemForPrice(
+          (await stripe.subscriptionItems.list({ subscription: business.stripe_sub_id })).data,
+          priceId
+        )
+        const item = existingOnStripe
+          ? { id: existingOnStripe }
+          : await stripe.subscriptionItems.create({
+              subscription: business.stripe_sub_id,
+              price: priceId,
+              quantity: 1,
+              // Bill the new addon right away rather than waiting for the next
+              // invoice, same as sync-technician-billing's seat-count updates.
+              proration_behavior: 'always_invoice',
+            })
         patch = buildEnabledPatch(business, addonKey, item.id)
       }
     } else {

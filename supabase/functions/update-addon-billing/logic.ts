@@ -29,6 +29,27 @@ export function existingStripeItemId(business: AddonBillingState | null | undefi
   return business?.max_addon_stripe_items?.[key] || null
 }
 
+// Last-resort idempotency check, straight against Stripe's own state rather
+// than the DB. existingStripeItemId() above is the fast path, but it's
+// blind if a PRIOR enable's Stripe create succeeded and the subsequent
+// `businesses` write then failed (network blip, etc.) — that leaves a
+// real, billing Stripe subscription item with nothing in
+// max_addon_stripe_items pointing at it. A dispatcher retrying after
+// seeing the error would previously sail straight past the fast-path
+// check (which only sees the DB field that just failed to write) and
+// create a SECOND paid item for the same addon — a genuine double-charge,
+// confirmed by tracing this exact path, not hypothetical. Call this with
+// the live list of the subscription's current items (stripe.
+// subscriptionItems.list) before ever calling .create(), and reuse the
+// match's id instead if one exists. (Fixed 2026-10-03.)
+export function findExistingItemForPrice(
+  items: Array<{ id: string; price?: { id?: string } }> | null | undefined,
+  priceId: string
+): string | null {
+  const match = (items || []).find(i => i.price?.id === priceId)
+  return match?.id || null
+}
+
 // Patch after a brand-new Stripe subscription item was created.
 export function buildEnabledPatch(business: AddonBillingState | null | undefined, key: string, itemId: string) {
   return {

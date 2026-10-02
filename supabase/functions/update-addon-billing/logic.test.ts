@@ -3,6 +3,7 @@ import {
   addonPriceEnvVar,
   isValidAction,
   existingStripeItemId,
+  findExistingItemForPrice,
   buildEnabledPatch,
   buildEnabledNoopPatch,
   buildDisabledPatch,
@@ -44,6 +45,32 @@ describe('existingStripeItemId', () => {
 
   it('returns the stored item id when present', () => {
     expect(existingStripeItemId({ max_addon_stripe_items: { ai_quotes: 'si_123' } }, 'ai_quotes')).toBe('si_123')
+  })
+})
+
+describe('findExistingItemForPrice', () => {
+  it('returns null for an empty/null/undefined item list', () => {
+    expect(findExistingItemForPrice([], 'price_123')).toBe(null)
+    expect(findExistingItemForPrice(null, 'price_123')).toBe(null)
+    expect(findExistingItemForPrice(undefined, 'price_123')).toBe(null)
+  })
+
+  it('returns null when no item matches the target price', () => {
+    const items = [{ id: 'si_1', price: { id: 'price_other' } }]
+    expect(findExistingItemForPrice(items, 'price_123')).toBe(null)
+  })
+
+  it('returns the matching item id when one exists', () => {
+    const items = [
+      { id: 'si_1', price: { id: 'price_other' } },
+      { id: 'si_2', price: { id: 'price_123' } },
+    ]
+    expect(findExistingItemForPrice(items, 'price_123')).toBe('si_2')
+  })
+
+  it('does not throw on an item with no price field at all', () => {
+    const items = [{ id: 'si_1' }]
+    expect(findExistingItemForPrice(items, 'price_123')).toBe(null)
   })
 })
 
