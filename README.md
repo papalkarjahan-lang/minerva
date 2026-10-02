@@ -14,9 +14,12 @@ A live GPS dispatch tracking tool for trade businesses. Technicians share their 
 4. Go to **SQL Editor** → paste the entire contents of `supabase_schema.sql` → click Run
 5. Go to **Database → Replication** → toggle ON for `technicians` table
 6. Go to **Settings → API** → copy your Project URL, anon key, and **service_role key**
-   (the service role key is only used server-side by the `stripe-webhook`
-   and `missed-call-webhook` functions — never put it in `.env.local` or any
-   client-side code)
+   (Supabase auto-injects the service_role key into every Edge Function's
+   own runtime already — the vast majority of this project's 70+ functions
+   read it via `Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')` — so you won't
+   usually need to set or paste it anywhere yourself. The one rule that
+   matters: never put it in `.env.local` or any client-side code, since
+   that would ship it in the browser bundle to every visitor.)
 7. Go to **Authentication → Providers** → turn **off** "Allow new users to
    sign up" (see `SECURITY_NOTES.md` for why)
 
@@ -45,10 +48,16 @@ A live GPS dispatch tracking tool for trade businesses. Technicians share their 
    - **Minerva Pro**: $119/technician/month, 7-day trial
 3. Copy the Price IDs for each
 4. Copy your secret key (sk_live_...) — set it as the `STRIPE_SECRET_KEY`
-   Supabase secret below. Checkout happens entirely server-side (a redirect
-   to a Stripe-hosted session URL), so the publishable key isn't needed
-   anywhere in this app — no need to save it.
-5. Enable the Customer Portal under Settings → Billing → Customer Portal
+   Supabase secret below. Checkout itself happens entirely server-side (a
+   redirect to a Stripe-hosted session URL).
+5. Also copy your **publishable key** (pk_live_...) from the same
+   Developers → API keys page — set it as `VITE_STRIPE_PUBLISHABLE_KEY` in
+   `.env.local`. Stale note removed 2026-10-03: this used to say the
+   publishable key "isn't needed anywhere in this app," which was true
+   before InvoiceView.jsx grew an optional client-side "Pay now with card"
+   button (2026-09-14, via Stripe Elements) — that feature silently no-ops
+   without this key set.
+6. Enable the Customer Portal under Settings → Billing → Customer Portal
 
 ---
 
@@ -110,8 +119,14 @@ supabase secrets set SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 supabase secrets set STRIPE_WEBHOOK_SECRET=whsec_xxx
 supabase secrets set ANTHROPIC_API_KEY=sk-ant-xxx
 ```
-(`ANTHROPIC_API_KEY` is only needed for the `ai-intake-chat` function — the
-AI lead-triage widget embedded on a business's own website.)
+(`ANTHROPIC_API_KEY` was only needed for `ai-intake-chat` — the AI
+lead-triage widget embedded on a business's own website — early on, but 16
+functions reference it as of 2026-10-03: outreach drafting/follow-ups,
+quote drafting, growth-marketing drafts, the voice intake agent, and
+several others. Every one of them has an honest, explicitly-tested
+non-AI fallback when this key is unset — nothing breaks or looks broken
+without it — but AI personalization across most of the app's "drafts
+something for a human to review" features stays off until it's set.)
 (`STRIPE_WEBHOOK_SECRET` comes from Stripe Dashboard → Developers → Webhooks,
 after you create the endpoint in the next step — come back and set it once
 you have it.)
