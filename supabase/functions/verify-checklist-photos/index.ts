@@ -177,7 +177,7 @@ async function reviewPhoto(
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'claude-opus-4-6',
+        model: 'claude-opus-5-5',
         max_tokens: 200,
         messages: [{
           role: 'user',

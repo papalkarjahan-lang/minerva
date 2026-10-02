@@ -171,7 +171,7 @@ async function draftEmail(apiKey: string, p: any): Promise<{ subject: string; bo
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'claude-opus-4-6',
+        model: 'claude-opus-5-5',
         max_tokens: 400,
         messages: [{
           role: 'user',

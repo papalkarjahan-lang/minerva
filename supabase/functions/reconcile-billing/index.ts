@@ -254,7 +254,7 @@ async function draftReasoning(apiKey: string, prompt: string, fallback: string):
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'claude-opus-4-6',
+        model: 'claude-opus-5-5',
         max_tokens: 150,
         messages: [{ role: 'user', content: prompt }],
       }),

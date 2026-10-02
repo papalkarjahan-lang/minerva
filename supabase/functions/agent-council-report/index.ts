@@ -203,7 +203,7 @@ Write a short report with exactly three sections, using this exact formatting (S
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'claude-opus-4-6',
+        model: 'claude-opus-5-5',
         // Deliberate cost guardrail — this runs weekly forever once cron'd,
         // so the response length is capped rather than left open-ended.
         max_tokens: 1200,

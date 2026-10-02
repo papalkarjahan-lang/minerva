@@ -79,7 +79,7 @@ const supabaseAdmin = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 )
 
-const CLAUDE_MODEL = 'claude-opus-4-6'
+const CLAUDE_MODEL = 'claude-opus-5-5'
 const MAX_NO_INPUT_RETRIES = 1 // one re-prompt on silence/no-speech before giving up and texting a fallback link
 
 interface ChatMessage {

@@ -170,7 +170,7 @@ async function draftLineItems(
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'claude-opus-4-6',
+        model: 'claude-opus-5-5',
         max_tokens: 500,
         messages: [{
           role: 'user',

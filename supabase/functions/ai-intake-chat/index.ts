@@ -59,7 +59,7 @@ interface ChatPayload {
   utmCampaign?: string
 }
 
-const CLAUDE_MODEL = 'claude-opus-4-6'
+const CLAUDE_MODEL = 'claude-opus-5-5'
 
 // See "Lead-capture idempotency" header note above.
 async function hashTranscript(businessId: string, transcript: ChatMessage[]): Promise<string> {
