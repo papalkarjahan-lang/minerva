@@ -130,17 +130,49 @@ serve(async (req: Request) => {
         email_confirm: true,
         user_metadata: { technician_id: tech.id, role: 'technician' },
       })
+
       if (createErr || !created?.user) {
-        console.error('technician-login: createUser failed', createErr)
-        throw new Error('Could not create technician session')
-      }
-      const { error: linkErr } = await supabase
-        .from('technicians')
-        .update({ auth_user_id: created.user.id })
-        .eq('id', tech.id)
-      if (linkErr) {
-        console.error('technician-login: failed to link auth_user_id', linkErr)
-        throw new Error('Could not create technician session')
+        // A concurrent first-login request for this same technician (two
+        // devices/tabs sharing one SMS link, or a browser retrying after a
+        // slow/timed-out first attempt) can land here: Supabase Auth
+        // rejects a second createUser for the same deterministic,
+        // id-derived email once the other request's call has already
+        // succeeded. The technician's PIN is completely valid in this
+        // case — rather than failing them, re-check whether the
+        // auth_user_id link has landed yet (or is about to) before giving
+        // up for real.
+        let linked: string | null = null
+        for (let attempt = 0; attempt < 3 && !linked; attempt++) {
+          if (attempt > 0) await new Promise(r => setTimeout(r, attempt * 300))
+          const { data: refreshed } = await supabase.from('technicians').select('auth_user_id').eq('id', tech.id).maybeSingle()
+          if (refreshed?.auth_user_id) linked = refreshed.auth_user_id
+        }
+        if (!linked) {
+          console.error('technician-login: createUser failed', createErr)
+          throw new Error('Could not create technician session')
+        }
+        tech.auth_user_id = linked
+      } else {
+        // Retry the link-back write before giving up — if this never
+        // lands, the auth user just created above becomes permanently
+        // orphaned (auth_user_id stays null forever), so every future
+        // login attempt would retry createUser with the same email and
+        // fail forever, since Supabase Auth already has it. That's a
+        // worse, permanent lockout from a single transient DB write
+        // failure, not just a race between two concurrent requests.
+        let saved = false
+        let linkErr: unknown = null
+        for (let attempt = 0; attempt < 3 && !saved; attempt++) {
+          if (attempt > 0) await new Promise(r => setTimeout(r, attempt * 300))
+          const { error } = await supabase.from('technicians').update({ auth_user_id: created.user.id }).eq('id', tech.id)
+          if (!error) saved = true
+          else linkErr = error
+        }
+        if (!saved) {
+          console.error('technician-login: failed to link auth_user_id', linkErr)
+          throw new Error('Could not create technician session')
+        }
+        tech.auth_user_id = created.user.id
       }
     }
 

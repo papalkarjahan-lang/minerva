@@ -110,6 +110,7 @@ export default function TechnicianView() {
   const [incidentSent, setIncidentSent] = useState(false)
   const [incidentError, setIncidentError] = useState(null)
   const [error, setError] = useState(null)
+  const [retrying, setRetrying] = useState(false)
   const [lastUpdate, setLastUpdate] = useState(null)
   const [pendingCount, setPendingCount] = useState(0)
   const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true)
@@ -297,17 +298,33 @@ export default function TechnicianView() {
   }, [pin])
 
   async function loadTech() {
+    setError(null)
     // Exchange the PIN for a real Supabase Auth session first (see
     // technician-login/index.ts) — establishes auth.uid() for this
     // technician so every write below is RLS-scoped to their own rows
     // instead of the old "anyone with the anon key" model. Re-run on every
     // mount (not just once) so a shared/handed-off device always ends up
     // authenticated as whichever technician's PIN is currently in the URL.
-    const { data: loginResult, error: loginError } = await supabase.functions.invoke('technician-login', {
+    const { data: loginResult, error: loginError, response: loginResponse } = await supabase.functions.invoke('technician-login', {
       body: { pin },
     })
     if (loginError || !loginResult?.token_hash) {
-      setError(loginResult?.error || 'PIN not recognised. Contact your manager.')
+      // supabase.functions.invoke() returns data:null for ANY non-2xx
+      // response (rate-limited, a transient 500, or a genuinely wrong PIN
+      // all look identical here), so loginResult?.error is always
+      // undefined — every failure mode used to show the same "PIN not
+      // recognised" message, even when the PIN was completely valid and
+      // the real cause was transient. The actual response body (with the
+      // real error message this function returned) is still readable off
+      // the raw Response the SDK hands back as `response` on an HTTP error.
+      let message = 'PIN not recognised. Contact your manager.'
+      if (loginResponse) {
+        try {
+          const body = await loginResponse.json()
+          if (body?.error) message = body.error
+        } catch (_) { /* non-JSON body — keep the generic message */ }
+      }
+      setError(message)
       return
     }
     const { error: verifyErr } = await supabase.auth.verifyOtp({
@@ -1085,6 +1102,19 @@ export default function TechnicianView() {
     <div style={styles.screen}>
       <div style={styles.errorBox}>
         <p style={{ margin: 0, color: '#8A2525', fontSize: 16 }}>{error}</p>
+        {pin && (
+          <button
+            style={{ ...styles.voiceBtn, marginTop: 14 }}
+            disabled={retrying}
+            onClick={async () => {
+              if (retrying) return
+              setRetrying(true)
+              try { await loadTech() } finally { setRetrying(false) }
+            }}
+          >
+            {retrying ? 'Retrying...' : 'Try again'}
+          </button>
+        )}
       </div>
     </div>
   )
