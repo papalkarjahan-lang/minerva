@@ -1374,124 +1374,35 @@ Verified: lint clean, 16/16 tests passing, build clean.
 
 ## Still outstanding (non-code, needs the user or a bank account)
 
-- Twilio Voice webhook for `missed-call-webhook` — blocked, trial accounts
-  require personal phone verification before purchasing any number, user
-  can't complete that step.
-- `TWILIO_PHONE_NUMBER` and `ANTHROPIC_API_KEY` secrets — blocked on
-  connecting a bank account (Twilio SMS-capable upgrade, Anthropic Console
-  payment-method gate).
-- Mapbox token — not yet confirmed copied into `.env.local` (same
-  payment-method gate hit 2026-08-29).
-- Day 7 end-to-end testing checklist (`README.md`) — needs a real phone,
-  real Stripe test-mode checkout, and real SMS receipt, so this has to be
-  run by the user directly rather than by an agent (falls outside the
-  standing "no real customer messages / no real paid signups" boundary).
-- Xero developer app registration (`developer.xero.com`) — the account
+*(Condensed 2026-10-02 — this section had accumulated many rounds of resolved
+`~~strikethrough~~` entries left in place instead of removed, making the
+genuinely-open items hard to find. Resolved items are dropped entirely below;
+see git log / this file's "Confirmed live" section above for history.)*
+
+- **Bank-account-gated**: Mapbox billing, Twilio SMS-capable number purchase
+  (also blocks the Voice webhook for `missed-call-webhook`/`voice-intake-agent`),
+  Anthropic Console billing (`ANTHROPIC_API_KEY`), Stripe live mode + the 9
+  Minerva Max add-on prices. See the Go-Live Checklist artifact (published
+  2026-10-02, https://claude.ai/artifact/54Lg79b3YZ9zSJ7wUtX2rT) for exact
+  click-by-click steps and the 9 `STRIPE_PRICE_ID_ADDON_<KEY>` secret names.
+  Until a given add-on's price secret is set, enabling that one add-on fails
+  with a clear error — every other already-configured add-on is unaffected.
+- **Xero developer app registration** (developer.xero.com) — the account
   holder has to create their own free app and hand over the resulting
-  `XERO_CLIENT_ID`/`XERO_CLIENT_SECRET`; not something that can be done on
-  the user's behalf. Until then "Connect Xero" in Settings just shows a
-  setup message — the OAuth code (`xero-oauth-connect`,
-  `xero-oauth-callback`, `xero-sync-invoice`) is built and deployed, only
-  the credentials are missing.
-- ~~Real Stripe per-add-on billing wiring for the Minerva Max tier~~ —
-  **CODE DONE 2026-10-01.** New `update-addon-billing` edge function
-  (deployed, smoke-tested 200) adds/removes a real Stripe subscription item
-  on a business's existing `stripe_sub_id` when an add-on is enabled/
-  disabled — see `supabase_schema_delta_addon_billing.sql` and that
-  function's own header. `DispatcherView.jsx`'s `enableMaxAddon`/
-  `disableMaxAddon` now call it instead of writing `businesses.max_addons`
-  directly from the browser. `startMaxAddonTrial` is deliberately
-  untouched — trials stay a free, unbilled client-side preview.
-  **Still outstanding (needs the user's own Stripe Dashboard, same
-  boundary as the base-tier `STRIPE_PRICE_ID_STARTER`/`STD`/`PRO` setup):**
-  create one new recurring Stripe Price per add-on in
-  `src/maxAddons.js`'s `MAX_ADDONS` catalog, then add its Price ID as a
-  Supabase secret named `STRIPE_PRICE_ID_ADDON_<KEY>` (upper-cased addon
-  key) — e.g. `STRIPE_PRICE_ID_ADDON_AI_QUOTES` for the `ai_quotes` addon.
-  The 9 secrets needed: `STRIPE_PRICE_ID_ADDON_SURGE_PRICING`,
-  `STRIPE_PRICE_ID_ADDON_AI_QUOTES`, `STRIPE_PRICE_ID_ADDON_CREW_SPLITTING`,
-  `STRIPE_PRICE_ID_ADDON_REVIEW_LOOP`,
-  `STRIPE_PRICE_ID_ADDON_DEMAND_FORECAST`,
-  `STRIPE_PRICE_ID_ADDON_SUBCONTRACTOR_POOL`,
-  `STRIPE_PRICE_ID_ADDON_ASSET_INTELLIGENCE`,
-  `STRIPE_PRICE_ID_ADDON_CARBON_ESTIMATE`, `STRIPE_PRICE_ID_ADDON_XERO_SYNC`.
-  Until a given addon's secret is set, enabling that one addon will fail
-  with a clear "No Stripe price configured for addon ..." error — every
-  other already-configured addon is unaffected.
-- ~~`stripe-webhook` and `test-agent-health` operator email alerts~~ —
-  **DONE 2026-09-10.** Redeployed via multipart API (`stripe-webhook` v6,
-  `test-agent-health` v4), both smoke-tested ACTIVE/healthy. Still a
-  no-op behaviorally until `OPERATOR_EMAIL` secret is actually set — that
-  part is still on the user.
-- ~~`supabase_schema_delta_twilio_number_unique.sql`~~ — **DONE 2026-09-10.**
-  Checked for existing duplicate `twilio_number` values first (none found),
-  then ran the migration live. Constraint is now in place.
-- ~~Outreach engine~~ — **DONE 2026-09-10.** `outreach_prospects` table
-  created (with the corrected admin INSERT policy), `draft-outreach-batch`,
-  `send-outreach-batch`, and `followup-outreach` all deployed (v1, ACTIVE,
-  smoke-tested), and `supabase_schema_delta_outreach_engine_cron.sql` run
-  (daily 6am UTC follow-up-drafting sweep registered as cron job id 51).
-  Still genuinely blocked: `RESEND_API_KEY` isn't set, so `send-*` remains
-  a safe no-op (logged, not sent) until the user provides that key.
-- ~~ROI proposal tool~~ — **DONE 2026-09-10.** `roi_proposals` table
-  created, `generate-roi-proposal` and `parse-prospect-text` both deployed
-  (v1, ACTIVE, smoke-tested).
-- ~~Big Accounts CRM~~ — **DONE 2026-09-10.** `big_account_targets` table
-  created (with the `big_account_target_id` column added to
-  `roi_proposals`), `generate-roi-proposal` redeployed with the
-  `bigAccountTargetId` support live.
-- ~~`supabase_seed_big_account_targets_2026-09-10.sql`~~ — **DONE
-  2026-09-10.** Ran once; 18 real, named companies now live in
-  `big_account_targets` at `stage='researching'` (confirmed via row
-  count). See `OUTREACH_DRAFTS_TOP_PICKS.md` for ready-to-personalize
-  first-contact drafts for the top 2 picks (Twin Electrics, Ken Hall
-  Plumbers) — drafts only, nothing has been sent to anyone.
-- **New 2026-09-10, still genuinely outstanding**: the Supabase PAT used
-  for all of the above (`sbp_9b...`) was pasted directly into chat — the
-  user should rotate/revoke it in the Supabase dashboard (Account →
-  Access Tokens) once done relying on it, since a plaintext-shared token
-  should be treated as compromised regardless of outcome.
-- ~~Corrective-action tickets (safety hazards + flagged checklist
-  photos)~~ — **DONE 2026-09-13.** `corrective_actions` table live,
-  `detect-safety-hazards` (v6) and `verify-checklist-photos` (v8) both
-  create a linked ticket on every flag, UI built in both dispatcher
-  consoles (assign/due-date/close controls).
-- ~~Fatigue-aware dispatch tiebreak~~ — **DONE 2026-09-13.**
-  `auto-assign-technician` (v12) now uses `technicians.rolling_week_hours`
-  as a soft distance-penalty tiebreak above a 40hr/week baseline.
-- ~~AI phone receptionist (`voice-intake-agent`)~~ — **DONE 2026-09-13,
-  code/DB side.** New edge function deployed (v1, ACTIVE, smoke-tested),
-  `voice_call_sessions` table live (RLS on, zero policies — service_role
-  only). Opt-in alternative to `missed-call-webhook`, which is untouched
-  and remains the default. **Still genuinely blocked** on the same Twilio
-  trial-account phone-verification gap noted above — until a business's
-  Twilio number is verified AND its "A CALL COMES IN" webhook is manually
-  pointed at `voice-intake-agent` instead of `missed-call-webhook`, calls
-  keep getting the existing static text-back response. See
-  `SALES_CLAIMS_ACCURACY_NOTE.md` for exactly what's safe to say about
-  this on a call today.
-- **New 2026-09-13, still genuinely outstanding**: the Supabase PAT used
-  for the corrective-actions + voice-intake-agent work (`sbp_f236...`,
-  later replaced mid-session by `sbp_a664...` after the first one died)
-  was pasted directly into chat — same rotate/revoke recommendation as
-  above applies to whichever of these is still active once this round's
-  work is confirmed done.
-- ~~`supabase_schema_delta_audit_log.sql`, `supabase_schema_delta_payroll_runs.sql`,
-  `supabase_schema_delta_skill_dispatch.sql`,
-  `supabase_schema_delta_workflow_invoice_overdue.sql`~~ — **CONFIRMED
-  LIVE 2026-10-01.** Found already applied during this round's full
-  clean-slate Supabase CLI re-audit (`audit_log`/`payroll_runs` tables and
-  `jobs.required_skill`/`invoices.workflow_overdue_notified_at` columns all
-  verified present via `supabase db query --linked`). This file's own notes
-  had gone stale relative to actual DB state — always verify live schema
-  directly rather than trusting this checklist's "not yet run" language.
-- ~~`generate-roi-proposal` redeploy~~ — **CONFIRMED LIVE 2026-10-01.**
-  Verified deployed version (v7, updated 2026-09-30) postdates the
-  2026-09-28 source change — already redeployed via the CLI at some point
-  in this round's audit work, this entry just hadn't been struck through.
-- **New 2026-09-28, still genuinely outstanding**: a Supabase PAT
-  (`sbp_fc60f643...`) was pasted directly into chat again — the 4th+
-  consecutive round this has happened. Not used for anything (declined
-  per the never-enter-tokens rule). Genuinely overdue for the user to
-  revoke in Supabase Account → Access Tokens; this pattern needs breaking,
-  not just re-flagging.
+  `XERO_CLIENT_ID`/`XERO_CLIENT_SECRET`; not something that can be done on the
+  user's behalf. Until then "Connect Xero" in Settings just shows a setup
+  message — the OAuth code (`xero-oauth-connect`, `xero-oauth-callback`,
+  `xero-sync-invoice`) is built and deployed, only the credentials are missing.
+- **Day 7 end-to-end testing checklist** (README.md) — needs a real phone, a
+  real Stripe test-mode checkout, and a real SMS receipt, so this has to be
+  run by the user directly.
+- **`OPERATOR_EMAIL` secret** still unset — payment-failure email alerts
+  remain a harmless no-op until it's set.
+- **Pasted Supabase PATs needing rotation** — at least 4 separate tokens have
+  been pasted into chat across past rounds (`sbp_9b...`, `sbp_f236...`,
+  `sbp_a664...`, `sbp_fc60f643...`; none used for anything beyond what was
+  already authorized at the time, and none accepted for any new use since).
+  Genuinely overdue: rotate/revoke all of them in the Supabase dashboard
+  (Account → Access Tokens). This has now recurred 4+ times — worth breaking
+  as a habit (e.g. keeping one persistent local CLI session instead of
+  re-pasting a PAT per round), not just re-flagging again each time.
