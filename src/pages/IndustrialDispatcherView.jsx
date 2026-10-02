@@ -4,6 +4,7 @@ import { supabase } from '../supabaseClient'
 import { timeAgo } from '../utils'
 import LoadingScreen from '../components/LoadingScreen'
 import { MAX_ADDONS, isTrialing, trialDaysLeft, hasUsedTrial, startTrialPatch } from '../maxAddons'
+import { isTrialExpired, SIGNUP_TRIAL_DAYS } from '../businessAccess'
 
 // Industrial sector console (Track B) — mirrors DispatcherView's structure
 // and visual language, scoped to the industrial_* tables instead of the
@@ -477,6 +478,15 @@ export default function IndustrialDispatcherView() {
               <p style={styles.subscriptionCancelledLine}>
                 Your last card charge was declined. Stripe will keep retrying automatically —
                 update your card to avoid a lapse.
+              </p>
+            </div>
+          )}
+          {isTrialExpired(business) && (
+            <div style={styles.subscriptionCancelledBanner}>
+              <p style={styles.subscriptionCancelledTitle}>⚠️ Free trial ended</p>
+              <p style={styles.subscriptionCancelledLine}>
+                Your {SIGNUP_TRIAL_DAYS}-day free trial has ended without an active subscription —
+                contact us to subscribe.
               </p>
             </div>
           )}

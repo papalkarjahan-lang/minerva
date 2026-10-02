@@ -3,6 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 import { haversineKm } from '../utils'
 import { hasAddon } from '../maxAddons'
+import { isTrialExpired } from '../businessAccess'
 import ContactSupportModal from '../components/ContactSupportModal'
 import LoadingScreen from '../components/LoadingScreen'
 
@@ -1119,6 +1120,15 @@ export default function TechnicianView() {
           <p style={styles.credentialBannerLine}>
             This business's Minerva subscription was cancelled — some features may be
             unavailable. Contact your dispatcher/owner if this seems wrong.
+          </p>
+        </div>
+      )}
+      {isTrialExpired(business) && (
+        <div style={styles.credentialBanner}>
+          <p style={styles.credentialBannerTitle}>⚠️ Free trial ended</p>
+          <p style={styles.credentialBannerLine}>
+            This business's free trial has ended without becoming a paid subscription — some
+            features may be unavailable. Contact your dispatcher/owner if this seems wrong.
           </p>
         </div>
       )}

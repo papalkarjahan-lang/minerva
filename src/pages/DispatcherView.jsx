@@ -6,6 +6,7 @@ import { timeAgo, geocodeAddress, insertTechniciansWithPinRetry, haversineKm, is
 import ContactSupportModal from '../components/ContactSupportModal'
 import LoadingScreen from '../components/LoadingScreen'
 import { MAX_ADDONS, hasAddon, isTrialing, trialDaysLeft, hasUsedTrial, startTrialPatch } from '../maxAddons'
+import { isTrialExpired, SIGNUP_TRIAL_DAYS } from '../businessAccess'
 import 'mapbox-gl/dist/mapbox-gl.css'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
@@ -2202,6 +2203,15 @@ export default function DispatcherView() {
               <p style={styles.subscriptionCancelledLine}>
                 Your last card charge was declined. Stripe will keep retrying automatically —
                 update your card from billing below so it doesn't lapse.
+              </p>
+            </div>
+          )}
+          {isTrialExpired(business) && (
+            <div style={styles.subscriptionCancelledBanner}>
+              <p style={styles.subscriptionCancelledTitle}>⚠️ Free trial ended</p>
+              <p style={styles.subscriptionCancelledLine}>
+                Your {SIGNUP_TRIAL_DAYS}-day free trial has ended without an active subscription.
+                Contact us to subscribe and keep full access.
               </p>
             </div>
           )}
