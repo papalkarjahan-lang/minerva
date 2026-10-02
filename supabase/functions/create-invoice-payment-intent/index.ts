@@ -152,11 +152,38 @@ serve(async (req: Request) => {
         clientSecret = pi.client_secret
         paymentIntentId = pi.id
 
-        const { error: updateErr } = await supabase
-          .from('invoices')
-          .update({ stripe_payment_intent_id: paymentIntentId })
-          .eq('id', invoice.id)
-        if (updateErr) console.error('Failed to save stripe_payment_intent_id:', updateErr.message)
+        // This write is the ONLY thing that turns the 'pending' claim above
+        // into the real PaymentIntent id — if it never lands, the invoice is
+        // stuck at the literal string 'pending' forever. That's worse than
+        // it sounds: 'pending' fails the `!== 'pending'` reuse check at the
+        // top of this function, so a client retrying after seeing "still
+        // unpaid" skips straight past "reuse the existing PI" and mints a
+        // SECOND PaymentIntent for an invoice they already paid — a real
+        // double charge, not a hypothetical one, confirmed by tracing this
+        // exact path. A plain console.error (the previous behavior) let the
+        // function return success with clientSecret regardless, so the
+        // browser would still complete a real charge against a PI the DB
+        // could never reconcile. Retry the write a few times first (most
+        // failures here are transient), and if it still can't be saved,
+        // revert the claim and fail the request instead of handing back a
+        // clientSecret — the browser then never renders a card form for
+        // this PI at all, so nothing gets charged against it this attempt,
+        // and a fresh retry starts clean rather than wedged on 'pending'.
+        // (Fixed 2026-10-03.)
+        let saved = false
+        for (let attempt = 0; attempt < 3 && !saved; attempt++) {
+          if (attempt > 0) await new Promise(r => setTimeout(r, attempt * 500))
+          const { error: updateErr } = await supabase
+            .from('invoices')
+            .update({ stripe_payment_intent_id: paymentIntentId })
+            .eq('id', invoice.id)
+          if (!updateErr) saved = true
+          else console.error(`Failed to save stripe_payment_intent_id (attempt ${attempt + 1}):`, updateErr.message)
+        }
+        if (!saved) {
+          await supabase.from('invoices').update({ stripe_payment_intent_id: invoice.stripe_payment_intent_id || null }).eq('id', invoice.id)
+          throw new Error("Couldn't finish setting up payment — please try again. (Your card has not been charged.)")
+        }
       }
     }
 
