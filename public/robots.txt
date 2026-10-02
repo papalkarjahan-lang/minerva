@@ -10,5 +10,7 @@ Disallow: /dispute/
 Disallow: /client/
 Disallow: /intake/
 Disallow: /tech
+Disallow: /proposal/
+Disallow: /success
 
 Sitemap: https://minerva-green.vercel.app/sitemap.xml
