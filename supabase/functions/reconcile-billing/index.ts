@@ -40,6 +40,9 @@ import {
   findStaleAddonItems,
   buildAddonDriftSlackMessage,
   buildAddonDriftFallbackSummary,
+  hasUntrackedSubscriptionItems,
+  buildUntrackedItemsSlackMessage,
+  buildUntrackedItemsFallbackSummary,
 } from "./logic.ts"
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, {
@@ -101,6 +104,7 @@ serve(async (req: Request) => {
     let checked = 0
     let mismatches = 0
     let addonDrift = 0
+    let untrackedItems = 0
 
     for (const biz of businesses || []) {
       checked++
@@ -155,30 +159,60 @@ serve(async (req: Request) => {
       // header comment in logic.ts for why this exists (customer.
       // subscription.updated isn't handled by stripe-webhook, so a single
       // add-on item removed directly in Stripe goes otherwise undetected).
-      if (biz.max_addon_stripe_items && Object.keys(biz.max_addon_stripe_items).length > 0 && biz.stripe_sub_id) {
+      // Fetches the live item list unconditionally now (not just when this
+      // business has recorded add-ons) so the untracked-item count check
+      // below can run for every business — see hasUntrackedSubscriptionItems's
+      // header comment for why that one deliberately doesn't share the old
+      // narrower gate. (Restructured 2026-10-03.)
+      if (biz.stripe_sub_id) {
         try {
           const items = await stripe.subscriptionItems.list({ subscription: biz.stripe_sub_id })
           const liveItemIds = new Set(items.data.map((item: { id: string }) => item.id))
-          const staleKeys = findStaleAddonItems(biz.max_addon_stripe_items, liveItemIds)
-          if (staleKeys.length > 0) {
-            addonDrift++
+
+          if (biz.max_addon_stripe_items && Object.keys(biz.max_addon_stripe_items).length > 0) {
+            const staleKeys = findStaleAddonItems(biz.max_addon_stripe_items, liveItemIds)
+            if (staleKeys.length > 0) {
+              addonDrift++
+              await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/notify-slack`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}` },
+                body: JSON.stringify({
+                  businessId: biz.id,
+                  text: buildAddonDriftSlackMessage(biz.name, staleKeys),
+                }),
+              }).catch(() => {})
+
+              await supabaseAdmin.from('agent_insights').insert({
+                agent: 'finance',
+                insight_type: 'anomaly',
+                summary: buildAddonDriftFallbackSummary(biz.name, staleKeys),
+                business_id: biz.id,
+                related_table: 'businesses',
+                related_id: biz.id,
+              }).then(() => {}, (insErr) => console.error('reconcile-billing: agent_insights insert failed (addon drift)', insErr))
+            }
+          }
+
+          if (hasUntrackedSubscriptionItems(items.data.length, biz.max_addon_stripe_items)) {
+            const trackedCount = 1 + Object.keys(biz.max_addon_stripe_items || {}).length
+            untrackedItems++
             await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/notify-slack`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}` },
               body: JSON.stringify({
                 businessId: biz.id,
-                text: buildAddonDriftSlackMessage(biz.name, staleKeys),
+                text: buildUntrackedItemsSlackMessage(biz.name, items.data.length, trackedCount),
               }),
             }).catch(() => {})
 
             await supabaseAdmin.from('agent_insights').insert({
               agent: 'finance',
               insight_type: 'anomaly',
-              summary: buildAddonDriftFallbackSummary(biz.name, staleKeys),
+              summary: buildUntrackedItemsFallbackSummary(biz.name, items.data.length, trackedCount),
               business_id: biz.id,
               related_table: 'businesses',
               related_id: biz.id,
-            }).then(() => {}, (insErr) => console.error('reconcile-billing: agent_insights insert failed (addon drift)', insErr))
+            }).then(() => {}, (insErr) => console.error('reconcile-billing: agent_insights insert failed (untracked items)', insErr))
           }
         } catch (stripeErr) {
           console.error(`reconcile-billing: addon drift Stripe lookup failed for ${biz.id}`, stripeErr)
@@ -188,7 +222,7 @@ serve(async (req: Request) => {
 
     supabaseAdmin.rpc('record_agent_run', { fn_name: 'reconcile-billing', status: 'ok' }).then(() => {}, () => {})
 
-    return new Response(JSON.stringify({ success: true, checked, mismatches, addonDrift, backfilled }), {
+    return new Response(JSON.stringify({ success: true, checked, mismatches, addonDrift, untrackedItems, backfilled }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', ...corsHeaders },
     })

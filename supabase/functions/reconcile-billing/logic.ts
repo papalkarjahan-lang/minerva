@@ -58,3 +58,32 @@ export function buildAddonDriftSlackMessage(bizName: string, staleKeys: string[]
 export function buildAddonDriftFallbackSummary(bizName: string, staleKeys: string[]): string {
   return `Minerva Max add-on(s) [${staleKeys.join(', ')}] are flagged active for ${bizName} but have no matching live Stripe subscription item.`
 }
+
+// Reverse direction of findStaleAddonItems above — that one only asks "is
+// every item WE have on file still live in Stripe?" and can't see an item
+// Stripe has that no key in max_addon_stripe_items points at (e.g. a
+// double-created add-on item from a past failure mode, or any other cause
+// of an untracked item). Deliberately doesn't try to identify WHICH add-on
+// an untracked item belongs to — that would need its own hardcoded copy of
+// every addon key, duplicated from src/maxAddons.js, just to exclude the
+// one base per-technician seat item from the count. Comparing counts
+// instead needs no such list and catches the same class of problem: if
+// Stripe's live item count exceeds "1 base seat item + however many
+// add-ons are recorded," something on this subscription isn't accounted
+// for locally. (Added 2026-10-03, same round as the update-addon-billing
+// double-create fix this is a safety net for.)
+export function hasUntrackedSubscriptionItems(
+  liveItemCount: number,
+  storedItems: Record<string, string> | null | undefined
+): boolean {
+  const trackedCount = 1 + Object.keys(storedItems || {}).length // 1 = the base seat item
+  return liveItemCount > trackedCount
+}
+
+export function buildUntrackedItemsSlackMessage(bizName: string, liveItemCount: number, trackedCount: number): string {
+  return `⚠️ Untracked Stripe subscription item(s) for *${bizName}*: Stripe shows ${liveItemCount} item(s) on this subscription, but Minerva's own records only account for ${trackedCount}. Worth a manual check in the Stripe Dashboard — this can happen if an add-on was billed twice by mistake.`
+}
+
+export function buildUntrackedItemsFallbackSummary(bizName: string, liveItemCount: number, trackedCount: number): string {
+  return `Stripe shows ${liveItemCount} subscription item(s) for ${bizName}, but Minerva's records only account for ${trackedCount}.`
+}

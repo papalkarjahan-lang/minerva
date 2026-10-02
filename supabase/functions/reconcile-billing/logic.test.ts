@@ -8,6 +8,9 @@ import {
   findStaleAddonItems,
   buildAddonDriftSlackMessage,
   buildAddonDriftFallbackSummary,
+  hasUntrackedSubscriptionItems,
+  buildUntrackedItemsSlackMessage,
+  buildUntrackedItemsFallbackSummary,
 } from './logic'
 
 describe('computeLocalQuantity', () => {
@@ -90,5 +93,44 @@ describe('buildAddonDriftFallbackSummary', () => {
     const summary = buildAddonDriftFallbackSummary('Acme Plumbing', ['ai_quotes'])
     expect(summary).toContain('Acme Plumbing')
     expect(summary).toContain('[ai_quotes]')
+  })
+})
+
+describe('hasUntrackedSubscriptionItems', () => {
+  it('is false when live count exactly matches 1 base seat + recorded addons', () => {
+    expect(hasUntrackedSubscriptionItems(1, null)).toBe(false)
+    expect(hasUntrackedSubscriptionItems(1, {})).toBe(false)
+    expect(hasUntrackedSubscriptionItems(3, { ai_quotes: 'si_1', crew_splitting: 'si_2' })).toBe(false)
+  })
+
+  it('is true when Stripe has more items than any recorded addon can account for', () => {
+    expect(hasUntrackedSubscriptionItems(2, null)).toBe(true)
+    expect(hasUntrackedSubscriptionItems(2, {})).toBe(true)
+  })
+
+  it('is true when Stripe has one more item than the recorded addons explain', () => {
+    expect(hasUntrackedSubscriptionItems(4, { ai_quotes: 'si_1', crew_splitting: 'si_2' })).toBe(true)
+  })
+
+  it('is false when live count is lower than tracked (a different problem — findStaleAddonItems catches that one)', () => {
+    expect(hasUntrackedSubscriptionItems(1, { ai_quotes: 'si_1' })).toBe(false)
+  })
+})
+
+describe('buildUntrackedItemsSlackMessage', () => {
+  it('includes the business name and both counts', () => {
+    const msg = buildUntrackedItemsSlackMessage('Acme Plumbing', 3, 1)
+    expect(msg).toContain('Acme Plumbing')
+    expect(msg).toContain('3 item(s)')
+    expect(msg).toContain('only account for 1')
+  })
+})
+
+describe('buildUntrackedItemsFallbackSummary', () => {
+  it('includes the business name and both counts', () => {
+    const summary = buildUntrackedItemsFallbackSummary('Acme Plumbing', 3, 1)
+    expect(summary).toContain('Acme Plumbing')
+    expect(summary).toContain('3 subscription item(s)')
+    expect(summary).toContain('only account for 1')
   })
 })
