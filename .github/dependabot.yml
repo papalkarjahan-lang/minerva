@@ -1,0 +1,20 @@
+version: 2
+updates:
+  # Frontend deps (react, @supabase/supabase-js, @stripe/*, mapbox-gl, etc.)
+  # — weekly, not daily, since this is a one-person project and a daily
+  # cadence would just be PR noise nobody's triaging that often. CI (lint/
+  # test/build) already runs on every PR Dependabot opens, same as any
+  # other PR, so an update that breaks something gets caught before merge.
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  # Keeps the CI workflow's own actions (actions/checkout, actions/setup-node)
+  # current too — these are a separate ecosystem from npm and Dependabot
+  # won't touch them unless told to explicitly.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
