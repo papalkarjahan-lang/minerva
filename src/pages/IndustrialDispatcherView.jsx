@@ -772,6 +772,7 @@ export default function IndustrialDispatcherView() {
                       {ticket.status !== 'closed' && (
                         <div style={styles.rowActions}>
                           <select
+                            aria-label={`Assign corrective action for "${i.description}" to`}
                             style={styles.smallSelect}
                             disabled={busyId === ticket.id}
                             defaultValue={ticket.assigned_to_technician_id || ''}
@@ -781,6 +782,7 @@ export default function IndustrialDispatcherView() {
                             {technicians.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                           </select>
                           <input
+                            aria-label={`Due date for corrective action on "${i.description}"`}
                             type="date"
                             style={styles.smallSelect}
                             disabled={busyId === ticket.id}
@@ -816,11 +818,11 @@ export default function IndustrialDispatcherView() {
         <div style={styles.modalOverlay} onClick={() => setShowAddLead(false)}>
           <form style={styles.modal} onClick={e => e.stopPropagation()} onSubmit={addLead}>
             <p style={styles.modalTitle}>Add industrial lead</p>
-            <input name="company_name" placeholder="Company name" required style={styles.input} />
-            <input name="equipment_need" placeholder="Equipment need" style={styles.input} />
-            <input name="estimated_size" placeholder="Estimated size (e.g. 3 units, $50k)" style={styles.input} />
-            <input name="intent_signal" placeholder="Intent signal / notes" style={styles.input} />
-            <input name="source" placeholder="Source (default: manual)" style={styles.input} />
+            <input aria-label="Company name" name="company_name" placeholder="Company name" required style={styles.input} />
+            <input aria-label="Equipment need" name="equipment_need" placeholder="Equipment need" style={styles.input} />
+            <input aria-label="Estimated size" name="estimated_size" placeholder="Estimated size (e.g. 3 units, $50k)" style={styles.input} />
+            <input aria-label="Intent signal / notes" name="intent_signal" placeholder="Intent signal / notes" style={styles.input} />
+            <input aria-label="Source" name="source" placeholder="Source (default: manual)" style={styles.input} />
             <div style={styles.modalActions}>
               <button type="button" style={styles.cancelBtn} onClick={() => setShowAddLead(false)}>Cancel</button>
               <button type="submit" disabled={formSubmitting} style={styles.submitBtn}>{formSubmitting ? 'Adding...' : 'Add'}</button>
@@ -833,9 +835,9 @@ export default function IndustrialDispatcherView() {
         <div style={styles.modalOverlay} onClick={() => setShowAddSite(false)}>
           <form style={styles.modal} onClick={e => e.stopPropagation()} onSubmit={addSite}>
             <p style={styles.modalTitle}>Add site project</p>
-            <input name="name" placeholder="Site name" required style={styles.input} />
-            <input name="scope_of_work" placeholder="Scope of work" style={styles.input} />
-            <select name="industrial_lead_id" style={styles.input}>
+            <input aria-label="Site name" name="name" placeholder="Site name" required style={styles.input} />
+            <input aria-label="Scope of work" name="scope_of_work" placeholder="Scope of work" style={styles.input} />
+            <select aria-label="Linked lead" name="industrial_lead_id" style={styles.input}>
               <option value="">No linked lead</option>
               {leads.map(l => <option key={l.id} value={l.id}>{l.company_name}</option>)}
             </select>
@@ -851,9 +853,9 @@ export default function IndustrialDispatcherView() {
         <div style={styles.modalOverlay} onClick={() => setShowAddAsset(false)}>
           <form style={styles.modal} onClick={e => e.stopPropagation()} onSubmit={addAsset}>
             <p style={styles.modalTitle}>Add asset</p>
-            <input name="name" placeholder="Asset name (e.g. Excavator 3)" required style={styles.input} />
-            <input name="asset_type" placeholder="Asset type" style={styles.input} />
-            <input name="tag_id" placeholder="RFID / tracker tag ID (optional)" style={styles.input} />
+            <input aria-label="Asset name" name="name" placeholder="Asset name (e.g. Excavator 3)" required style={styles.input} />
+            <input aria-label="Asset type" name="asset_type" placeholder="Asset type" style={styles.input} />
+            <input aria-label="RFID / tracker tag ID" name="tag_id" placeholder="RFID / tracker tag ID (optional)" style={styles.input} />
             <div style={styles.modalActions}>
               <button type="button" style={styles.cancelBtn} onClick={() => setShowAddAsset(false)}>Cancel</button>
               <button type="submit" disabled={formSubmitting} style={styles.submitBtn}>{formSubmitting ? 'Adding...' : 'Add'}</button>
@@ -866,15 +868,15 @@ export default function IndustrialDispatcherView() {
         <div style={styles.modalOverlay} onClick={() => setShowAddIncident(false)}>
           <form style={styles.modal} onClick={e => e.stopPropagation()} onSubmit={addIncident}>
             <p style={styles.modalTitle}>Report safety incident</p>
-            <select name="site_id" style={styles.input}>
+            <select aria-label="Site" name="site_id" style={styles.input}>
               <option value="">No specific site</option>
               {sites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
-            <select name="severity" style={styles.input} defaultValue="warning">
+            <select aria-label="Severity" name="severity" style={styles.input} defaultValue="warning">
               <option value="warning">Warning</option>
               <option value="hazard">Hazard</option>
             </select>
-            <input name="description" placeholder="What happened?" required style={styles.input} />
+            <input aria-label="What happened?" name="description" placeholder="What happened?" required style={styles.input} />
             <div style={styles.modalActions}>
               <button type="button" style={styles.cancelBtn} onClick={() => setShowAddIncident(false)}>Cancel</button>
               <button type="submit" disabled={formSubmitting} style={styles.submitBtn}>{formSubmitting ? 'Reporting...' : 'Report'}</button>
@@ -887,10 +889,10 @@ export default function IndustrialDispatcherView() {
         <div style={styles.modalOverlay} onClick={() => setShowAddItem(false)}>
           <form style={styles.modal} onClick={e => e.stopPropagation()} onSubmit={addItem}>
             <p style={styles.modalTitle}>Add consumable item</p>
-            <input name="name" placeholder="Item name" required style={styles.input} />
-            <input name="unit" placeholder="Unit (e.g. litres, boxes)" style={styles.input} />
-            <input name="quantity_on_hand" type="number" placeholder="Quantity on hand" style={styles.input} />
-            <input name="reorder_threshold" type="number" placeholder="Reorder threshold" style={styles.input} />
+            <input aria-label="Item name" name="name" placeholder="Item name" required style={styles.input} />
+            <input aria-label="Unit" name="unit" placeholder="Unit (e.g. litres, boxes)" style={styles.input} />
+            <input aria-label="Quantity on hand" name="quantity_on_hand" type="number" placeholder="Quantity on hand" style={styles.input} />
+            <input aria-label="Reorder threshold" name="reorder_threshold" type="number" placeholder="Reorder threshold" style={styles.input} />
             <div style={styles.modalActions}>
               <button type="button" style={styles.cancelBtn} onClick={() => setShowAddItem(false)}>Cancel</button>
               <button type="submit" disabled={formSubmitting} style={styles.submitBtn}>{formSubmitting ? 'Adding...' : 'Add'}</button>

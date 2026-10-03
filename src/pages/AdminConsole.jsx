@@ -538,6 +538,7 @@ export default function AdminConsole() {
                   <td style={tdStyle}>{biz.sector || 'trade'}</td>
                   <td style={tdStyle}>
                     <select
+                      aria-label={`Subscription tier for ${biz.name || 'this business'}`}
                       value={biz.subscription_tier || ''}
                       disabled={savingId === biz.id}
                       onChange={e => overrideTier(biz.id, e.target.value, biz.name)}
@@ -579,6 +580,7 @@ export default function AdminConsole() {
                 Paste one prospect per line: <code>company_name,contact_name,contact_email,trade_type,city</code>
               </p>
               <textarea
+                aria-label="Prospect CSV rows"
                 value={csvText}
                 onChange={e => setCsvText(e.target.value)}
                 placeholder="Fergusons Plumbing,Dave Ferguson,dave@fergusonsplumbing.com.au,plumbing,Melbourne"
@@ -598,6 +600,7 @@ export default function AdminConsole() {
                 similar (AI extracts the rows for you — nothing here fetches any website itself).
               </p>
               <textarea
+                aria-label="Pasted prospect text"
                 value={pasteText}
                 onChange={e => setPasteText(e.target.value)}
                 placeholder="Paste the raw copied text here..."
@@ -689,6 +692,7 @@ export default function AdminConsole() {
               </p>
               <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                 <input
+                  aria-label="Prospect email to unsubscribe"
                   type="email" placeholder="prospect@company.com" value={unsubEmail} onChange={e => setUnsubEmail(e.target.value)}
                   style={{ ...inputStyle, width: 240 }}
                 />
@@ -713,16 +717,16 @@ export default function AdminConsole() {
             <div style={{ ...cardStyle, maxWidth: 'none', textAlign: 'left', marginBottom: 20 }}>
               <p style={{ color: '#fff', fontWeight: 'bold', margin: '0 0 10px' }}>Add a target</p>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
-                <input placeholder="Company name" value={newTarget.company_name} onChange={e => setNewTarget({ ...newTarget, company_name: e.target.value })} style={{ ...inputStyle, width: 200 }} />
-                <select value={newTarget.company_type} onChange={e => setNewTarget({ ...newTarget, company_type: e.target.value })} style={{ ...inputStyle, width: 160 }}>
+                <input aria-label="Company name" placeholder="Company name" value={newTarget.company_name} onChange={e => setNewTarget({ ...newTarget, company_name: e.target.value })} style={{ ...inputStyle, width: 200 }} />
+                <select aria-label="Company type" value={newTarget.company_type} onChange={e => setNewTarget({ ...newTarget, company_type: e.target.value })} style={{ ...inputStyle, width: 160 }}>
                   {COMPANY_TYPES.map(t => <option key={t} value={t}>{t.replace('_', ' ')}</option>)}
                 </select>
-                <input placeholder="Contact name" value={newTarget.contact_name} onChange={e => setNewTarget({ ...newTarget, contact_name: e.target.value })} style={{ ...inputStyle, width: 150 }} />
-                <input placeholder="Title" value={newTarget.contact_title} onChange={e => setNewTarget({ ...newTarget, contact_title: e.target.value })} style={{ ...inputStyle, width: 130 }} />
-                <input placeholder="Email" value={newTarget.contact_email} onChange={e => setNewTarget({ ...newTarget, contact_email: e.target.value })} style={{ ...inputStyle, width: 180 }} />
-                <input placeholder="Phone" value={newTarget.contact_phone} onChange={e => setNewTarget({ ...newTarget, contact_phone: e.target.value })} style={{ ...inputStyle, width: 130 }} />
-                <input type="number" min="1" placeholder="Est. fleet size" value={newTarget.estimated_fleet_size} onChange={e => setNewTarget({ ...newTarget, estimated_fleet_size: e.target.value })} style={{ ...inputStyle, width: 110 }} />
-                <input placeholder="Region" value={newTarget.region} onChange={e => setNewTarget({ ...newTarget, region: e.target.value })} style={{ ...inputStyle, width: 130 }} />
+                <input aria-label="Contact name" placeholder="Contact name" value={newTarget.contact_name} onChange={e => setNewTarget({ ...newTarget, contact_name: e.target.value })} style={{ ...inputStyle, width: 150 }} />
+                <input aria-label="Contact title" placeholder="Title" value={newTarget.contact_title} onChange={e => setNewTarget({ ...newTarget, contact_title: e.target.value })} style={{ ...inputStyle, width: 130 }} />
+                <input aria-label="Contact email" placeholder="Email" value={newTarget.contact_email} onChange={e => setNewTarget({ ...newTarget, contact_email: e.target.value })} style={{ ...inputStyle, width: 180 }} />
+                <input aria-label="Contact phone" placeholder="Phone" value={newTarget.contact_phone} onChange={e => setNewTarget({ ...newTarget, contact_phone: e.target.value })} style={{ ...inputStyle, width: 130 }} />
+                <input aria-label="Estimated fleet size" type="number" min="1" placeholder="Est. fleet size" value={newTarget.estimated_fleet_size} onChange={e => setNewTarget({ ...newTarget, estimated_fleet_size: e.target.value })} style={{ ...inputStyle, width: 110 }} />
+                <input aria-label="Region" placeholder="Region" value={newTarget.region} onChange={e => setNewTarget({ ...newTarget, region: e.target.value })} style={{ ...inputStyle, width: 130 }} />
               </div>
               <button onClick={addBigAccount} disabled={addingBigAccount} style={{ background: '#2D5FA8', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', cursor: addingBigAccount ? 'default' : 'pointer', fontSize: 13, opacity: addingBigAccount ? 0.6 : 1 }}>
                 {addingBigAccount ? 'Adding...' : 'Add target'}
@@ -839,6 +843,7 @@ function ProspectCard({ prospect: p, onSaveDraft, onApprove, onReject, savingId,
       <div style={{ borderTop: '1px solid #1e293b', marginTop: 12, paddingTop: 10, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         <span style={{ color: '#666', fontSize: 12 }}>Multi-van/big account? Fleet size:</span>
         <input
+          aria-label={`Fleet size for ${p.company_name || 'this prospect'}`}
           type="number" min="1" value={fleetSize} onChange={e => setFleetSize(e.target.value)}
           placeholder="e.g. 12"
           style={{ width: 70, background: '#0a0f1d', color: '#fff', border: '1px solid #1e293b', borderRadius: 6, padding: '4px 8px', fontSize: 13 }}
@@ -881,13 +886,14 @@ function BigAccountCard({ target: t, onSave, onGenerateProposal, proposalId, roi
       </p>
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
-        <select value={stage} onChange={e => setStage(e.target.value)} style={{ ...inputStyle, width: 160 }}>
+        <select aria-label={`Pipeline stage for ${t.company_name || 'this target'}`} value={stage} onChange={e => setStage(e.target.value)} style={{ ...inputStyle, width: 160 }}>
           {STAGES.map(s => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
         </select>
-        <input placeholder="Next action (e.g. call Dave back)" value={nextAction} onChange={e => setNextAction(e.target.value)} style={{ ...inputStyle, width: 220 }} />
-        <input type="date" value={nextActionDate || ''} onChange={e => setNextActionDate(e.target.value)} style={{ ...inputStyle, width: 140 }} />
+        <input aria-label={`Next action for ${t.company_name || 'this target'}`} placeholder="Next action (e.g. call Dave back)" value={nextAction} onChange={e => setNextAction(e.target.value)} style={{ ...inputStyle, width: 220 }} />
+        <input aria-label={`Next action date for ${t.company_name || 'this target'}`} type="date" value={nextActionDate || ''} onChange={e => setNextActionDate(e.target.value)} style={{ ...inputStyle, width: 140 }} />
       </div>
       <textarea
+        aria-label={`Running notes for ${t.company_name || 'this target'}`}
         value={notes}
         onChange={e => setNotes(e.target.value)}
         placeholder="Running notes — call summaries, objections raised, who else is involved in the decision..."
@@ -905,6 +911,7 @@ function BigAccountCard({ target: t, onSave, onGenerateProposal, proposalId, roi
           </button>
         )}
         <input
+          aria-label={`Fleet size for ${t.company_name || 'this target'}`}
           type="number" min="1" value={fleetSize} onChange={e => setFleetSize(e.target.value)}
           placeholder="Fleet size"
           style={{ width: 90, background: '#0a0f1d', color: '#fff', border: '1px solid #1e293b', borderRadius: 6, padding: '4px 8px', fontSize: 13 }}
@@ -941,6 +948,7 @@ function SupportRequestCard({ request: r, onResolve, onSaveNotes, busy }) {
       </div>
       <p style={{ color: '#ccc', margin: '10px 0' }}>{r.message}</p>
       <textarea
+        aria-label={`Reply / resolution notes for ${r.from_name || 'this request'}`}
         value={notes}
         onChange={e => setNotes(e.target.value)}
         placeholder="Reply/resolution notes — what you said, when, and how it was resolved. Not visible to the customer."
