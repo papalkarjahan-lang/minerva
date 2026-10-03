@@ -1138,7 +1138,7 @@ export default function TechnicianView() {
             <span style={styles.liveDot} />
             LIVE
             {lastUpdate && <span style={{ fontSize: 11, marginLeft: 6, opacity: 0.8 }}>
-              {lastUpdate.toLocaleTimeString()}
+              {lastUpdate.toLocaleTimeString('en-AU')}
             </span>}
           </div>
         )}

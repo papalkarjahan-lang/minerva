@@ -548,8 +548,8 @@ export default function AdminConsole() {
                   </td>
                   <td style={tdStyle}>{biz.stripe_sub_id ? '✅' : '—'}</td>
                   <td style={tdStyle}>{biz.techCount}</td>
-                  <td style={tdStyle}>{biz.lastActivity ? new Date(biz.lastActivity).toLocaleString() : 'never'}</td>
-                  <td style={tdStyle}>{new Date(biz.created_at).toLocaleDateString()}</td>
+                  <td style={tdStyle}>{biz.lastActivity ? new Date(biz.lastActivity).toLocaleString('en-AU') : 'never'}</td>
+                  <td style={tdStyle}>{new Date(biz.created_at).toLocaleDateString('en-AU')}</td>
                 </tr>
               ))}
             </tbody>
@@ -937,7 +937,7 @@ function SupportRequestCard({ request: r, onResolve, onSaveNotes, busy }) {
           {r.priority === 'urgent' && r.status !== 'resolved' && <span style={{ color: '#e05555', marginRight: 6 }}>⚠ URGENT</span>}
           {r.from_name || 'Unknown'} {r.from_contact ? `(${r.from_contact})` : ''}
         </strong>
-        <span style={{ color: '#666', fontSize: 12 }}>{new Date(r.created_at).toLocaleString()}</span>
+        <span style={{ color: '#666', fontSize: 12 }}>{new Date(r.created_at).toLocaleString('en-AU')}</span>
       </div>
       <p style={{ color: '#ccc', margin: '10px 0' }}>{r.message}</p>
       <textarea
