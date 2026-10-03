@@ -221,6 +221,7 @@ export default function DispatcherView() {
   // ever read after the map's onLoad fires (see DISPATCHER_DEFAULT_PITCH
   // below), so it's safe for the button to reference it directly.
   const [is3D, setIs3D] = useState(true)
+  const [mapError, setMapError] = useState(false)
   const mapRef = useRef(null)
   const DISPATCHER_DEFAULT_PITCH = 45
   const DISPATCHER_DEFAULT_BEARING = -10
@@ -258,6 +259,18 @@ export default function DispatcherView() {
   }
   function handleMapTileError(e) {
     console.error('DispatcherView: map tile/style error', e?.error || e)
+    // Previously logged-only — react-map-gl keeps rendering through a
+    // runtime tile/style error (an invalid/scope-limited token Mapbox
+    // itself rejects, a style-load failure, a network hiccup) with no
+    // visible indication anything's wrong, unlike the token-not-configured
+    // case just below which already has its own fallback panel. A
+    // dispatcher would just see a blank/broken map with nothing pointing
+    // at why, since nobody running this day-to-day would think to open
+    // the browser console. TrackingView/DisputeView already had this same
+    // fallback; this was the one map on the busiest page in the app that
+    // didn't, found while nothing here has ever been exercised against a
+    // real (non-placeholder) Mapbox token.
+    setMapError(true)
   }
 
   // Load business and initial data
@@ -3615,6 +3628,21 @@ export default function DispatcherView() {
             <p style={{ color: '#888', fontSize: 13, margin: 0, maxWidth: 320, textAlign: 'center', lineHeight: 1.5 }}>
               Add a real Mapbox token to <code style={styles.mapUnconfiguredCode}>VITE_MAPBOX_TOKEN</code> (in Vercel&apos;s
               Environment Variables and your local .env.local) to see technicians and jobs on the 3D map here.
+              Everything else on this page works normally in the meantime.
+            </p>
+          </div>
+        ) : mapError ? (
+          // A token IS configured but Mapbox rejected it at runtime, or a
+          // style/tile failed to load — different cause from the panel
+          // above, so different, more actionable copy for the dispatcher
+          // who'd actually need to go check this (unlike the token-missing
+          // case, there's nothing more to "add" here; it's worth checking
+          // the token's scopes/validity or Mapbox's own status page).
+          <div style={styles.mapUnconfigured}>
+            <p style={{ fontSize: 32, margin: '0 0 10px' }}>⚠️</p>
+            <p style={{ color: '#ccc', fontSize: 15, fontWeight: 'bold', margin: '0 0 6px' }}>Live map couldn&apos;t load</p>
+            <p style={{ color: '#888', fontSize: 13, margin: 0, maxWidth: 320, textAlign: 'center', lineHeight: 1.5 }}>
+              A Mapbox token is configured, but the map failed to load — check that the token in <code style={styles.mapUnconfiguredCode}>VITE_MAPBOX_TOKEN</code> is valid and has the right scopes, or check Mapbox&apos;s status page.
               Everything else on this page works normally in the meantime.
             </p>
           </div>
