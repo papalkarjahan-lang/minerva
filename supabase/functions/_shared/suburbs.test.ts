@@ -11,8 +11,24 @@ describe('extractSuburb', () => {
     expect(extractSuburb('')).toBeNull()
   })
 
-  it('takes the last comma-separated segment, trimmed', () => {
-    expect(extractSuburb('12 Main St, Parramatta NSW 2150')).toBe('Parramatta NSW 2150')
+  it('strips a trailing state+postcode from the last comma segment (no comma before the state)', () => {
+    expect(extractSuburb('12 Main St, Parramatta NSW 2150')).toBe('Parramatta')
+  })
+
+  it('is case-insensitive on the state abbreviation', () => {
+    expect(extractSuburb('12 Main St, Bondi nsw 2026')).toBe('Bondi')
+  })
+
+  it('falls back to the second-to-last segment when the last one is only a state+postcode (comma before the state too)', () => {
+    expect(extractSuburb('12 Main St, Parramatta, NSW 2150')).toBe('Parramatta')
+  })
+
+  it('falls back to the second-to-last segment when the last one is a bare postcode with no state', () => {
+    expect(extractSuburb('12 Main St, Parramatta, 2150')).toBe('Parramatta')
+  })
+
+  it('takes the last comma-separated segment as-is when it is just the suburb', () => {
+    expect(extractSuburb('1 A St, Parramatta')).toBe('Parramatta')
   })
 
   it('returns the whole trimmed address when there is no comma', () => {
@@ -21,6 +37,10 @@ describe('extractSuburb', () => {
 
   it('returns null when the trailing segment is empty (e.g. a trailing comma)', () => {
     expect(extractSuburb('12 Main St,')).toBeNull()
+  })
+
+  it('does not strip a bare state with no postcode (documented remaining gap)', () => {
+    expect(extractSuburb('12 Main St, Parramatta NSW')).toBe('Parramatta NSW')
   })
 })
 

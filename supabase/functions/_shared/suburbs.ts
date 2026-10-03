@@ -6,13 +6,50 @@
 // imported unchanged into either Deno edge function.
 
 // Uses the last comma-separated segment of a client_address as a rough
-// suburb proxy (this schema has no dedicated suburb column on jobs).
-// Returns null for a blank/missing address or a trailing segment that's
-// empty after trimming (e.g. a trailing comma).
+// suburb proxy (this schema has no dedicated suburb column on jobs, and
+// client_address is free text typed by a dispatcher at job creation —
+// see DispatcherView.jsx's Add Job form — never geocoded/normalized
+// before being stored). Returns null for a blank/missing address or a
+// trailing segment that's empty after trimming (e.g. a trailing comma).
+//
+// Hardened 2026-10-03: this feeds daily-digest's "top suburb" line (shown
+// to every business owner, every day they have completed jobs) and
+// generate-growth-drafts' marketing copy — real estate doesn't move, so
+// this was silently wrong on every single run for any business whose
+// dispatchers type addresses as "123 Main St, Parramatta NSW 2150" (state
+// + postcode in the SAME segment as the suburb, no comma before the
+// state) — an extremely common Australian address format, not an edge
+// case. The naive "last comma segment" returned "Parramatta NSW 2150"
+// as the "suburb", and the original test suite had actually encoded that
+// wrong behaviour as the expected result rather than catching it.
+// Now also handles "123 Main St, Parramatta, NSW 2150" (comma BEFORE the
+// state too) by falling back to the second-to-last segment when the last
+// one is nothing but a state+postcode (or bare postcode) with no suburb
+// text of its own. A bare state with no postcode (rare — postcodes are
+// near-universal in real entry) isn't stripped; that's an accepted,
+// documented remaining gap rather than something this tries to guess at.
+const AU_STATES = 'NSW|VIC|QLD|WA|SA|TAS|ACT|NT'
+const STATE_POSTCODE_SUFFIX = new RegExp(`\\s+(?:${AU_STATES})\\s+\\d{4}\\s*$`, 'i')
+const STATE_POSTCODE_ONLY = new RegExp(`^(?:${AU_STATES})\\s+\\d{4}$`, 'i')
+const POSTCODE_ONLY = /^\d{4}$/
+
 export function extractSuburb(address: string | null | undefined): string | null {
   if (!address) return null
-  const suburb = (address.split(',').pop() || '').trim()
-  return suburb || null
+  const segments = address.split(',')
+  const last = (segments.pop() || '').trim()
+  if (!last) return null
+
+  if ((STATE_POSTCODE_ONLY.test(last) || POSTCODE_ONLY.test(last)) && segments.length > 0) {
+    // The trailing segment is nothing but a state/postcode — the real
+    // suburb is the one before it ("street, suburb, STATE POSTCODE").
+    const previous = (segments.pop() || '').trim()
+    return previous || null
+  }
+
+  // Otherwise strip a trailing " STATE POSTCODE" suffix if the suburb and
+  // state+postcode were typed as one segment with no comma between them.
+  const stripped = last.replace(STATE_POSTCODE_SUFFIX, '').trim()
+  return stripped || null
 }
 
 export interface JobWithAddress {
