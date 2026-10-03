@@ -1,0 +1,37 @@
+/* Mobile nav for SiteChrome.jsx's SiteNav — the rest of SiteNav/SiteFooter
+   is styled with plain inline style props (this codebase's convention),
+   but a hamburger toggle needs a real @media query, which inline styles
+   can't express. Breakpoint (640px) matches the one already established
+   in LandingPage.css. !important is necessary, not optional, here: every
+   element this file targets already carries an inline `style` prop from
+   the component, and inline styles beat a plain class selector's
+   specificity, so a bare override would silently lose. */
+
+.site-nav-toggle {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .site-nav-toggle {
+    display: block;
+  }
+
+  .site-nav-links {
+    display: none !important;
+  }
+
+  .site-nav-links--open {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 16px !important;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: #050811;
+    border-bottom: 1px solid #1e293b;
+    padding: 18px 24px;
+    z-index: 50;
+  }
+}

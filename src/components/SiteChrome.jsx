@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import './SiteChrome.css'
 
 // Shared nav + footer for every public marketing page (LandingPage,
 // Features, Pricing, About, Contact, Blog) — pulled out once these grew
@@ -25,17 +27,38 @@ const CONTACT_PARTS = [
 ].filter(Boolean)
 
 export function SiteNav() {
+  // Mobile nav (added 2026-10-03): below 640px the old single-row flex nav
+  // just wrapped onto 4-5 messy lines instead of collapsing — the very
+  // first thing a prospective customer sees on a phone, which trade
+  // business owners very plausibly are when they first check this out.
+  // "Start free trial" stays visible unconditionally even on mobile (it's
+  // the one thing that matters most) — only the secondary links collapse
+  // behind the toggle.
+  const [menuOpen, setMenuOpen] = useState(false)
+  const closeMenu = () => setMenuOpen(false)
   return (
-    <nav style={{ padding: '20px 40px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #1e293b' }}>
+    <nav style={{ padding: '20px 40px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #1e293b', position: 'relative' }}>
       <Link to="/" style={{ fontSize: 22, fontWeight: 'bold', color: '#fff', letterSpacing: 3, textDecoration: 'none' }}>MINERVA</Link>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
-        {NAV_LINKS.map(([to, label]) => (
-          <Link key={to} to={to} style={{ color: '#aaa', textDecoration: 'none', fontSize: 14 }}>{label}</Link>
-        ))}
-        <Link to="/login" style={{ color: '#aaa', textDecoration: 'none', fontSize: 14 }}>Log in</Link>
-        <Link to="/start" style={{ background: '#2D5FA8', color: '#fff', textDecoration: 'none', padding: '10px 22px', borderRadius: 10, fontSize: 14, fontWeight: 'bold' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div className={`site-nav-links${menuOpen ? ' site-nav-links--open' : ''}`} style={{ display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
+          {NAV_LINKS.map(([to, label]) => (
+            <Link key={to} to={to} onClick={closeMenu} style={{ color: '#aaa', textDecoration: 'none', fontSize: 14 }}>{label}</Link>
+          ))}
+          <Link to="/login" onClick={closeMenu} style={{ color: '#aaa', textDecoration: 'none', fontSize: 14 }}>Log in</Link>
+        </div>
+        <Link to="/start" onClick={closeMenu} style={{ background: '#2D5FA8', color: '#fff', textDecoration: 'none', padding: '10px 22px', borderRadius: 10, fontSize: 14, fontWeight: 'bold', whiteSpace: 'nowrap' }}>
           Start free trial
         </Link>
+        <button
+          type="button"
+          className="site-nav-toggle"
+          aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+          aria-expanded={menuOpen}
+          onClick={() => setMenuOpen(o => !o)}
+          style={{ background: 'none', border: 'none', color: '#fff', fontSize: 22, cursor: 'pointer', padding: '0 0 0 4px', lineHeight: 1 }}
+        >
+          {menuOpen ? '✕' : '☰'}
+        </button>
       </div>
     </nav>
   )
