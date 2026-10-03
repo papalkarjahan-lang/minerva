@@ -12,13 +12,35 @@
 
 // Normalizes an Australian mobile/landline number to E.164 for Twilio.
 // Converts "0412 345 678" -> "+61412345678". Leaves an already-E.164 number
-// (starting with "+") untouched. Assumes AU (+61) for any other bare
+// for a DIFFERENT country (any "+" not followed by "61") untouched — not
+// this function's job to guess. Assumes AU (+61) for any other bare
 // national-format number, matching every call site's existing behaviour.
+//
+// Hardened 2026-10-03 while TWILIO_PHONE_NUMBER is still unset: every one
+// of the 15 call sites has never sent a real SMS yet, so nothing has ever
+// exercised this against a real-world number someone actually typed in —
+// the same "never exercised against the real thing" risk that turned out
+// to be real for the Claude model id elsewhere this round. Added two cases
+// that were previously silently malformed instead of just rejected by
+// Twilio outright:
+//   - a bare country code with no "+" ("61412345678", easy to type when
+//     copying a number from somewhere that already shows the country
+//     code) previously got ANOTHER "+61" prepended on top of the existing
+//     "61" ("+6161412345678") instead of just adding the missing "+".
+//   - "+61" directly in front of the original 0-prefixed number
+//     ("+610412345678", a common misconception: "just stick +61 on my
+//     normal number") previously passed through untouched instead of
+//     dropping the now-redundant leading 0.
+// Also now strips dashes/parentheses, not just whitespace, since AU
+// numbers are sometimes written "0412-345-678".
 export function formatAuPhone(raw: string): string {
-  let phone = raw.replace(/\s/g, '')
-  if (phone.startsWith('0')) phone = '+61' + phone.slice(1)
-  if (!phone.startsWith('+')) phone = '+61' + phone
-  return phone
+  const phone = raw.replace(/[\s()-]/g, '')
+  if (phone.startsWith('+61')) return '+61' + phone.slice(3).replace(/^0/, '')
+  if (phone.startsWith('+')) return phone
+  let national = phone
+  if (national.startsWith('61') && national.length === 11) national = national.slice(2)
+  if (national.startsWith('0')) national = national.slice(1)
+  return '+61' + national
 }
 
 export function buildJobAssignmentMessage(opts: { techName?: string | null; businessName: string; clientName?: string | null; clientAddress?: string | null; when: string; isEmergency?: boolean }): string {

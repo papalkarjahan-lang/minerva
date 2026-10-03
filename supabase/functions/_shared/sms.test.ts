@@ -30,6 +30,27 @@ describe('formatAuPhone', () => {
   it('assumes AU for a bare national number with no leading 0 or +', () => {
     expect(formatAuPhone('412345678')).toBe('+61412345678')
   })
+
+  it('adds the missing + for a bare country code with no plus', () => {
+    expect(formatAuPhone('61412345678')).toBe('+61412345678')
+  })
+
+  it('strips a redundant leading 0 after +61 (common "just stick +61 on my number" mistake)', () => {
+    expect(formatAuPhone('+610412345678')).toBe('+61412345678')
+  })
+
+  it('strips dashes and parentheses, not just whitespace', () => {
+    expect(formatAuPhone('0412-345-678')).toBe('+61412345678')
+    expect(formatAuPhone('(04) 1234 5678')).toBe('+61412345678')
+  })
+
+  it('leaves a different country\'s E.164 number untouched', () => {
+    expect(formatAuPhone('+14155552671')).toBe('+14155552671')
+  })
+
+  it('correctly formats a landline (non-mobile area code)', () => {
+    expect(formatAuPhone('03 9876 5432')).toBe('+61398765432')
+  })
 })
 
 describe('buildJobAssignmentMessage', () => {
