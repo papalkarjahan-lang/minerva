@@ -3305,13 +3305,13 @@ export default function DispatcherView() {
               </p>
               <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 12 }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: 11, color: '#666', marginBottom: 4 }}>Period start</label>
-                  <input type="date" value={payrollStart} max={payrollEnd}
+                  <label htmlFor="payroll-period-start" style={{ display: 'block', fontSize: 11, color: '#666', marginBottom: 4 }}>Period start</label>
+                  <input id="payroll-period-start" type="date" value={payrollStart} max={payrollEnd}
                     onChange={e => setPayrollStart(e.target.value)} style={{ ...styles.input, padding: '6px 8px' }} />
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: 11, color: '#666', marginBottom: 4 }}>Period end</label>
-                  <input type="date" value={payrollEnd} min={payrollStart} max={today}
+                  <label htmlFor="payroll-period-end" style={{ display: 'block', fontSize: 11, color: '#666', marginBottom: 4 }}>Period end</label>
+                  <input id="payroll-period-end" type="date" value={payrollEnd} min={payrollStart} max={today}
                     onChange={e => setPayrollEnd(e.target.value)} style={{ ...styles.input, padding: '6px 8px' }} />
                 </div>
                 <button style={styles.addJobBtn} onClick={generatePayrollHours} disabled={payrollLoading}>
@@ -3924,19 +3924,19 @@ export default function DispatcherView() {
           <div style={styles.modal}>
             <h3 style={{ margin: '0 0 20px', color: '#1B2B4B', fontSize: 20 }}>New Quote</h3>
             <div style={{ marginBottom: 14 }}>
-              <label style={styles.inputLabel}>Client name</label>
-              <input type="text" style={styles.input} value={quoteDraft.client_name}
+              <label htmlFor="quote-client-name" style={styles.inputLabel}>Client name</label>
+              <input id="quote-client-name" type="text" style={styles.input} value={quoteDraft.client_name}
                 onChange={e => setQuoteDraft(prev => ({ ...prev, client_name: e.target.value }))} />
             </div>
             <div style={{ marginBottom: 14 }}>
-              <label style={styles.inputLabel}>Client phone</label>
-              <input type="text" style={styles.input} value={quoteDraft.client_phone}
+              <label htmlFor="quote-client-phone" style={styles.inputLabel}>Client phone</label>
+              <input id="quote-client-phone" type="text" style={styles.input} value={quoteDraft.client_phone}
                 onChange={e => setQuoteDraft(prev => ({ ...prev, client_phone: e.target.value }))}
                 placeholder="Needed to send the quote by SMS" />
             </div>
             <div style={{ marginBottom: 14 }}>
-              <label style={styles.inputLabel}>Job description</label>
-              <textarea style={{ ...styles.input, minHeight: 80 }} value={quoteDraft.description}
+              <label htmlFor="quote-description" style={styles.inputLabel}>Job description</label>
+              <textarea id="quote-description" style={{ ...styles.input, minHeight: 80 }} value={quoteDraft.description}
                 onChange={e => setQuoteDraft(prev => ({ ...prev, description: e.target.value }))}
                 placeholder="e.g. Replace hot water system, 250L electric, single storey" />
               <p style={{ color: '#888', fontSize: 12, margin: '6px 0 0' }}>
@@ -4111,12 +4111,12 @@ function AddTechnicianModal({ businessId, businessName, onClose }) {
         <h3 style={{ margin: '0 0 20px', color: '#1B2B4B', fontSize: 20 }}>Add Technician</h3>
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: 14 }}>
-            <label style={styles.inputLabel}>Name</label>
-            <input type="text" required value={name} onChange={e => setName(e.target.value)} style={styles.input} />
+            <label htmlFor="add-tech-name" style={styles.inputLabel}>Name</label>
+            <input id="add-tech-name" type="text" required value={name} onChange={e => setName(e.target.value)} style={styles.input} />
           </div>
           <div style={{ marginBottom: 14 }}>
-            <label style={styles.inputLabel}>Mobile (04xx...)</label>
-            <input type="tel" required value={phone} onChange={e => setPhone(e.target.value)} style={styles.input} />
+            <label htmlFor="add-tech-phone" style={styles.inputLabel}>Mobile (04xx...)</label>
+            <input id="add-tech-phone" type="tel" required value={phone} onChange={e => setPhone(e.target.value)} style={styles.input} />
           </div>
           <p style={{ color: '#888', fontSize: 12, margin: '0 0 14px' }}>
             They'll be sent a setup text with their tracking link. Billing updates automatically once they open it.
@@ -4210,16 +4210,17 @@ function AddJobModal({ businessId, technicianCredentials, technicians, onClose }
             ['Notes (optional)', 'notes', 'text', false],
           ].map(([label, field, type, required]) => (
             <div key={field} style={{ marginBottom: 14 }}>
-              <label style={styles.inputLabel}>{label}</label>
+              <label htmlFor={`add-job-${field}`} style={styles.inputLabel}>{label}</label>
               <input
+                id={`add-job-${field}`}
                 type={type} required={required} value={form[field]} onChange={f(field)}
                 style={styles.input}
               />
             </div>
           ))}
           <div style={{ marginBottom: 14 }}>
-            <label style={styles.inputLabel}>Urgency (optional)</label>
-            <select value={form.urgency} onChange={f('urgency')} style={styles.input}>
+            <label htmlFor="add-job-urgency" style={styles.inputLabel}>Urgency (optional)</label>
+            <select id="add-job-urgency" value={form.urgency} onChange={f('urgency')} style={styles.input}>
               <option value="">Routine (default)</option>
               <option value="emergency">Emergency</option>
               <option value="routine">Routine</option>
@@ -4231,8 +4232,8 @@ function AddJobModal({ businessId, technicianCredentials, technicians, onClose }
           </div>
           {credentialNames.length > 0 && (
             <div style={{ marginBottom: 14 }}>
-              <label style={styles.inputLabel}>Required credential (optional)</label>
-              <select value={form.required_credential_name} onChange={f('required_credential_name')} style={styles.input}>
+              <label htmlFor="add-job-required-credential" style={styles.inputLabel}>Required credential (optional)</label>
+              <select id="add-job-required-credential" value={form.required_credential_name} onChange={f('required_credential_name')} style={styles.input}>
                 <option value="">None</option>
                 {credentialNames.map(name => <option key={name} value={name}>{name}</option>)}
               </select>
@@ -4244,8 +4245,8 @@ function AddJobModal({ businessId, technicianCredentials, technicians, onClose }
           )}
           {skillTags.length > 0 && (
             <div style={{ marginBottom: 14 }}>
-              <label style={styles.inputLabel}>Required skill (optional)</label>
-              <select value={form.required_skill} onChange={f('required_skill')} style={styles.input}>
+              <label htmlFor="add-job-required-skill" style={styles.inputLabel}>Required skill (optional)</label>
+              <select id="add-job-required-skill" value={form.required_skill} onChange={f('required_skill')} style={styles.input}>
                 <option value="">None</option>
                 {skillTags.map(tag => <option key={tag} value={tag}>{tag}</option>)}
               </select>
@@ -4304,8 +4305,8 @@ function AddAssetModal({ businessId, onClose }) {
             ['Serial number (optional)', 'serial_number', false],
           ].map(([label, field, required]) => (
             <div key={field} style={{ marginBottom: 14 }}>
-              <label style={styles.inputLabel}>{label}</label>
-              <input type="text" required={required} value={form[field]} onChange={f(field)} style={styles.input} />
+              <label htmlFor={`add-asset-${field}`} style={styles.inputLabel}>{label}</label>
+              <input id={`add-asset-${field}`} type="text" required={required} value={form[field]} onChange={f(field)} style={styles.input} />
             </div>
           ))}
           {error && <p style={{ color: '#8A2525', fontSize: 13 }}>{error}</p>}
@@ -4358,8 +4359,8 @@ function AddInventoryItemModal({ businessId, onClose }) {
             ['Usual supplier (optional)', 'supplier_name', 'text', false],
           ].map(([label, field, type, required]) => (
             <div key={field} style={{ marginBottom: 14 }}>
-              <label style={styles.inputLabel}>{label}</label>
-              <input type={type} required={required} value={form[field]} onChange={f(field)} style={styles.input} />
+              <label htmlFor={`add-inventory-${field}`} style={styles.inputLabel}>{label}</label>
+              <input id={`add-inventory-${field}`} type={type} required={required} value={form[field]} onChange={f(field)} style={styles.input} />
             </div>
           ))}
           {error && <p style={{ color: '#8A2525', fontSize: 13 }}>{error}</p>}
@@ -4432,8 +4433,8 @@ function AddCredentialModal({ businessId, technicians, onSaved, onClose }) {
         <h3 style={{ margin: '0 0 20px', color: '#1B2B4B', fontSize: 20 }}>Add Licence / Ticket</h3>
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: 14 }}>
-            <label style={styles.inputLabel}>Technician</label>
-            <select required value={form.technician_id} onChange={f('technician_id')} style={styles.input}>
+            <label htmlFor="add-credential-technician" style={styles.inputLabel}>Technician</label>
+            <select id="add-credential-technician" required value={form.technician_id} onChange={f('technician_id')} style={styles.input}>
               {(technicians || []).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           </div>
@@ -4443,13 +4444,13 @@ function AddCredentialModal({ businessId, technicians, onSaved, onClose }) {
             ['Expiry date', 'expiry_date', 'date', true],
           ].map(([label, field, type, required]) => (
             <div key={field} style={{ marginBottom: 14 }}>
-              <label style={styles.inputLabel}>{label}</label>
-              <input type={type} required={required} value={form[field]} onChange={f(field)} style={styles.input} />
+              <label htmlFor={`add-credential-${field}`} style={styles.inputLabel}>{label}</label>
+              <input id={`add-credential-${field}`} type={type} required={required} value={form[field]} onChange={f(field)} style={styles.input} />
             </div>
           ))}
           <div style={{ marginBottom: 14 }}>
-            <label style={styles.inputLabel}>Document photo/PDF (optional)</label>
-            <input type="file" accept="image/*,application/pdf" onChange={e => setFile(e.target.files?.[0] || null)} style={styles.input} />
+            <label htmlFor="add-credential-document" style={styles.inputLabel}>Document photo/PDF (optional)</label>
+            <input id="add-credential-document" type="file" accept="image/*,application/pdf" onChange={e => setFile(e.target.files?.[0] || null)} style={styles.input} />
           </div>
           {error && <p style={{ color: '#8A2525', fontSize: 13 }}>{error}</p>}
           <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
@@ -4522,8 +4523,8 @@ function ChecklistModal({ businessId, template, type = 'completion', onSaved, on
         <h3 style={{ margin: '0 0 20px', color: '#1B2B4B', fontSize: 20 }}>{defaultName}</h3>
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: 14 }}>
-            <label style={styles.inputLabel}>Checklist name</label>
-            <input type="text" value={name} onChange={e => setName(e.target.value)} style={styles.input} />
+            <label htmlFor="checklist-name" style={styles.inputLabel}>Checklist name</label>
+            <input id="checklist-name" type="text" value={name} onChange={e => setName(e.target.value)} style={styles.input} />
           </div>
           <label style={styles.inputLabel}>
             {type === 'onboarding'
@@ -5016,8 +5017,9 @@ function CustomWorkflowsPanel({ businessId, onLogAudit }) {
 
       {showAdd && (
         <form onSubmit={addWorkflow} style={{ background: '#f7f7f9', borderRadius: 10, padding: 12, marginBottom: 12 }}>
-          <input required placeholder="Rule name" value={draft.name} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))} style={{ ...styles.input, marginBottom: 8 }} />
+          <input aria-label="Rule name" required placeholder="Rule name" value={draft.name} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))} style={{ ...styles.input, marginBottom: 8 }} />
           <select
+            aria-label="Trigger event"
             value={draft.trigger_event}
             onChange={e => setDraft(d => ({ ...d, trigger_event: e.target.value, condition_field: '', condition_op: '', condition_value: '' }))}
             style={{ ...styles.input, marginBottom: 8 }}
@@ -5032,8 +5034,9 @@ function CustomWorkflowsPanel({ businessId, onLogAudit }) {
             <option value="job.assigned">When a job is assigned to a technician</option>
           </select>
 
-          <label style={{ ...styles.inputLabel, fontSize: 11, marginBottom: 4 }}>Only run if... (optional)</label>
+          <label htmlFor="workflow-condition-field" style={{ ...styles.inputLabel, fontSize: 11, marginBottom: 4 }}>Only run if... (optional)</label>
           <select
+            id="workflow-condition-field"
             value={draft.condition_field}
             onChange={e => setDraft(d => ({ ...d, condition_field: e.target.value, condition_op: e.target.value ? (d.condition_op || 'eq') : '', condition_value: e.target.value ? d.condition_value : '' }))}
             style={{ ...styles.input, marginBottom: 8 }}
@@ -5045,7 +5048,7 @@ function CustomWorkflowsPanel({ businessId, onLogAudit }) {
           </select>
           {draft.condition_field && (
             <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-              <select value={draft.condition_op} onChange={e => setDraft(d => ({ ...d, condition_op: e.target.value }))} style={{ ...styles.input, flex: '0 0 130px' }}>
+              <select aria-label="Condition operator" value={draft.condition_op} onChange={e => setDraft(d => ({ ...d, condition_op: e.target.value }))} style={{ ...styles.input, flex: '0 0 130px' }}>
                 <option value="eq">is equal to</option>
                 <option value="neq">is not equal to</option>
                 <option value="gt">is greater than</option>
@@ -5054,20 +5057,20 @@ function CustomWorkflowsPanel({ businessId, onLogAudit }) {
                 <option value="lte">is less than or equal to</option>
                 <option value="contains">contains</option>
               </select>
-              <input required placeholder="value" value={draft.condition_value} onChange={e => setDraft(d => ({ ...d, condition_value: e.target.value }))} style={{ ...styles.input, flex: 1 }} />
+              <input aria-label="Condition value" required placeholder="value" value={draft.condition_value} onChange={e => setDraft(d => ({ ...d, condition_value: e.target.value }))} style={{ ...styles.input, flex: 1 }} />
             </div>
           )}
 
-          <select value={draft.action_type} onChange={e => setDraft(d => ({ ...d, action_type: e.target.value }))} style={{ ...styles.input, marginBottom: 8 }}>
+          <select aria-label="Action type" value={draft.action_type} onChange={e => setDraft(d => ({ ...d, action_type: e.target.value }))} style={{ ...styles.input, marginBottom: 8 }}>
             <option value="slack">Post to Slack (uses your webhook above)</option>
             <option value="webhook">POST to a custom webhook URL</option>
             <option value="email">Send a notification email</option>
           </select>
           {draft.action_type === 'webhook' && (
-            <input required placeholder="https://your-webhook-url.com/..." value={draft.action_target} onChange={e => setDraft(d => ({ ...d, action_target: e.target.value }))} style={{ ...styles.input, marginBottom: 8 }} />
+            <input aria-label="Webhook URL" required placeholder="https://your-webhook-url.com/..." value={draft.action_target} onChange={e => setDraft(d => ({ ...d, action_target: e.target.value }))} style={{ ...styles.input, marginBottom: 8 }} />
           )}
           {draft.action_type === 'email' && (
-            <input required type="email" placeholder="you@yourbusiness.com" value={draft.action_target} onChange={e => setDraft(d => ({ ...d, action_target: e.target.value }))} style={{ ...styles.input, marginBottom: 8 }} />
+            <input aria-label="Notification email address" required type="email" placeholder="you@yourbusiness.com" value={draft.action_target} onChange={e => setDraft(d => ({ ...d, action_target: e.target.value }))} style={{ ...styles.input, marginBottom: 8 }} />
           )}
           <button type="submit" disabled={savingWorkflow} style={{ ...styles.submitBtn, padding: '6px 14px', fontSize: 13 }}>{savingWorkflow ? 'Saving...' : 'Save rule'}</button>
         </form>

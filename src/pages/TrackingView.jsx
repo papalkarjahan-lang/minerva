@@ -190,8 +190,9 @@ export default function TrackingView() {
           </p>
         ) : showRebook ? (
           <div style={{ textAlign: 'left' }}>
-            <label style={styles.rebookLabel}>Anything specific? (optional)</label>
+            <label htmlFor="rebook-details" style={styles.rebookLabel}>Anything specific? (optional)</label>
             <textarea
+              id="rebook-details"
               value={rebookDetails}
               onChange={e => setRebookDetails(e.target.value)}
               style={styles.rebookTextarea}
