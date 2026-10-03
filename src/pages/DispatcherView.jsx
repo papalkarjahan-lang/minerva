@@ -3068,11 +3068,16 @@ export default function DispatcherView() {
                 </button>
               )}
               {invoices.map(inv => (
-                <div key={inv.id} style={{ ...styles.jobRow, opacity: inv.status === 'void' ? 0.6 : 1 }}>
+                <div key={inv.id} style={{ ...styles.jobRow, opacity: inv.status === 'void' || inv.status === 'refunded' ? 0.6 : 1 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <p style={{ ...styles.jobClient, textDecoration: inv.status === 'void' ? 'line-through' : 'none' }}>{inv.client_name || 'Client'}</p>
-                    <span style={styles.assetStatusBadge(inv.status === 'paid' ? 'available' : inv.status === 'void' ? 'maintenance' : 'maintenance')}>
-                      {inv.status === 'paid' ? 'PAID' : inv.status === 'void' ? 'VOIDED' : 'UNPAID'}
+                    {/* refunded gets its own badge color (reusing assetStatusBadge's
+                        'in_use' blue) rather than sharing void's amber — a void
+                        invoice was never actually paid, a refunded one genuinely
+                        was and got reversed, which is worth being able to tell
+                        apart at a glance, not just from the label text. */}
+                    <span style={styles.assetStatusBadge(inv.status === 'paid' ? 'available' : inv.status === 'refunded' ? 'in_use' : 'maintenance')}>
+                      {inv.status === 'paid' ? 'PAID' : inv.status === 'void' ? 'VOIDED' : inv.status === 'refunded' ? 'REFUNDED' : 'UNPAID'}
                     </span>
                   </div>
                   <p style={styles.jobAddr}>${Number(inv.total).toFixed(2)} · {new Date(inv.created_at).toLocaleDateString('en-AU')}{inv.ai_verified ? ' · ✓ AI-verified' : ''}</p>
@@ -3083,8 +3088,10 @@ export default function DispatcherView() {
                       for reconciliation," which it can't be if it's never shown.
                       Only called out for the non-default case (the client paid by
                       card themselves) — a manually-marked-paid invoice (the
-                      original, still-default flow) needs no extra label. */}
-                  {inv.status === 'paid' && inv.payment_method === 'stripe_card' && (
+                      original, still-default flow) needs no extra label. Still
+                      shown for a refunded invoice too — it's useful historical
+                      context that the original payment came in by card. */}
+                  {(inv.status === 'paid' || inv.status === 'refunded') && inv.payment_method === 'stripe_card' && (
                     <p style={{ ...styles.jobAddr, color: '#8fd0e8' }}>💳 Paid by card (client self-serve)</p>
                   )}
                   {inv.status === 'void' && (
@@ -3092,12 +3099,17 @@ export default function DispatcherView() {
                       Voided {inv.voided_at ? new Date(inv.voided_at).toLocaleDateString('en-AU') : ''}{inv.voided_reason ? ` — "${inv.voided_reason}"` : ''}
                     </p>
                   )}
-                  {inv.status !== 'paid' && inv.status !== 'void' && inv.reminder_count > 0 && (
+                  {inv.status === 'refunded' && (
+                    <p style={{ ...styles.jobAddr, color: '#888' }}>
+                      Refunded {inv.refunded_at ? new Date(inv.refunded_at).toLocaleDateString('en-AU') : ''} — no longer counted as revenue
+                    </p>
+                  )}
+                  {inv.status !== 'paid' && inv.status !== 'void' && inv.status !== 'refunded' && inv.reminder_count > 0 && (
                     <p style={{ ...styles.jobAddr, color: inv.reminder_count >= 3 ? '#c47a3d' : '#888' }}>
                       {inv.reminder_count} reminder{inv.reminder_count === 1 ? '' : 's'} sent automatically
                     </p>
                   )}
-                  {inv.client_sms_failed && inv.status !== 'void' && (
+                  {inv.client_sms_failed && inv.status !== 'void' && inv.status !== 'refunded' && (
                     <p style={{ ...styles.jobAddr, color: '#8A2525' }}>
                       ⚠️ Client was never texted this invoice — the send failed. Consider resending manually.
                     </p>
@@ -3108,7 +3120,16 @@ export default function DispatcherView() {
                       <button style={styles.leadActionSecondary} disabled={voidingId === inv.id} onClick={() => voidInvoice(inv.id)}>Void</button>
                     </div>
                   )}
-                  {inv.status !== 'void' && hasAddon(business, 'xero_sync') && business?.xero_connected && (
+                  {/* Excluded for 'refunded' too, not just 'void' — xero-sync-
+                      invoice has no way to represent a refund in Xero, it just
+                      pushes the line items/total as a normal invoice, so
+                      syncing one now would misrepresent reversed money as real
+                      revenue in the business's actual bookkeeping. An invoice
+                      already synced before it was refunded is a separate,
+                      not-yet-handled case — that Xero record goes stale and
+                      needs reconciling there directly, same as any business
+                      would handle a refund on an already-booked invoice. */}
+                  {inv.status !== 'void' && inv.status !== 'refunded' && hasAddon(business, 'xero_sync') && business?.xero_connected && (
                     inv.xero_invoice_id
                       ? <p style={{ ...styles.jobAddr, color: '#1D9E75' }}>✓ Synced to Xero</p>
                       : <button style={styles.leadActionSecondary} disabled={syncingXeroId === inv.id} onClick={() => syncInvoiceToXero(inv.id)}>{syncingXeroId === inv.id ? 'Syncing...' : 'Sync to Xero'}</button>

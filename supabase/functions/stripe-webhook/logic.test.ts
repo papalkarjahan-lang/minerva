@@ -11,6 +11,7 @@ import {
   buildDisputeFallbackSummary,
   buildDisputeClosedMessage,
   planChargeRefunded,
+  planInvoiceRefunded,
   buildRefundMessage,
   buildRefundFallbackSummary,
   shouldAlertOperator,
@@ -250,13 +251,21 @@ describe('planChargeRefunded', () => {
   })
 })
 
+describe('planInvoiceRefunded', () => {
+  it('builds the refunded status + timestamp update', () => {
+    expect(planInvoiceRefunded(NOW)).toEqual({
+      update: { status: 'refunded', refunded_at: NOW },
+    })
+  })
+})
+
 describe('buildRefundMessage', () => {
-  it('names the business and invoice when both are known, and says status was not auto-updated', () => {
+  it('names the business and invoice when both are known, and confirms the automatic status update', () => {
     const msg = buildRefundMessage('Acme Plumbing', 4999, 'AUD', 'inv_1')
     expect(msg).toContain('Acme Plumbing')
     expect(msg).toContain('$49.99 AUD')
     expect(msg).toContain('inv_1')
-    expect(msg).toContain('does not automatically update')
+    expect(msg).toContain('marked refunded automatically')
   })
 
   it('falls back to generic wording when business/invoice could not be resolved', () => {

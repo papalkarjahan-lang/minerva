@@ -116,7 +116,7 @@ export default function InvoiceView() {
             <p style={styles.bizName}>{business?.name}</p>
             <h1 style={styles.title}>Invoice</h1>
           </div>
-          <span style={styles.statusBadge(invoice.status)}>{invoice.status === 'paid' ? 'PAID' : invoice.status === 'void' ? 'VOID' : 'UNPAID'}</span>
+          <span style={styles.statusBadge(invoice.status)}>{invoice.status === 'paid' ? 'PAID' : invoice.status === 'void' ? 'VOID' : invoice.status === 'refunded' ? 'REFUNDED' : 'UNPAID'}</span>
         </div>
 
         {invoice.ai_verified && (
@@ -178,6 +178,8 @@ export default function InvoiceView() {
             ? 'This invoice has been marked as paid. Thank you!'
             : invoice.status === 'void'
             ? 'This invoice has been voided and is no longer payable.'
+            : invoice.status === 'refunded'
+            ? 'This payment has been refunded. You do not owe anything on this invoice.'
             : `Or arrange payment with ${business?.name || 'your provider'} directly.`}
         </p>
 
@@ -288,7 +290,7 @@ const styles = {
   bizName: { color: '#555', fontSize: 12, letterSpacing: 2, textTransform: 'uppercase', margin: '0 0 4px' },
   title: { color: '#fff', fontSize: 24, fontWeight: 'bold', margin: 0 },
   statusBadge: (status) => {
-    const color = status === 'paid' ? '#1D9E75' : status === 'void' ? '#666' : '#A87C16'
+    const color = status === 'paid' ? '#1D9E75' : status === 'void' ? '#666' : status === 'refunded' ? '#2D5FA8' : '#A87C16'
     return { fontSize: 11, fontWeight: 'bold', letterSpacing: 1, padding: '4px 12px', borderRadius: 20, color, background: `${color}22`, border: `1px solid ${color}` }
   },
   verifiedNote: { color: '#1D9E75', fontSize: 12, margin: '0 0 10px' },

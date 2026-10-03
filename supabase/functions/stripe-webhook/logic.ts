@@ -262,12 +262,12 @@ export interface RefundPlan {
 }
 
 // charge.refunded — fires on both partial and full refunds; this only
-// alerts on a FULL refund (refunded === true). A partial refund doesn't
-// change whether the invoice should still read as "paid" overall, and
-// deciding how invoices.status/the dispatcher UI should represent a
-// partial refund is a real design question, not a 2-line fix — out of
-// scope here, same reasoning as the full-refund case not auto-updating
-// invoices.status either (see buildRefundMessage below).
+// acts on a FULL refund (refunded === true). A partial refund doesn't
+// change whether the invoice should still read as "paid" overall (the
+// business kept most of it), and deciding how invoices.status/the
+// dispatcher UI should represent a partial refund is a real design
+// question on its own — out of scope here, unlike the full-refund case
+// below which now has a real answer.
 export function planChargeRefunded(charge: ChargeRefundedLike): RefundPlan | null {
   if (!charge.id || charge.refunded !== true) return null
   return {
@@ -278,22 +278,33 @@ export function planChargeRefunded(charge: ChargeRefundedLike): RefundPlan | nul
   }
 }
 
-// Deliberately tells the reader this did NOT touch invoices.status —
-// create-invoice-payment-intent/payment_intent.succeeded auto-mark an
-// invoice paid, but nothing auto-reverses that on a refund (deciding how
-// a refunded invoice should look across DispatcherView/InvoiceView is a
-// real UI question, not something to rush through inside an alert-only
-// change). Saying so directly in the alert means whoever reads it knows
-// exactly what manual step is still needed, rather than assuming Minerva
-// already handled it end-to-end.
+export interface InvoiceRefundedPlan {
+  update: { status: 'refunded'; refunded_at: string }
+}
+
+// The invoice-status update for a full refund (2026-10-03, added after the
+// alert-only version shipped) — distinct from 'void' deliberately:
+// a void invoice was never actually paid, a refunded one genuinely was and
+// then got reversed, and that distinction matters both for a dispatcher
+// reading the list and for revenue reporting (DispatcherView's Overview
+// tab only ever counts status==='paid'; a refunded invoice correctly drops
+// out of that the moment this status lands, no separate exclusion logic
+// needed). paid_at is deliberately left untouched — it genuinely was paid
+// at that time, a refund doesn't erase that fact — refunded_at is a new,
+// separate fact layered on top, same relationship voided_at already has
+// to the original created_at.
+export function planInvoiceRefunded(nowIso: string): InvoiceRefundedPlan {
+  return { update: { status: 'refunded', refunded_at: nowIso } }
+}
+
 export function buildRefundMessage(businessName: string | null, amountRefundedCents: number, currency: string, invoiceId: string | null): string {
   const amount = (amountRefundedCents / 100).toFixed(2)
   const who = businessName ? businessName : 'an unidentified business'
-  const invoiceNote = invoiceId ? ` (invoice ${invoiceId})` : ' (could not match to a specific invoice — check Stripe directly)'
-  return `A payment for ${who}${invoiceNote} was fully refunded: $${amount} ${currency}. Minerva does not automatically update the invoice's paid status for a refund — check and correct it manually if the invoice still shows paid.`
+  const invoiceNote = invoiceId ? ` (invoice ${invoiceId}, marked refunded automatically)` : ' (could not match to a specific invoice — check Stripe directly)'
+  return `A payment for ${who}${invoiceNote} was fully refunded: $${amount} ${currency}.`
 }
 
 export function buildRefundFallbackSummary(businessName: string | null, amountRefundedCents: number, currency: string): string {
   const amount = (amountRefundedCents / 100).toFixed(2)
-  return `Payment fully refunded${businessName ? ` for ${businessName}` : ''}: $${amount} ${currency}. The matching invoice's paid status was NOT automatically updated — check manually.`
+  return `Payment fully refunded${businessName ? ` for ${businessName}` : ''}: $${amount} ${currency}.`
 }

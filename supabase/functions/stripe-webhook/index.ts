@@ -111,18 +111,19 @@
 // Stripe Dashboard (there's no refund button anywhere in Minerva's own UI)
 // was completely invisible, and worse than the dispute gap in one way: the
 // invoice would keep showing "PAID" in DispatcherView/InvoiceView forever,
-// actively wrong rather than just silent. Deliberately does NOT update
-// invoices.status itself, though — introducing a new lifecycle state needs
-// a real decision about how DispatcherView/InvoiceView should display it
-// (a 'void' status already exists as precedent that this column isn't a
-// fixed 2-value enum, but threading a new value through every status
-// check across both files is its own piece of work, not something to fold
-// into an alert-only change). Only alerts on a FULL refund
+// actively wrong rather than just silent. Only acts on a FULL refund
 // (charge.refunded === true) — a partial refund doesn't change whether the
-// invoice is "mostly paid" and representing that correctly is the same
-// kind of UI decision, deferred for the same reason. The alert text itself
-// says plainly that the invoice was NOT auto-updated, so whoever reads it
-// knows a manual correction is still needed.
+// invoice is "mostly paid," and representing that correctly is a separate
+// design question left for later.
+//
+// invoices.status now gets a real 'refunded' value too (added right after
+// the alert-only version shipped, once DispatcherView/InvoiceView/the
+// Overview tab's revenue math were all updated to handle it — see each
+// file's own comments). Distinct from 'void': a void invoice was never
+// actually paid, a refunded one genuinely was and got reversed, which
+// matters for both the dispatcher reading the list and for revenue
+// reporting. paid_at is left untouched (it genuinely was paid then) —
+// refunded_at is layered on top as its own fact.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import Stripe from "https://esm.sh/stripe@14?target=deno"
@@ -139,6 +140,7 @@ import {
   buildDisputeFallbackSummary,
   buildDisputeClosedMessage,
   planChargeRefunded,
+  planInvoiceRefunded,
   buildRefundMessage,
   buildRefundFallbackSummary,
   shouldAlertOperator,
@@ -435,6 +437,26 @@ serve(async (req: Request) => {
         })
         if (plan) {
           const { businessId, businessName, invoiceId } = await resolvePaymentIntentAttribution(plan.paymentIntentId)
+
+          // Mark the invoice refunded BEFORE alerting — if this write
+          // fails, throw (same as every other write in this file) so the
+          // outer catch makes Stripe retry the whole event, rather than
+          // sending an alert that claims "marked refunded automatically"
+          // when it wasn't. The extra .eq('status', 'paid') guard means a
+          // refund landing on an invoice some other path already touched
+          // (e.g. a dispatcher manually voiding it around the same time)
+          // doesn't clobber that — Stripe is still the source of truth for
+          // the alert either way, just not for this particular write.
+          if (invoiceId) {
+            const invoicePlan = planInvoiceRefunded(new Date().toISOString())
+            const { error: refundUpdateErr } = await supabaseAdmin
+              .from('invoices')
+              .update(invoicePlan.update)
+              .eq('id', invoiceId)
+              .eq('stripe_payment_intent_id', plan.paymentIntentId)
+              .eq('status', 'paid')
+            if (refundUpdateErr) throw new Error(`Failed to mark invoice refunded: ${refundUpdateErr.message}`)
+          }
 
           const operatorEmail = Deno.env.get('OPERATOR_EMAIL')
           if (shouldAlertOperator(operatorEmail)) {
