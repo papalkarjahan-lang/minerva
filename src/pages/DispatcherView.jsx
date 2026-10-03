@@ -4620,8 +4620,9 @@ function SettingsModal({
         <h3 style={{ margin: '0 0 20px', color: '#1B2B4B', fontSize: 20 }}>Settings</h3>
         <form onSubmit={handleSave}>
           <div style={{ marginBottom: 14 }}>
-            <label style={styles.inputLabel}>Business contact phone</label>
+            <label htmlFor="settings-contact-phone" style={styles.inputLabel}>Business contact phone</label>
             <input
+              id="settings-contact-phone"
               type="text"
               value={contactPhoneInput}
               onChange={e => setContactPhoneInput(e.target.value)}
@@ -4635,8 +4636,9 @@ function SettingsModal({
           </div>
 
           <div style={{ marginBottom: 14 }}>
-            <label style={styles.inputLabel}>Business contact email</label>
+            <label htmlFor="settings-contact-email" style={styles.inputLabel}>Business contact email</label>
             <input
+              id="settings-contact-email"
               type="text"
               value={contactEmailInput}
               onChange={e => setContactEmailInput(e.target.value)}
@@ -4646,8 +4648,9 @@ function SettingsModal({
           </div>
 
           <div style={{ marginBottom: 14 }}>
-            <label style={styles.inputLabel}>City</label>
+            <label htmlFor="settings-city" style={styles.inputLabel}>City</label>
             <input
+              id="settings-city"
               type="text"
               value={cityInput}
               onChange={e => setCityInput(e.target.value)}
@@ -4660,8 +4663,9 @@ function SettingsModal({
           </div>
 
           <div style={{ marginBottom: 14 }}>
-            <label style={styles.inputLabel}>Trade type</label>
+            <label htmlFor="settings-trade-type" style={styles.inputLabel}>Trade type</label>
             <input
+              id="settings-trade-type"
               type="text"
               value={tradeTypeInput}
               onChange={e => setTradeTypeInput(e.target.value)}
@@ -4675,8 +4679,9 @@ function SettingsModal({
           </div>
 
           <div style={{ marginBottom: 14 }}>
-            <label style={styles.inputLabel}>ABN</label>
+            <label htmlFor="settings-abn" style={styles.inputLabel}>ABN</label>
             <input
+              id="settings-abn"
               type="text"
               value={abnInput}
               onChange={e => setAbnInput(e.target.value)}
@@ -4692,8 +4697,9 @@ function SettingsModal({
           </div>
 
           <div style={{ marginBottom: 14 }}>
-            <label style={styles.inputLabel}>Slack webhook URL (optional)</label>
+            <label htmlFor="settings-slack-webhook" style={styles.inputLabel}>Slack webhook URL (optional)</label>
             <input
+              id="settings-slack-webhook"
               type="text"
               value={slackWebhookInput}
               onChange={e => setSlackWebhookInput(e.target.value)}
@@ -4721,8 +4727,9 @@ function SettingsModal({
 
           {autoDispatch && (
             <div style={{ marginBottom: 14 }}>
-              <label style={styles.inputLabel}>Max auto-dispatch distance (km, optional)</label>
+              <label htmlFor="settings-auto-dispatch-max-km" style={styles.inputLabel}>Max auto-dispatch distance (km, optional)</label>
               <input
+                id="settings-auto-dispatch-max-km"
                 type="number"
                 min="1"
                 style={styles.input}
@@ -4766,8 +4773,9 @@ function SettingsModal({
           </div>
 
           <div style={{ marginBottom: 14 }}>
-            <label style={styles.inputLabel}>Your Twilio number (optional)</label>
+            <label htmlFor="settings-twilio-number" style={styles.inputLabel}>Your Twilio number (optional)</label>
             <input
+              id="settings-twilio-number"
               type="text"
               value={twilioNumberInput}
               onChange={e => setTwilioNumberInput(e.target.value)}
@@ -4790,8 +4798,9 @@ function SettingsModal({
           </div>
 
           <div style={{ marginBottom: 14 }}>
-            <label style={styles.inputLabel}>Google review link (optional)</label>
+            <label htmlFor="settings-google-review-link" style={styles.inputLabel}>Google review link (optional)</label>
             <input
+              id="settings-google-review-link"
               type="text"
               value={googleReviewLinkInput}
               onChange={e => setGoogleReviewLinkInput(e.target.value)}
@@ -4805,8 +4814,9 @@ function SettingsModal({
           </div>
 
           <div style={{ marginBottom: 14 }}>
-            <label style={styles.inputLabel}>Weather-sensitive trade types (comma-separated, optional)</label>
+            <label htmlFor="settings-weather-trades" style={styles.inputLabel}>Weather-sensitive trade types (comma-separated, optional)</label>
             <input
+              id="settings-weather-trades"
               type="text"
               value={weatherTradesInput}
               onChange={e => setWeatherTradesInput(e.target.value)}
@@ -4832,8 +4842,9 @@ function SettingsModal({
                 on hold.
               </p>
               <div style={{ marginBottom: 14 }}>
-                <label style={styles.inputLabel}>Meta access token</label>
+                <label htmlFor="settings-meta-access-token" style={styles.inputLabel}>Meta access token</label>
                 <input
+                  id="settings-meta-access-token"
                   type="password"
                   value={metaAccessTokenInput}
                   onChange={e => setMetaAccessTokenInput(e.target.value)}
@@ -4842,8 +4853,9 @@ function SettingsModal({
                 />
               </div>
               <div style={{ marginBottom: 14 }}>
-                <label style={styles.inputLabel}>Meta ad account ID</label>
+                <label htmlFor="settings-meta-ad-account-id" style={styles.inputLabel}>Meta ad account ID</label>
                 <input
+                  id="settings-meta-ad-account-id"
                   type="text"
                   value={metaAdAccountIdInput}
                   onChange={e => setMetaAdAccountIdInput(e.target.value)}
@@ -4852,8 +4864,9 @@ function SettingsModal({
                 />
               </div>
               <div style={{ marginBottom: 14 }}>
-                <label style={styles.inputLabel}>Facebook Page ID</label>
+                <label htmlFor="settings-meta-page-id" style={styles.inputLabel}>Facebook Page ID</label>
                 <input
+                  id="settings-meta-page-id"
                   type="text"
                   value={metaPageIdInput}
                   onChange={e => setMetaPageIdInput(e.target.value)}
