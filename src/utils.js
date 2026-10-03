@@ -375,3 +375,16 @@ export function describeAuditEntry(entry) {
       return entry.action
   }
 }
+
+// Rounds a dollar amount to exactly 2 decimal places. Plain floating-point
+// arithmetic on money (e.g. 0.1 + 0.2 === 0.30000000000000004 in JS) leaks
+// extra decimal places into whatever gets stored — display call sites
+// already mask this with their own .toFixed(2), but the raw stored value
+// matters too for anything that doesn't separately re-round it (Xero sync,
+// CSV export). Stripe charging itself was never at risk from this —
+// create-invoice-payment-intent's centsFromDollars already does its own
+// Math.round(total * 100) right before charging — this is about keeping
+// the stored subtotal/gst/total themselves clean, not a billing fix.
+export function roundMoney(amount) {
+  return Math.round(amount * 100) / 100
+}

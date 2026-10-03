@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { haversineKm, generatePin, generateReferralCode, timeAgo, insertTechniciansWithPinRetry, classifyPriority, normalizeAddressForGeocoding, pickBestGeocodeFeature, isMapboxTokenConfigured, computeReplayStats, interpolateReplayPosition, describeAuditEntry, computeTechnicianReliability, RELIABILITY_FATIGUE_BASELINE_HOURS, computeProspectPriority } from './utils'
+import { haversineKm, generatePin, generateReferralCode, timeAgo, insertTechniciansWithPinRetry, classifyPriority, normalizeAddressForGeocoding, pickBestGeocodeFeature, isMapboxTokenConfigured, computeReplayStats, interpolateReplayPosition, describeAuditEntry, computeTechnicianReliability, RELIABILITY_FATIGUE_BASELINE_HOURS, computeProspectPriority, roundMoney } from './utils'
 
 describe('haversineKm', () => {
   it('returns 0 for identical points', () => {
@@ -477,5 +477,25 @@ describe('computeProspectPriority', () => {
     expect(result.score).toBe(100)
     expect(result.label).toBe('Hot')
     expect(result.reasons).toHaveLength(4)
+  })
+})
+
+describe('roundMoney', () => {
+  it('fixes classic floating-point noise from summing cents-precision amounts', () => {
+    expect(roundMoney(0.1 + 0.2)).toBe(0.3)
+  })
+
+  it('rounds to the nearest cent rather than truncating', () => {
+    expect(roundMoney(12.745)).toBe(12.75)
+    expect(roundMoney(12.744)).toBe(12.74)
+  })
+
+  it('leaves an already-clean 2dp amount unchanged', () => {
+    expect(roundMoney(49.99)).toBe(49.99)
+  })
+
+  it('handles a whole number and zero', () => {
+    expect(roundMoney(100)).toBe(100)
+    expect(roundMoney(0)).toBe(0)
   })
 })

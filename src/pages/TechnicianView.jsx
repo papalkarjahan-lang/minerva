@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
-import { haversineKm } from '../utils'
+import { haversineKm, roundMoney } from '../utils'
 import { hasAddon } from '../maxAddons'
 import { isTrialExpired } from '../businessAccess'
 import ContactSupportModal from '../components/ContactSupportModal'
@@ -1006,9 +1006,15 @@ export default function TechnicianView() {
     setInvoiceError(null)
 
     setInvoiceSubmitting(true)
-    const subtotal = validItems.reduce((sum, item) => sum + item.amount, 0)
-    const gst = subtotal * 0.1
-    const total = subtotal + gst
+    // Rounded at each step (not just at display time) so the STORED
+    // subtotal/gst/total are already clean — plain floating-point math
+    // can leave extra decimal places (e.g. summing several 2dp line items
+    // doesn't always land on an exact 2dp subtotal in JS) that every
+    // display call site happens to mask with its own .toFixed(2), but a
+    // CSV export or Xero sync reading the raw stored value wouldn't be.
+    const subtotal = roundMoney(validItems.reduce((sum, item) => sum + item.amount, 0))
+    const gst = roundMoney(subtotal * 0.1)
+    const total = roundMoney(subtotal + gst)
 
     try {
       const { data, error: insertError } = await supabase.from('invoices').insert({

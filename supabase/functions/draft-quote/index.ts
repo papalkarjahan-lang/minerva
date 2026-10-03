@@ -111,9 +111,15 @@ serve(async (req: Request) => {
       lineItems = [{ description: description.slice(0, 120), amount: 0 }]
     }
 
-    const subtotal = lineItems.reduce((sum, li) => sum + (Number(li.amount) || 0), 0)
-    const gst = subtotal * 0.1
-    const total = subtotal + gst
+    // Rounded at each step, not just at display time (same fix applied to
+    // TechnicianView.jsx's real-invoice equivalent of this same math) —
+    // plain floating-point arithmetic can leave extra decimal places in
+    // the stored subtotal/gst/total that every display call site happens
+    // to mask with its own .toFixed(2), but this row is a real stored
+    // quotes record, not just a transient draft.
+    const subtotal = Math.round(lineItems.reduce((sum, li) => sum + (Number(li.amount) || 0), 0) * 100) / 100
+    const gst = Math.round(subtotal * 0.1 * 100) / 100
+    const total = Math.round((subtotal + gst) * 100) / 100
 
     const { data: quote, error } = await supabase.from('quotes').insert({
       business_id: businessId,
