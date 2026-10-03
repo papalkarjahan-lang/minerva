@@ -118,6 +118,7 @@ export default function DispatcherView() {
   const [contactEmailInput, setContactEmailInput] = useState('')
   const [cityInput, setCityInput] = useState('')
   const [tradeTypeInput, setTradeTypeInput] = useState('')
+  const [abnInput, setAbnInput] = useState('')
   const [checklistTemplate, setChecklistTemplate] = useState(null) // Pro tier only
   const [showChecklistModal, setShowChecklistModal] = useState(false)
   const [onboardingTemplate, setOnboardingTemplate] = useState(null) // Pro tier only
@@ -321,6 +322,7 @@ export default function DispatcherView() {
     setContactEmailInput(biz?.contact_email || '')
     setCityInput(biz?.city || '')
     setTradeTypeInput(biz?.trade_type || '')
+    setAbnInput(biz?.abn || '')
     if (biz?.city) await setMapCenter(biz.city)
 
     const { data: techs } = await supabase
@@ -1420,7 +1422,7 @@ export default function DispatcherView() {
     if (error || data?.error) alert(`Couldn't resend the text: ${data?.error || error.message}. You can still copy their setup link directly.`)
   }
 
-  async function saveSettings({ slackWebhookUrl, autoDispatchEnabled, autoDispatchMaxKm, metaAccessToken, metaAdAccountId, metaPageId, weatherSensitiveTradeTypes, googleReviewLink, twilioNumber, contactPhone, contactEmail, city, tradeType }) {
+  async function saveSettings({ slackWebhookUrl, autoDispatchEnabled, autoDispatchMaxKm, metaAccessToken, metaAdAccountId, metaPageId, weatherSensitiveTradeTypes, googleReviewLink, twilioNumber, contactPhone, contactEmail, city, tradeType, abn }) {
     if (savingSettings) return
     setSavingSettings(true)
     const { data, error } = await supabase
@@ -1439,6 +1441,7 @@ export default function DispatcherView() {
         contact_email: contactEmail || null,
         city: city || null,
         trade_type: tradeType || null,
+        abn: abn || null,
       })
       .eq('id', businessId)
       .select()
@@ -4046,6 +4049,8 @@ export default function DispatcherView() {
           setCityInput={setCityInput}
           tradeTypeInput={tradeTypeInput}
           setTradeTypeInput={setTradeTypeInput}
+          abnInput={abnInput}
+          setAbnInput={setAbnInput}
           saving={savingSettings}
           onSave={saveSettings}
           calendarLinkCopied={calendarLinkCopied}
@@ -4578,6 +4583,7 @@ function SettingsModal({
   contactEmailInput, setContactEmailInput,
   cityInput, setCityInput,
   tradeTypeInput, setTradeTypeInput,
+  abnInput, setAbnInput,
   saving, onSave, calendarLinkCopied, onCopyCalendarLink, onClose, onLogAudit,
 }) {
   const [autoDispatch, setAutoDispatch] = useState(business?.auto_dispatch_enabled || false)
@@ -4603,6 +4609,7 @@ function SettingsModal({
       contactEmail: contactEmailInput.trim(),
       city: cityInput.trim(),
       tradeType: tradeTypeInput.trim(),
+      abn: abnInput.trim(),
     })
     if (ok) onClose()
   }
@@ -4664,6 +4671,23 @@ function SettingsModal({
             <p style={{ color: '#888', fontSize: 12, margin: '6px 0 0' }}>
               Shapes how the AI intake assistant describes your business and scores leads.
               Update this if you've expanded or changed trades since signing up.
+            </p>
+          </div>
+
+          <div style={{ marginBottom: 14 }}>
+            <label style={styles.inputLabel}>ABN</label>
+            <input
+              type="text"
+              value={abnInput}
+              onChange={e => setAbnInput(e.target.value)}
+              style={styles.input}
+              placeholder="11 digits, e.g. 51 824 753 556"
+            />
+            <p style={{ color: '#888', fontSize: 12, margin: '6px 0 0' }}>
+              Shown on your invoices as "Tax Invoice" once set — without an ABN here,
+              invoices show as a plain (non-tax) invoice instead, since that's what they
+              actually are under Australian GST rules. Optional, but your clients need a
+              real tax invoice to claim GST credits back.
             </p>
           </div>
 

@@ -1,0 +1,24 @@
+-- ============================================================
+-- MINERVA — Delta: businesses.abn, 2026-10-03.
+-- Adds 1 new column only. Run this entire block once in the Supabase SQL
+-- Editor.
+--
+-- What this fixes: InvoiceView.jsx already shows a GST line (Australia's
+-- 10% GST) on every invoice, but nothing anywhere captures the trade
+-- business's own ABN, and the invoice is titled plain "Invoice", never
+-- "Tax Invoice". Under Australian GST law a taxable-supply invoice needs
+-- the supplier's ABN and the words "Tax Invoice" to actually function as
+-- one — without it, a client (especially a business client) can't
+-- properly substantiate a GST credit claim from it. This column is
+-- nullable and optional by design (not every business is GST-registered,
+-- and existing businesses shouldn't be blocked from using the app while
+-- they go find theirs) — InvoiceView only switches to "Tax Invoice"
+-- wording and shows the ABN when it's actually been entered.
+--
+-- Not a substitute for checking with an accountant — the $1,000+
+-- recipient-identity requirement and similar edge cases aren't attempted
+-- here, see this round's commit message for exactly what is and isn't
+-- covered.
+-- ============================================================
+
+alter table businesses add column abn text;

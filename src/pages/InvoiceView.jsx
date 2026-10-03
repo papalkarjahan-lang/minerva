@@ -37,7 +37,7 @@ export default function InvoiceView() {
 
   async function loadInvoice() {
     const { data, error: err } = await supabase
-      .from('invoices').select('*, businesses(name)').eq('id', invoiceId).single()
+      .from('invoices').select('*, businesses(name, abn)').eq('id', invoiceId).single()
     if (err || !data) { setError('This invoice link is invalid or has expired.'); return null }
     setInvoice(data)
     setBusiness(data.businesses)
@@ -114,7 +114,13 @@ export default function InvoiceView() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
           <div>
             <p style={styles.bizName}>{business?.name}</p>
-            <h1 style={styles.title}>Invoice</h1>
+            {/* Only a real "Tax Invoice" once an ABN is on file — that's
+                what the Australian GST rules actually require to call it
+                one; falsely labeling it a tax invoice without an ABN would
+                be worse than just saying "Invoice". See
+                supabase_schema_delta_business_abn.sql for the full reasoning. */}
+            <h1 style={styles.title}>{business?.abn ? 'Tax Invoice' : 'Invoice'}</h1>
+            {business?.abn && <p style={styles.abnLine}>ABN {business.abn}</p>}
           </div>
           <span style={styles.statusBadge(invoice.status)}>{invoice.status === 'paid' ? 'PAID' : invoice.status === 'void' ? 'VOID' : invoice.status === 'refunded' ? 'REFUNDED' : 'UNPAID'}</span>
         </div>
@@ -288,6 +294,7 @@ const styles = {
   errorCard: { background: '#FAEAEA', borderRadius: 12, padding: 20, maxWidth: 340, textAlign: 'center' },
   card: { background: '#0a0f1d', border: '1px solid #1e293b', borderRadius: 20, padding: 32, maxWidth: 420, width: '100%' },
   bizName: { color: '#555', fontSize: 12, letterSpacing: 2, textTransform: 'uppercase', margin: '0 0 4px' },
+  abnLine: { color: '#666', fontSize: 11, margin: '4px 0 0' },
   title: { color: '#fff', fontSize: 24, fontWeight: 'bold', margin: 0 },
   statusBadge: (status) => {
     const color = status === 'paid' ? '#1D9E75' : status === 'void' ? '#666' : status === 'refunded' ? '#2D5FA8' : '#A87C16'

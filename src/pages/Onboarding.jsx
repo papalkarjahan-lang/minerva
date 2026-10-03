@@ -30,7 +30,7 @@ const TIERS = [
 
 export default function Onboarding() {
   const [step, setStep] = useState(1) // 1 = business details, 2 = technicians, 3 = review
-  const [biz, setBiz] = useState({ name: '', trade_type: '', city: '', contact_email: '', contact_phone: '' })
+  const [biz, setBiz] = useState({ name: '', trade_type: '', city: '', contact_email: '', contact_phone: '', abn: '' })
   const [sector, setSector] = useState('trade') // 'trade' | 'industrial'
   const [featurePriorities, setFeaturePriorities] = useState([])
   const [techs, setTechs] = useState([{ name: '', phone: '' }])
@@ -216,6 +216,17 @@ export default function Onboarding() {
             </div>
 
             <div style={styles.fieldGroup}>
+              <label htmlFor="onboarding-abn" style={styles.label}>ABN <span style={styles.labelOptional}>(optional)</span></label>
+              <input id="onboarding-abn" type="text" placeholder="11 digits, e.g. 51 824 753 556"
+                value={biz.abn} onChange={updateBiz('abn')} style={styles.input} />
+              <p style={styles.fieldHint}>
+                Add it now or later in Settings — either way, your invoices only say
+                "Tax Invoice" once it's set. Without one, clients get a plain invoice, which
+                doesn't let them claim a GST credit.
+              </p>
+            </div>
+
+            <div style={styles.fieldGroup}>
               <label style={styles.label}>What matters most to you? <span style={styles.labelOptional}>(optional)</span></label>
               {(sector === 'industrial' ? FEATURE_PRIORITIES_INDUSTRIAL : FEATURE_PRIORITIES_TRADE).map(label => (
                 <div key={label}
@@ -334,6 +345,7 @@ const styles = {
   fieldGroup: { marginBottom: 16 },
   label: { display: 'block', fontSize: 13, fontWeight: 'bold', color: '#444', marginBottom: 6 },
   labelOptional: { fontWeight: 'normal', color: '#999', textTransform: 'none', letterSpacing: 0 },
+  fieldHint: { color: '#888', fontSize: 12, margin: '6px 0 0' },
   sectorToggle: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 },
   sectorOption: { border: '1px solid #ddd', borderRadius: 12, padding: '12px 12px', cursor: 'pointer' },
   sectorOptionActive: { border: '2px solid #2D5FA8', background: '#f8f9ff', padding: '11px 11px' },
