@@ -10,6 +10,9 @@ import {
   buildDisputeMessage,
   buildDisputeFallbackSummary,
   buildDisputeClosedMessage,
+  planChargeRefunded,
+  buildRefundMessage,
+  buildRefundFallbackSummary,
   shouldAlertOperator,
   shouldApplyCheckoutCompletion,
 } from './logic'
@@ -215,5 +218,62 @@ describe('buildDisputeClosedMessage', () => {
 
   it('falls back to generic wording when the business could not be resolved', () => {
     expect(buildDisputeClosedMessage(null, 'lost', 4999, 'AUD')).toContain('an unidentified business')
+  })
+})
+
+describe('planChargeRefunded', () => {
+  it('returns null when the charge has no id', () => {
+    expect(planChargeRefunded({ refunded: true })).toBeNull()
+  })
+
+  it('returns null for a partial refund (refunded !== true)', () => {
+    expect(planChargeRefunded({ id: 'ch_1', refunded: false, amount_refunded: 500 })).toBeNull()
+    expect(planChargeRefunded({ id: 'ch_1', amount_refunded: 500 })).toBeNull()
+  })
+
+  it('builds the plan for a full refund', () => {
+    expect(planChargeRefunded({ id: 'ch_1', refunded: true, amount_refunded: 4999, currency: 'aud', payment_intent: 'pi_1' })).toEqual({
+      chargeId: 'ch_1',
+      amountRefundedCents: 4999,
+      currency: 'AUD',
+      paymentIntentId: 'pi_1',
+    })
+  })
+
+  it('defaults amount to 0 and payment intent to null when missing', () => {
+    expect(planChargeRefunded({ id: 'ch_1', refunded: true })).toEqual({
+      chargeId: 'ch_1',
+      amountRefundedCents: 0,
+      currency: 'USD',
+      paymentIntentId: null,
+    })
+  })
+})
+
+describe('buildRefundMessage', () => {
+  it('names the business and invoice when both are known, and says status was not auto-updated', () => {
+    const msg = buildRefundMessage('Acme Plumbing', 4999, 'AUD', 'inv_1')
+    expect(msg).toContain('Acme Plumbing')
+    expect(msg).toContain('$49.99 AUD')
+    expect(msg).toContain('inv_1')
+    expect(msg).toContain('does not automatically update')
+  })
+
+  it('falls back to generic wording when business/invoice could not be resolved', () => {
+    const msg = buildRefundMessage(null, 4999, 'AUD', null)
+    expect(msg).toContain('an unidentified business')
+    expect(msg).toContain('could not match to a specific invoice')
+  })
+})
+
+describe('buildRefundFallbackSummary', () => {
+  it('includes the business name when known', () => {
+    expect(buildRefundFallbackSummary('Acme Plumbing', 4999, 'AUD')).toContain('for Acme Plumbing')
+  })
+
+  it('omits the business clause when unknown rather than naming it falsely', () => {
+    const summary = buildRefundFallbackSummary(null, 4999, 'AUD')
+    expect(summary).not.toContain('for null')
+    expect(summary).toContain('Payment fully refunded:')
   })
 })

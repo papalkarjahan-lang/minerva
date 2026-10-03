@@ -245,3 +245,55 @@ export function buildDisputeClosedMessage(businessName: string | null, status: s
   const who = businessName ? businessName : 'an unidentified business'
   return `Dispute for ${who} ($${amount} ${currency}) is now resolved: ${status}.`
 }
+
+export interface ChargeRefundedLike {
+  id?: string | null
+  refunded?: boolean | null
+  amount_refunded?: number | null
+  currency?: string | null
+  payment_intent?: string | null
+}
+
+export interface RefundPlan {
+  chargeId: string
+  amountRefundedCents: number
+  currency: string
+  paymentIntentId: string | null
+}
+
+// charge.refunded — fires on both partial and full refunds; this only
+// alerts on a FULL refund (refunded === true). A partial refund doesn't
+// change whether the invoice should still read as "paid" overall, and
+// deciding how invoices.status/the dispatcher UI should represent a
+// partial refund is a real design question, not a 2-line fix — out of
+// scope here, same reasoning as the full-refund case not auto-updating
+// invoices.status either (see buildRefundMessage below).
+export function planChargeRefunded(charge: ChargeRefundedLike): RefundPlan | null {
+  if (!charge.id || charge.refunded !== true) return null
+  return {
+    chargeId: charge.id,
+    amountRefundedCents: charge.amount_refunded ?? 0,
+    currency: (charge.currency || 'usd').toUpperCase(),
+    paymentIntentId: charge.payment_intent || null,
+  }
+}
+
+// Deliberately tells the reader this did NOT touch invoices.status —
+// create-invoice-payment-intent/payment_intent.succeeded auto-mark an
+// invoice paid, but nothing auto-reverses that on a refund (deciding how
+// a refunded invoice should look across DispatcherView/InvoiceView is a
+// real UI question, not something to rush through inside an alert-only
+// change). Saying so directly in the alert means whoever reads it knows
+// exactly what manual step is still needed, rather than assuming Minerva
+// already handled it end-to-end.
+export function buildRefundMessage(businessName: string | null, amountRefundedCents: number, currency: string, invoiceId: string | null): string {
+  const amount = (amountRefundedCents / 100).toFixed(2)
+  const who = businessName ? businessName : 'an unidentified business'
+  const invoiceNote = invoiceId ? ` (invoice ${invoiceId})` : ' (could not match to a specific invoice — check Stripe directly)'
+  return `A payment for ${who}${invoiceNote} was fully refunded: $${amount} ${currency}. Minerva does not automatically update the invoice's paid status for a refund — check and correct it manually if the invoice still shows paid.`
+}
+
+export function buildRefundFallbackSummary(businessName: string | null, amountRefundedCents: number, currency: string): string {
+  const amount = (amountRefundedCents / 100).toFixed(2)
+  return `Payment fully refunded${businessName ? ` for ${businessName}` : ''}: $${amount} ${currency}. The matching invoice's paid status was NOT automatically updated — check manually.`
+}

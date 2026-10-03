@@ -16,11 +16,12 @@
 //                    payment_intent.succeeded (needed only if the optional
 //                    "Pay now" invoice flow — create-invoice-payment-intent —
 //                    is used; see supabase_schema_delta_invoice_payments.sql),
-//                    charge.dispute.created, charge.dispute.closed (added
-//                    2026-10-03 — if this endpoint is already registered in
-//                    Stripe from before, these two need adding to its event
-//                    list manually; Stripe does not backfill new event types
-//                    onto an existing webhook endpoint automatically)
+//                    charge.dispute.created, charge.dispute.closed,
+//                    charge.refunded (all 3 added 2026-10-03 — if this
+//                    endpoint is already registered in Stripe from before,
+//                    these need adding to its event list manually; Stripe
+//                    does not backfill new event types onto an existing
+//                    webhook endpoint automatically)
 // Copy the signing secret into Supabase secrets as STRIPE_WEBHOOK_SECRET.
 //
 // Run supabase_schema_delta_payment_failed.sql once before relying on the
@@ -104,6 +105,24 @@
 // create-invoice-payment-intent) on a best-effort basis — if that lookup
 // fails, the alert still fires, just without attribution, since "a
 // dispute happened" is worth knowing even unattributed.
+//
+// Refund visibility (added same round): charge.refunded had the identical
+// gap — a business/client getting a full refund processed directly in the
+// Stripe Dashboard (there's no refund button anywhere in Minerva's own UI)
+// was completely invisible, and worse than the dispute gap in one way: the
+// invoice would keep showing "PAID" in DispatcherView/InvoiceView forever,
+// actively wrong rather than just silent. Deliberately does NOT update
+// invoices.status itself, though — introducing a new lifecycle state needs
+// a real decision about how DispatcherView/InvoiceView should display it
+// (a 'void' status already exists as precedent that this column isn't a
+// fixed 2-value enum, but threading a new value through every status
+// check across both files is its own piece of work, not something to fold
+// into an alert-only change). Only alerts on a FULL refund
+// (charge.refunded === true) — a partial refund doesn't change whether the
+// invoice is "mostly paid" and representing that correctly is the same
+// kind of UI decision, deferred for the same reason. The alert text itself
+// says plainly that the invoice was NOT auto-updated, so whoever reads it
+// knows a manual correction is still needed.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import Stripe from "https://esm.sh/stripe@14?target=deno"
@@ -119,6 +138,9 @@ import {
   buildDisputeMessage,
   buildDisputeFallbackSummary,
   buildDisputeClosedMessage,
+  planChargeRefunded,
+  buildRefundMessage,
+  buildRefundFallbackSummary,
   shouldAlertOperator,
   shouldApplyCheckoutCompletion,
 } from "./logic.ts"
@@ -345,7 +367,7 @@ serve(async (req: Request) => {
           // operator who actually needs to submit evidence, not necessarily
           // the business. Reuses the exact same OPERATOR_EMAIL mechanism
           // invoice.payment_failed already established for this reason.
-          const { businessId, businessName, invoiceId } = await resolveDisputeAttribution(plan.paymentIntentId)
+          const { businessId, businessName, invoiceId } = await resolvePaymentIntentAttribution(plan.paymentIntentId)
 
           const operatorEmail = Deno.env.get('OPERATOR_EMAIL')
           if (shouldAlertOperator(operatorEmail)) {
@@ -383,7 +405,7 @@ serve(async (req: Request) => {
           payment_intent: disputePaymentIntentId,
         })
         if (plan) {
-          const { businessName } = await resolveDisputeAttribution(disputePaymentIntentId)
+          const { businessName } = await resolvePaymentIntentAttribution(disputePaymentIntentId)
 
           const operatorEmail = Deno.env.get('OPERATOR_EMAIL')
           if (shouldAlertOperator(operatorEmail)) {
@@ -397,6 +419,44 @@ serve(async (req: Request) => {
               }),
             }).catch(err => console.error('stripe-webhook: dispute-closed operator alert failed', err))
           }
+        }
+        break
+      }
+
+      case 'charge.refunded': {
+        const charge = event.data.object as Stripe.Charge
+        const chargePaymentIntentId = typeof charge.payment_intent === 'string' ? charge.payment_intent : null
+        const plan = planChargeRefunded({
+          id: charge.id,
+          refunded: charge.refunded,
+          amount_refunded: charge.amount_refunded,
+          currency: charge.currency,
+          payment_intent: chargePaymentIntentId,
+        })
+        if (plan) {
+          const { businessId, businessName, invoiceId } = await resolvePaymentIntentAttribution(plan.paymentIntentId)
+
+          const operatorEmail = Deno.env.get('OPERATOR_EMAIL')
+          if (shouldAlertOperator(operatorEmail)) {
+            fetch(`${Deno.env.get('SUPABASE_URL')!}/functions/v1/send-email`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!}` },
+              body: JSON.stringify({
+                to: operatorEmail,
+                subject: `[Minerva] Payment refunded — ${businessName || plan.chargeId}`,
+                html: `<p>${escapeHtml(buildRefundMessage(businessName, plan.amountRefundedCents, plan.currency, invoiceId))}</p>`,
+              }),
+            }).catch(err => console.error('stripe-webhook: refund operator alert failed', err))
+          }
+
+          await supabaseAdmin.from('agent_insights').insert({
+            agent: 'finance',
+            insight_type: 'anomaly',
+            summary: buildRefundFallbackSummary(businessName, plan.amountRefundedCents, plan.currency),
+            business_id: businessId,
+            related_table: invoiceId ? 'invoices' : null,
+            related_id: invoiceId,
+          }).then(() => {}, (err) => console.error('stripe-webhook: refund insight insert failed', err))
         }
         break
       }
@@ -426,13 +486,13 @@ serve(async (req: Request) => {
   }
 })
 
-// Best-effort: resolves a dispute's payment_intent back to the Minerva
-// invoice/business it paid, via the metadata create-invoice-payment-intent
-// set on the PaymentIntent at creation. Never throws — returns all-null
-// fields if the payment_intent is missing or either lookup fails, so a
-// dispute alert still fires unattributed rather than not at all (see the
-// dispute-visibility header comment above).
-async function resolveDisputeAttribution(paymentIntentId: string | null): Promise<{ businessId: string | null; businessName: string | null; invoiceId: string | null }> {
+// Best-effort: resolves a PaymentIntent id back to the Minerva invoice/
+// business it paid, via the metadata create-invoice-payment-intent set on
+// the PaymentIntent at creation. Shared by both the dispute and refund
+// alerting below — same lookup, same "fire the alert unattributed rather
+// than not at all" fallback either way. Never throws — returns all-null
+// fields if the payment_intent is missing or either lookup fails.
+async function resolvePaymentIntentAttribution(paymentIntentId: string | null): Promise<{ businessId: string | null; businessName: string | null; invoiceId: string | null }> {
   if (!paymentIntentId) return { businessId: null, businessName: null, invoiceId: null }
   try {
     const pi = await stripe.paymentIntents.retrieve(paymentIntentId)
@@ -445,7 +505,7 @@ async function resolveDisputeAttribution(paymentIntentId: string | null): Promis
     }
     return { businessId, businessName, invoiceId }
   } catch (err) {
-    console.error('stripe-webhook: dispute attribution lookup failed', err)
+    console.error('stripe-webhook: payment_intent attribution lookup failed', err)
     return { businessId: null, businessName: null, invoiceId: null }
   }
 }
