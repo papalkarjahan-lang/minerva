@@ -15,6 +15,13 @@ describe('detectEmergency', () => {
   it('is false for "no rush"', () => { expect(detectEmergency('no rush, no rush at all')).toBe(false) })
   it('is false for "can wait"', () => { expect(detectEmergency('this can wait until next week')).toBe(false) })
   it('is false for "not an emergency"', () => { expect(detectEmergency('not an emergency, just routine maintenance')).toBe(false) })
+  it('does not false-positive on a word that merely contains a keyword as a substring', () => {
+    // "smoked glass" contains "smoke", but isn't a gas/fire emergency.
+    expect(detectEmergency('the smoked glass shower screen cracked')).toBe(false)
+  })
+  it('still matches a multi-word phrase keyword as a whole phrase', () => {
+    expect(detectEmergency('no power in the whole house')).toBe(true)
+  })
 })
 
 describe('detectValueTier', () => {
@@ -22,6 +29,15 @@ describe('detectValueTier', () => {
   it('returns low for a leaky tap', () => { expect(detectValueTier('just a leaky tap')).toBe('low') })
   it('returns medium when neither high nor low keywords match', () => { expect(detectValueTier('something is broken')).toBe('medium') })
   it('prefers high over low when both keyword sets are present', () => { expect(detectValueTier('quick full rewire')).toBe('high') })
+  it('does not false-positive on "fully" containing the keyword "full"', () => {
+    expect(detectValueTier("I'm fully booked Thursday, can you come Friday instead?")).toBe('medium')
+  })
+  it('does not false-positive on "installment" containing the keyword "install"', () => {
+    expect(detectValueTier('can I pay in installments?')).toBe('medium')
+  })
+  it('still matches "install" as its own whole word', () => {
+    expect(detectValueTier('need a new install for the AC unit')).toBe('high')
+  })
 })
 
 describe('applyRepeatClientBoost', () => {

@@ -24,14 +24,36 @@ export function clampScore(n: number): number {
 // NOT urgent as an emergency lead.
 const NEGATED_URGENCY_PATTERN = /\bnot\s+(that\s+|really\s+)?urgent\b|\bnot\s+an?\s+emergency\b|\bisn'?t\s+urgent\b|\bno\s+rush\b|\bno\s+emergency\b|\bcan\s+wait\b|\bcould\s+wait\b/i
 
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+// Word/phrase-boundary match, not a plain substring check — every keyword
+// list below used to be checked with plain .includes(), which also fires
+// on an unrelated word that merely CONTAINS the keyword: "fully booked
+// Thursday" matching HIGH_VALUE's 'full', "can I pay in installments"
+// matching 'install', and worst of all "the smoked glass shower screen
+// cracked" matching EMERGENCY's 'smoke' — none of which are actually
+// about a full system replacement, a new install, or a gas/fire
+// emergency. \b only anchors at the position it's placed, so this still
+// matches multi-word phrases like "right now" or "can't wait" correctly
+// as whole phrases, not just single words.
+function containsKeyword(text: string, keyword: string): boolean {
+  return new RegExp(`\\b${escapeRegExp(keyword)}\\b`, 'i').test(text)
+}
+
 export function detectEmergency(urgencyAnswer: string): boolean {
   if (NEGATED_URGENCY_PATTERN.test(urgencyAnswer)) return false
-  return EMERGENCY_KEYWORDS.some(kw => urgencyAnswer.includes(kw)) || /\burgent\b|\bemergency\b/.test(urgencyAnswer)
+  // No separate "urgent"/"emergency" fallback needed — both words are
+  // already literal entries in EMERGENCY_KEYWORDS, so containsKeyword
+  // already covers them with the exact same word-boundary semantics a
+  // separate check would.
+  return EMERGENCY_KEYWORDS.some(kw => containsKeyword(urgencyAnswer, kw))
 }
 
 export function detectValueTier(combinedText: string): 'low' | 'medium' | 'high' {
-  const isHighValue = HIGH_VALUE_KEYWORDS.some(kw => combinedText.includes(kw))
-  const isLowValue = !isHighValue && LOW_VALUE_KEYWORDS.some(kw => combinedText.includes(kw))
+  const isHighValue = HIGH_VALUE_KEYWORDS.some(kw => containsKeyword(combinedText, kw))
+  const isLowValue = !isHighValue && LOW_VALUE_KEYWORDS.some(kw => containsKeyword(combinedText, kw))
   return isHighValue ? 'high' : isLowValue ? 'low' : 'medium'
 }
 
