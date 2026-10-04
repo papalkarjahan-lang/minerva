@@ -23,7 +23,7 @@ const FEATURES = [
 const PLANS = [
   ['Starter', '$49', ['Live GPS map', 'Client ETA SMS', 'Job start/complete', 'Dispatch board & job scheduling', 'Automatic intake chat & lead scoring', 'Works on any phone']],
   ['Standard', '$79', ['Everything in Starter', 'Recommended for growing teams'], true],
-  ['Pro', '$119', ['Everything in Standard', 'On-site invoicing', 'Asset tracking', 'Compliance & onboarding checklists', 'Materials & inventory tracking', 'Technician credential tracking']],
+  ['Pro', '$119', ['Everything in Standard', 'On-site invoicing', 'Asset tracking', 'Compliance & onboarding checklists', 'Materials & inventory tracking', 'Technician credential tracking', 'Automated growth marketing suggestions']],
 ]
 
 const TRADES = ['Plumbing', 'Electrical', 'HVAC', 'Locksmiths', 'Pest Control', 'Cleaning & FM']
