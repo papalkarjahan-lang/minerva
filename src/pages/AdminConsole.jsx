@@ -509,6 +509,16 @@ export default function AdminConsole() {
   // see which paying customers are at risk of involuntary churn (a declined
   // card still mid-Stripe-retry) without opening each business individually.
   const paymentFailingBusinesses = payingBusinesses.filter(b => b.payment_failed_at)
+  // A different churn signal from payment-failing — a PAYING business with
+  // no technician GPS activity in 14+ days (or none at all) isn't being
+  // used, regardless of whether their card is fine. That's worth knowing
+  // about for the exact same reason: a chance to proactively check in
+  // before they cancel rather than finding out only after they do.
+  // lastActivity is already computed above from technicians.last_seen for
+  // the table's own "Last activity" column — no new query.
+  const INACTIVE_DAYS_THRESHOLD = 14
+  const inactivityCutoff = Date.now() - INACTIVE_DAYS_THRESHOLD * 24 * 60 * 60 * 1000
+  const inactiveBusinesses = payingBusinesses.filter(b => !b.lastActivity || new Date(b.lastActivity).getTime() < inactivityCutoff)
 
   return (
     <div style={{ minHeight: '100vh', background: '#050811', fontFamily: 'Arial, sans-serif', padding: 32 }}>
@@ -542,6 +552,7 @@ export default function AdminConsole() {
             <StatChip label="Trialing" value={trialingBusinesses.length} detail="No Stripe subscription yet" color="#A87C16" />
             <StatChip label="Cancelled" value={cancelledBusinesses.length} detail="Subscription ended" color="#8A2525" />
             <StatChip label="Payment failing" value={paymentFailingBusinesses.length} detail={paymentFailingBusinesses.length > 0 ? paymentFailingBusinesses.map(b => b.name).join(', ') : 'None — all cards charging fine'} color={paymentFailingBusinesses.length > 0 ? '#8A2525' : '#1D9E75'} />
+            <StatChip label="Inactive, paying" value={inactiveBusinesses.length} detail={inactiveBusinesses.length > 0 ? inactiveBusinesses.map(b => b.name).join(', ') : `None — all active within ${INACTIVE_DAYS_THRESHOLD}d`} color={inactiveBusinesses.length > 0 ? '#A87C16' : '#1D9E75'} />
           </div>
         )}
 
@@ -567,6 +578,12 @@ export default function AdminConsole() {
                       <span title={`Card declined ${new Date(biz.payment_failed_at).toLocaleString('en-AU')} — Stripe is retrying automatically`}
                         style={{ marginLeft: 8, color: '#8A2525', fontSize: 11, fontWeight: 'bold', border: '1px solid #8A2525', borderRadius: 6, padding: '2px 6px' }}>
                         ⚠ PAYMENT FAILING
+                      </span>
+                    )}
+                    {biz.stripe_sub_id && biz.subscription_tier !== 'cancelled' && inactiveBusinesses.includes(biz) && (
+                      <span title={biz.lastActivity ? `No technician GPS activity since ${new Date(biz.lastActivity).toLocaleString('en-AU')}` : 'No technician GPS activity recorded yet'}
+                        style={{ marginLeft: 8, color: '#A87C16', fontSize: 11, fontWeight: 'bold', border: '1px solid #A87C16', borderRadius: 6, padding: '2px 6px' }}>
+                        ⚠ INACTIVE {INACTIVE_DAYS_THRESHOLD}D+
                       </span>
                     )}
                     {/* Collected at signup (Onboarding.jsx "what matters most") but
