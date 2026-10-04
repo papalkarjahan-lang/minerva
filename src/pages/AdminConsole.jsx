@@ -108,7 +108,7 @@ export default function AdminConsole() {
   async function loadBusinesses() {
     const { data: bizRows, error } = await supabase
       .from('businesses')
-      .select('id, name, sector, subscription_tier, stripe_sub_id, created_at, feature_priorities')
+      .select('id, name, sector, subscription_tier, stripe_sub_id, payment_failed_at, created_at, feature_priorities')
       .order('created_at', { ascending: false })
     if (error) { alert(`Couldn't load businesses: ${error.message}`); return }
     if (!bizRows) return
@@ -503,6 +503,12 @@ export default function AdminConsole() {
   const trialingBusinesses = businesses.filter(b => !b.stripe_sub_id && b.subscription_tier !== 'cancelled')
   const cancelledBusinesses = businesses.filter(b => b.subscription_tier === 'cancelled')
   const estimatedMRR = payingBusinesses.reduce((sum, b) => sum + (TIER_PRICES[b.subscription_tier] || 0) * Math.max(1, b.techCount || 0), 0)
+  // Each business owner already sees their own "Payment failed" banner in
+  // their own dispatcher view (DispatcherView.jsx/IndustrialDispatcherView.jsx),
+  // but nothing surfaced this platform-wide — the operator had no way to
+  // see which paying customers are at risk of involuntary churn (a declined
+  // card still mid-Stripe-retry) without opening each business individually.
+  const paymentFailingBusinesses = payingBusinesses.filter(b => b.payment_failed_at)
 
   return (
     <div style={{ minHeight: '100vh', background: '#050811', fontFamily: 'Arial, sans-serif', padding: 32 }}>
@@ -535,6 +541,7 @@ export default function AdminConsole() {
             <StatChip label="Paying" value={payingBusinesses.length} detail="Has a live Stripe subscription" color="#1D9E75" />
             <StatChip label="Trialing" value={trialingBusinesses.length} detail="No Stripe subscription yet" color="#A87C16" />
             <StatChip label="Cancelled" value={cancelledBusinesses.length} detail="Subscription ended" color="#8A2525" />
+            <StatChip label="Payment failing" value={paymentFailingBusinesses.length} detail={paymentFailingBusinesses.length > 0 ? paymentFailingBusinesses.map(b => b.name).join(', ') : 'None — all cards charging fine'} color={paymentFailingBusinesses.length > 0 ? '#8A2525' : '#1D9E75'} />
           </div>
         )}
 
@@ -556,6 +563,12 @@ export default function AdminConsole() {
                 <tr key={biz.id} style={{ borderBottom: '1px solid #131b2e' }}>
                   <td style={tdStyle}>
                     {biz.name}
+                    {biz.payment_failed_at && (
+                      <span title={`Card declined ${new Date(biz.payment_failed_at).toLocaleString('en-AU')} — Stripe is retrying automatically`}
+                        style={{ marginLeft: 8, color: '#8A2525', fontSize: 11, fontWeight: 'bold', border: '1px solid #8A2525', borderRadius: 6, padding: '2px 6px' }}>
+                        ⚠ PAYMENT FAILING
+                      </span>
+                    )}
                     {/* Collected at signup (Onboarding.jsx "what matters most") but
                         never surfaced anywhere until now — useful context for a
                         follow-up call or for deciding what to highlight to this
