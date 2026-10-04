@@ -2093,7 +2093,7 @@ export default function DispatcherView() {
     'optimize-industrial-routes', 'track-consumables', 'detect-safety-hazards',
     'sequence-handoffs', 'verify-industrial-compliance',
     'check-credential-expiry', 'daily-digest', 'detect-idle-assets',
-    'estimate-job-carbon', 'flag-abandoned-signups', 'followup-outreach',
+    'estimate-job-carbon', 'flag-abandoned-signups', 'recover-abandoned-signup', 'followup-outreach',
     'forecast-demand', 'predict-asset-maintenance', 'reconcile-technician-state',
     'run-custom-workflows', 'verify-checklist-photos',
     'auto-assign-technician', 'launch-ad-campaign', 'send-growth-message',

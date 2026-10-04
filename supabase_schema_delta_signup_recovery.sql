@@ -1,0 +1,21 @@
+-- ============================================================
+-- MINERVA - Delta: abandoned-signup recovery email (2026-10-05)
+-- Adds 1 new column only. Nothing else in your live DB is touched, so this
+-- won't hit an "already exists" error (see supabase_schema_missing.sql for
+-- why that matters — a failed statement rolls back the whole paste).
+-- Run this entire block once in the Supabase SQL Editor.
+--
+-- What this is for: Onboarding.jsx creates the businesses row (and its
+-- technicians rows, and sends each technician a real setup SMS) BEFORE the
+-- Stripe checkout redirect happens. Until now, a business that abandoned
+-- or failed checkout got no outreach at all — flag-abandoned-signups only
+-- ever wrote an internal note for a human to review 48 hours later. This
+-- column lets recover-abandoned-signup email that business ONCE, well
+-- before the 48h give-up point, asking them to finish. Same self-healing/
+-- one-time-claim shape as abandoned_flagged_at
+-- (supabase_schema_delta_abandoned_signups.sql) — this flag is irrelevant
+-- the moment a real checkout completes (the business then has a
+-- stripe_sub_id and recover-abandoned-signup's own query excludes it).
+-- ============================================================
+
+alter table businesses add column signup_recovery_sent_at timestamptz;
