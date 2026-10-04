@@ -28,6 +28,12 @@ const ADMIN_EMAILS = (import.meta.env.VITE_ADMIN_EMAILS || '')
   .split(',').map(e => e.trim().toLowerCase()).filter(Boolean)
 
 const TIERS = ['starter', 'standard', 'pro', 'cancelled']
+// Matches Onboarding.jsx's TIERS prices exactly (49/79/119) — kept here
+// as a separate small lookup rather than importing Onboarding.jsx itself
+// just for 3 numbers, same "small static array, cross-checked by hand"
+// tradeoff Pricing.jsx/LandingPage.jsx already document for their own
+// copies of this same data.
+const TIER_PRICES = { starter: 49, standard: 79, pro: 119 }
 const COMPANY_TYPES = ['multi_van', 'facilities_management', 'council', 'strata', 'other']
 const STAGES = ['researching', 'contacted', 'discovery_call', 'proposal_sent', 'negotiating', 'closed_won', 'closed_lost']
 
@@ -482,6 +488,22 @@ export default function AdminConsole() {
     )
   }
 
+  // Business-health summary (added 2026-10-04) — the Businesses tab was a
+  // flat table with no rollup at all: no way to see at a glance how many
+  // customers are actually paying, how many are still mid-trial, or
+  // roughly what MRR looks like, without manually scanning/counting every
+  // row. Computed entirely from the businesses list already loaded above
+  // for that same table — no new query. TIER_PRICES/techCount here match
+  // what the table already shows (techCount is a plain technicians row
+  // count, not reconcile-billing's real is_active/last_seen-filtered
+  // Stripe quantity), so this is a local ESTIMATE for a quick read on
+  // business health, not a Stripe-verified MRR figure — labelled as such
+  // in the UI rather than presented as exact.
+  const payingBusinesses = businesses.filter(b => b.stripe_sub_id && b.subscription_tier !== 'cancelled')
+  const trialingBusinesses = businesses.filter(b => !b.stripe_sub_id && b.subscription_tier !== 'cancelled')
+  const cancelledBusinesses = businesses.filter(b => b.subscription_tier === 'cancelled')
+  const estimatedMRR = payingBusinesses.reduce((sum, b) => sum + (TIER_PRICES[b.subscription_tier] || 0) * Math.max(1, b.techCount || 0), 0)
+
   return (
     <div style={{ minHeight: '100vh', background: '#050811', fontFamily: 'Arial, sans-serif', padding: 32 }}>
       <div style={{ maxWidth: 1100, margin: '0 auto' }}>
@@ -506,6 +528,15 @@ export default function AdminConsole() {
             Big Accounts ({bigAccounts.filter(t => !['closed_won', 'closed_lost'].includes(t.stage)).length} active)
           </button>
         </div>
+
+        {tab === 'businesses' && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 20 }}>
+            <StatChip label="Est. MRR" value={`$${estimatedMRR.toLocaleString('en-AU')}`} detail="Local estimate, not Stripe-verified" />
+            <StatChip label="Paying" value={payingBusinesses.length} detail="Has a live Stripe subscription" color="#1D9E75" />
+            <StatChip label="Trialing" value={trialingBusinesses.length} detail="No Stripe subscription yet" color="#A87C16" />
+            <StatChip label="Cancelled" value={cancelledBusinesses.length} detail="Subscription ended" color="#8A2525" />
+          </div>
+        )}
 
         {tab === 'businesses' && (
           <table style={{ width: '100%', borderCollapse: 'collapse', color: '#ccc', fontSize: 14 }}>
@@ -754,6 +785,16 @@ export default function AdminConsole() {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+function StatChip({ label, value, detail, color = '#8fd0e8' }) {
+  return (
+    <div style={{ background: '#0a0f1d', border: '1px solid #1e293b', borderRadius: 12, padding: '14px 16px' }}>
+      <p style={{ color: '#666', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, margin: '0 0 4px' }}>{label}</p>
+      <p style={{ color, fontSize: 22, fontWeight: 'bold', margin: '0 0 2px' }}>{value}</p>
+      {detail && <p style={{ color: '#555', fontSize: 11, margin: 0 }}>{detail}</p>}
     </div>
   )
 }
