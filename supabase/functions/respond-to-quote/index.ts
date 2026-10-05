@@ -30,10 +30,25 @@
 // which can fire a business's own SMS/email/Slack rules) already has its
 // own enabled check, so that path stays governable without gating the
 // client's own accept/decline action itself.
+//
+// Baseline SMS+Slack notification added 2026-10-05: run-custom-workflows
+// only does anything for businesses that have manually set up a
+// 'quote.accepted'/'quote.declined' workflow row — the default, out-of-
+// the-box state for every business is zero rows, meaning the entire
+// `for (const wf of workflows)` loop in that function is a no-op and
+// nothing ever told the business a client responded at all. Every other
+// comparable "something just happened" event in this codebase (a new
+// lead, a missed call, a support request) fires an unconditional baseline
+// notification regardless of any opt-in config — a quote acceptance,
+// arguably the single most actionable event, had none. This adds exactly
+// that, unconditionally, alongside the still-unchanged custom-workflow
+// trigger below for businesses that have set up extra automation on top.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { isValidResponseStatus, canRespond } from "./logic.ts"
+import { sendTwilioSms } from "../_shared/twilioSms.ts"
+import { notifySlack } from "../_shared/notifySlack.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -58,7 +73,7 @@ serve(async (req: Request) => {
 
     const { data: quote } = await supabase
       .from('quotes')
-      .select('id, business_id, status, client_name, total')
+      .select('id, business_id, status, client_name, total, businesses(contact_phone)')
       .eq('id', quoteId)
       .maybeSingle()
 
@@ -99,6 +114,24 @@ serve(async (req: Request) => {
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
       })
     }
+
+    // Baseline notification — see header note. Fires regardless of any
+    // custom-workflow setup, fire-and-forget so a Twilio/Slack hiccup can
+    // never block the client's own accept/decline from succeeding.
+    const totalText = quote.total != null ? ` ($${Number(quote.total).toFixed(2)})` : ''
+    const notifyText = status === 'accepted'
+      ? `✅ Quote accepted: *${quote.client_name || 'A client'}*${totalText} — get them on the schedule.`
+      : `❌ Quote declined: *${quote.client_name || 'A client'}*${totalText}.`
+    const bizPhone = (quote as any).businesses?.contact_phone
+    if (bizPhone) {
+      sendTwilioSms(
+        { sid: Deno.env.get('TWILIO_ACCOUNT_SID'), token: Deno.env.get('TWILIO_AUTH_TOKEN'), from: Deno.env.get('TWILIO_PHONE_NUMBER') },
+        bizPhone,
+        notifyText.replace(/[*_]/g, ''),
+        'respond-to-quote'
+      ).catch(() => {})
+    }
+    notifySlack(supabaseUrl, supabaseServiceKey, quote.business_id, notifyText).catch(() => {})
 
     // Fire-and-forget: a workflow misconfiguration/outage on the business's
     // end must never block the client's own accept/decline from succeeding.
