@@ -1396,8 +1396,24 @@ see git log / this file's "Confirmed live" section above for history.)*
 - **Day 7 end-to-end testing checklist** (README.md) — needs a real phone, a
   real Stripe test-mode checkout, and a real SMS receipt, so this has to be
   run by the user directly.
-- **`OPERATOR_EMAIL` secret** still unset — payment-failure email alerts
-  remain a harmless no-op until it's set.
+- **`OPERATOR_EMAIL` secret** still unset — payment-failure email alerts,
+  the new-subscriber check-in, and the new support-request/enterprise-lead
+  alerts (2026-10-05) all remain harmless no-ops until it's set.
+- **Stripe Customer Portal needs "allow plan switching" turned on**
+  (2026-10-05) — Pricing.jsx's FAQ promises "switch tiers anytime from
+  billing settings," and the webhook side of this is now fully built
+  (`customer.subscription.updated` syncs `subscription_tier` to match —
+  see stripe-webhook/logic.ts's `planSubscriptionUpdated`), but the
+  Stripe Customer Portal itself only allows a customer to actually change
+  plans if that's turned on in its configuration, which defaults to off
+  and isn't something I can set from code. In the Stripe Dashboard:
+  Settings → Billing → Customer portal → under "Subscriptions," enable
+  "Allow customers to switch plans" and add the 3 Starter/Standard/Pro
+  prices as the allowed switch targets. Also remember to add
+  `customer.subscription.updated` to the webhook endpoint's event list —
+  Stripe doesn't backfill new event types onto an already-registered
+  endpoint automatically, same as the 3 dispute/refund events added
+  2026-10-03.
 - **Pasted Supabase PATs needing rotation** — at least 4 separate tokens have
   been pasted into chat across past rounds (`sbp_9b...`, `sbp_f236...`,
   `sbp_a664...`, `sbp_fc60f643...`; none used for anything beyond what was
