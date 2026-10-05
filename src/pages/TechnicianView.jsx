@@ -472,6 +472,46 @@ export default function TechnicianView() {
     return () => supabase.removeChannel(channel)
   }, [tech?.id, currentJob?.id])
 
+  // Re-derive local status/tracking from the job's actual DB status
+  // whenever currentJob (re)loads — closes a real dead end: `status` and
+  // `tracking` are plain useState(false/'idle'), reset on every mount, and
+  // nothing in loadTech()/loadJob() ever set them from the job that just
+  // loaded. iOS Safari reclaiming a backgrounded tab's memory (extremely
+  // common — a technician glancing at Maps or taking a phone call mid-job
+  // is routine) silently reloads the page, which re-fetches a job that's
+  // already `active` in the DB but resets local status to 'idle'. Without
+  // this, handleStartTracking only ever sets status to 'tracking', and
+  // handleStartJob (the only path to 'job_active', which is what shows the
+  // "Complete Job" button) requires currentJob.status === 'scheduled' — a
+  // job that's already 'active' can never reach it again. The technician
+  // would see their job card, tracking would stay off, and there would be
+  // no button anywhere to ever mark that job complete — a dead end only a
+  // dispatcher manually fixing the job's status could recover from.
+  // Harmless to also run on the normal, never-reloaded path (e.g. right
+  // after handleStartJob's own setCurrentJob/setStatus/setTracking calls):
+  // it just re-sets the same values. Intentionally does nothing for any
+  // other status ('complete' can't actually reach here — current_job_id is
+  // cleared server-side the moment a job finishes, see finishTheJob — and
+  // 'job_done' is a purely local status finishTheJob sets itself, without
+  // changing currentJob, so this effect's dependencies don't even fire then).
+  //
+  // Must not bypass the onboarding-checklist gate (see handleStartTracking)
+  // for a technician who has never completed it — same condition, so a
+  // dispatcher pre-assigning a job before a brand-new technician's very
+  // first app open still shows them the checklist once, exactly like the
+  // manual "Start Tracking" path would.
+  useEffect(() => {
+    if (!currentJob || !tech) return
+    if (onboardingTemplate && !tech.onboarding_completed_at) return
+    if (currentJob.status === 'active') {
+      setStatus('job_active')
+      setTracking(true)
+    } else if (currentJob.status === 'scheduled') {
+      setStatus('tracking')
+      setTracking(true)
+    }
+  }, [currentJob?.id, currentJob?.status, tech, onboardingTemplate])
+
   // GPS tracking loop
   useEffect(() => {
     if (!tracking || !tech) return
