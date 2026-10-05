@@ -11,6 +11,7 @@ import './SiteChrome.css'
 
 const NAV_LINKS = [
   ['/features', 'Features'],
+  ['/demo', 'Demo'],
   ['/pricing', 'Pricing'],
   ['/enterprise', 'Enterprise'],
   ['/blog', 'Blog'],
@@ -72,6 +73,7 @@ export function SiteFooter() {
       </p>
       <p style={{ margin: 0 }}>
         <Link to="/features" style={{ color: '#666', textDecoration: 'none', margin: '0 10px' }}>Features</Link>
+        <Link to="/demo" style={{ color: '#666', textDecoration: 'none', margin: '0 10px' }}>Demo</Link>
         <Link to="/pricing" style={{ color: '#666', textDecoration: 'none', margin: '0 10px' }}>Pricing</Link>
         <Link to="/enterprise" style={{ color: '#666', textDecoration: 'none', margin: '0 10px' }}>Enterprise</Link>
         <Link to="/blog" style={{ color: '#666', textDecoration: 'none', margin: '0 10px' }}>Blog</Link>
