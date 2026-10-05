@@ -27,13 +27,25 @@ export default function ContactSupportModal({ businessId, defaultName = '', defa
     if (sending) return
     setSending(true)
     setError(null)
-    const { data: inserted, error: insertErr } = await supabase.from('support_requests').insert({
+    // id generated client-side (crypto.randomUUID()) rather than via
+    // .select() on the insert — this table's SELECT policy is admin_users-
+    // only (supabase_schema_delta_rls_scoping_v1.sql), and NONE of this
+    // modal's 3 real callers (an anonymous /contact visitor, a dispatcher,
+    // or a technician) are admin_users. Postgres RLS filters
+    // INSERT...RETURNING through SELECT policies too, so .select().single()
+    // here would throw for every single caller even though the insert
+    // itself succeeded — turning a genuine support request into a false
+    // "couldn't send" error every time. Generating the id ourselves needs
+    // no read-back at all.
+    const newId = crypto.randomUUID()
+    const { error: insertErr } = await supabase.from('support_requests').insert({
+      id: newId,
       business_id: businessId || null,
       from_name: name.trim() || null,
       from_contact: contact.trim() || null,
       message: message.trim(),
       priority: classifyPriority(message),
-    }).select('id').single()
+    })
     setSending(false)
     if (insertErr) { setError(insertErr.message); return }
     setSent(true)
@@ -41,9 +53,7 @@ export default function ContactSupportModal({ businessId, defaultName = '', defa
     // from succeeding (setSent(true) above already happened). See
     // notify-new-support-request's header comment: it re-reads this exact
     // row server-side rather than trusting anything from this call.
-    if (inserted?.id) {
-      supabase.functions.invoke('notify-new-support-request', { body: { requestId: inserted.id } }).catch(() => {})
-    }
+    supabase.functions.invoke('notify-new-support-request', { body: { requestId: newId } }).catch(() => {})
   }
 
   return (
