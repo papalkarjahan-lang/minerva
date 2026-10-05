@@ -27,16 +27,23 @@ export default function ContactSupportModal({ businessId, defaultName = '', defa
     if (sending) return
     setSending(true)
     setError(null)
-    const { error: insertErr } = await supabase.from('support_requests').insert({
+    const { data: inserted, error: insertErr } = await supabase.from('support_requests').insert({
       business_id: businessId || null,
       from_name: name.trim() || null,
       from_contact: contact.trim() || null,
       message: message.trim(),
       priority: classifyPriority(message),
-    })
+    }).select('id').single()
     setSending(false)
     if (insertErr) { setError(insertErr.message); return }
     setSent(true)
+    // Best-effort operator alert — never blocks the user's own submission
+    // from succeeding (setSent(true) above already happened). See
+    // notify-new-support-request's header comment: it re-reads this exact
+    // row server-side rather than trusting anything from this call.
+    if (inserted?.id) {
+      supabase.functions.invoke('notify-new-support-request', { body: { requestId: inserted.id } }).catch(() => {})
+    }
   }
 
   return (

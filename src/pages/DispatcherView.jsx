@@ -2109,7 +2109,7 @@ export default function DispatcherView() {
     'send-review-request-sms', 'send-outreach-batch', 'client-support-chat',
     'voice-intake-agent', 'send-email', 'draft-quote', 'draft-outreach-batch',
     'parse-prospect-text', 'xero-sync-invoice', 'generate-roi-proposal',
-    'xero-oauth-connect', 'update-addon-billing',
+    'xero-oauth-connect', 'update-addon-billing', 'notify-new-support-request',
   ]
   const agentGroupCounts = AGENT_GROUPS.map(agent => ({
     agent,
