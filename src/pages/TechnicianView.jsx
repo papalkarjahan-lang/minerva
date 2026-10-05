@@ -110,6 +110,23 @@ export default function TechnicianView() {
   const [incidentSent, setIncidentSent] = useState(false)
   const [incidentError, setIncidentError] = useState(null)
   const [error, setError] = useState(null)
+  // Separate from `error` on purpose: `error` is rendered as a full-screen
+  // takeover (see RENDER section below) which is correct for a fatal
+  // pre-tracking failure (no PIN, bad PIN, session wouldn't start) where
+  // there's nothing else to show yet. A GPS hiccup AFTER tracking has
+  // already started is a completely different situation — tech/job data
+  // is loaded and the technician may be mid-job — so routing it through
+  // the same full-screen `error` state was hiding the entire working UI
+  // (job details, mark-complete button, everything) behind a red error box
+  // on every single GPS error, including a routine one-off timeout from
+  // standing in a stairwell for a few seconds. Worse, nothing ever cleared
+  // `error` back to null on a later successful GPS fix (only the manual
+  // "Try again" button's loadTech() call did), so one transient GPS error
+  // could permanently strand a technician on that screen for the rest of
+  // their shift. This is shown as a small non-blocking badge instead (same
+  // pattern as the existing offline/pending-sync badge below), and IS
+  // cleared automatically the moment GPS succeeds again.
+  const [gpsWarning, setGpsWarning] = useState(null)
   const [retrying, setRetrying] = useState(false)
   const [lastUpdate, setLastUpdate] = useState(null)
   const [pendingCount, setPendingCount] = useState(0)
@@ -511,9 +528,13 @@ export default function TechnicianView() {
   }
 
   async function pushLocation() {
-    if (!navigator.geolocation) { setError('GPS not available on this device.'); return }
+    if (!navigator.geolocation) { setGpsWarning('GPS not available on this device.'); return }
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
+        // A successful fix clears any earlier warning immediately — GPS
+        // itself has already recovered regardless of how the DB write
+        // below goes (that has its own offline-queue handling).
+        setGpsWarning(null)
         const { latitude: lat, longitude: lng } = pos.coords
         const timestamp = Date.now()
 
@@ -567,7 +588,21 @@ export default function TechnicianView() {
           enqueuePoint(lat, lng, timestamp)
         }
       },
-      (err) => setError(`GPS error: ${err.message}`),
+      (err) => {
+        // Tailored by code instead of showing the browser's own err.message,
+        // which is developer-facing ("User denied Geolocation") and gives a
+        // field technician no idea what to actually do about it. Codes per
+        // the GeolocationPositionError spec: 1 = PERMISSION_DENIED (the
+        // common real case — needs a setting changed, not a retry, so keep
+        // retrying every tick won't fix it on its own), 2 = POSITION_UNAVAILABLE,
+        // 3 = TIMEOUT (both just "no fix yet" — very normal indoors/underground,
+        // self-heals on a later tick so this is deliberately not alarming).
+        if (err.code === 1) {
+          setGpsWarning('Location access is blocked for this page. Check your phone\'s browser settings, allow location, then reload this page.')
+        } else {
+          setGpsWarning('Waiting for a GPS signal — if you\'re indoors, try moving near a window. Tracking will resume automatically.')
+        }
+      },
       { enableHighAccuracy: true, maximumAge: 10000 }
     )
   }
@@ -1149,6 +1184,18 @@ export default function TechnicianView() {
           </div>
         )}
       </div>
+
+      {/* Non-blocking GPS warning — see gpsWarning state comment above for
+          why this is deliberately NOT the full-screen `error` treatment.
+          Reuses the burnout banner's boxed-sentence style rather than the
+          pill-shaped offline badge above, since this is a full sentence,
+          not a short status word. */}
+      {tracking && gpsWarning && (
+        <div style={styles.burnoutBannerWarn}>
+          <p style={styles.credentialBannerTitle}>⚠️ GPS signal</p>
+          <p style={styles.credentialBannerLine}>{gpsWarning}</p>
+        </div>
+      )}
 
       {business?.subscription_tier === 'cancelled' && (
         <div style={styles.credentialBanner}>
