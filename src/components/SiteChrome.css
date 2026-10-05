@@ -35,3 +35,18 @@
     z-index: 50;
   }
 }
+
+/* Found live at 320px (an older/budget phone, not just a modern iPhone):
+   the logo + "Start free trial" button + hamburger icon need roughly
+   290px together, but 40px of padding on each side only leaves 240px of
+   the 320px viewport for them — 320-640px's hamburger collapse alone
+   isn't enough at the narrow end of that range, since the logo and CTA
+   button are still both full-size there. Narrower breakpoint, padding
+   only (not a layout change), so this leaves the 375px+ phones this file
+   was originally built for untouched. */
+@media (max-width: 360px) {
+  .site-nav {
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+  }
+}

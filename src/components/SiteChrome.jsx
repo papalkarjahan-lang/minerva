@@ -38,7 +38,7 @@ export function SiteNav() {
   const [menuOpen, setMenuOpen] = useState(false)
   const closeMenu = () => setMenuOpen(false)
   return (
-    <nav style={{ padding: '20px 40px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #1e293b', position: 'relative' }}>
+    <nav className="site-nav" style={{ padding: '20px 40px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #1e293b', position: 'relative' }}>
       <Link to="/" style={{ fontSize: 22, fontWeight: 'bold', color: '#fff', letterSpacing: 3, textDecoration: 'none' }}>MINERVA</Link>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <div className={`site-nav-links${menuOpen ? ' site-nav-links--open' : ''}`} style={{ display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
