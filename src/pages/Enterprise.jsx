@@ -141,11 +141,17 @@ export default function Enterprise() {
               style={{ width: '100%', boxSizing: 'border-box', background: '#050811', border: '1px solid #1e293b', borderRadius: 8, color: '#fff', padding: '12px 14px', fontSize: 14, marginBottom: 12 }} />
             <input aria-label="Phone (optional)" placeholder="Phone (optional)" value={contactPhone} onChange={e => setContactPhone(e.target.value)} className="lp-input"
               style={{ width: '100%', boxSizing: 'border-box', background: '#050811', border: '1px solid #1e293b', borderRadius: 8, color: '#fff', padding: '12px 14px', fontSize: 14, marginBottom: 12 }} />
+            {/* minWidth: 0 on both — found live at 375px: a flex item
+                defaults to min-width:auto, and <input> has its own
+                non-zero intrinsic min width in the browser's own default
+                form-control sizing, so flex:1 alone doesn't let either
+                input shrink to its fair share of the row. Without this,
+                the pair overflowed the viewport by 39px. */}
             <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
               <input aria-label="Fleet size (number of technicians)" placeholder="Fleet size (# technicians)" type="number" min="1" value={fleetSize} onChange={e => setFleetSize(e.target.value)} className="lp-input"
-                style={{ flex: 1, boxSizing: 'border-box', background: '#050811', border: '1px solid #1e293b', borderRadius: 8, color: '#fff', padding: '12px 14px', fontSize: 14 }} />
+                style={{ flex: 1, minWidth: 0, boxSizing: 'border-box', background: '#050811', border: '1px solid #1e293b', borderRadius: 8, color: '#fff', padding: '12px 14px', fontSize: 14 }} />
               <input aria-label="Region" placeholder="Region" value={region} onChange={e => setRegion(e.target.value)} className="lp-input"
-                style={{ flex: 1, boxSizing: 'border-box', background: '#050811', border: '1px solid #1e293b', borderRadius: 8, color: '#fff', padding: '12px 14px', fontSize: 14 }} />
+                style={{ flex: 1, minWidth: 0, boxSizing: 'border-box', background: '#050811', border: '1px solid #1e293b', borderRadius: 8, color: '#fff', padding: '12px 14px', fontSize: 14 }} />
             </div>
             <textarea aria-label="Anything else we should know? (optional)" placeholder="Anything else we should know? (optional)" rows={3} value={notes} onChange={e => setNotes(e.target.value)} className="lp-input"
               style={{ width: '100%', boxSizing: 'border-box', background: '#050811', border: '1px solid #1e293b', borderRadius: 8, color: '#fff', padding: '12px 14px', fontSize: 14, marginBottom: 14, fontFamily: 'inherit', resize: 'vertical' }} />
