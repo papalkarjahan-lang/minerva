@@ -71,18 +71,31 @@ export function SiteFooter() {
       <p style={{ margin: '0 0 10px' }}>
         Minerva | An Antikythera / Krios AI product{CONTACT_PARTS.length > 0 ? ` | ${CONTACT_PARTS.join(' | ')}` : ''}
       </p>
-      <p style={{ margin: 0 }}>
-        <Link to="/features" style={{ color: '#666', textDecoration: 'none', margin: '0 10px' }}>Features</Link>
-        <Link to="/demo" style={{ color: '#666', textDecoration: 'none', margin: '0 10px' }}>Demo</Link>
-        <Link to="/pricing" style={{ color: '#666', textDecoration: 'none', margin: '0 10px' }}>Pricing</Link>
-        <Link to="/enterprise" style={{ color: '#666', textDecoration: 'none', margin: '0 10px' }}>Enterprise</Link>
-        <Link to="/blog" style={{ color: '#666', textDecoration: 'none', margin: '0 10px' }}>Blog</Link>
-        <Link to="/about" style={{ color: '#666', textDecoration: 'none', margin: '0 10px' }}>About</Link>
-        <Link to="/contact" style={{ color: '#666', textDecoration: 'none', margin: '0 10px' }}>Contact</Link>
-        <Link to="/terms" style={{ color: '#666', textDecoration: 'none', margin: '0 10px' }}>Terms of Service</Link>
-        <Link to="/privacy" style={{ color: '#666', textDecoration: 'none', margin: '0 10px' }}>Privacy Policy</Link>
-        <Link to="/refund-policy" style={{ color: '#666', textDecoration: 'none', margin: '0 10px' }}>Refund Policy</Link>
-      </p>
+      {/* flex+wrap, not a plain <p> of inline links — found live at 375px:
+          10 adjacent <Link> elements written on separate JSX lines get NO
+          whitespace/text node between them in the rendered DOM (JSX strips
+          source whitespace between sibling elements), so there was no
+          break opportunity between any two links for the browser to wrap
+          on — only the margin created visual gap, which doesn't let text
+          flow wrap. The whole row rendered as one unbreakable run that
+          overflowed the viewport, with "Terms" itself disappearing off-
+          screen (the only break the browser COULD find was the space
+          inside "Terms of Service" itself, forcing "Terms" onto the
+          overflowing line and only "of Service" down to the next one).
+          flex-wrap wraps by item, not by incidental text-flow gaps, so
+          this is correct regardless of JSX whitespace quirks. */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '4px 20px' }}>
+        <Link to="/features" style={{ color: '#666', textDecoration: 'none' }}>Features</Link>
+        <Link to="/demo" style={{ color: '#666', textDecoration: 'none' }}>Demo</Link>
+        <Link to="/pricing" style={{ color: '#666', textDecoration: 'none' }}>Pricing</Link>
+        <Link to="/enterprise" style={{ color: '#666', textDecoration: 'none' }}>Enterprise</Link>
+        <Link to="/blog" style={{ color: '#666', textDecoration: 'none' }}>Blog</Link>
+        <Link to="/about" style={{ color: '#666', textDecoration: 'none' }}>About</Link>
+        <Link to="/contact" style={{ color: '#666', textDecoration: 'none' }}>Contact</Link>
+        <Link to="/terms" style={{ color: '#666', textDecoration: 'none' }}>Terms of Service</Link>
+        <Link to="/privacy" style={{ color: '#666', textDecoration: 'none' }}>Privacy Policy</Link>
+        <Link to="/refund-policy" style={{ color: '#666', textDecoration: 'none' }}>Refund Policy</Link>
+      </div>
     </footer>
   )
 }

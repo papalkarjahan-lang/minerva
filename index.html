@@ -62,6 +62,17 @@
     <style>
       * { box-sizing: border-box; margin: 0; padding: 0; }
       body { font-family: Arial, sans-serif; }
+      /* Without this, mobile Safari/Chrome auto-boost small text blocks to
+         a "readable" size regardless of the declared font-size or the
+         width=device-width viewport meta above — found live at 375px:
+         SiteFooter's 13px link row rendered at roughly 4x that size,
+         overflowing the viewport by 140px with no visible scrollbar (the
+         user just sees clipped content, not a scrollbar hint that more
+         exists). Pins every element's rendered text to exactly its
+         declared size on every device, matching the one Chrome actually
+         shows in this desktop-sized dev environment, which is why this
+         never surfaced until testing at an actual phone width. */
+      html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
     </style>
   </head>
   <body>
