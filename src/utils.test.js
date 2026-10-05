@@ -385,6 +385,23 @@ describe('describeAuditEntry', () => {
       .toBe('Updated business settings')
   })
 
+  it('describes the industrial-sector audit actions', () => {
+    expect(describeAuditEntry({ action: 'lead.added', details: { company_name: 'Acme Industrial' } }))
+      .toBe('Added lead Acme Industrial')
+    expect(describeAuditEntry({ action: 'site.added', details: { name: 'North Yard' } }))
+      .toBe('Added site North Yard')
+    expect(describeAuditEntry({ action: 'asset.added', details: { name: 'Forklift 3' } }))
+      .toBe('Added asset Forklift 3')
+    expect(describeAuditEntry({ action: 'item.added', details: { name: 'Hydraulic oil' } }))
+      .toBe('Added inventory item Hydraulic oil')
+    expect(describeAuditEntry({ action: 'incident.reported', details: { severity: 'hazard' } }))
+      .toBe('Reported safety incident (hazard)')
+    expect(describeAuditEntry({ action: 'incident.reported', details: {} }))
+      .toBe('Reported safety incident')
+    expect(describeAuditEntry({ action: 'ingestion_key.regenerated', details: {} }))
+      .toBe('Regenerated telemetry ingestion key')
+  })
+
   it('falls back to the raw action string for an unknown action', () => {
     expect(describeAuditEntry({ action: 'something.unlisted', details: {} }))
       .toBe('something.unlisted')

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
-import { timeAgo } from '../utils'
+import { timeAgo, describeAuditEntry } from '../utils'
 import LoadingScreen from '../components/LoadingScreen'
 import ContactSupportModal from '../components/ContactSupportModal'
 import { MAX_ADDONS, isTrialing, trialDaysLeft, hasUsedTrial, startTrialPatch } from '../maxAddons'
@@ -53,6 +53,13 @@ export default function IndustrialDispatcherView() {
   const [showNotificationSettings, setShowNotificationSettings] = useState(false)
   const [slackWebhookInput, setSlackWebhookInput] = useState('')
   const [savingNotificationSettings, setSavingNotificationSettings] = useState(false)
+  // Records (audit_log) — DispatcherView has had this a long time; this
+  // view had no equivalent at all, so there was no "who added this lead/
+  // site/asset" trail for a multi-person team sharing one dashboard login.
+  // Same table, same RLS (owner-only), same lazy-load-on-first-open
+  // pattern as DispatcherView's own Records tab.
+  const [auditLog, setAuditLog] = useState([])
+  const [auditLogLoaded, setAuditLogLoaded] = useState(false)
   // Shared across all 5 "Add ..." modals below (only one is ever open at a
   // time) — previously these forms had no in-flight state at all, so a
   // double-click or slow connection could fire the insert twice.
@@ -68,6 +75,51 @@ export default function IndustrialDispatcherView() {
   const [addonBusy, setAddonBusy] = useState(null)
 
   useEffect(() => { loadAll() }, [businessId])
+
+  // Records tab lazy-load — same pattern as DispatcherView's own.
+  useEffect(() => {
+    if (tab === 'records' && !auditLogLoaded) {
+      loadAuditLog()
+    }
+  }, [tab])
+
+  async function loadAuditLog() {
+    setAuditLogLoaded(true)
+    const { data, error } = await supabase
+      .from('audit_log')
+      .select('*')
+      .eq('business_id', businessId)
+      .order('created_at', { ascending: false })
+      .limit(200)
+    if (error) { console.error('audit_log fetch failed', error); return }
+    setAuditLog(data || [])
+  }
+
+  // Fire-and-forget insert, same shape as DispatcherView's logAudit —
+  // describeAuditEntry (utils.js) renders these rows back out, shared by
+  // both consoles since the table/schema is identical either way.
+  function logAudit(action, { entityType, entityId, details } = {}) {
+    supabase.from('audit_log').insert({
+      business_id: businessId,
+      actor_type: 'owner',
+      actor_name: business?.name || null,
+      action,
+      entity_type: entityType || null,
+      entity_id: entityId || null,
+      details: details || {},
+    }).then(({ error }) => { if (error) console.error('audit log insert failed', error) })
+    setAuditLog(prev => [{
+      id: `optimistic-${Date.now()}`,
+      business_id: businessId,
+      actor_type: 'owner',
+      actor_name: business?.name || null,
+      action,
+      entity_type: entityType || null,
+      entity_id: entityId || null,
+      details: details || {},
+      created_at: new Date().toISOString(),
+    }, ...prev])
+  }
 
   async function loadAll() {
     const { data: biz, error: bizError } = await supabase.from('businesses').select('*').eq('id', businessId).single()
@@ -227,7 +279,7 @@ export default function IndustrialDispatcherView() {
       .select()
       .single()
     if (error) alert(`Couldn't regenerate the key: ${error.message}`)
-    if (data) setBusiness(data)
+    if (data) { setBusiness(data); logAudit('ingestion_key.regenerated', { entityType: 'business', entityId: businessId }) }
     setRegeneratingKey(false)
   }
 
@@ -259,7 +311,7 @@ export default function IndustrialDispatcherView() {
       .single()
     setSavingNotificationSettings(false)
     if (error) { alert(`Couldn't save: ${error.message}`); return }
-    if (data) setBusiness(data)
+    if (data) { setBusiness(data); logAudit('business.settings_updated', { entityType: 'business', entityId: businessId }) }
     setShowNotificationSettings(false)
   }
 
@@ -268,7 +320,7 @@ export default function IndustrialDispatcherView() {
     if (formSubmitting) return
     setFormSubmitting(true)
     const f = new FormData(e.target)
-    const { error } = await supabase.from('industrial_leads').insert({
+    const { data, error } = await supabase.from('industrial_leads').insert({
       business_id: businessId,
       company_name: f.get('company_name'),
       source: f.get('source') || 'manual',
@@ -276,9 +328,10 @@ export default function IndustrialDispatcherView() {
       equipment_need: f.get('equipment_need'),
       estimated_size: f.get('estimated_size'),
       status: 'new',
-    })
+    }).select().single()
     setFormSubmitting(false)
     if (error) { alert(`Couldn't add lead: ${error.message}`); return }
+    if (data) logAudit('lead.added', { entityType: 'industrial_lead', entityId: data.id, details: { company_name: data.company_name } })
     setShowAddLead(false)
     loadAll()
   }
@@ -288,15 +341,16 @@ export default function IndustrialDispatcherView() {
     if (formSubmitting) return
     setFormSubmitting(true)
     const f = new FormData(e.target)
-    const { error } = await supabase.from('site_projects').insert({
+    const { data, error } = await supabase.from('site_projects').insert({
       business_id: businessId,
       industrial_lead_id: f.get('industrial_lead_id') || null,
       name: f.get('name'),
       scope_of_work: f.get('scope_of_work'),
       status: 'active',
-    })
+    }).select().single()
     setFormSubmitting(false)
     if (error) { alert(`Couldn't add site: ${error.message}`); return }
+    if (data) logAudit('site.added', { entityType: 'site_project', entityId: data.id, details: { name: data.name } })
     setShowAddSite(false)
     loadAll()
   }
@@ -306,7 +360,7 @@ export default function IndustrialDispatcherView() {
     if (formSubmitting) return
     setFormSubmitting(true)
     const f = new FormData(e.target)
-    const { error } = await supabase.from('industrial_assets').insert({
+    const { data, error } = await supabase.from('industrial_assets').insert({
       business_id: businessId,
       name: f.get('name'),
       asset_type: f.get('asset_type'),
@@ -318,9 +372,10 @@ export default function IndustrialDispatcherView() {
       // 'available' (not a value in that enum at all), so every asset
       // created here was silently invisible to all three cron jobs.
       status: 'active',
-    })
+    }).select().single()
     setFormSubmitting(false)
     if (error) { alert(`Couldn't add asset: ${error.message}`); return }
+    if (data) logAudit('asset.added', { entityType: 'industrial_asset', entityId: data.id, details: { name: data.name } })
     setShowAddAsset(false)
     loadAll()
   }
@@ -330,15 +385,16 @@ export default function IndustrialDispatcherView() {
     if (formSubmitting) return
     setFormSubmitting(true)
     const f = new FormData(e.target)
-    const { error } = await supabase.from('consumables_items').insert({
+    const { data, error } = await supabase.from('consumables_items').insert({
       business_id: businessId,
       name: f.get('name'),
       unit: f.get('unit') || 'unit',
       quantity_on_hand: Number(f.get('quantity_on_hand')) || 0,
       reorder_threshold: Number(f.get('reorder_threshold')) || 0,
-    })
+    }).select().single()
     setFormSubmitting(false)
     if (error) { alert(`Couldn't add item: ${error.message}`); return }
+    if (data) logAudit('item.added', { entityType: 'consumables_item', entityId: data.id, details: { name: data.name } })
     setShowAddItem(false)
     loadAll()
   }
@@ -474,14 +530,15 @@ export default function IndustrialDispatcherView() {
     if (formSubmitting) return
     setFormSubmitting(true)
     const f = new FormData(e.target)
-    const { error } = await supabase.from('safety_incidents').insert({
+    const { data, error } = await supabase.from('safety_incidents').insert({
       business_id: businessId,
       site_id: f.get('site_id') || null,
       severity: f.get('severity') || 'warning',
       description: f.get('description'),
-    })
+    }).select().single()
     setFormSubmitting(false)
     if (error) { alert(`Couldn't log incident: ${error.message}`); return }
+    if (data) logAudit('incident.reported', { entityType: 'safety_incident', entityId: data.id, details: { severity: data.severity } })
     setShowAddIncident(false)
     loadAll()
   }
@@ -577,6 +634,7 @@ export default function IndustrialDispatcherView() {
             ['inventory', 'Quartermaster', consumables.length],
             ['safety', 'The Warden', openIncidents.length],
             ['verification', 'The Closer', packages.length],
+            ['records', 'Records', 0],
           ].map(([id, label, count]) => (
             <button key={id} onClick={() => setTab(id)} style={styles.tabBtn(tab === id)}>
               {label} {count > 0 && <span style={styles.tabCount}>{count}</span>}
@@ -875,6 +933,24 @@ export default function IndustrialDispatcherView() {
               <div key={p.id} style={styles.row}>
                 <p style={styles.rowDesc}>{p.summary}</p>
                 <span style={styles.statusBadge(p.signed_off_at ? 'signed off' : 'pending sign-off')}>{p.signed_off_at ? 'signed off' : 'pending sign-off'}</span>
+              </div>
+            ))}
+          </>
+        )}
+
+        {tab === 'records' && (
+          <>
+            <p style={{ color: '#888', fontSize: 12, marginBottom: 10 }}>
+              A record of key actions taken in this dashboard — leads, sites, assets, and
+              inventory added, safety incidents reported, settings changes, and ingestion
+              key rotations. Visible only to you (the account owner). Most recent 200 entries.
+            </p>
+            <p style={styles.sectionLabel}>Recorded actions</p>
+            {auditLog.length === 0 && <p style={styles.emptyText}>No recorded actions yet</p>}
+            {auditLog.map(entry => (
+              <div key={entry.id} style={styles.row}>
+                <p style={styles.rowDesc}>{describeAuditEntry(entry)}</p>
+                <span style={{ color: '#555', fontSize: 11 }}>{new Date(entry.created_at).toLocaleString('en-AU')}</span>
               </div>
             ))}
           </>

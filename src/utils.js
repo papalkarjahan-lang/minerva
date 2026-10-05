@@ -383,6 +383,18 @@ export function describeAuditEntry(entry) {
       return `Removed workflow "${d.name || 'Untitled'}"`
     case 'business.settings_updated':
       return 'Updated business settings'
+    case 'lead.added':
+      return `Added lead ${d.company_name || 'Unknown'}`
+    case 'site.added':
+      return `Added site ${d.name || 'Unknown'}`
+    case 'asset.added':
+      return `Added asset ${d.name || 'Unknown'}`
+    case 'item.added':
+      return `Added inventory item ${d.name || 'Unknown'}`
+    case 'incident.reported':
+      return `Reported safety incident${d.severity ? ` (${d.severity})` : ''}`
+    case 'ingestion_key.regenerated':
+      return 'Regenerated telemetry ingestion key'
     default:
       return entry.action
   }
