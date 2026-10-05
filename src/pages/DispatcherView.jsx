@@ -2094,7 +2094,7 @@ export default function DispatcherView() {
     'sequence-handoffs', 'verify-industrial-compliance',
     'check-credential-expiry', 'daily-digest', 'detect-idle-assets',
     'estimate-job-carbon', 'flag-abandoned-signups', 'recover-abandoned-signup',
-    'new-subscriber-checkin', 'followup-outreach',
+    'new-subscriber-checkin', 'notify-rebooking-request', 'followup-outreach',
     'forecast-demand', 'predict-asset-maintenance', 'reconcile-technician-state',
     'run-custom-workflows', 'verify-checklist-photos',
     'auto-assign-technician', 'launch-ad-campaign', 'send-growth-message',

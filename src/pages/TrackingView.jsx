@@ -58,7 +58,15 @@ export default function TrackingView() {
     if (rebookSubmitting) return
     setRebookSubmitting(true)
     setRebookError(null)
+    // id generated client-side so notify-rebooking-request can be called
+    // right after without a .select() read-back on the insert (see
+    // notify-new-support-request's regression/fix for why that pattern is
+    // worth avoiding even on a table, like this one, with an open SELECT
+    // policy — keeps every insert-then-notify call site in this codebase
+    // using the same safe shape regardless of each table's own RLS).
+    const newLeadId = crypto.randomUUID()
     const { error } = await supabase.from('leads').insert({
+      id: newLeadId,
       business_id: job.business_id,
       client_name: job.client_name,
       client_phone: job.client_phone,
@@ -72,6 +80,12 @@ export default function TrackingView() {
     setRebookSubmitting(false)
     if (error) { setRebookError("Couldn't send that request — please try again, or call them directly."); return }
     setRebookDone(true)
+    // Best-effort — DispatcherView's realtime leads subscription already
+    // shows this instantly if the dispatcher's tab happens to be open, but
+    // a past client asking to be booked again shouldn't depend on that;
+    // see notify-rebooking-request's header comment for why every other
+    // leads-creating path already notifies and this one didn't.
+    supabase.functions.invoke('notify-rebooking-request', { body: { leadId: newLeadId } }).catch(() => {})
   }
 
   async function viewHistory() {
