@@ -12,13 +12,18 @@
 -- calls.
 -- ============================================================
 
--- Daily at 5:30am UTC (offset 30min from flag-abandoned-signups, its
--- same-domain sibling, to avoid stacking): email a business that started
--- signing up but never finished Stripe checkout, well before
--- flag-abandoned-signups writes it off as dead at the 48h mark.
+-- Daily at 7:30am UTC: email a business that started signing up but never
+-- finished Stripe checkout, well before flag-abandoned-signups writes it
+-- off as dead at the 48h mark. (Originally scheduled for 5:30am as an
+-- "offset from flag-abandoned-signups" without checking every OTHER
+-- cron file first — 5:30 turned out to already be reconcile-technician-
+-- state's own slot. Fixed before this was ever run; verified against
+-- every cron.schedule() call in every *_cron.sql file in this repo, not
+-- just the one sibling this function happens to share a table/comment
+-- lineage with.)
 select cron.schedule(
   'recover-abandoned-signup-daily',
-  '30 5 * * *',
+  '30 7 * * *',
   $$
   select net.http_post(
     url := 'https://xiikytqxevivrupkljwc.supabase.co/functions/v1/recover-abandoned-signup',

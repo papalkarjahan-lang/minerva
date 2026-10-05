@@ -12,13 +12,18 @@
 -- calls.
 -- ============================================================
 
--- Daily at 6:00am UTC (a new, previously-unused slot — 5:00 is
--- flag-abandoned-signups, 5:30 is recover-abandoned-signup, 9:00/9:30 are
--- chase-unpaid-invoices/notify-addon-trial-ending): email a business
--- that's been a paying customer for 14-21 days to ask how it's going.
+-- Daily at 7:00am UTC: email a business that's been a paying customer for
+-- 14-21 days to ask how it's going. (Originally scheduled for 6:00am on
+-- the claim that it was "a new, previously-unused slot" — it wasn't:
+-- both supabase_schema_delta_minerva_max_cron.sql and
+-- supabase_schema_delta_outreach_engine_cron.sql already use 0 6 * * *.
+-- That claim was checked against only the 3 other cron files this
+-- function's own comments happened to reference, not every *_cron.sql
+-- file in the repo. Fixed before this was ever run, by actually grepping
+-- every cron.schedule() call across the whole project this time.)
 select cron.schedule(
   'new-subscriber-checkin-daily',
-  '0 6 * * *',
+  '0 7 * * *',
   $$
   select net.http_post(
     url := 'https://xiikytqxevivrupkljwc.supabase.co/functions/v1/new-subscriber-checkin',
