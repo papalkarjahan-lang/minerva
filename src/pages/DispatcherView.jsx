@@ -2110,6 +2110,7 @@ export default function DispatcherView() {
     'voice-intake-agent', 'send-email', 'draft-quote', 'draft-outreach-batch',
     'parse-prospect-text', 'xero-sync-invoice', 'generate-roi-proposal',
     'xero-oauth-connect', 'update-addon-billing', 'notify-new-support-request',
+    'notify-new-enterprise-lead',
   ]
   const agentGroupCounts = AGENT_GROUPS.map(agent => ({
     agent,

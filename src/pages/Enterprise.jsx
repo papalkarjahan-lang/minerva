@@ -62,7 +62,17 @@ export default function Enterprise() {
     if (sending) return
     setSending(true)
     setError(null)
+    // id generated client-side (crypto.randomUUID(), same approach already
+    // used for businesses.ingestion_key) rather than via .select() on the
+    // insert — this table's SELECT policy is admin-only (see
+    // supabase_schema_delta_enterprise_inbound.sql), and Postgres RLS
+    // filters INSERT...RETURNING through SELECT policies too, so an
+    // anon .select().single() here would throw even though the insert
+    // itself succeeded — turning a genuine submission into a false error
+    // for the visitor. Generating the id ourselves needs no read-back at all.
+    const newId = crypto.randomUUID()
     const { error: insertErr } = await supabase.from('big_account_targets').insert({
+      id: newId,
       company_name: companyName.trim(),
       company_type: companyType,
       contact_name: contactName.trim() || null,
@@ -75,6 +85,11 @@ export default function Enterprise() {
     setSending(false)
     if (insertErr) { setError(insertErr.message); return }
     setSent(true)
+    // Best-effort operator alert — never blocks this submission from
+    // succeeding (setSent(true) above already happened). See
+    // notify-new-enterprise-lead's header comment: it re-reads this exact
+    // row server-side rather than trusting anything from this call.
+    supabase.functions.invoke('notify-new-enterprise-lead', { body: { targetId: newId } }).catch(() => {})
   }
 
   return (
