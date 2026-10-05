@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 import { timeAgo } from '../utils'
 import LoadingScreen from '../components/LoadingScreen'
+import ContactSupportModal from '../components/ContactSupportModal'
 import { MAX_ADDONS, isTrialing, trialDaysLeft, hasUsedTrial, startTrialPatch } from '../maxAddons'
 import { isTrialExpired, SIGNUP_TRIAL_DAYS } from '../businessAccess'
 
@@ -31,6 +32,14 @@ export default function IndustrialDispatcherView() {
   const [showAddIncident, setShowAddIncident] = useState(false)
   const [busyId, setBusyId] = useState(null)
   const [businessLoadError, setBusinessLoadError] = useState(null)
+  // Billing-portal/support — DispatcherView has had both since early on;
+  // this view never got either, so a business whose payment failed, or
+  // who wants to cancel, or who just needs help, had the warning banners
+  // above telling them to "update your card" / "contact us" with no
+  // button anywhere that actually let them do either.
+  const [showSupportModal, setShowSupportModal] = useState(false)
+  const [billingPortalLoading, setBillingPortalLoading] = useState(false)
+  const [billingPortalError, setBillingPortalError] = useState(null)
   // Shared across all 5 "Add ..." modals below (only one is ever open at a
   // time) — previously these forms had no in-flight state at all, so a
   // double-click or slow connection could fire the insert twice.
@@ -206,6 +215,17 @@ export default function IndustrialDispatcherView() {
     if (error) alert(`Couldn't regenerate the key: ${error.message}`)
     if (data) setBusiness(data)
     setRegeneratingKey(false)
+  }
+
+  // Mirrors DispatcherView's openBillingPortal exactly — see state comment
+  // above for why this was missing here.
+  async function openBillingPortal() {
+    setBillingPortalLoading(true)
+    setBillingPortalError(null)
+    const { data, error } = await supabase.functions.invoke('create-billing-portal-session', { body: { businessId } })
+    setBillingPortalLoading(false)
+    if (error || !data?.portalUrl) { setBillingPortalError(data?.error || error?.message || 'Could not open billing portal.'); return }
+    window.location.href = data.portalUrl
   }
 
   async function addLead(e) {
@@ -500,6 +520,15 @@ export default function IndustrialDispatcherView() {
               </button>
             </div>
           )}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+            <button type="button" disabled={billingPortalLoading} onClick={openBillingPortal} style={styles.smallBtn}>
+              {billingPortalLoading ? 'Opening billing...' : '💳 Manage billing / Cancel'}
+            </button>
+            <button type="button" onClick={() => setShowSupportModal(true)} style={styles.smallBtn}>
+              💬 Contact support
+            </button>
+          </div>
+          {billingPortalError && <p style={{ color: '#e07a7a', fontSize: 11, margin: '0 0 12px' }}>{billingPortalError}</p>}
         </div>
         <div style={styles.tabRow}>
           {[
@@ -899,6 +928,14 @@ export default function IndustrialDispatcherView() {
             </div>
           </form>
         </div>
+      )}
+
+      {showSupportModal && (
+        <ContactSupportModal
+          businessId={business?.id}
+          defaultContact={business?.contact_email}
+          onClose={() => setShowSupportModal(false)}
+        />
       )}
     </div>
   )
