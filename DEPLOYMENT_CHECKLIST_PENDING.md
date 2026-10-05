@@ -1399,6 +1399,13 @@ see git log / this file's "Confirmed live" section above for history.)*
 - **`OPERATOR_EMAIL` secret** still unset — payment-failure email alerts,
   the new-subscriber check-in, and the new support-request/enterprise-lead
   alerts (2026-10-05) all remain harmless no-ops until it's set.
+- **`VITE_SENTRY_DSN` still unset** — `src/sentry.js` is already built and
+  wired into `main.jsx`/`ErrorBoundary.jsx` (confirmed above), genuinely
+  free to set up, and the one piece of this whole build that answers "did
+  a real customer's browser just hit an error" without waiting for them
+  to report it. Create a free project at sentry.io, grab its DSN, set
+  `VITE_SENTRY_DSN` — no code change needed, it activates itself the
+  moment the env var exists.
 - **Stripe Customer Portal needs "allow plan switching" turned on**
   (2026-10-05) — Pricing.jsx's FAQ promises "switch tiers anytime from
   billing settings," and the webhook side of this is now fully built
