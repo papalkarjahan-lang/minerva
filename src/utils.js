@@ -189,9 +189,21 @@ export const URGENT_KEYWORDS = [
   'charged twice', 'double charged', 'refund', 'cancel my', 'cancel the',
   'emergency', 'production', 'client is', 'losing money',
 ]
+function escapeRegExp(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+// Word/phrase-boundary match, not a plain substring check — same bug class
+// already found and fixed in leadTriage.ts's keyword matching. 'down' alone
+// is the real-world risk here: "can I download my invoice history?" or
+// "heading downtown, can you reschedule?" both contain 'down' as a
+// substring but aren't a "something is down" outage report. \b only
+// anchors at the position it's placed, so multi-word phrases like
+// "cancel my" still match correctly as a whole phrase, not just one word.
+function containsKeyword(text, keyword) {
+  return new RegExp(`\\b${escapeRegExp(keyword)}\\b`, 'i').test(text)
+}
 export function classifyPriority(message) {
-  const lower = message.toLowerCase()
-  return URGENT_KEYWORDS.some(kw => lower.includes(kw)) ? 'urgent' : 'normal'
+  return URGENT_KEYWORDS.some(kw => containsKeyword(message, kw)) ? 'urgent' : 'normal'
 }
 
 // ============================================================

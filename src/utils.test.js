@@ -161,6 +161,15 @@ describe('classifyPriority', () => {
     expect(classifyPriority('THIS IS AN EMERGENCY')).toBe('urgent')
     expect(classifyPriority('Can I get a REFUND please')).toBe('urgent')
   })
+
+  it('does not false-positive on a word that merely contains "down" as a substring', () => {
+    expect(classifyPriority('Can I download my invoice history?')).toBe('normal')
+    expect(classifyPriority("I'm heading downtown, can we reschedule?")).toBe('normal')
+  })
+
+  it('still matches "down" as its own whole word', () => {
+    expect(classifyPriority('Everything is down, I cannot dispatch any jobs')).toBe('urgent')
+  })
 })
 
 describe('isMapboxTokenConfigured', () => {
