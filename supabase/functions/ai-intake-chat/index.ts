@@ -254,16 +254,17 @@ if not yet captured}`
       // business — an unmatched/garbled code the visitor mistyped is just
       // dropped rather than stored as unverified data.
       let referredByCode: string | null = null
+      let referredByClientName: string | null = null
       const rawCode = (parsed.lead.referral_code || '').toString().trim().toUpperCase()
       if (rawCode) {
         const { data: matchedInvoice } = await supabase
           .from('invoices')
-          .select('id')
+          .select('id, client_name')
           .eq('business_id', businessId)
           .eq('referral_code', rawCode)
           .limit(1)
           .maybeSingle()
-        if (matchedInvoice) referredByCode = rawCode
+        if (matchedInvoice) { referredByCode = rawCode; referredByClientName = matchedInvoice.client_name || null }
       }
 
       const fullTranscript = [...messages, { role: 'assistant', content: parsed.reply }]
@@ -319,7 +320,8 @@ if not yet captured}`
 
         const urgencyTag = urgency === 'emergency' ? '🚨 EMERGENCY' : 'New lead'
         const repeatTag = isRepeatClient ? ' (returning client)' : ''
-        const smsBody = `${urgencyTag} · score ${score}${repeatTag}: ${name}, ${phone}, ${suburb}. ${job_description}`.slice(0, 320)
+        const referralTag = referredByCode ? ` [referred by ${referredByClientName || 'a past client'}'s code ${referredByCode}]` : ''
+        const smsBody = `${urgencyTag} · score ${score}${repeatTag}${referralTag}: ${name}, ${phone}, ${suburb}. ${job_description}`.slice(0, 320)
 
         await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json`, {
           method: 'POST',
@@ -333,12 +335,13 @@ if not yet captured}`
 
       const urgencyTag2 = urgency === 'emergency' ? '🚨 EMERGENCY' : 'New lead'
       const repeatTag2 = isRepeatClient ? ' (returning client)' : ''
+      const referralTag2 = referredByCode ? ` 🎁 _referred by ${referredByClientName || 'a past client'}'s code ${referredByCode}_` : ''
       await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
         body: JSON.stringify({
           businessId,
-          text: `${urgencyTag2} · score ${score}${repeatTag2}: *${name}*, ${phone}, ${suburb}. ${job_description}`,
+          text: `${urgencyTag2} · score ${score}${repeatTag2}: *${name}*, ${phone}, ${suburb}. ${job_description}${referralTag2}`,
         }),
       }).catch(err => console.error('ai-intake-chat: Slack notify failed', err))
     }
