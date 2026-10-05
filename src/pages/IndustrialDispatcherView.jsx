@@ -40,6 +40,19 @@ export default function IndustrialDispatcherView() {
   const [showSupportModal, setShowSupportModal] = useState(false)
   const [billingPortalLoading, setBillingPortalLoading] = useState(false)
   const [billingPortalError, setBillingPortalError] = useState(null)
+  // Notifications settings — notify-slack (the generic Slack alerter
+  // behind industrial-conductor, detect-safety-hazards,
+  // verify-industrial-compliance, monitor-asset-telemetry, and every other
+  // autonomous agent on this side) reads businesses.slack_webhook_url and
+  // silently no-ops when it's unset — "Slack is optional, everything else
+  // works without it" per that function's own header comment. True for a
+  // trade business, which can set it from DispatcherView's Settings modal
+  // — but this view never had ANY way to set it at all, meaning every one
+  // of those agents' Slack alerts has been permanently unreachable for
+  // every industrial business, with no UI path that could ever fix that.
+  const [showNotificationSettings, setShowNotificationSettings] = useState(false)
+  const [slackWebhookInput, setSlackWebhookInput] = useState('')
+  const [savingNotificationSettings, setSavingNotificationSettings] = useState(false)
   // Shared across all 5 "Add ..." modals below (only one is ever open at a
   // time) — previously these forms had no in-flight state at all, so a
   // double-click or slow connection could fire the insert twice.
@@ -63,6 +76,7 @@ export default function IndustrialDispatcherView() {
       return
     }
     setBusiness(biz)
+    setSlackWebhookInput(biz.slack_webhook_url || '')
 
     const { data: leadList } = await supabase.from('industrial_leads')
       .select('*').eq('business_id', businessId).order('created_at', { ascending: false })
@@ -226,6 +240,27 @@ export default function IndustrialDispatcherView() {
     setBillingPortalLoading(false)
     if (error || !data?.portalUrl) { setBillingPortalError(data?.error || error?.message || 'Could not open billing portal.'); return }
     window.location.href = data.portalUrl
+  }
+
+  // Only the one field that's actually load-bearing for this sector right
+  // now — see showNotificationSettings state comment above. Deliberately
+  // not porting DispatcherView's whole multi-field SettingsModal (Meta ads
+  // tokens, Google review link, weather-sensitive trade types, Twilio
+  // number): those are read by trade-specific functions with no
+  // industrial equivalent, so adding them here would be speculative UI
+  // for settings nothing on this side would ever read.
+  async function saveNotificationSettings() {
+    if (savingNotificationSettings) return
+    setSavingNotificationSettings(true)
+    const { data, error } = await supabase.from('businesses')
+      .update({ slack_webhook_url: slackWebhookInput.trim() || null })
+      .eq('id', businessId)
+      .select()
+      .single()
+    setSavingNotificationSettings(false)
+    if (error) { alert(`Couldn't save: ${error.message}`); return }
+    if (data) setBusiness(data)
+    setShowNotificationSettings(false)
   }
 
   async function addLead(e) {
@@ -526,6 +561,9 @@ export default function IndustrialDispatcherView() {
             </button>
             <button type="button" onClick={() => setShowSupportModal(true)} style={styles.smallBtn}>
               💬 Contact support
+            </button>
+            <button type="button" onClick={() => setShowNotificationSettings(true)} style={styles.smallBtn}>
+              🔔 Notification settings
             </button>
           </div>
           {billingPortalError && <p style={{ color: '#e07a7a', fontSize: 11, margin: '0 0 12px' }}>{billingPortalError}</p>}
@@ -936,6 +974,38 @@ export default function IndustrialDispatcherView() {
           defaultContact={business?.contact_email}
           onClose={() => setShowSupportModal(false)}
         />
+      )}
+
+      {showNotificationSettings && (
+        <div style={styles.modalOverlay} onClick={() => setShowNotificationSettings(false)}>
+          <div style={styles.modal} onClick={e => e.stopPropagation()}>
+            <p style={styles.modalTitle}>Notification settings</p>
+            <label htmlFor="industrial-slack-webhook" style={{ color: '#888', fontSize: 12, display: 'block', marginBottom: 6 }}>
+              Slack webhook URL (optional)
+            </label>
+            <input
+              id="industrial-slack-webhook"
+              aria-label="Slack webhook URL"
+              type="text"
+              value={slackWebhookInput}
+              onChange={e => setSlackWebhookInput(e.target.value)}
+              style={styles.input}
+              placeholder="https://hooks.slack.com/services/..."
+            />
+            <p style={{ color: '#888', fontSize: 12, margin: '6px 0 0' }}>
+              Get one from your Slack workspace: Settings &gt; Apps &gt; Incoming Webhooks.
+              Used to post lead, asset, safety, and compliance alerts from the Conductor
+              and the other autonomous agents on this side to your own channel. Treat it
+              like a secret.
+            </p>
+            <div style={styles.modalActions}>
+              <button type="button" style={styles.cancelBtn} onClick={() => setShowNotificationSettings(false)}>Cancel</button>
+              <button type="button" disabled={savingNotificationSettings} onClick={saveNotificationSettings} style={styles.submitBtn}>
+                {savingNotificationSettings ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
