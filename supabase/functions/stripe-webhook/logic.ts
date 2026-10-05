@@ -87,6 +87,63 @@ export interface SubscriptionCancelledPlan {
   update: { subscription_tier: 'cancelled'; max_addons: Record<string, never>; max_addon_stripe_items: Record<string, never> }
 }
 
+export interface SubscriptionUpdatedLike {
+  id?: string | null
+  status?: string | null
+  // Stripe's own type has price as `Price | string` depending on whether
+  // the webhook payload expanded it — webhook events for subscription
+  // updates do carry the expanded object by default, but accepting the
+  // bare-string-id shape too costs nothing and removes any dependency on
+  // that default never changing (e.g. a future Stripe API version, or a
+  // webhook endpoint reconfigured with different expansions).
+  items?: { data?: Array<{ price?: { id?: string | null } | string | null }> | null } | null
+}
+
+export interface SubscriptionUpdatedPlan {
+  subscriptionId: string
+  update: { subscription_tier: 'starter' | 'standard' | 'pro' }
+}
+
+// customer.subscription.updated — keeps businesses.subscription_tier in
+// sync with whatever Stripe actually has, for the self-serve "switch
+// tiers anytime from billing settings" plan change promised on
+// Pricing.jsx's own FAQ. Until this existed, subscription_tier was set
+// exactly once, client-side, at signup (Onboarding.jsx's own insert) and
+// never touched again by anything Stripe-driven — a plan swap made
+// through the Stripe Customer Portal would change what the business is
+// actually billed without ever updating which tier's features
+// (enforce_pro_tier_feature's triggers, server-side, on checklist_
+// templates/invoices/assets/inventory_items/technician_credentials — see
+// supabase_schema_delta_pro_tier_gating.sql/_2.sql) they can actually use.
+//
+// priceIdToTier is passed in rather than read from Deno.env here (this
+// file stays I/O-free by design, see header note) — index.ts builds it
+// once from STRIPE_PRICE_ID_STARTER/STD/PRO, the same 3 secrets
+// create-checkout-session already uses to go the other direction (tier
+// -> price). Returns null (no write) rather than guessing wrong for 2
+// cases: an unrecognized price id (a different product, a one-off
+// manually-created Stripe price, or those secrets not being set) must
+// never silently corrupt subscription_tier to some made-up value; and a
+// status that isn't 'active'/'trialing' (Stripe doesn't guarantee event
+// delivery order, and a subscription.updated carrying a stale price can
+// arrive around the same time as the subscription.deleted that's
+// actually cancelling it — only a genuinely live subscription's own
+// current price is trusted to set a real tier here, cancellation itself
+// stays exclusively planSubscriptionDeleted's job).
+export function planSubscriptionUpdated(
+  subscription: SubscriptionUpdatedLike,
+  priceIdToTier: Record<string, 'starter' | 'standard' | 'pro'>
+): SubscriptionUpdatedPlan | null {
+  if (!subscription.id) return null
+  if (subscription.status !== 'active' && subscription.status !== 'trialing') return null
+  const price = subscription.items?.data?.[0]?.price
+  const priceId = typeof price === 'string' ? price : price?.id
+  if (!priceId) return null
+  const tier = priceIdToTier[priceId]
+  if (!tier) return null
+  return { subscriptionId: subscription.id, update: { subscription_tier: tier } }
+}
+
 // customer.subscription.deleted — marks the matching business cancelled so
 // the app can show a "subscription ended" state instead of continuing
 // silently.

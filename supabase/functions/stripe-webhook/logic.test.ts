@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   planCheckoutSessionCompleted,
   planSubscriptionDeleted,
+  planSubscriptionUpdated,
   planInvoicePaymentFailed,
   planInvoicePaymentSucceeded,
   planPaymentIntentSucceeded,
@@ -80,6 +81,48 @@ describe('planSubscriptionDeleted', () => {
       subscriptionId: 'sub_1',
       update: { subscription_tier: 'cancelled', max_addons: {}, max_addon_stripe_items: {} },
     })
+  })
+})
+
+describe('planSubscriptionUpdated', () => {
+  const PRICE_MAP = { price_starter: 'starter', price_std: 'standard', price_pro: 'pro' } as const
+
+  it('returns null when the subscription has no id', () => {
+    expect(planSubscriptionUpdated({ status: 'active', items: { data: [{ price: { id: 'price_pro' } }] } }, PRICE_MAP)).toBeNull()
+  })
+
+  it('syncs subscription_tier to the plan matching the subscription current price', () => {
+    expect(planSubscriptionUpdated({ id: 'sub_1', status: 'active', items: { data: [{ price: { id: 'price_pro' } }] } }, PRICE_MAP))
+      .toEqual({ subscriptionId: 'sub_1', update: { subscription_tier: 'pro' } })
+  })
+
+  it('maps a downgrade to Starter correctly, not just upgrades', () => {
+    expect(planSubscriptionUpdated({ id: 'sub_1', status: 'active', items: { data: [{ price: { id: 'price_starter' } }] } }, PRICE_MAP))
+      .toEqual({ subscriptionId: 'sub_1', update: { subscription_tier: 'starter' } })
+  })
+
+  it('returns null for a status that is not active/trialing (never races a concurrent cancellation)', () => {
+    expect(planSubscriptionUpdated({ id: 'sub_1', status: 'canceled', items: { data: [{ price: { id: 'price_pro' } }] } }, PRICE_MAP)).toBeNull()
+    expect(planSubscriptionUpdated({ id: 'sub_1', status: 'past_due', items: { data: [{ price: { id: 'price_pro' } }] } }, PRICE_MAP)).toBeNull()
+  })
+
+  it('allows a trialing subscription (a brand-new Stripe-native trial, not yet active)', () => {
+    expect(planSubscriptionUpdated({ id: 'sub_1', status: 'trialing', items: { data: [{ price: { id: 'price_std' } }] } }, PRICE_MAP))
+      .toEqual({ subscriptionId: 'sub_1', update: { subscription_tier: 'standard' } })
+  })
+
+  it('returns null for an unrecognized price id rather than guessing', () => {
+    expect(planSubscriptionUpdated({ id: 'sub_1', status: 'active', items: { data: [{ price: { id: 'price_unknown_product' } }] } }, PRICE_MAP)).toBeNull()
+  })
+
+  it('returns null when no price id is present at all', () => {
+    expect(planSubscriptionUpdated({ id: 'sub_1', status: 'active', items: { data: [] } }, PRICE_MAP)).toBeNull()
+    expect(planSubscriptionUpdated({ id: 'sub_1', status: 'active' }, PRICE_MAP)).toBeNull()
+  })
+
+  it('also accepts price as a bare string id, not just an expanded object', () => {
+    expect(planSubscriptionUpdated({ id: 'sub_1', status: 'active', items: { data: [{ price: 'price_pro' }] } }, PRICE_MAP))
+      .toEqual({ subscriptionId: 'sub_1', update: { subscription_tier: 'pro' } })
   })
 })
 

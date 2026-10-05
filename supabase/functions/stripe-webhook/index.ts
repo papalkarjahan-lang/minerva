@@ -12,6 +12,9 @@
 // Webhooks:
 //   URL: https://YOUR_PROJECT_REF.supabase.co/functions/v1/stripe-webhook
 //   Events to send: checkout.session.completed, customer.subscription.deleted,
+//                    customer.subscription.updated (added 2026-10-05 — syncs
+//                    subscription_tier when a business switches plans via the
+//                    Customer Portal; see planSubscriptionUpdated's own comment),
 //                    invoice.payment_failed, invoice.payment_succeeded,
 //                    payment_intent.succeeded (needed only if the optional
 //                    "Pay now" invoice flow — create-invoice-payment-intent —
@@ -131,6 +134,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import {
   planCheckoutSessionCompleted,
   planSubscriptionDeleted,
+  planSubscriptionUpdated,
   planInvoicePaymentFailed,
   planInvoicePaymentSucceeded,
   planPaymentIntentSucceeded,
@@ -270,6 +274,29 @@ serve(async (req: Request) => {
             .update(plan.update)
             .eq('stripe_sub_id', plan.subscriptionId)
           if (error) throw new Error(`Failed to mark subscription cancelled: ${error.message}`)
+        }
+        break
+      }
+
+      case 'customer.subscription.updated': {
+        // Keeps subscription_tier in sync with a self-serve plan switch
+        // made through the Stripe Customer Portal — see planSubscriptionUpdated's
+        // own comment for why this was missing and why it's scoped the way it is.
+        const priceIdToTier: Record<string, 'starter' | 'standard' | 'pro'> = {}
+        const starterPrice = Deno.env.get('STRIPE_PRICE_ID_STARTER')
+        const stdPrice = Deno.env.get('STRIPE_PRICE_ID_STD')
+        const proPrice = Deno.env.get('STRIPE_PRICE_ID_PRO')
+        if (starterPrice) priceIdToTier[starterPrice] = 'starter'
+        if (stdPrice) priceIdToTier[stdPrice] = 'standard'
+        if (proPrice) priceIdToTier[proPrice] = 'pro'
+
+        const plan = planSubscriptionUpdated(event.data.object as Stripe.Subscription, priceIdToTier)
+        if (plan) {
+          const { error } = await supabaseAdmin
+            .from('businesses')
+            .update(plan.update)
+            .eq('stripe_sub_id', plan.subscriptionId)
+          if (error) throw new Error(`Failed to sync subscription_tier: ${error.message}`)
         }
         break
       }
