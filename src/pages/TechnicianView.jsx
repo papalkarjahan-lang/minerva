@@ -520,6 +520,31 @@ export default function TechnicianView() {
     return () => clearInterval(intervalRef.current)
   }, [tracking, tech, currentJob])
 
+  // Catch up immediately when the page becomes visible again, rather than
+  // waiting up to GPS_INTERVAL_MS — distinct from the online/offline
+  // handling above (network connectivity) and from the reload-resume
+  // effect above that (a full page reload). This covers a tab that was
+  // never reloaded at all, just hidden: a technician's phone screen
+  // locking, or switching to Maps/Phone/Messages mid-job, is routine
+  // several times an hour, and browsers throttle or fully suspend a
+  // backgrounded tab's timers to save battery — the existing
+  // setInterval(pushLocation, ...) above can silently stop firing (or fire
+  // far less often) for the whole time the tab is hidden, with no error
+  // anywhere, leaving the dispatcher's map on a stale position with
+  // nothing indicating why. Same dependency list as the GPS loop effect
+  // above, for the same reason its own comment gives for including
+  // currentJob?.id in the online-handler effect further up: this closure
+  // must always call the current pushLocation, never a stale one captured
+  // before a reassignment.
+  useEffect(() => {
+    if (!tracking || !tech) return
+    function handleVisibility() {
+      if (document.visibilityState === 'visible') pushLocation()
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
+  }, [tracking, tech, currentJob])
+
   // Add a failed point to the offline queue (in-memory + localStorage) so
   // tracking degrades gracefully instead of silently dying when offline.
   function enqueuePoint(lat, lng, timestamp) {
