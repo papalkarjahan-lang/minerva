@@ -37,4 +37,26 @@ export const BLOG_POSTS = [
       'The key word is "qualified." A flood of every form submission as an urgent text just trains your team to ignore the texts. Scoring by actual urgency — separating "my tap drips sometimes" from "water is coming through my ceiling" — is what makes automatic intake worth having instead of just another notification to silence.',
     ],
   },
+  {
+    slug: 'the-fastest-quote-usually-wins-not-the-cheapest-one',
+    title: 'The fastest quote usually wins, not the cheapest one',
+    date: '2026-09-12',
+    excerpt: 'A client who gets your number back in an hour books you even when your price isn\'t the lowest one in their inbox.',
+    paragraphs: [
+      'Most people asking three trades for a quote aren\'t running a careful bake-off on price. They\'re asking whoever answers first to come and fix the problem. The quote that arrives in an hour reads as "this business has their act together." The quote that arrives two days later reads as a preview of what it\'ll be like waiting for them to actually turn up.',
+      'The usual reason a quote takes two days isn\'t that the pricing is hard to work out — it\'s that writing it up got left for "later," and later is whenever there\'s a free half hour between jobs. By the time that half hour shows up, the details from the site visit or the phone call have gone fuzzy, so it takes even longer to get right.',
+      'The fix is writing the quote while the job is still fresh — straight after the call or the walkthrough, not batched up for end of day — and sending it as a text with a number in it, not an email that sits in an inbox next to twelve other things. The client isn\'t comparing you on price alone; they\'re comparing you on how it felt to deal with you so far.',
+    ],
+  },
+  {
+    slug: 'invoice-the-same-day-and-get-paid-faster',
+    title: 'Invoice the same day and you\'ll get paid faster',
+    date: '2026-09-26',
+    excerpt: 'An invoice that arrives ten minutes after the job reads like a receipt. One that shows up next week reads like a bill.',
+    paragraphs: [
+      'A lot of trade businesses batch their invoicing — do the jobs all week, sit down Friday or on the weekend, and send everything out at once. It feels efficient, since it\'s one block of admin instead of ten small interruptions. But it means every client\'s invoice shows up days after the work is finished, disconnected from the job itself.',
+      'That gap changes how the invoice reads. One sent while the technician is still packing up the van is basically a receipt — a confirmation of something the client just watched happen and is happy about. One that shows up five days later, competing with a stack of other bills, reads as a cold ask, and it\'s the first time anyone has to think back and recall exactly what was done to agree the total is fair.',
+      'Invoicing from the job itself — while the client can still see the finished work and the price in front of them at the same time — settles the total before any doubt has a chance to set in, and it means there\'s no later disagreement about what the job even was, since both sides looked at the same number on the same day.',
+    ],
+  },
 ]

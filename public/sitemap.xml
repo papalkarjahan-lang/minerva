@@ -60,4 +60,12 @@
     <loc>https://minerva-green.vercel.app/blog/why-website-chat-widgets-lose-you-jobs</loc>
     <priority>0.4</priority>
   </url>
+  <url>
+    <loc>https://minerva-green.vercel.app/blog/the-fastest-quote-usually-wins-not-the-cheapest-one</loc>
+    <priority>0.4</priority>
+  </url>
+  <url>
+    <loc>https://minerva-green.vercel.app/blog/invoice-the-same-day-and-get-paid-faster</loc>
+    <priority>0.4</priority>
+  </url>
 </urlset>
