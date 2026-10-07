@@ -1702,7 +1702,8 @@ export default function DispatcherView() {
 
   async function startMaxAddonTrial(key) {
     setAddonBusy(key)
-    const { data } = await supabase.from('businesses').update(startTrialPatch(business, key)).eq('id', businessId).select().single()
+    const { data, error } = await supabase.from('businesses').update(startTrialPatch(business, key)).eq('id', businessId).select().single()
+    if (error) { alert(`Couldn't start trial: ${error.message}`); setAddonBusy(null); return }
     if (data) setBusiness(data)
     setAddonBusy(null)
   }

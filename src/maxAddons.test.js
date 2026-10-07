@@ -7,8 +7,6 @@ import {
   isTrialing,
   trialDaysLeft,
   hasUsedTrial,
-  enableAddonPatch,
-  disableAddonPatch,
   startTrialPatch,
 } from './maxAddons'
 
@@ -105,27 +103,6 @@ describe('hasUsedTrial', () => {
   it('returns true once a trial record exists, even after it has expired', () => {
     const business = { max_addon_trials: { ai_quotes: { ends_at: new Date(Date.now() - 86400000).toISOString() } } }
     expect(hasUsedTrial(business, 'ai_quotes')).toBe(true)
-  })
-})
-
-describe('enableAddonPatch / disableAddonPatch', () => {
-  it('enableAddonPatch sets only the given key true and preserves existing ones', () => {
-    const business = { max_addons: { crew_splitting: true } }
-    expect(enableAddonPatch(business, 'ai_quotes')).toEqual({
-      max_addons: { crew_splitting: true, ai_quotes: true },
-    })
-  })
-
-  it('enableAddonPatch works from a business with no max_addons yet', () => {
-    expect(enableAddonPatch({}, 'ai_quotes')).toEqual({ max_addons: { ai_quotes: true } })
-    expect(enableAddonPatch(null, 'ai_quotes')).toEqual({ max_addons: { ai_quotes: true } })
-  })
-
-  it('disableAddonPatch sets only the given key false and preserves existing ones', () => {
-    const business = { max_addons: { ai_quotes: true, crew_splitting: true } }
-    expect(disableAddonPatch(business, 'ai_quotes')).toEqual({
-      max_addons: { ai_quotes: false, crew_splitting: true },
-    })
   })
 })
 

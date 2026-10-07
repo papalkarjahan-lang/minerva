@@ -109,17 +109,6 @@ export function hasUsedTrial(business, key) {
   return !!business?.max_addon_trials?.[key]
 }
 
-// Returns the { max_addons, max_addon_trials } patch to send to Supabase
-// for enabling an addon outright (paid, or just flipped on in this
-// pre-billing build — see the honest-scope note in the schema delta).
-export function enableAddonPatch(business, key) {
-  return { max_addons: { ...(business?.max_addons || {}), [key]: true } }
-}
-
-export function disableAddonPatch(business, key) {
-  return { max_addons: { ...(business?.max_addons || {}), [key]: false } }
-}
-
 export function startTrialPatch(business, key) {
   const startedAt = new Date()
   const endsAt = new Date(startedAt.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000)
