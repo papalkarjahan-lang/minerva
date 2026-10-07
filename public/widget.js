@@ -107,8 +107,22 @@
 
   // Full-screen panel on small screens so the widget doesn't get clipped or
   // squeezed off-screen on a phone.
+  //
+  // Checks screen.width alongside innerWidth, not innerWidth alone — found
+  // live by embedding this on a host page that had no <meta name="viewport">
+  // of its own: without that tag, a real phone's innerWidth reports the
+  // browser's ~980px legacy desktop-emulation width instead of the device's
+  // actual width, so this check silently never fired and the panel rendered
+  // as a tiny fixed box a phone user couldn't use. screen.width always
+  // reflects the real device width regardless of the HOST page's own markup
+  // quality, which this widget has no control over and can't assume is
+  // correct (small trade businesses are more likely than most to be running
+  // an old or inherited site). Takes the min of both rather than switching
+  // to screen.width alone, so a desktop browser window manually narrowed
+  // below 480px (innerWidth small, screen.width still the full monitor
+  // width) still correctly gets the full-screen treatment too.
   function applyResponsiveLayout() {
-    if (window.innerWidth < 480) {
+    if (Math.min(window.innerWidth, window.screen.width) < 480) {
       panel.style.width = '100vw'
       panel.style.height = '100vh'
       panel.style.maxHeight = 'none'
