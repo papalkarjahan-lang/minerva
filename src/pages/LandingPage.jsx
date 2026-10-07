@@ -215,24 +215,38 @@ function CountUp({ n, suffix = '', prefix = '' }) {
 
 // The exact SMS sequence a client receives, played on a loop — the
 // strongest, most concrete proof on the page because it's not a claim,
-// it's the literal message text.
+// it's the literal message text. Must stay byte-for-byte in sync with
+// _shared/sms.ts's buildEtaMessage/buildCompletionMessage — this is the
+// one claim on the page explicit enough to be checked against the real
+// backend, so it's also the one most worth re-verifying after any copy
+// change to those two templates. (Corrected 2026-10-08: the previous
+// version showed 3 messages that didn't match any of this — a fabricated
+// "ETA 12 minutes" figure instead of the real hardcoded 15, the ETA text
+// and tracking link as two separate texts instead of the one real SMS
+// that combines them with a line break, a /t/ URL path that isn't a real
+// route (the real one is /track/:jobId), and a third "has arrived"
+// message that doesn't correspond to any SMS this app actually sends —
+// the real second message is the job-completion text, different wording
+// entirely. Found doing a copy-accuracy pass explicitly prompted by
+// wanting the whole site to be "exactly as advertised.")
 function SmsProof() {
   const [ref, shown] = useReveal()
   const [step, setStep] = useState(0)
   useEffect(() => {
     if (!shown) return
     const t1 = setTimeout(() => setStep(1), 400)
-    const t2 = setTimeout(() => setStep(2), 1400)
-    const t3 = setTimeout(() => setStep(3), 2600)
-    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3) }
+    const t2 = setTimeout(() => setStep(2), 2000)
+    return () => { clearTimeout(t1); clearTimeout(t2) }
   }, [shown])
 
   return (
     <div ref={ref} className="lp-phone">
       <p style={{ textAlign: 'center', color: '#556', fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', margin: '0 0 16px' }}>What your client receives</p>
-      <div className={`lp-sms ${step >= 1 ? 'lp-shown' : ''}`}>Hi Sarah, this is <b>Ken Hall Plumbers</b>. Your technician Mike is on the way — ETA 12 minutes.</div>
-      <div className={`lp-sms ${step >= 2 ? 'lp-shown' : ''}`}>Track his location live: <b>minerva-green.vercel.app/t/8f2a</b></div>
-      <div className={`lp-sms ${step >= 3 ? 'lp-shown' : ''}`}>Mike has arrived. 👍</div>
+      <div className={`lp-sms ${step >= 1 ? 'lp-shown' : ''}`}>
+        Hi Sarah, your <b>Ken Hall Plumbers</b> technician Mike is approximately 15 minutes away.<br /><br />
+        Track them live: <b>minerva-green.vercel.app/track/8f2a1c40</b>
+      </div>
+      <div className={`lp-sms ${step >= 2 ? 'lp-shown' : ''}`}>Hi Sarah, Mike from <b>Ken Hall Plumbers</b> has completed your job. Thank you for choosing us!</div>
     </div>
   )
 }
