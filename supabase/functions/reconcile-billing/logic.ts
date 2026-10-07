@@ -87,3 +87,29 @@ export function buildUntrackedItemsSlackMessage(bizName: string, liveItemCount: 
 export function buildUntrackedItemsFallbackSummary(bizName: string, liveItemCount: number, trackedCount: number): string {
   return `Stripe shows ${liveItemCount} subscription item(s) for ${bizName}, but Minerva's records only account for ${trackedCount}.`
 }
+
+// Picks the base per-technician seat item out of a subscription's items —
+// used by the stripe_sub_item_id backfill self-heal in index.ts, which can
+// race against update-addon-billing adding a real add-on item to the SAME
+// subscription before this backfill ever runs (update-addon-billing only
+// requires stripe_sub_id, not stripe_sub_item_id, to let a business enable
+// an add-on — so this race is real, not theoretical, if checkout's own
+// one-shot item-id fetch failed). Blindly taking items[0] risks storing an
+// add-on's item id as stripe_sub_item_id instead, which sync-technician-
+// billing would then silently adjust (the per-technician seat count) on
+// the wrong item instead of the real one. Excludes every item id already
+// recorded in max_addon_stripe_items — whatever's left is the seat item,
+// by the same "1 base item + N recorded add-ons" invariant
+// hasUntrackedSubscriptionItems above already relies on. Falls back to the
+// first item if every item happens to be a known add-on (shouldn't happen
+// given that invariant, but never returns nothing when at least one item
+// exists).
+export function pickSeatItemId(
+  items: Array<{ id: string }>,
+  storedAddonItems: Record<string, string> | null | undefined
+): string | null {
+  if (items.length === 0) return null
+  const addonItemIds = new Set(Object.values(storedAddonItems || {}))
+  const seatItem = items.find(item => !addonItemIds.has(item.id))
+  return seatItem?.id ?? items[0].id
+}

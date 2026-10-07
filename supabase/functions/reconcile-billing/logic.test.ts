@@ -11,6 +11,7 @@ import {
   hasUntrackedSubscriptionItems,
   buildUntrackedItemsSlackMessage,
   buildUntrackedItemsFallbackSummary,
+  pickSeatItemId,
 } from './logic'
 
 describe('computeLocalQuantity', () => {
@@ -132,5 +133,37 @@ describe('buildUntrackedItemsFallbackSummary', () => {
     expect(summary).toContain('Acme Plumbing')
     expect(summary).toContain('3 subscription item(s)')
     expect(summary).toContain('only account for 1')
+  })
+})
+
+describe('pickSeatItemId', () => {
+  it('returns null when there are no items at all', () => {
+    expect(pickSeatItemId([], null)).toBeNull()
+  })
+
+  it('returns the only item when there are no known add-ons', () => {
+    expect(pickSeatItemId([{ id: 'si_seat' }], null)).toBe('si_seat')
+    expect(pickSeatItemId([{ id: 'si_seat' }], {})).toBe('si_seat')
+  })
+
+  it('excludes a known add-on item even when it is first in the array', () => {
+    expect(pickSeatItemId(
+      [{ id: 'si_addon_ai_quotes' }, { id: 'si_seat' }],
+      { ai_quotes: 'si_addon_ai_quotes' }
+    )).toBe('si_seat')
+  })
+
+  it('excludes multiple known add-on items regardless of order', () => {
+    expect(pickSeatItemId(
+      [{ id: 'si_addon_xero' }, { id: 'si_seat' }, { id: 'si_addon_ai' }],
+      { xero_sync: 'si_addon_xero', ai_quotes: 'si_addon_ai' }
+    )).toBe('si_seat')
+  })
+
+  it('falls back to the first item if every item is somehow a known add-on', () => {
+    expect(pickSeatItemId(
+      [{ id: 'si_addon_a' }, { id: 'si_addon_b' }],
+      { a: 'si_addon_a', b: 'si_addon_b' }
+    )).toBe('si_addon_a')
   })
 })

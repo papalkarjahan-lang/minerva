@@ -43,6 +43,7 @@ import {
   hasUntrackedSubscriptionItems,
   buildUntrackedItemsSlackMessage,
   buildUntrackedItemsFallbackSummary,
+  pickSeatItemId,
 } from "./logic.ts"
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, {
@@ -76,7 +77,7 @@ serve(async (req: Request) => {
     // NOT NULL) and never gets billed for technician seats at all.
     const { data: missingItemId } = await supabaseAdmin
       .from('businesses')
-      .select('id, name, stripe_sub_id')
+      .select('id, name, stripe_sub_id, max_addon_stripe_items')
       .is('stripe_sub_item_id', null)
       .not('stripe_sub_id', 'is', null)
       .neq('subscription_tier', 'cancelled')
@@ -84,7 +85,11 @@ serve(async (req: Request) => {
     for (const biz of missingItemId || []) {
       try {
         const sub = await stripe.subscriptions.retrieve(biz.stripe_sub_id)
-        const itemId = sub.items.data[0]?.id
+        // pickSeatItemId, not items.data[0] — this business can already
+        // have a real add-on item on this same subscription if they
+        // enabled one through update-addon-billing before this backfill
+        // ever ran (see that function's logic.ts header comment).
+        const itemId = pickSeatItemId(sub.items.data, biz.max_addon_stripe_items)
         if (itemId) {
           await supabaseAdmin.from('businesses').update({ stripe_sub_item_id: itemId }).eq('id', biz.id)
           backfilled++
