@@ -113,27 +113,47 @@ export default function AdminConsole() {
     if (error) { alert(`Couldn't load businesses: ${error.message}`); return }
     if (!bizRows) return
 
-    const withStats = await Promise.all(bizRows.map(async (biz) => {
+    // One batched technicians query instead of one per business — found
+    // live (scale-readiness pass, 2026-10-08) firing N simultaneous
+    // requests on every admin page load and again after every single
+    // overrideTier() call below. loadBigAccounts() already does this
+    // correctly via .in('big_account_target_id', ...) for roi_proposals;
+    // same fix, same pattern, just not applied here yet.
+    const techsByBusiness = {}
+    if (bizRows.length > 0) {
       const { data: techs } = await supabase
         .from('technicians')
-        .select('last_seen')
-        .eq('business_id', biz.id)
-      const techCount = techs?.length || 0
-      const lastActivity = (techs || [])
+        .select('business_id, last_seen')
+        .in('business_id', bizRows.map(b => b.id))
+      for (const t of techs || []) {
+        if (!techsByBusiness[t.business_id]) techsByBusiness[t.business_id] = []
+        techsByBusiness[t.business_id].push(t)
+      }
+    }
+    const withStats = bizRows.map(biz => {
+      const techs = techsByBusiness[biz.id] || []
+      const techCount = techs.length
+      const lastActivity = techs
         .map(t => t.last_seen)
         .filter(Boolean)
         .sort()
         .reverse()[0] || null
       return { ...biz, techCount, lastActivity }
-    }))
+    })
     setBusinesses(withStats)
   }
 
   async function loadRequests() {
+    // Safety bound, not real pagination — same reasoning as
+    // loadProspects() above (scale-readiness pass, 2026-10-08). Ordered
+    // newest-first, so a growing backlog loses only its oldest (most
+    // likely already-resolved) entries first, not the ones most likely to
+    // still need triage.
     const { data, error } = await supabase
       .from('support_requests')
       .select('*')
       .order('created_at', { ascending: false })
+      .limit(500)
     if (error) { alert(`Couldn't load support requests: ${error.message}`); return }
     // Urgent-open first, then routine-open, then resolved — see
     // SUPPORT_PLAYBOOK.md for the SLA targets this triage order is meant
@@ -185,10 +205,17 @@ export default function AdminConsole() {
   // function itself re-enforces that same filter server-side too, so this
   // client-side gate is a UX convenience, not the only safeguard.
   async function loadProspects() {
+    // Safety bound, not real pagination (scale-readiness pass, 2026-10-08)
+    // — this list was unbounded, and it's specifically the one about to
+    // start growing fastest once outreach actually ramps up. 500 is
+    // generous for where this realistically is today; revisit with real
+    // pagination/filtering if the prospect list ever genuinely needs more
+    // than that visible at once.
     const { data, error } = await supabase
       .from('outreach_prospects')
       .select('*')
       .order('created_at', { ascending: false })
+      .limit(500)
     if (error) { alert(`Couldn't load prospects: ${error.message}`); return }
     setProspects(data || [])
   }

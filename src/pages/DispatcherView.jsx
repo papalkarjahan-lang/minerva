@@ -430,11 +430,22 @@ export default function DispatcherView() {
     setQuotes(quoteList || [])
 
     // Multi-technician job splitting — crew assignments for the currently
-    // active/scheduled jobs, grouped by job_id.
-    const { data: crewList } = await supabase
-      .from('job_assignments')
-      .select('*, technicians(name)')
-      .eq('business_id', businessId)
+    // active/scheduled jobs, grouped by job_id. Found live (scale-readiness
+    // pass, 2026-10-08): this comment already described the intent, but the
+    // query itself had no job-status filter at all — it fetched every crew
+    // assignment ever made for the business, growing unbounded with job
+    // history. Harmless today (jobCrew is only ever looked up for a job
+    // already in the jobs array above, itself scoped to scheduled/active,
+    // so the extra rows were fetched and held in state but never rendered),
+    // but real wasted work that only grows. jobList (fetched just above) is
+    // exactly the scheduled/active job set this was always meant to scope
+    // to — reusing its ids needs no new query. Guarded for an empty jobList
+    // (a business with zero active jobs right now) rather than risking a
+    // `.in('job_id', [])` call.
+    const activeJobIds = (jobList || []).map(j => j.id)
+    const { data: crewList } = activeJobIds.length > 0
+      ? await supabase.from('job_assignments').select('*, technicians(name)').eq('business_id', businessId).in('job_id', activeJobIds)
+      : { data: [] }
     const crewByJob = {}
     for (const row of crewList || []) {
       if (!crewByJob[row.job_id]) crewByJob[row.job_id] = []
