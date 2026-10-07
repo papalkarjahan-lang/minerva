@@ -28,6 +28,22 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { computeInvoiceStats, isQuietDay } from "./logic.ts"
 import { rankSuburbsByJobCount } from "../_shared/suburbs.ts"
+import { chunk } from "../_shared/batch.ts"
+
+// Businesses are processed in bounded-concurrency batches, not fully
+// sequentially — found live (scale-readiness pass, 2026-10-08). Each
+// business already ran its own 7 queries in parallel internally, but the
+// OUTER loop across businesses was still sequential, so the real cost was
+// N sequential "7-parallel-queries-then-Slack-post" cycles — at hundreds
+// of Slack-configured businesses, a real wall-clock-timeout risk on the
+// one function most real customers will actually see daily. Same fix
+// shape as reconcile-billing/update-technician-workload's identical gap.
+// Also added here, not present before: a per-business try/catch — the
+// original sequential loop had NO per-business error isolation at all,
+// so one business's bad data throwing partway through its own processing
+// would have silently aborted the digest for every business sorted after
+// it that day too, not just that one.
+const DIGEST_BATCH_SIZE = 20
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -53,92 +69,109 @@ serve(async (req: Request) => {
     const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
     let posted = 0
 
-    for (const biz of businesses || []) {
-      const [
-        { data: completedJobs },
-        { data: newLeads },
-        { data: invoices },
-        { data: pendingDrafts },
-        { data: lowStockItems },
-        { data: silentLeads },
-        { data: stuckInvoices },
-      ] = await Promise.all([
-        supabase.from('jobs').select('id, client_address').eq('business_id', biz.id).eq('status', 'complete').gte('completed_at', dayAgo),
-        supabase.from('leads').select('id').eq('business_id', biz.id).gte('created_at', dayAgo),
-        supabase.from('invoices').select('total, status').eq('business_id', biz.id).gte('created_at', dayAgo),
-        supabase.from('marketing_drafts').select('id').eq('business_id', biz.id).eq('status', 'pending'),
-        supabase.from('inventory_items').select('id').eq('business_id', biz.id).not('low_stock_alert_sent_at', 'is', null),
-        // Both autonomous nurture touches sent, lead still untouched by a human — the
-        // automation has done everything it can, this needs a person now.
-        supabase.from('leads').select('id, client_name').eq('business_id', biz.id).eq('status', 'new')
-          .not('second_nurture_sent_at', 'is', null).is('escalation_flagged_at', null),
-        // 3+ reminder SMS sent, still unpaid — automation is clearly not landing.
-        supabase.from('invoices').select('id, client_name, total').eq('business_id', biz.id).eq('status', 'unpaid')
-          .gte('reminder_count', 3).is('escalation_flagged_at', null),
-      ])
+    // Extracted so it can run inside Promise.all per batch below. Returns
+    // false for a quiet day (no digest posted) as well as on error —
+    // the caller only cares about "did this count toward `posted`,"
+    // not why not. Wrapped in its own try/catch (new — see header
+    // comment) so one business's failure can't take down the rest of
+    // that day's digest.
+    async function postDigestForBusiness(biz: { id: string; name: string; slack_webhook_url: string }): Promise<boolean> {
+      try {
+        const [
+          { data: completedJobs },
+          { data: newLeads },
+          { data: invoices },
+          { data: pendingDrafts },
+          { data: lowStockItems },
+          { data: silentLeads },
+          { data: stuckInvoices },
+        ] = await Promise.all([
+          supabase.from('jobs').select('id, client_address').eq('business_id', biz.id).eq('status', 'complete').gte('completed_at', dayAgo),
+          supabase.from('leads').select('id').eq('business_id', biz.id).gte('created_at', dayAgo),
+          supabase.from('invoices').select('total, status').eq('business_id', biz.id).gte('created_at', dayAgo),
+          supabase.from('marketing_drafts').select('id').eq('business_id', biz.id).eq('status', 'pending'),
+          supabase.from('inventory_items').select('id').eq('business_id', biz.id).not('low_stock_alert_sent_at', 'is', null),
+          // Both autonomous nurture touches sent, lead still untouched by a human — the
+          // automation has done everything it can, this needs a person now.
+          supabase.from('leads').select('id, client_name').eq('business_id', biz.id).eq('status', 'new')
+            .not('second_nurture_sent_at', 'is', null).is('escalation_flagged_at', null),
+          // 3+ reminder SMS sent, still unpaid — automation is clearly not landing.
+          supabase.from('invoices').select('id, client_name, total').eq('business_id', biz.id).eq('status', 'unpaid')
+            .gte('reminder_count', 3).is('escalation_flagged_at', null),
+        ])
 
-      const jobsDone = completedJobs?.length || 0
-      const leadsIn = newLeads?.length || 0
-      const { invoiced, unpaid, avgInvoice } = computeInvoiceStats(invoices || [])
-      const topSuburb = rankSuburbsByJobCount(completedJobs || [])[0]
+        const jobsDone = completedJobs?.length || 0
+        const leadsIn = newLeads?.length || 0
+        const { invoiced, unpaid, avgInvoice } = computeInvoiceStats(invoices || [])
+        const topSuburb = rankSuburbsByJobCount(completedJobs || [])[0]
 
-      const pendingDraftsCount = pendingDrafts?.length || 0
-      const lowStockCount = lowStockItems?.length || 0
-      const silentLeadsCount = silentLeads?.length || 0
-      const stuckInvoicesCount = stuckInvoices?.length || 0
+        const pendingDraftsCount = pendingDrafts?.length || 0
+        const lowStockCount = lowStockItems?.length || 0
+        const silentLeadsCount = silentLeads?.length || 0
+        const stuckInvoicesCount = stuckInvoices?.length || 0
 
-      // Skip a genuinely quiet day — no point pinging an empty digest.
-      if (isQuietDay({ jobsDone, leadsIn, invoiced, pendingDraftsCount, lowStockCount, silentLeadsCount, stuckInvoicesCount })) continue
+        // Skip a genuinely quiet day — no point pinging an empty digest.
+        if (isQuietDay({ jobsDone, leadsIn, invoiced, pendingDraftsCount, lowStockCount, silentLeadsCount, stuckInvoicesCount })) return false
 
-      // "Morning Meeting" format: grouped like reports from named departments
-      // instead of one flat block, so it reads as a standup, not a log dump.
-      // Same underlying data as before — this is presentation, not new logic.
-      let text = `🗓️ *Morning meeting — ${biz.name}*\n` +
-        `_The last 24 hours, department by department._\n\n` +
-        `*Front Desk* (leads & customer contact)\n` +
-        `• New leads: ${leadsIn}\n\n` +
-        `*Dispatch & Crew* (jobs & technicians)\n` +
-        `• Jobs completed: ${jobsDone}${topSuburb ? ` (top suburb: ${topSuburb[0]}, ${topSuburb[1]} job${topSuburb[1] === 1 ? '' : 's'})` : ''}\n\n` +
-        `*Ledger* (invoicing & finance)\n` +
-        `• Invoiced: $${invoiced.toFixed(2)}${avgInvoice > 0 ? ` (avg $${avgInvoice.toFixed(2)}/invoice)` : ''}${unpaid > 0 ? ` — $${unpaid.toFixed(2)} still unpaid` : ''}`
+        // "Morning Meeting" format: grouped like reports from named departments
+        // instead of one flat block, so it reads as a standup, not a log dump.
+        // Same underlying data as before — this is presentation, not new logic.
+        let text = `🗓️ *Morning meeting — ${biz.name}*\n` +
+          `_The last 24 hours, department by department._\n\n` +
+          `*Front Desk* (leads & customer contact)\n` +
+          `• New leads: ${leadsIn}\n\n` +
+          `*Dispatch & Crew* (jobs & technicians)\n` +
+          `• Jobs completed: ${jobsDone}${topSuburb ? ` (top suburb: ${topSuburb[0]}, ${topSuburb[1]} job${topSuburb[1] === 1 ? '' : 's'})` : ''}\n\n` +
+          `*Ledger* (invoicing & finance)\n` +
+          `• Invoiced: $${invoiced.toFixed(2)}${avgInvoice > 0 ? ` (avg $${avgInvoice.toFixed(2)}/invoice)` : ''}${unpaid > 0 ? ` — $${unpaid.toFixed(2)} still unpaid` : ''}`
 
-      const waitingOn: string[] = []
-      if (pendingDraftsCount > 0) waitingOn.push(`${pendingDraftsCount} marketing draft${pendingDraftsCount === 1 ? '' : 's'} awaiting your review`)
-      if (lowStockCount > 0) waitingOn.push(`${lowStockCount} low-stock item${lowStockCount === 1 ? '' : 's'}`)
-      if (waitingOn.length > 0) text += `\n\n*Waiting on your approval*\n• ${waitingOn.join('\n• ')}`
+        const waitingOn: string[] = []
+        if (pendingDraftsCount > 0) waitingOn.push(`${pendingDraftsCount} marketing draft${pendingDraftsCount === 1 ? '' : 's'} awaiting your review`)
+        if (lowStockCount > 0) waitingOn.push(`${lowStockCount} low-stock item${lowStockCount === 1 ? '' : 's'}`)
+        if (waitingOn.length > 0) text += `\n\n*Waiting on your approval*\n• ${waitingOn.join('\n• ')}`
 
-      // Watchtower: silent-automation flags — the software has done everything
-      // it autonomously can, surface these explicitly so nothing sits
-      // assumed-handled forever.
-      if (silentLeadsCount > 0 || stuckInvoicesCount > 0) {
-        text += `\n\n*Watchtower* (needs a human)`
+        // Watchtower: silent-automation flags — the software has done everything
+        // it autonomously can, surface these explicitly so nothing sits
+        // assumed-handled forever.
+        if (silentLeadsCount > 0 || stuckInvoicesCount > 0) {
+          text += `\n\n*Watchtower* (needs a human)`
+          if (silentLeadsCount > 0) {
+            const names = (silentLeads || []).slice(0, 3).map(l => l.client_name || 'unknown').join(', ')
+            text += `\n⚠️ ${silentLeadsCount} lead${silentLeadsCount === 1 ? '' : 's'} gone quiet after both nurture texts — no reply, still 'new': ${names}${silentLeadsCount > 3 ? ', ...' : ''}. Worth a personal follow-up.`
+          }
+          if (stuckInvoicesCount > 0) {
+            const names = (stuckInvoices || []).slice(0, 3).map(i => `${i.client_name || 'unknown'} ($${Number(i.total).toFixed(2)})`).join(', ')
+            text += `\n⚠️ ${stuckInvoicesCount} invoice${stuckInvoicesCount === 1 ? '' : 's'} still unpaid after 3+ reminders: ${names}${stuckInvoicesCount > 3 ? ', ...' : ''}. Automated reminders aren't working here — may need a call.`
+          }
+        }
+
+        await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
+          body: JSON.stringify({ businessId: biz.id, text }),
+        }).catch(err => console.error('daily-digest: notify-slack failed', err))
+
+        // Mark flagged rows so the same silent lead/invoice isn't re-listed every day —
+        // it's been surfaced once, that's the point.
         if (silentLeadsCount > 0) {
-          const names = (silentLeads || []).slice(0, 3).map(l => l.client_name || 'unknown').join(', ')
-          text += `\n⚠️ ${silentLeadsCount} lead${silentLeadsCount === 1 ? '' : 's'} gone quiet after both nurture texts — no reply, still 'new': ${names}${silentLeadsCount > 3 ? ', ...' : ''}. Worth a personal follow-up.`
+          await supabase.from('leads').update({ escalation_flagged_at: new Date().toISOString() })
+            .in('id', (silentLeads || []).map(l => l.id))
         }
         if (stuckInvoicesCount > 0) {
-          const names = (stuckInvoices || []).slice(0, 3).map(i => `${i.client_name || 'unknown'} ($${Number(i.total).toFixed(2)})`).join(', ')
-          text += `\n⚠️ ${stuckInvoicesCount} invoice${stuckInvoicesCount === 1 ? '' : 's'} still unpaid after 3+ reminders: ${names}${stuckInvoicesCount > 3 ? ', ...' : ''}. Automated reminders aren't working here — may need a call.`
+          await supabase.from('invoices').update({ escalation_flagged_at: new Date().toISOString() })
+            .in('id', (stuckInvoices || []).map(i => i.id))
         }
-      }
 
-      await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
-        body: JSON.stringify({ businessId: biz.id, text }),
-      }).catch(err => console.error('daily-digest: notify-slack failed', err))
-      posted++
+        return true
+      } catch (bizErr) {
+        console.error(`daily-digest: failed for business ${biz.id}`, bizErr)
+        return false
+      }
+    }
 
-      // Mark flagged rows so the same silent lead/invoice isn't re-listed every day —
-      // it's been surfaced once, that's the point.
-      if (silentLeadsCount > 0) {
-        await supabase.from('leads').update({ escalation_flagged_at: new Date().toISOString() })
-          .in('id', (silentLeads || []).map(l => l.id))
-      }
-      if (stuckInvoicesCount > 0) {
-        await supabase.from('invoices').update({ escalation_flagged_at: new Date().toISOString() })
-          .in('id', (stuckInvoices || []).map(i => i.id))
-      }
+    for (const batch of chunk(businesses || [], DIGEST_BATCH_SIZE)) {
+      const results = await Promise.all(batch.map(postDigestForBusiness))
+      posted += results.filter(Boolean).length
     }
 
     supabase.rpc('record_agent_run', { fn_name: 'daily-digest', status: 'ok' }).then(() => {}, () => {})
