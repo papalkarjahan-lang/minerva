@@ -136,12 +136,24 @@ export function planSubscriptionUpdated(
 ): SubscriptionUpdatedPlan | null {
   if (!subscription.id) return null
   if (subscription.status !== 'active' && subscription.status !== 'trialing') return null
-  const price = subscription.items?.data?.[0]?.price
-  const priceId = typeof price === 'string' ? price : price?.id
-  if (!priceId) return null
-  const tier = priceIdToTier[priceId]
-  if (!tier) return null
-  return { subscriptionId: subscription.id, update: { subscription_tier: tier } }
+  // Searches every item rather than assuming the base plan is items.data[0]
+  // — true at signup, but update-addon-billing adds each enabled Minerva
+  // Max add-on as its own item on this SAME subscription, so a business
+  // with any add-on active has more than one item here, and Stripe's own
+  // API docs don't guarantee array order survives a later plan switch.
+  // Mirrors update-addon-billing/logic.ts's findExistingItemForPrice,
+  // which already searches rather than assumes for the identical reason.
+  // Getting this wrong fails safe (returns null, no sync) rather than
+  // corrupting subscription_tier — an add-on's price id is never a key in
+  // priceIdToTier — but failing safe here still means a real plan switch
+  // silently never takes effect, exactly the "promised feature quietly
+  // doesn't work" bug class this file exists to close.
+  for (const item of subscription.items?.data || []) {
+    const priceId = typeof item.price === 'string' ? item.price : item.price?.id
+    const tier = priceId ? priceIdToTier[priceId] : undefined
+    if (tier) return { subscriptionId: subscription.id, update: { subscription_tier: tier } }
+  }
+  return null
 }
 
 // customer.subscription.deleted — marks the matching business cancelled so

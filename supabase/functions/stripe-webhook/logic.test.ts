@@ -124,6 +124,22 @@ describe('planSubscriptionUpdated', () => {
     expect(planSubscriptionUpdated({ id: 'sub_1', status: 'active', items: { data: [{ price: 'price_pro' }] } }, PRICE_MAP))
       .toEqual({ subscriptionId: 'sub_1', update: { subscription_tier: 'pro' } })
   })
+
+  it('finds the base-plan item even when an add-on item is at index 0 (update-addon-billing adds items after the base plan, same subscription)', () => {
+    expect(planSubscriptionUpdated({
+      id: 'sub_1',
+      status: 'active',
+      items: { data: [{ price: { id: 'price_addon_ai_quotes' } }, { price: { id: 'price_std' } }] },
+    }, PRICE_MAP)).toEqual({ subscriptionId: 'sub_1', update: { subscription_tier: 'standard' } })
+  })
+
+  it('returns null when every item is an add-on with no base-plan item present at all', () => {
+    expect(planSubscriptionUpdated({
+      id: 'sub_1',
+      status: 'active',
+      items: { data: [{ price: { id: 'price_addon_ai_quotes' } }, { price: { id: 'price_addon_xero_sync' } }] },
+    }, PRICE_MAP)).toBeNull()
+  })
 })
 
 describe('planInvoicePaymentFailed', () => {
