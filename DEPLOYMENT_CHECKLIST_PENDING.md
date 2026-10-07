@@ -1429,3 +1429,15 @@ see git log / this file's "Confirmed live" section above for history.)*
   (Account → Access Tokens). This has now recurred 4+ times — worth breaking
   as a habit (e.g. keeping one persistent local CLI session instead of
   re-pasting a PAT per round), not just re-flagging again each time.
+- **New 2026-10-08 — Supabase/Vercel hosting plan tier, not yet confirmed
+  either way.** Raised for the first time this round because "capable of
+  serving hundreds of customers" is now an explicit bar, and no amount of
+  code-level correctness fixes an underlying free-tier limit: Supabase's
+  free tier auto-pauses a project after ~1 week with no API activity (fatal
+  for a live SaaS the moment usage is sparse, e.g. over a quiet weekend
+  pre-revenue), and both Supabase's and Vercel's free tiers cap concurrent
+  connections/bandwidth/function-invocations well below "hundreds of
+  businesses" real traffic. This is a Dashboard billing-plan check/upgrade
+  only I can't see or action from code — Supabase: Project Settings →
+  Billing; Vercel: the team/project's Billing settings. Worth confirming
+  before outreach starts converting, not after a pause/limit is hit live.
