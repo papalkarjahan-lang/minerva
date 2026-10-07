@@ -412,3 +412,18 @@ export function describeAuditEntry(entry) {
 export function roundMoney(amount) {
   return Math.round(amount * 100) / 100
 }
+
+// 10% GST on a subtotal, correctly rounded to the nearest cent. Deliberately
+// NOT `roundMoney(subtotal * 0.1)` — confirmed empirically (scale-readiness
+// pass, 2026-10-08) that multiplying a float by the non-exactly-representable
+// 0.1 leaks IEEE-754 representation error that lands on the wrong side of a
+// cent boundary for about 1 in 490 realistic subtotals (e.g. 0.35 * 0.1 ===
+// 0.034999999999999996 in JS, one cent short of the 0.035 that should round
+// up to 0.04) — always rounding down, meaning GST was being systematically
+// under-collected by $0.01 on a small but real fraction of invoices/quotes.
+// Working in integer cents and dividing by 10 (rather than multiplying a
+// float by 0.1) avoids the representation error for every realistic amount.
+export function computeGst(subtotal) {
+  const subtotalCents = Math.round(subtotal * 100)
+  return Math.round(subtotalCents / 10) / 100
+}

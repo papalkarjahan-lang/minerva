@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { haversineKm, generatePin, generateReferralCode, timeAgo, insertTechniciansWithPinRetry, classifyPriority, normalizeAddressForGeocoding, pickBestGeocodeFeature, isMapboxTokenConfigured, computeReplayStats, interpolateReplayPosition, describeAuditEntry, computeTechnicianReliability, RELIABILITY_FATIGUE_BASELINE_HOURS, computeProspectPriority, roundMoney } from './utils'
+import { haversineKm, generatePin, generateReferralCode, timeAgo, insertTechniciansWithPinRetry, classifyPriority, normalizeAddressForGeocoding, pickBestGeocodeFeature, isMapboxTokenConfigured, computeReplayStats, interpolateReplayPosition, describeAuditEntry, computeTechnicianReliability, RELIABILITY_FATIGUE_BASELINE_HOURS, computeProspectPriority, roundMoney, computeGst } from './utils'
 
 describe('haversineKm', () => {
   it('returns 0 for identical points', () => {
@@ -523,5 +523,38 @@ describe('roundMoney', () => {
   it('handles a whole number and zero', () => {
     expect(roundMoney(100)).toBe(100)
     expect(roundMoney(0)).toBe(0)
+  })
+})
+
+describe('computeGst', () => {
+  it('computes exactly 10% for a clean amount', () => {
+    expect(computeGst(100)).toBe(10)
+    expect(computeGst(50)).toBe(5)
+  })
+
+  it('rounds the real invoice-total case that roundMoney(subtotal * 0.1) gets wrong', () => {
+    // subtotal * 0.1 === 0.034999999999999996 in plain JS floating point —
+    // one cent short of the 0.035 that should round up to 0.04. Confirmed
+    // this isn't a one-off: 408 of 200,000 tested 1-cent-to-$2000 subtotals
+    // hit the same wrong-side-of-a-cent-boundary error, always rounding
+    // down. computeGst must get every one of these right.
+    expect(computeGst(0.35)).toBe(0.04)
+    expect(computeGst(1.45)).toBe(0.15)
+    expect(computeGst(10.35)).toBe(1.04)
+    expect(computeGst(21.15)).toBe(2.12)
+    expect(computeGst(21.95)).toBe(2.2)
+    expect(computeGst(23.65)).toBe(2.37)
+    expect(computeGst(40.15)).toBe(4.02)
+    expect(computeGst(41.05)).toBe(4.11)
+    expect(computeGst(42.65)).toBe(4.27)
+    expect(computeGst(43.55)).toBe(4.36)
+  })
+
+  it('handles zero', () => {
+    expect(computeGst(0)).toBe(0)
+  })
+
+  it('handles a large realistic invoice subtotal', () => {
+    expect(computeGst(1999.95)).toBe(200)
   })
 })

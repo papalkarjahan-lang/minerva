@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
-import { haversineKm, roundMoney } from '../utils'
+import { haversineKm, roundMoney, computeGst } from '../utils'
 import { hasAddon } from '../maxAddons'
 import { isTrialExpired } from '../businessAccess'
 import ContactSupportModal from '../components/ContactSupportModal'
@@ -1113,7 +1113,7 @@ export default function TechnicianView() {
     // display call site happens to mask with its own .toFixed(2), but a
     // CSV export or Xero sync reading the raw stored value wouldn't be.
     const subtotal = roundMoney(validItems.reduce((sum, item) => sum + item.amount, 0))
-    const gst = roundMoney(subtotal * 0.1)
+    const gst = computeGst(subtotal)
     const total = roundMoney(subtotal + gst)
 
     try {

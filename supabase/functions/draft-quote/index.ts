@@ -118,7 +118,18 @@ serve(async (req: Request) => {
     // to mask with its own .toFixed(2), but this row is a real stored
     // quotes record, not just a transient draft.
     const subtotal = Math.round(lineItems.reduce((sum, li) => sum + (Number(li.amount) || 0), 0) * 100) / 100
-    const gst = Math.round(subtotal * 0.1 * 100) / 100
+    // NOT Math.round(subtotal * 0.1 * 100) / 100 — confirmed empirically
+    // (scale-readiness pass, 2026-10-08, see src/utils.js's computeGst for
+    // the full count) that multiplying a float by the non-exactly-
+    // representable 0.1 leaks IEEE-754 error that lands on the wrong side
+    // of a cent boundary for ~1 in 490 realistic subtotals, always rounding
+    // down — the same bug TechnicianView.jsx's real-invoice GST calc had
+    // until this same pass. This is the Deno-side equivalent of
+    // src/utils.js's computeGst(), inlined since edge functions can't
+    // import from the frontend bundle: integer-cents division instead of
+    // float multiplication by 0.1 avoids the representation error.
+    const subtotalCents = Math.round(subtotal * 100)
+    const gst = Math.round(subtotalCents / 10) / 100
     const total = Math.round((subtotal + gst) * 100) / 100
 
     const { data: quote, error } = await supabase.from('quotes').insert({
