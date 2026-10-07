@@ -3,13 +3,22 @@ import { SiteNav, SiteFooter } from '../components/SiteChrome'
 import { Reveal } from '../hooks/useReveal'
 import { useDocumentMeta } from '../hooks/useDocumentMeta'
 import { cardMove, cardLeave, magneticMove, magneticLeave } from '../utils/interactions'
+import { MAX_ADDONS } from '../maxAddons'
 import '../styles/interactive.css'
 
 // Every item below is a real, shipped capability — cross-checked against
 // LandingPage.jsx's pricing tiers and features grid rather than invented
 // for this page. Nothing here claims a capability that doesn't exist yet
 // (no fake integrations, no "AI-powered" fluff for things that are just
-// a database query).
+// a database query). Tier/add-on placement double-checked against the
+// actual server-side gate each one hits, not assumed from the section it
+// felt like it belonged in (2026-10-08 — found and fixed two mismatches
+// this way: review requests were sitting in this unlabeled, implied-base
+// section despite actually requiring the separate paid Minerva Max
+// "Review Request Loop" add-on — see review_loop in src/maxAddons.js and
+// send-review-request-sms's isAddonActive check — and referral nudges
+// were sitting in the Pro-only Growth section despite send-referral-
+// code-sms having no tier or add-on check at all, base or Pro).
 const SECTIONS = [
   {
     title: 'Dispatch & live tracking',
@@ -25,7 +34,7 @@ const SECTIONS = [
     items: [
       ['📱', 'Automatic ETA SMS', 'Clients get a text with a live tracking link once their technician is close by (within ~2km) — no app for the client to install either.'],
       ['💬', 'Automatic lead intake', 'A chat widget for your website triages enquiries and texts your team qualified leads, scored by urgency.'],
-      ['⭐', 'Review requests', 'Send a review-request text after a job is marked complete, with click tracking so you know it landed.'],
+      ['🔁', 'Referral nudges', 'A single low-pressure referral-code text is sent to happy clients after a paid invoice — not a spam campaign. Included on every plan.'],
     ],
   },
   {
@@ -42,7 +51,6 @@ const SECTIONS = [
     title: 'Growth (Pro)',
     items: [
       ['📈', 'Automated growth marketing suggestions', 'Drafts for outreach, ad campaigns, and follow-ups are generated for you to review — every send requires your explicit approval, nothing goes out automatically.'],
-      ['🔁', 'Referral nudges', 'A single low-pressure referral-code text is sent to happy clients after a paid invoice — not a spam campaign.'],
     ],
   },
   {
@@ -90,6 +98,30 @@ export default function Features() {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* Rendered straight from src/maxAddons.js's own MAX_ADDONS catalog,
+          not a hand-written list — so this section can't go stale the way
+          "Review requests" sitting in the wrong section above did until
+          2026-10-08. Each is an optional add-on billed on top of
+          whichever plan a business is already on (not Pro-exclusive),
+          with a free trial per src/maxAddons.js's TRIAL_DAYS. */}
+      <div style={{ maxWidth: 900, margin: '0 auto 48px', padding: '0 24px' }}>
+        <Reveal>
+          <h2 style={{ fontSize: 22, fontWeight: 'bold', margin: '0 0 6px', color: '#1D9E75' }}>Minerva Max add-ons</h2>
+          <p style={{ color: '#888', fontSize: 14, margin: '0 0 20px' }}>Optional, one at a time, on top of any plan — not bundled, not required.</p>
+        </Reveal>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 20 }}>
+          {MAX_ADDONS.map((addon, i) => (
+            <Reveal key={addon.key} style={{ transitionDelay: `${(i * 70) % 400}ms` }}>
+              <div className="lp-card" onMouseMove={cardMove} onMouseLeave={cardLeave}>
+                <p style={{ color: '#fff', fontWeight: 'bold', fontSize: 15, margin: '0 0 4px' }}>{addon.name}</p>
+                <p style={{ color: '#1D9E75', fontSize: 13, fontWeight: 'bold', margin: '0 0 8px' }}>${addon.price}/mo</p>
+                <p style={{ color: '#666', fontSize: 13, margin: 0, lineHeight: 1.6 }}>{addon.description}</p>
+              </div>
+            </Reveal>
+          ))}
+        </div>
       </div>
 
       <Reveal style={{ maxWidth: 680, margin: '0 auto 80px', padding: '0 24px', textAlign: 'center' }}>
