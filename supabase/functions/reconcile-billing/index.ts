@@ -31,6 +31,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import Stripe from "https://esm.sh/stripe@14?target=deno"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { chunk } from "../_shared/batch.ts"
 import {
   computeLocalQuantity,
   isMismatch,
@@ -45,6 +46,19 @@ import {
   buildUntrackedItemsFallbackSummary,
   pickSeatItemId,
 } from "./logic.ts"
+
+// Businesses are processed in bounded-concurrency batches, not fully
+// sequentially — found live (scale-readiness pass, 2026-10-08) that the
+// original fully-sequential loop, at hundreds of businesses each costing
+// 2+ synchronous Stripe API round-trips (plus a Slack call and sometimes
+// an Anthropic call on any mismatch), risked exceeding the Edge Function's
+// wall-clock timeout partway through — silently never checking whichever
+// businesses sorted later in the array that day, with no error or partial-
+// failure signal, on the one function whose entire job is keeping Stripe
+// billing numbers correct. 20 is a conservative concurrency cap — comfortably
+// inside Stripe's own rate limits even accounting for every business in a
+// batch hitting the add-on-drift branch's second Stripe call at once.
+const RECONCILE_BATCH_SIZE = 20
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, {
   apiVersion: '2023-10-16',
@@ -111,8 +125,20 @@ serve(async (req: Request) => {
     let addonDrift = 0
     let untrackedItems = 0
 
-    for (const biz of businesses || []) {
-      checked++
+    // Extracted so it can run inside Promise.all per batch below — same
+    // exact logic/control-flow as the original sequential loop body
+    // (including the early `return` where the original used `continue` on
+    // a failed Stripe quantity lookup, skipping the add-on-drift checks for
+    // that business but not any other), just returning flags instead of
+    // incrementing the outer counters directly from inside a callback.
+    async function reconcileOneBusiness(biz: {
+      id: string
+      name: string
+      stripe_sub_id: string | null
+      stripe_sub_item_id: string
+      subscription_tier: string
+      max_addon_stripe_items: Record<string, string> | null
+    }): Promise<{ mismatch: boolean; addonDrift: boolean; untracked: boolean }> {
       const { count } = await supabaseAdmin
         .from('technicians')
         .select('id', { count: 'exact', head: true })
@@ -128,11 +154,15 @@ serve(async (req: Request) => {
         stripeQuantity = item.quantity ?? null
       } catch (stripeErr) {
         console.error(`reconcile-billing: Stripe lookup failed for ${biz.id}`, stripeErr)
-        continue
+        return { mismatch: false, addonDrift: false, untracked: false }
       }
 
+      let mismatch = false
+      let addonDriftFound = false
+      let untrackedFound = false
+
       if (isMismatch(stripeQuantity, localQuantity)) {
-        mismatches++
+        mismatch = true
         await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/notify-slack`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}` },
@@ -177,7 +207,7 @@ serve(async (req: Request) => {
           if (biz.max_addon_stripe_items && Object.keys(biz.max_addon_stripe_items).length > 0) {
             const staleKeys = findStaleAddonItems(biz.max_addon_stripe_items, liveItemIds)
             if (staleKeys.length > 0) {
-              addonDrift++
+              addonDriftFound = true
               await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/notify-slack`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}` },
@@ -200,7 +230,7 @@ serve(async (req: Request) => {
 
           if (hasUntrackedSubscriptionItems(items.data.length, biz.max_addon_stripe_items)) {
             const trackedCount = 1 + Object.keys(biz.max_addon_stripe_items || {}).length
-            untrackedItems++
+            untrackedFound = true
             await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/notify-slack`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}` },
@@ -222,6 +252,18 @@ serve(async (req: Request) => {
         } catch (stripeErr) {
           console.error(`reconcile-billing: addon drift Stripe lookup failed for ${biz.id}`, stripeErr)
         }
+      }
+
+      return { mismatch, addonDrift: addonDriftFound, untracked: untrackedFound }
+    }
+
+    for (const batch of chunk(businesses || [], RECONCILE_BATCH_SIZE)) {
+      const results = await Promise.all(batch.map(reconcileOneBusiness))
+      checked += results.length
+      for (const r of results) {
+        if (r.mismatch) mismatches++
+        if (r.addonDrift) addonDrift++
+        if (r.untracked) untrackedItems++
       }
     }
 

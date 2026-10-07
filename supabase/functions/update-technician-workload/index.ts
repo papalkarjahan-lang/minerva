@@ -25,6 +25,17 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { computeRollingWeekHours, shouldFlagBurnout, BURNOUT_HOURS_THRESHOLD, RE_ALERT_DAYS } from "./logic.ts"
+import { chunk } from "../_shared/batch.ts"
+
+// Technicians are processed in bounded-concurrency batches, not fully
+// sequentially — found live (scale-readiness pass, 2026-10-08) that the
+// original fully-sequential loop, at thousands of technicians each costing
+// 3-4 sequential DB round-trips, risked exceeding the Edge Function's
+// wall-clock timeout partway through — silently never checking whichever
+// technicians sorted later in the array that day, with no error or
+// partial-failure signal. Same fix shape as reconcile-billing's identical
+// gap, same batch size.
+const WORKLOAD_BATCH_SIZE = 20
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -52,7 +63,18 @@ serve(async (req: Request) => {
 
     let updated = 0, flagged = 0
 
-    for (const tech of technicians || []) {
+    // Extracted so it can run inside Promise.all per batch below — same
+    // exact logic/control-flow as the original sequential loop body
+    // (including the early `return` where the original used `continue` on
+    // a failed locations fetch), just returning flags instead of
+    // incrementing the outer counters directly from inside a callback.
+    async function updateOneTechnician(tech: {
+      id: string
+      business_id: string
+      name: string
+      is_active: boolean
+      burnout_flag_sent_at: string | null
+    }): Promise<{ updated: boolean; flagged: boolean }> {
       // Hours estimate: pull the trailing 7 days of breadcrumbs, bucket by
       // calendar day (UTC — approximate, this is a signal not a timesheet),
       // sum (max - min) recorded_at per day.
@@ -62,7 +84,10 @@ serve(async (req: Request) => {
         .eq('technician_id', tech.id)
         .gte('recorded_at', sevenDaysAgoIso)
         .order('recorded_at', { ascending: true })
-      if (locErr) { console.error('update-technician-workload: locations fetch failed', locErr); continue }
+      if (locErr) {
+        console.error('update-technician-workload: locations fetch failed', locErr)
+        return { updated: false, flagged: false }
+      }
 
       const totalHours = computeRollingWeekHours(locations || [])
 
@@ -77,7 +102,8 @@ serve(async (req: Request) => {
         rolling_week_hours: totalHours,
         rolling_emergency_job_count: emergencyCount ?? 0,
       }).eq('id', tech.id)
-      updated++
+
+      let flaggedThisTech = false
 
       if (shouldFlagBurnout(totalHours, tech.burnout_flag_sent_at)) {
         // Atomically claim before notifying — the check above reads
@@ -96,8 +122,18 @@ serve(async (req: Request) => {
         else if (claimed && claimed.length > 0) {
           await notifySlack(supabaseUrl, supabaseServiceKey, tech.business_id,
             `⚠️ *${tech.name}* has logged an estimated ${totalHours}h over the last 7 days (threshold ${BURNOUT_HOURS_THRESHOLD}h) — might be worth checking in or spreading the roster out a bit. (Internal note — not sent to the technician.)`)
-          flagged++
+          flaggedThisTech = true
         }
+      }
+
+      return { updated: true, flagged: flaggedThisTech }
+    }
+
+    for (const batch of chunk(technicians || [], WORKLOAD_BATCH_SIZE)) {
+      const results = await Promise.all(batch.map(updateOneTechnician))
+      for (const r of results) {
+        if (r.updated) updated++
+        if (r.flagged) flagged++
       }
     }
 
