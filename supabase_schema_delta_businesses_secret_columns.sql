@@ -1,0 +1,77 @@
+-- ============================================================
+-- MINERVA - Delta: lock down secret-bearing columns on `businesses`
+-- from the anon role (2026-10-08)
+-- Adds no tables. One column-level REVOKE only. Run this entire block
+-- once in the Supabase SQL Editor (or via the Management API
+-- /database/query, same as every other delta in this project).
+--
+-- Why: businesses.ingestion_key, meta_access_token, and
+-- slack_webhook_url are real secrets (a lead-ingestion bearer key, a
+-- live Meta/Facebook Marketing API OAuth token, and a Slack Incoming
+-- Webhook URL respectively — see this table's own column comments in
+-- supabase_schema.sql and SECURITY_NOTES.md's "The model" section),
+-- but `businesses` has carried a blanket `using (true)` SELECT policy
+-- since the original schema, for reasons that are still valid for the
+-- OTHER ~25 columns on this table: too many legitimate anonymous
+-- readers (the public intake widget, the post-checkout success page,
+-- onboarding pre-login) to scope the table itself without breaking
+-- them, per SECURITY_NOTES.md's "Phase 2 priority" section. That
+-- reasoning never actually applied to these 3 columns specifically —
+-- grep of every `.from('businesses')` call in src/ confirms no
+-- legitimate anon-context caller (IntakeAssistant.jsx, SuccessPage.jsx,
+-- Onboarding.jsx's insert) ever selects any of the three. This closes
+-- that column-level gap without touching row-level access at all: a
+-- `REVOKE SELECT (columns)` affects only which COLUMNS the `anon` role
+-- may read, not which ROWS — every existing anon-context feature that
+-- reads a business by id keeps working exactly as before.
+--
+-- Scoped to `anon` only, deliberately — `authenticated` keeps full
+-- column access, since the business owner's own dispatcher console
+-- (DispatcherView.jsx / IndustrialDispatcherView.jsx, both gated by
+-- RequireBusinessAuth) legitimately needs to read back its OWN
+-- ingestion_key/meta_access_token/slack_webhook_url to display and let
+-- the owner manage them (see "regenerate ingestion key" and the
+-- Settings modal). This does NOT close the narrower, already-documented
+-- residual gap where any OTHER logged-in user (not the true owner) who
+-- knows/guesses a businessId could still read these 3 columns via a
+-- direct API call, bypassing RequireBusinessAuth's client-side-only
+-- ownership check — that's the same "businessId is the boundary, not
+-- login" tradeoff SECURITY_NOTES.md's "Phase 2 priority" section already
+-- names for this table's row-level access generally, not a new gap this
+-- delta introduces or was trying to solve. Fixing that properly needs
+-- real per-row RLS (auth.uid() = owner_user_id) on this table, which
+-- SECURITY_NOTES.md already explains can't be done yet without breaking
+-- the same anonymous readers named above — a separate, larger project,
+-- not attempted here.
+--
+-- NOT yet applied to the live database — unlike every other delta file
+-- in this project, this one has not been run via the Management API or
+-- live-verified against pg_policies/information_schema, because doing
+-- so requires a Supabase credential this session is not authorized to
+-- use itself. Run this block in the Supabase SQL Editor, then verify
+-- with the query at the bottom of this file.
+-- ============================================================
+
+revoke select (ingestion_key, meta_access_token, slack_webhook_url) on businesses from anon;
+
+-- Verify after running the block above — expects exactly these 3 rows,
+-- each showing only 'anon' missing from privilege_type SELECT grantees
+-- (authenticated and service_role should still show SELECT for all 3):
+--
+-- select grantee, column_name, privilege_type
+-- from information_schema.column_privileges
+-- where table_name = 'businesses'
+--   and column_name in ('ingestion_key', 'meta_access_token', 'slack_webhook_url')
+-- order by column_name, grantee;
+--
+-- Then confirm the fix live (no login needed) by replacing YOUR_ANON_KEY
+-- below with the real anon key and running:
+--
+-- curl "https://xiikytqxevivrupkljwc.supabase.co/rest/v1/businesses?select=ingestion_key,meta_access_token,slack_webhook_url" \
+--   -H "apikey: YOUR_ANON_KEY" -H "Authorization: Bearer YOUR_ANON_KEY"
+--
+-- Before this fix: returns the real values. After: 400
+-- `42501 permission denied for table businesses` (the query is rejected
+-- outright, not silently filtered — same behavior as every other
+-- column-privilege fix in SECURITY_NOTES.md). A plain
+-- ?select=id,name,trade_type,city still returns data normally.

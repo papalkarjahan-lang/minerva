@@ -1831,3 +1831,85 @@ reads the same env var for its own outbound call — both sides always agree
 on which key is "current." Worth knowing for future live-testing of any
 other function in this bug class: use whichever key that endpoint actually
 returns as current, not an assumed format.
+
+## Anon-readable secrets on `businesses`: ingestion_key, meta_access_token, slack_webhook_url (2026-10-08) — fix written, NOT YET APPLIED LIVE
+
+Found live-testing an unrelated feature (the embeddable widget), which led
+to directly verifying what the public anon key can actually read off
+`businesses` — confirmed with a real unauthenticated REST call
+(`?select=*`, only the public anon key, no login) against the live
+database, not just inferred from the schema file. It returns every
+column, including three that are real secrets, not just PII:
+`ingestion_key` (bearer key for `harvest-industrial-leads`/
+`monitor-asset-telemetry`/`enrich-industrial-leads`'s `X-Ingestion-Key`
+check), `meta_access_token` (confirmed live by reading
+`launch-ad-campaign/index.ts`: passed directly as Meta Graph API
+`access_token`, i.e. a live OAuth bearer credential, not a reference id),
+and `slack_webhook_url` (post-as-that-channel bearer URL).
+
+This is not a new discovery in the sense of "nobody knew" — both
+`supabase_schema.sql`'s own column comments and this file's "The model"
+section already name `meta_access_token`/`slack_webhook_url` as
+"readable via the anon-select-all policy" and accept it, for the same
+reason `businesses`' row-level access is still open generally (see
+"Phase 2 priority" above: too many legitimate anonymous readers to scope
+the table without breaking them). What's new here is narrower: that
+row-level reasoning was never actually true for these 3 *columns*
+specifically. Grepped every real `.from('businesses')` call in `src/`
+(14 call sites): the only one that runs as `anon` (no session yet) and
+uses a bare `.select()`/`.select('*')` that would even ask for these
+columns is `Onboarding.jsx`'s post-signup insert — and it only ever uses
+`.id`/`.name` from the result afterward. `IntakeAssistant.jsx` already
+narrow-selects `id, name, trade_type, city`; `SuccessPage.jsx` selects
+only `sector`. Every other call site (`DispatcherView.jsx`,
+`IndustrialDispatcherView.jsx`, `AdminConsole.jsx`) runs under
+`RequireBusinessAuth`/the admin allowlist, i.e. the `authenticated` role,
+which this fix does not touch. So the "can't scope this without
+breaking a legitimate anonymous reader" reasoning that correctly blocks
+row-level RLS on this table does not apply at the column level — nothing
+anon-context actually needs these 3 columns back.
+
+Fix (`supabase_schema_delta_businesses_secret_columns.sql`): a single
+`revoke select (ingestion_key, meta_access_token, slack_webhook_url) on
+businesses from anon;`. Column-level, not row-level — every existing
+anon-context feature that reads a business by id is completely
+unaffected, since none of them touch these columns; only a direct,
+deliberate request for one of these 3 specifically now fails. Scoped to
+`anon` only, not `authenticated` — the owner's own dispatcher console
+needs to read these back to manage them (regenerate the ingestion key,
+configure the Slack webhook / Meta ad token in Settings). Updated
+`Onboarding.jsx`'s insert to `.select('id, name')` instead of the
+implicit `*`, since Postgres rejects an `INSERT...RETURNING` asking for
+a column the caller lacks SELECT on — confirmed this is the only call
+site that would have broken.
+
+**Deliberately not attempted here**: the narrower residual gap where any
+*other* logged-in user (not the true business owner, just someone who
+has created any account at all and knows/guesses this businessId) could
+still read these 3 columns via a direct API call, bypassing
+`RequireBusinessAuth.jsx`'s client-side-only ownership check — because
+that check is app-layer only, same as this file's "Phase 2 priority"
+section already documents for this table's row-level access generally.
+Closing that needs real per-row RLS (`auth.uid() = owner_user_id`) on
+`businesses`, which — per that same section — can't be added yet without
+breaking `IntakeAssistant.jsx`/`SuccessPage.jsx`/`Onboarding.jsx`'s
+anonymous reads of the OTHER ~25 columns on this row. A separate, larger
+project; not bundled into this narrower column-level fix.
+
+**NOT yet applied live** — unlike every other entry in this file, this
+fix has not been run against the real database or verified via
+`pg_policies`/`information_schema`/a live REST call. Doing that requires
+a Supabase credential (Management API PAT or direct DB connection) this
+session is not authorized to use itself — see
+`minerva_supabase_function_deploy_method.md` in memory. **Action needed
+from you**: open the Supabase SQL Editor for this project and run
+`supabase_schema_delta_businesses_secret_columns.sql` — it's one line
+plus a verification query in the same file's trailing comment. 654/654
+tests still passing and lint/build clean for the `Onboarding.jsx` change
+(no `logic.ts` involved — pure Supabase call-shape change, nothing to
+unit-test). Until that SQL is run, the exposure described above is
+still live: confirmed by the same `?select=*` call that found it, which
+as of this writing still returns all three columns' real values for the
+project's one existing row (`[TEST] Theoretical Co` — no real customer
+data exists yet, which is the only reason this isn't more urgent than it
+reads).

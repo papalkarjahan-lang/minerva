@@ -73,10 +73,17 @@ export default function Onboarding() {
       // once (see createdBusiness comment above).
       let bizData = createdBusiness
       if (!bizData) {
+        // Narrow .select() — not the default '*' — because the anon role
+        // (no login exists yet at this point in signup) no longer has
+        // SELECT on businesses.ingestion_key/meta_access_token/
+        // slack_webhook_url (supabase_schema_delta_businesses_secret_columns.sql).
+        // Postgres rejects an INSERT...RETURNING that asks for a column the
+        // caller lacks SELECT on, which would otherwise fail this entire
+        // insert — id/name are the only fields anything downstream reads.
         const { data, error: bizErr } = await supabase
           .from('businesses')
           .insert({ ...biz, subscription_tier: tier, sector, feature_priorities: featurePriorities })
-          .select()
+          .select('id, name')
           .single()
         if (bizErr) throw new Error(bizErr.message)
         bizData = data
