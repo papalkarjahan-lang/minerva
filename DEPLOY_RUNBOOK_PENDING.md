@@ -46,6 +46,13 @@ Paste each into the Supabase SQL Editor. None of these depend on each other.
   business's paid tier. `stripe-webhook` (already in Phase 3's redeploy
   list below) depends on this column existing, so run this before
   redeploying that function, not after.
+- `supabase_schema_delta_checkout_hijack_guard.sql` — **new 2026-10-08,
+  the security fix**: adds `businesses.checkout_token` + revokes anon
+  SELECT on it. See its own file and `SECURITY_NOTES.md`'s "Residual gap
+  in the 2026-09-27 checkout-hijack fix" entry. `create-checkout-session`
+  (already in Phase 3's redeploy list below, and now has a `logic.ts`
+  sibling for the first time) depends on this column existing, so run
+  this before redeploying that function too.
 - `supabase_schema_delta_signup_recovery.sql` — adds
   `businesses.signup_recovery_sent_at`
 - `supabase_schema_delta_new_subscriber_checkin.sql` — adds

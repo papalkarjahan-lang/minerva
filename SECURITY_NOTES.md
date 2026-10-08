@@ -1913,3 +1913,72 @@ as of this writing still returns all three columns' real values for the
 project's one existing row (`[TEST] Theoretical Co` — no real customer
 data exists yet, which is the only reason this isn't more urgent than it
 reads).
+
+## Residual gap in the 2026-09-27 checkout-hijack fix: the null-stripe_customer_id window is unbounded, not momentary (2026-10-08)
+
+Re-examined the "Cross-tenant Stripe checkout hijack via
+create-checkout-session's unchecked businessId" fix above after asking a
+sharper version of the same question that fix was built to answer. That
+fix's own reasoning (re-quoted here since this entry depends on it):
+"Confirmed `create-checkout-session` is only ever called from that one
+pre-auth Onboarding.jsx path, always targeting a business with no
+existing Stripe link yet — so the real trust boundary belongs at the
+point of the actual write." That's correct about the *intended* caller,
+but doesn't hold against an attacker calling the same public, CORS-open,
+auth-free endpoint directly: `shouldApplyCheckoutCompletion` treats a
+null `stripe_customer_id` as proof of "real first-time signup," but null
+is also exactly what every business looks like for however long it takes
+its real owner to finish paying — and `Onboarding.jsx` creates the
+business row, inserts its technicians, and sends each one a real setup
+SMS (fully functional, dispatching jobs) **before** it ever redirects to
+Stripe. That window isn't momentary; it stays open for exactly as long as
+an owner takes to complete checkout, which can be indefinite if they get
+distracted or bounce off Stripe's page and never return.
+
+Concretely, this meant a stranger who had ever seen a victim business's
+id (not confidential by this project's own "unguessable link" design,
+see above) could: call `create-checkout-session` directly with that
+businessId plus their own card/email; complete a real $0, 7-day-trial
+Stripe checkout, which `shouldApplyCheckoutCompletion` would **correctly
+wave through** since the victim's `stripe_customer_id` genuinely was
+null; then cancel that subscription immediately, for free, any time
+before day 7. `customer.subscription.deleted` matches by `stripe_sub_id`
+alone and would flip the victim's live, working business to
+`subscription_tier:'cancelled'`. Worse than the original 2026-09-27
+scenario in one way: the victim's *own*, later, real checkout attempt
+would now permanently fail too — `shouldApplyCheckoutCompletion` would
+see the attacker's `stripe_customer_id` already on file (no longer null)
+and correctly refuse to overwrite it, protecting the hijack instead of
+the victim, with no recovery path short of manual database intervention.
+
+Fixed with a `checkout_token`: a random value `Onboarding.jsx` generates
+client-side (`crypto.randomUUID()`) at the exact moment it creates the
+business row, stored on that row and revoked from anon SELECT
+(`supabase_schema_delta_checkout_hijack_guard.sql`, not yet applied
+live), which `create-checkout-session` now requires back, exactly
+matching, before it will create a Stripe session for that businessId
+(`shouldAllowCheckoutCreation()`, `logic.ts`, 6 new unit tests — this
+function/file didn't exist before this fix). Closes the gap at the point
+of *creation* rather than relying solely on the existing point-of-
+*completion* guard, which stays in place unchanged as a second,
+independent layer. An attacker can no longer get as far as having Stripe
+accept a checkout for a businessId they don't legitimately hold the
+token for, regardless of that business's `stripe_customer_id` state.
+
+Explicitly scoped: existing rows created before this column exists have
+`checkout_token = NULL` and are deliberately left unable to complete
+checkout via this endpoint at all until they go through Onboarding.jsx
+again — `shouldAllowCheckoutCreation()`'s own tests cover this directly
+(a null-vs-null comparison must not pass). Not backfilled, since there is
+no real population of businesses that would need to resume an old
+checkout right now (no paying customers yet) and no existing UI flow
+that would consume a backfilled value if there were. 689/689 tests
+passing (6 new), lint clean on the touched files (2 pre-existing,
+unrelated `react/no-unescaped-entities` warnings in `Onboarding.jsx`
+confirmed via `git stash` to predate this change). **Not yet applied
+live** — same reason as the entry above: this session is not authorized
+to run Supabase SQL itself. **Action needed from you**: run
+`supabase_schema_delta_checkout_hijack_guard.sql` in the Supabase SQL
+Editor, then redeploy `create-checkout-session` (now has a sibling
+`logic.ts` for the first time — deploy picks up the whole function
+directory automatically, no separate step needed for that).

@@ -44,6 +44,11 @@ export default function Onboarding() {
   // and re-texting technicians who already got a setup SMS the first time.
   const [createdBusiness, setCreatedBusiness] = useState(null)
   const [createdTechs, setCreatedTechs] = useState(null)
+  // Generated once, at the same moment as the business row itself, and
+  // reused on any retry (same reason createdBusiness/createdTechs are
+  // state rather than local variables — see checkout_token's own schema
+  // delta comment for why this can't just be read back after insert).
+  const [checkoutToken, setCheckoutToken] = useState(null)
 
   function selectTier(id) {
     setTier(id)
@@ -72,22 +77,36 @@ export default function Onboarding() {
       // 1. Create business — skipped on a retry if it already succeeded
       // once (see createdBusiness comment above).
       let bizData = createdBusiness
+      let token = checkoutToken
       if (!bizData) {
+        // Checkout-hijack guard (2026-10-08) — generated here, client-side,
+        // same moment as the row itself, and required back by
+        // create-checkout-session below before it will create a Stripe
+        // session for this businessId. See supabase_schema_delta_checkout_
+        // hijack_guard.sql and SECURITY_NOTES.md for why this exists: this
+        // business is about to become fully functional (technicians
+        // inserted + SMS'd, a few lines down) before payment is ever
+        // completed, and businessId alone isn't secret.
+        token = crypto.randomUUID()
         // Narrow .select() — not the default '*' — because the anon role
         // (no login exists yet at this point in signup) no longer has
         // SELECT on businesses.ingestion_key/meta_access_token/
-        // slack_webhook_url (supabase_schema_delta_businesses_secret_columns.sql).
-        // Postgres rejects an INSERT...RETURNING that asks for a column the
-        // caller lacks SELECT on, which would otherwise fail this entire
-        // insert — id/name are the only fields anything downstream reads.
+        // slack_webhook_url/checkout_token (supabase_schema_delta_
+        // businesses_secret_columns.sql, supabase_schema_delta_checkout_
+        // hijack_guard.sql). Postgres rejects an INSERT...RETURNING that
+        // asks for a column the caller lacks SELECT on, which would
+        // otherwise fail this entire insert — id/name are the only fields
+        // anything downstream reads; checkout_token is read back from the
+        // local `token` variable above instead, never from the DB.
         const { data, error: bizErr } = await supabase
           .from('businesses')
-          .insert({ ...biz, subscription_tier: tier, sector, feature_priorities: featurePriorities })
+          .insert({ ...biz, subscription_tier: tier, sector, feature_priorities: featurePriorities, checkout_token: token })
           .select('id, name')
           .single()
         if (bizErr) throw new Error(bizErr.message)
         bizData = data
         setCreatedBusiness(data)
+        setCheckoutToken(token)
       }
 
       // 2. Create technicians with PINs. Diffed against createdTechs (by
@@ -148,7 +167,8 @@ export default function Onboarding() {
           businessName: bizData.name,
           contactEmail: biz.contact_email,
           techCount,
-          tier
+          tier,
+          checkoutToken: token
         }
       })
       if (response.error) throw new Error(response.error.message)

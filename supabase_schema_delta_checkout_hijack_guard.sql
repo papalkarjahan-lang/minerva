@@ -1,0 +1,68 @@
+-- ============================================================
+-- MINERVA — Delta: businesses.checkout_token, 2026-10-08.
+-- Adds 1 new column + revokes anon SELECT on it. Run this entire block
+-- once in the Supabase SQL Editor.
+--
+-- What this fixes: closes a residual gap in the checkout-hijack guard
+-- already documented in SECURITY_NOTES.md under "Cross-tenant Stripe
+-- checkout hijack via create-checkout-session's unchecked businessId
+-- (2026-09-27)". That fix (shouldApplyCheckoutCompletion) only refuses
+-- the write when the target business already has a DIFFERENT
+-- stripe_customer_id on file — it explicitly treats a null
+-- stripe_customer_id as proof of "a real first-time signup." That's true
+-- of the INTENDED call pattern, but Onboarding.jsx makes a business fully
+-- functional (technicians inserted, setup SMS sent) BEFORE the Stripe
+-- redirect even happens — so "signed up, not yet paid" and "brand new,
+-- never started paying" are the exact same null-stripe_customer_id state
+-- from the outside, and that window can stay open indefinitely if the
+-- owner never completes checkout. A stranger who has ever seen that
+-- business's id (not confidential — see this file's own "unguessable
+-- link" model) could call create-checkout-session directly, complete
+-- their OWN $0 trial checkout against the VICTIM's businessId, then
+-- cancel it for free — flipping a live, working business to
+-- subscription_tier:'cancelled', and permanently locking the real
+-- owner's own future checkout out too (shouldApplyCheckoutCompletion
+-- would then see the ATTACKER's customer id already on file and
+-- correctly refuse to overwrite it — protecting the hijack, not the
+-- victim). See SECURITY_NOTES.md's matching dated entry for the full
+-- writeup.
+--
+-- Fix: Onboarding.jsx now generates a random checkout_token client-side
+-- (crypto.randomUUID(), same already-proven pattern as
+-- ContactSupportModal.jsx/Enterprise.jsx/TrackingView.jsx's own id
+-- generation, and IndustrialDispatcherView.jsx's ingestion_key
+-- regeneration) at the same moment it creates the business row, and must
+-- present that exact value back to create-checkout-session before a
+-- Stripe session is created for that businessId. Generated client-side
+-- rather than via a DB column default (unlike ingestion_key's own
+-- `default gen_random_uuid()::text`) because, unlike ingestion_key — which
+-- only the business owner's later AUTHENTICATED session ever needs to
+-- read — checkout_token must be known to the SAME pre-auth anon browser
+-- that just created the row, moments later, with no authenticated
+-- session to read it back through once anon SELECT is revoked below.
+--
+-- The revoke matters as much as the column: without it, the exact same
+-- attacker could just read checkout_token straight back out with a plain
+-- `select=checkout_token` REST call using the public anon key, defeating
+-- the whole point. Column-level REVOKE SELECT does not affect INSERT —
+-- Onboarding.jsx's anon-role insert can still SET this column, it just
+-- can never read it back afterward, same as the 3 columns
+-- supabase_schema_delta_businesses_secret_columns.sql already locked down
+-- this same way.
+--
+-- Existing rows created before this column existed have
+-- checkout_token = NULL. shouldAllowCheckoutCreation() in
+-- create-checkout-session/logic.ts deliberately rejects EVERY call for
+-- such a row, including one that also sends a null/empty token — a naive
+-- `storedToken === providedToken` check would let null match null and
+-- reopen the exact gap this fix closes for every pre-existing business.
+-- Accepted as-is (not backfilled): as of this fix there are no real paying
+-- customers yet, so there is no real population of "legitimately abandoned
+-- checkout, needs to resume" rows at risk — if that ever changes, the fix
+-- is a fresh Onboarding.jsx signup (a new row, with a real token), not a
+-- backfill script, since there is no UI flow today that would consume a
+-- backfilled value anyway.
+-- ============================================================
+
+alter table businesses add column checkout_token text;
+revoke select (checkout_token) on businesses from anon;

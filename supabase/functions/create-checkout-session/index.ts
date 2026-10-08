@@ -17,9 +17,22 @@
 // functions: this is the top-of-funnel signup flow — disabling it would
 // silently block ALL new business signups with no clear operational
 // benefit.
+//
+// Checkout-hijack guard (added 2026-10-08): this endpoint has no
+// caller-identity check — see SECURITY_NOTES.md's "Cross-tenant Stripe
+// checkout hijack" entries (2026-09-27 and 2026-10-08) and
+// supabase_schema_delta_checkout_hijack_guard.sql for the full scenario.
+// Short version: a business is fully functional (technicians created,
+// SMS'd) before the Stripe redirect even happens, so "signed up, not yet
+// paid" can persist indefinitely and is indistinguishable from "brand
+// new" to stripe-webhook's existing shouldApplyCheckoutCompletion guard.
+// Requiring the exact checkoutToken Onboarding.jsx generated at
+// business-creation time closes the gap at the point of creation, rather
+// than relying solely on that later guard.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { shouldAllowCheckoutCreation } from "./logic.ts"
 
 const corsHeaders = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' }
 
@@ -31,12 +44,29 @@ serve(async (req: Request) => {
   const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
 
   try {
-    const { businessId, businessName, contactEmail, techCount, tier } = await req.json()
+    const { businessId, businessName, contactEmail, techCount, tier, checkoutToken } = await req.json()
 
     const STRIPE_KEY = Deno.env.get('STRIPE_SECRET_KEY')
     const APP_URL = Deno.env.get('APP_URL')
     if (!STRIPE_KEY || !APP_URL) {
       throw new Error('Stripe environment variables not configured')
+    }
+
+    if (!businessId) {
+      throw new Error('Missing businessId')
+    }
+
+    // Checkout-hijack guard — see header comment. One generic error for
+    // both "business not found" and "token mismatch" so a caller can't
+    // use this endpoint to probe which business ids are real.
+    const { data: bizForToken, error: bizFetchErr } = await supabase
+      .from('businesses')
+      .select('checkout_token')
+      .eq('id', businessId)
+      .maybeSingle()
+    if (bizFetchErr) throw new Error(`Failed to verify business: ${bizFetchErr.message}`)
+    if (!shouldAllowCheckoutCreation(bizForToken?.checkout_token, checkoutToken)) {
+      throw new Error('Invalid checkout token for this business')
     }
 
     // Pick the Stripe price id for the chosen tier.
