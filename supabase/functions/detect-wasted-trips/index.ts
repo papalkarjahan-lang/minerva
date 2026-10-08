@@ -30,9 +30,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { wasOnSite, groupJobsByTechnicianDate, findOverloadedGroups } from "./logic.ts"
 import { sendTwilioSms } from "../_shared/twilioSms.ts"
 import { notifySlack } from "../_shared/notifySlack.ts"
+import { chunk } from "../_shared/batch.ts"
 
 const ARRIVAL_RADIUS_KM = 0.15 // ~150 metres
 const MIN_DWELL_MINUTES = 15
+const JOB_BATCH_SIZE = 20
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -68,63 +70,19 @@ serve(async (req: Request) => {
 
     let detected = 0
 
-    for (const job of candidateJobs || []) {
-      const { data: pings, error: pingErr } = await supabase
-        .from('technician_locations')
-        .select('lat, lng, recorded_at')
-        .eq('job_id', job.id)
-        .lt('recorded_at', dwellCutoff)
-        .order('recorded_at', { ascending: false })
-        .limit(50)
-      if (pingErr) { console.error('detect-wasted-trips: location fetch failed', pingErr); continue }
-      if (!pings || pings.length === 0) continue
-
-      if (!wasOnSite(pings, job.client_lat!, job.client_lng!, ARRIVAL_RADIUS_KM)) continue
-
-      // Atomically claim this job before sending anything — the initial
-      // query above already filters .is('no_show_detected_at', null), but
-      // that's a point-in-time SELECT; if a previous run is still mid-flight
-      // when this 15-min tick fires again (e.g. a slow Twilio round-trip),
-      // both runs could pass that same filter before either had written the
-      // flag, and both would text the client AND the technician a duplicate
-      // "wasted trip" no-show message. Fixed 2026-09-29 — same claim-before-
-      // notify pattern as this project's other idempotency fixes.
-      const detectedAt = new Date().toISOString()
-      const { data: claimed, error: claimErr } = await supabase
-        .from('jobs')
-        .update({ no_show_detected_at: detectedAt })
-        .eq('id', job.id)
-        .is('no_show_detected_at', null)
-        .select('id')
-      if (claimErr) { console.error('detect-wasted-trips: claim failed', claimErr); continue }
-      if (!claimed || claimed.length === 0) continue // already claimed by a concurrent/prior run
-      detected++
-
-      const bizName = (job as any).businesses?.name || 'the business'
-      if (job.client_phone) {
-        const message = `Hi ${job.client_name || ''}, this is ${bizName} — our technician was on-site for your job but we weren't able to get it started. No charge for the trip. Reply here or call us to reschedule at a time that works.`.trim()
-        const smsOk = await sendTwilioSms(twilio, job.client_phone, message, 'detect-wasted-trips')
-        if (smsOk) await supabase.from('jobs').update({ no_show_reschedule_sms_sent_at: detectedAt }).eq('id', job.id)
-      }
-
-      // Technician-facing nudge: this agent only ever ran silently on the
-      // client + dispatcher side before — the technician who actually made
-      // the trip never found out their no-show got logged and the client
-      // already texted, and could easily still be sitting outside, or
-      // re-attempt the same job unaware it's already been rescheduled.
-      // Operational, not marketing — same category as send-job-assignment-sms.
-      if (job.technician_id) {
-        const { data: tech } = await supabase.from('technicians').select('phone, name').eq('id', job.technician_id).maybeSingle()
-        if (tech?.phone) {
-          await sendTwilioSms(twilio, tech.phone,
-            `Hi ${tech.name || ''}, we've logged your visit to ${job.client_name || 'this job'} as a no-show/never-started and texted the client to reschedule — no need to keep waiting on-site or follow up yourself.`.trim(),
-            'detect-wasted-trips')
-            .catch(() => {})
-        }
-      }
-
-      await notifySlack(supabaseUrl, supabaseServiceKey, job.business_id,
-        `🚚 Wasted trip detected for job with *${job.client_name || 'unknown client'}* — technician GPS confirms on-site presence but the job never started. Reschedule SMS sent to the client. Geotagged proof: technician_locations, job_id ${job.id}.`)
+    // Bounded-concurrency batching (added 2026-10-08) — every 'scheduled'
+    // job platform-wide, each costing a nested technician_locations query
+    // plus up to 2 SMS sends and a Slack notify, was processed fully
+    // sequentially — on the TIGHTEST cron cadence in this app (every ~15
+    // min), so the timeout-risk window here is even narrower than the
+    // hourly/daily functions already fixed this round. Same chunk()-of-20
+    // shape as reconcile-billing/daily-digest/etc, see
+    // SCALE_READINESS_NOTES.md / SCALE_READINESS_NOTES_ROUND2.md.
+    for (const batch of chunk(candidateJobs || [], JOB_BATCH_SIZE)) {
+      const results = await Promise.all(batch.map(job =>
+        processOneJobCandidate(supabase, supabaseUrl, supabaseServiceKey, twilio, dwellCutoff, job)
+      ))
+      for (const wasDetected of results) if (wasDetected) detected++
     }
 
     // ---------------------------------------------------------------------
@@ -230,3 +188,74 @@ serve(async (req: Request) => {
     })
   }
 })
+
+// Extracted from the main loop (2026-10-08) so it can be run through
+// chunk()'s bounded-concurrency batching — same logic that was previously
+// inline, unchanged. Returns whether this job was newly detected as a
+// wasted trip.
+async function processOneJobCandidate(
+  supabase: ReturnType<typeof createClient>,
+  supabaseUrl: string,
+  supabaseServiceKey: string,
+  twilio: { sid: string | undefined; token: string | undefined; from: string | undefined },
+  dwellCutoff: string,
+  job: any
+): Promise<boolean> {
+  const { data: pings, error: pingErr } = await supabase
+    .from('technician_locations')
+    .select('lat, lng, recorded_at')
+    .eq('job_id', job.id)
+    .lt('recorded_at', dwellCutoff)
+    .order('recorded_at', { ascending: false })
+    .limit(50)
+  if (pingErr) { console.error('detect-wasted-trips: location fetch failed', pingErr); return false }
+  if (!pings || pings.length === 0) return false
+
+  if (!wasOnSite(pings, job.client_lat!, job.client_lng!, ARRIVAL_RADIUS_KM)) return false
+
+  // Atomically claim this job before sending anything — the initial
+  // query above already filters .is('no_show_detected_at', null), but
+  // that's a point-in-time SELECT; if a previous run is still mid-flight
+  // when this 15-min tick fires again (e.g. a slow Twilio round-trip),
+  // both runs could pass that same filter before either had written the
+  // flag, and both would text the client AND the technician a duplicate
+  // "wasted trip" no-show message. Fixed 2026-09-29 — same claim-before-
+  // notify pattern as this project's other idempotency fixes.
+  const detectedAt = new Date().toISOString()
+  const { data: claimed, error: claimErr } = await supabase
+    .from('jobs')
+    .update({ no_show_detected_at: detectedAt })
+    .eq('id', job.id)
+    .is('no_show_detected_at', null)
+    .select('id')
+  if (claimErr) { console.error('detect-wasted-trips: claim failed', claimErr); return false }
+  if (!claimed || claimed.length === 0) return false // already claimed by a concurrent/prior run
+
+  const bizName = job.businesses?.name || 'the business'
+  if (job.client_phone) {
+    const message = `Hi ${job.client_name || ''}, this is ${bizName} — our technician was on-site for your job but we weren't able to get it started. No charge for the trip. Reply here or call us to reschedule at a time that works.`.trim()
+    const smsOk = await sendTwilioSms(twilio, job.client_phone, message, 'detect-wasted-trips')
+    if (smsOk) await supabase.from('jobs').update({ no_show_reschedule_sms_sent_at: detectedAt }).eq('id', job.id)
+  }
+
+  // Technician-facing nudge: this agent only ever ran silently on the
+  // client + dispatcher side before — the technician who actually made
+  // the trip never found out their no-show got logged and the client
+  // already texted, and could easily still be sitting outside, or
+  // re-attempt the same job unaware it's already been rescheduled.
+  // Operational, not marketing — same category as send-job-assignment-sms.
+  if (job.technician_id) {
+    const { data: tech } = await supabase.from('technicians').select('phone, name').eq('id', job.technician_id).maybeSingle()
+    if (tech?.phone) {
+      await sendTwilioSms(twilio, tech.phone,
+        `Hi ${tech.name || ''}, we've logged your visit to ${job.client_name || 'this job'} as a no-show/never-started and texted the client to reschedule — no need to keep waiting on-site or follow up yourself.`.trim(),
+        'detect-wasted-trips')
+        .catch(() => {})
+    }
+  }
+
+  await notifySlack(supabaseUrl, supabaseServiceKey, job.business_id,
+    `🚚 Wasted trip detected for job with *${job.client_name || 'unknown client'}* — technician GPS confirms on-site presence but the job never started. Reschedule SMS sent to the client. Geotagged proof: technician_locations, job_id ${job.id}.`)
+
+  return true
+}

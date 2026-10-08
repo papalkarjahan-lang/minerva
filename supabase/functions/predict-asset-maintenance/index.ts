@@ -19,10 +19,12 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { projectMaintenance } from "./logic.ts"
 import { isAddonActive } from "../_shared/maxAddons.ts"
+import { chunk } from "../_shared/batch.ts"
 
 const LOOKBACK_DAYS = 14
 const PREDICT_WINDOW_DAYS = 7
 const RENOTIFY_SUPPRESS_DAYS = 3 // don't re-flag the same asset every single day once predicted
+const ASSET_BATCH_SIZE = 20
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -59,54 +61,20 @@ serve(async (req: Request) => {
     let evaluated = 0
     let predicted = 0
 
-    for (const asset of assets || []) {
-      if (!addonActive(asset.business_id, 'asset_intelligence')) continue
-      evaluated++
-
-      const { data: pings } = await supabase.from('asset_telemetry_events')
-        .select('engine_hours, created_at')
-        .eq('asset_id', asset.id)
-        .eq('event_type', 'ping')
-        .not('engine_hours', 'is', null)
-        .gte('created_at', lookbackSince)
-        .order('created_at', { ascending: true })
-
-      if (!pings || pings.length < 2) continue // not enough real data to project a trend
-
-      const first = pings[0]
-      const last = pings[pings.length - 1]
-      const prediction = projectMaintenance(first, last, asset.engine_hours, asset.last_maintenance_at_hours, asset.maintenance_interval_hours, PREDICT_WINDOW_DAYS)
-      if (!prediction) continue
-      const { dailyRate, roundedDays } = prediction
-
-      // Atomically claim this asset before predicting — the previous design
-      // checked "predicted within the suppress window?" with a plain SELECT
-      // against asset_telemetry_events and only inserted the prediction
-      // event afterward, so two overlapping daily runs could both pass the
-      // check and both insert a prediction event + Slack-alert for the same
-      // asset. Fixed 2026-09-29 via industrial_assets.maintenance_
-      // predicted_at, same claim-before-notify pattern as detect-idle-
-      // assets'/optimize-industrial-routes' claim columns (added the same day).
-      const { data: claimed, error: claimErr } = await supabase
-        .from('industrial_assets')
-        .update({ maintenance_predicted_at: new Date().toISOString() })
-        .eq('id', asset.id)
-        .or(`maintenance_predicted_at.is.null,maintenance_predicted_at.lt.${suppressSince}`)
-        .select('id')
-      if (claimErr) { console.error('predict-asset-maintenance: claim failed:', claimErr.message); continue }
-      if (!claimed || claimed.length === 0) continue // already predicted recently by a concurrent/prior run
-
-      await supabase.from('asset_telemetry_events').insert({
-        asset_id: asset.id, business_id: asset.business_id, event_type: 'maintenance_predicted',
-        engine_hours: last.engine_hours,
-        detail: `Projected to hit maintenance threshold in ~${roundedDays} day${roundedDays === 1 ? '' : 's'} at current usage rate (${dailyRate.toFixed(1)}h/day).`,
-      })
-      await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
-        body: JSON.stringify({ businessId: asset.business_id, text: `📈 *Predictive Maintenance*: *${asset.name}* is on track to need maintenance in ~${roundedDays} day${roundedDays === 1 ? '' : 's'} at its current usage rate — schedule it before it becomes a reactive breakdown.` }),
-      }).catch(() => {})
-      predicted++
+    // Bounded-concurrency batching (added 2026-10-08) — every active
+    // industrial asset belonging to a business with asset_intelligence
+    // active, across the whole platform, was processed fully sequentially
+    // (and unlike reconcile-technician-state's mostly-cheap loop, every
+    // addon-active asset here costs a real nested telemetry query
+    // regardless of whether a prediction ends up firing). Same
+    // chunk()-of-20 shape as the rest of this round, see
+    // SCALE_READINESS_NOTES_ROUND2.md.
+    const addonActiveAssets = (assets || []).filter(a => addonActive(a.business_id, 'asset_intelligence'))
+    for (const batch of chunk(addonActiveAssets, ASSET_BATCH_SIZE)) {
+      const results = await Promise.all(batch.map(asset =>
+        evaluateOneAssetMaintenance(supabase, supabaseUrl, supabaseServiceKey, lookbackSince, suppressSince, asset)
+      ))
+      for (const wasPredicted of results) { evaluated++; if (wasPredicted) predicted++ }
     }
 
     supabase.rpc('record_agent_run', { fn_name: 'predict-asset-maintenance', status: 'ok' }).then(() => {}, () => {})
@@ -126,3 +94,61 @@ serve(async (req: Request) => {
     })
   }
 })
+
+// Extracted from the main loop (2026-10-08) so it can be run through
+// chunk()'s bounded-concurrency batching — same logic that was previously
+// inline, unchanged. Returns whether a maintenance prediction was fired
+// for this asset (the caller counts every call as "evaluated").
+async function evaluateOneAssetMaintenance(
+  supabase: ReturnType<typeof createClient>,
+  supabaseUrl: string,
+  supabaseServiceKey: string,
+  lookbackSince: string,
+  suppressSince: string,
+  asset: any
+): Promise<boolean> {
+  const { data: pings } = await supabase.from('asset_telemetry_events')
+    .select('engine_hours, created_at')
+    .eq('asset_id', asset.id)
+    .eq('event_type', 'ping')
+    .not('engine_hours', 'is', null)
+    .gte('created_at', lookbackSince)
+    .order('created_at', { ascending: true })
+
+  if (!pings || pings.length < 2) return false // not enough real data to project a trend
+
+  const first = pings[0]
+  const last = pings[pings.length - 1]
+  const prediction = projectMaintenance(first, last, asset.engine_hours, asset.last_maintenance_at_hours, asset.maintenance_interval_hours, PREDICT_WINDOW_DAYS)
+  if (!prediction) return false
+  const { dailyRate, roundedDays } = prediction
+
+  // Atomically claim this asset before predicting — the previous design
+  // checked "predicted within the suppress window?" with a plain SELECT
+  // against asset_telemetry_events and only inserted the prediction
+  // event afterward, so two overlapping daily runs could both pass the
+  // check and both insert a prediction event + Slack-alert for the same
+  // asset. Fixed 2026-09-29 via industrial_assets.maintenance_
+  // predicted_at, same claim-before-notify pattern as detect-idle-
+  // assets'/optimize-industrial-routes' claim columns (added the same day).
+  const { data: claimed, error: claimErr } = await supabase
+    .from('industrial_assets')
+    .update({ maintenance_predicted_at: new Date().toISOString() })
+    .eq('id', asset.id)
+    .or(`maintenance_predicted_at.is.null,maintenance_predicted_at.lt.${suppressSince}`)
+    .select('id')
+  if (claimErr) { console.error('predict-asset-maintenance: claim failed:', claimErr.message); return false }
+  if (!claimed || claimed.length === 0) return false // already predicted recently by a concurrent/prior run
+
+  await supabase.from('asset_telemetry_events').insert({
+    asset_id: asset.id, business_id: asset.business_id, event_type: 'maintenance_predicted',
+    engine_hours: last.engine_hours,
+    detail: `Projected to hit maintenance threshold in ~${roundedDays} day${roundedDays === 1 ? '' : 's'} at current usage rate (${dailyRate.toFixed(1)}h/day).`,
+  })
+  await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
+    body: JSON.stringify({ businessId: asset.business_id, text: `📈 *Predictive Maintenance*: *${asset.name}* is on track to need maintenance in ~${roundedDays} day${roundedDays === 1 ? '' : 's'} at its current usage rate — schedule it before it becomes a reactive breakdown.` }),
+  }).catch(() => {})
+  return true
+}

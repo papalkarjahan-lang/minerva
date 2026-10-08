@@ -22,6 +22,9 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { chunk } from "../_shared/batch.ts"
+
+const TECH_BATCH_SIZE = 20
 
 serve(async (_req: Request) => {
   try {
@@ -47,22 +50,20 @@ serve(async (_req: Request) => {
     }
 
     let fixed = 0
-    for (const tech of stuckTechs || []) {
-      const status = jobStatusById.get(tech.current_job_id)
-      // Drift = the job it's pointing at is already 'complete', or no longer
-      // exists at all (e.g. deleted — not in the map at all). A job that's
-      // still 'scheduled' or 'active' is a technician genuinely mid-job —
-      // leave that alone.
-      if (!status || status === 'complete') {
-        await supabase.from('technicians').update({ current_job_id: null }).eq('id', tech.id)
-        await supabase.from('agent_insights').insert({
-          business_id: tech.business_id,
-          agent: 'operations',
-          insight_type: 'anomaly',
-          summary: `Auto-fixed: technician ${tech.name || tech.id} was stuck pointing at a finished job and would have stopped receiving auto-dispatched jobs. Cleared automatically.`,
-        })
-        fixed++
-      }
+    // Bounded-concurrency batching (added 2026-10-08) — most iterations
+    // here are a cheap in-memory map lookup with no I/O (drift is the
+    // rare case), so this loop is lower-risk than the other cron
+    // functions fixed this round. Still applied for defense in depth: a
+    // correlated event (e.g. a network outage affecting many
+    // technicians' mobile connections at once, exactly the scenario this
+    // function exists to clean up after) could spike the drifted subset
+    // well above the normal rare case, and batching costs nothing
+    // functionally over the plain sequential loop it replaces. Same
+    // chunk()-of-20 shape as the rest of this round, see
+    // SCALE_READINESS_NOTES_ROUND2.md.
+    for (const batch of chunk(stuckTechs || [], TECH_BATCH_SIZE)) {
+      const results = await Promise.all(batch.map(tech => fixOneTechnicianIfDrifted(supabase, jobStatusById, tech)))
+      for (const wasFixed of results) if (wasFixed) fixed++
     }
 
     await supabase.rpc('record_agent_run', { fn_name: 'reconcile-technician-state', status: 'ok' })
@@ -82,3 +83,29 @@ serve(async (_req: Request) => {
     })
   }
 })
+
+// Extracted from the main loop (2026-10-08) so it can be run through
+// chunk()'s bounded-concurrency batching — same logic that was previously
+// inline, unchanged. Returns whether this technician's drift was fixed.
+async function fixOneTechnicianIfDrifted(
+  supabase: ReturnType<typeof createClient>,
+  jobStatusById: Map<string, string>,
+  tech: any
+): Promise<boolean> {
+  const status = jobStatusById.get(tech.current_job_id)
+  // Drift = the job it's pointing at is already 'complete', or no longer
+  // exists at all (e.g. deleted — not in the map at all). A job that's
+  // still 'scheduled' or 'active' is a technician genuinely mid-job —
+  // leave that alone.
+  if (!status || status === 'complete') {
+    await supabase.from('technicians').update({ current_job_id: null }).eq('id', tech.id)
+    await supabase.from('agent_insights').insert({
+      business_id: tech.business_id,
+      agent: 'operations',
+      insight_type: 'anomaly',
+      summary: `Auto-fixed: technician ${tech.name || tech.id} was stuck pointing at a finished job and would have stopped receiving auto-dispatched jobs. Cleared automatically.`,
+    })
+    return true
+  }
+  return false
+}

@@ -11,9 +11,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { isAddonActive } from "../_shared/maxAddons.ts"
+import { chunk } from "../_shared/batch.ts"
 
 const IDLE_THRESHOLD_DAYS = 14
 const RENOTIFY_SUPPRESS_DAYS = 7 // don't re-flag the same still-idle asset every single day
+const ASSET_BATCH_SIZE = 20
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -56,36 +58,15 @@ serve(async (req: Request) => {
     const candidates = [...(neverPinged || []), ...(stalePinged || [])].filter(a => addonActive((a as any).business_id, 'asset_intelligence'))
 
     let flagged = 0
-    for (const asset of candidates) {
-      // Atomically claim this asset before flagging — the previous design
-      // checked "flagged within the suppress window?" with a plain SELECT
-      // against asset_telemetry_events and only inserted the flag event
-      // afterward, so two overlapping daily runs could both pass the check
-      // and both insert a flag event + Slack-alert for the same idle asset.
-      // Fixed 2026-09-29 via industrial_assets.idle_flagged_at, same
-      // claim-before-notify pattern as optimize-industrial-routes'
-      // route_suggested_at (added earlier the same day).
-      const { data: claimed, error: claimErr } = await supabase
-        .from('industrial_assets')
-        .update({ idle_flagged_at: new Date().toISOString() })
-        .eq('id', asset.id)
-        .or(`idle_flagged_at.is.null,idle_flagged_at.lt.${suppressSince}`)
-        .select('id')
-      if (claimErr) { console.error('detect-idle-assets: claim failed:', claimErr.message); continue }
-      if (!claimed || claimed.length === 0) continue // already flagged recently by a concurrent/prior run
-
-      await supabase.from('asset_telemetry_events').insert({
-        asset_id: asset.id, business_id: asset.business_id, event_type: 'idle_flagged',
-        detail: (asset as any).last_telemetry_at
-          ? `No telemetry since ${(asset as any).last_telemetry_at} — idle ${IDLE_THRESHOLD_DAYS}+ days.`
-          : `No telemetry ever recorded for this asset.`,
-      })
-      await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
-        body: JSON.stringify({ businessId: asset.business_id, text: `👻 *Ghost Asset*: *${asset.name}* hasn't reported in ${IDLE_THRESHOLD_DAYS}+ days — worth checking if it's sitting unused, or its tracking feed has gone quiet.` }),
-      }).catch(() => {})
-      flagged++
+    // Bounded-concurrency batching (added 2026-10-08) — every idle asset
+    // belonging to a business with asset_intelligence active, across the
+    // whole platform, was processed fully sequentially. Same chunk()-of-20
+    // shape as the rest of this round, see SCALE_READINESS_NOTES_ROUND2.md.
+    for (const batch of chunk(candidates, ASSET_BATCH_SIZE)) {
+      const results = await Promise.all(batch.map(asset =>
+        flagOneIdleAsset(supabase, supabaseUrl, supabaseServiceKey, suppressSince, asset)
+      ))
+      for (const wasFlagged of results) if (wasFlagged) flagged++
     }
 
     supabase.rpc('record_agent_run', { fn_name: 'detect-idle-assets', status: 'ok' }).then(() => {}, () => {})
@@ -105,3 +86,44 @@ serve(async (req: Request) => {
     })
   }
 })
+
+// Extracted from the main loop (2026-10-08) so it can be run through
+// chunk()'s bounded-concurrency batching — same logic that was previously
+// inline, unchanged. Returns whether this asset was newly flagged.
+async function flagOneIdleAsset(
+  supabase: ReturnType<typeof createClient>,
+  supabaseUrl: string,
+  supabaseServiceKey: string,
+  suppressSince: string,
+  asset: any
+): Promise<boolean> {
+  // Atomically claim this asset before flagging — the previous design
+  // checked "flagged within the suppress window?" with a plain SELECT
+  // against asset_telemetry_events and only inserted the flag event
+  // afterward, so two overlapping daily runs could both pass the check
+  // and both insert a flag event + Slack-alert for the same idle asset.
+  // Fixed 2026-09-29 via industrial_assets.idle_flagged_at, same
+  // claim-before-notify pattern as optimize-industrial-routes'
+  // route_suggested_at (added earlier the same day).
+  const { data: claimed, error: claimErr } = await supabase
+    .from('industrial_assets')
+    .update({ idle_flagged_at: new Date().toISOString() })
+    .eq('id', asset.id)
+    .or(`idle_flagged_at.is.null,idle_flagged_at.lt.${suppressSince}`)
+    .select('id')
+  if (claimErr) { console.error('detect-idle-assets: claim failed:', claimErr.message); return false }
+  if (!claimed || claimed.length === 0) return false // already flagged recently by a concurrent/prior run
+
+  await supabase.from('asset_telemetry_events').insert({
+    asset_id: asset.id, business_id: asset.business_id, event_type: 'idle_flagged',
+    detail: asset.last_telemetry_at
+      ? `No telemetry since ${asset.last_telemetry_at} — idle ${IDLE_THRESHOLD_DAYS}+ days.`
+      : `No telemetry ever recorded for this asset.`,
+  })
+  await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
+    body: JSON.stringify({ businessId: asset.business_id, text: `👻 *Ghost Asset*: *${asset.name}* hasn't reported in ${IDLE_THRESHOLD_DAYS}+ days — worth checking if it's sitting unused, or its tracking feed has gone quiet.` }),
+  }).catch(() => {})
+  return true
+}

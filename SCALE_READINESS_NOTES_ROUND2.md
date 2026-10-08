@@ -49,3 +49,42 @@ new tests needed since `chunk()` itself is already tested
 (`_shared/batch.test.ts`) and every extracted per-item function is a thin
 I/O wrapper around logic that was already correct, not new decision logic
 of its own, same reasoning round 1 used for its own 6 fixes.
+
+- **`detect-wasted-trips`**: the main no-show-detection loop (every
+  'scheduled' job platform-wide, each costing a nested
+  `technician_locations` query plus up to 2 SMS sends and a Slack
+  notify) runs on the **tightest cron cadence in this app, ~15 minutes**
+  — the narrowest timeout-risk window of anything fixed this round. Its
+  second, unrelated loop in the same file (the job-overload heuristic)
+  was left as-is: `findOverloadedGroups` already pre-filters down to
+  just the technicians who are actually overloaded on a given date, a
+  naturally small set, same shape as round 1's already-confirmed-fine
+  `lead-followup-reminder`/`verify-industrial-compliance`.
+- **`detect-idle-assets`** and **`predict-asset-maintenance`**: the
+  industrial-sector siblings of `track-consumables`/the asset_intelligence
+  add-on, each sweeping every active `industrial_asset` platform-wide
+  (addon-filtered, but still unbounded at the business-count level).
+  `predict-asset-maintenance` specifically costs a real nested telemetry
+  query for every addon-active asset regardless of whether a prediction
+  ends up firing — not a conditional-cost loop the way
+  `reconcile-technician-state` below is.
+- **`reconcile-technician-state`**: structurally different from the rest
+  of this round — most iterations are a cheap in-memory map lookup with
+  no I/O at all, since drift (a technician's `current_job_id` pointing at
+  an already-finished job) is the rare case, not the common one. Batched
+  anyway, as defense in depth rather than a confirmed urgent fix: a
+  correlated event (a mobile network outage hitting many technicians at
+  once — exactly the scenario this function exists to clean up after)
+  could spike the drifted subset well above its normal rare rate, and
+  batching costs nothing functionally over the sequential loop it
+  replaces, so there was no reason not to.
+
+7 of the 25 functions from the original list fixed so far; 18 remain to
+check (`agent-council-report`, `check-weather-risk`, `enrich-industrial-
+leads`, `estimate-job-carbon`, `flag-abandoned-signups`, `followup-
+outreach`, `forecast-demand`, `generate-growth-drafts`, `new-subscriber-
+checkin`, `notify-addon-trial-ending`, `nurture-stale-leads`, `optimize-
+industrial-routes`, `recover-abandoned-signup`, `retention-checkin`,
+`winback-lost-leads`, plus `auto-assign-technician`/`test-agent-health`/
+`verify-checklist-photos`, the last of which already looks correctly
+bounded on first read — see Checked-and-fine below once confirmed).
