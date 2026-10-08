@@ -9,6 +9,17 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { chunk } from "../_shared/batch.ts"
+
+// Completions are processed in bounded-concurrency batches, not fully
+// sequentially — same fix shape as reconcile-billing/update-technician-
+// workload/daily-digest/detect-safety-hazards (scale-readiness pass,
+// 2026-10-08). The outer candidate query is already time-windowed to the
+// last hour, so any one sweep's candidate set is naturally smaller than
+// those other functions' — still worth batching the per-completion
+// follow-up lookup + claim, since "last hour, platform-wide, across
+// hundreds of industrial sites" is not guaranteed small at real scale.
+const HANDOFF_BATCH_SIZE = 20
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -35,11 +46,18 @@ serve(async (req: Request) => {
     if (error) throw error
 
     let nudged = 0
-    for (const c of completions || []) {
+
+    // Extracted so it can run inside Promise.all per batch below — same
+    // exact logic/control-flow as the original sequential loop body
+    // (including the early `return` everywhere the original used
+    // `continue`: already picked up, claim failed, already nudged by a
+    // prior sweep), just returning a flag instead of incrementing the
+    // outer counter directly from inside a callback.
+    async function checkOneCompletion(c: { id: string; site_id: string; business_id: string; person_name: string | null; detail: string | null; created_at: string; site_projects: { name: string } | null }): Promise<boolean> {
       const { data: followUp } = await supabase.from('site_checkins')
         .select('id').eq('site_id', c.site_id).eq('role', 'human_technician').eq('checkin_type', 'task_start')
         .gte('created_at', c.created_at).limit(1)
-      if (followUp && followUp.length > 0) continue // already picked up
+      if (followUp && followUp.length > 0) return false // already picked up
 
       // Atomically claim this completion before nudging — same
       // claim-before-notify pattern as chase-unpaid-invoices (fixed
@@ -51,16 +69,22 @@ serve(async (req: Request) => {
         .eq('id', c.id)
         .is('handoff_nudged_at', null)
         .select('id')
-      if (claimErr) { console.error('sequence-handoffs: claim failed:', claimErr.message); continue }
-      if (!claimed || claimed.length === 0) continue // already nudged by a prior sweep
+      if (claimErr) { console.error('sequence-handoffs: claim failed:', claimErr.message); return false }
+      if (!claimed || claimed.length === 0) return false // already nudged by a prior sweep
 
-      const siteName = (c as any).site_projects?.name || 'a site'
+      const siteName = c.site_projects?.name || 'a site'
       await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
         body: JSON.stringify({ businessId: c.business_id, text: `🔁 *Pacer*: automated task complete at *${siteName}*${c.detail ? ` (${c.detail})` : ''} — no human tech has started the follow-on work yet.` }),
       }).catch(() => {})
-      nudged++
+
+      return true
+    }
+
+    for (const batch of chunk(completions || [], HANDOFF_BATCH_SIZE)) {
+      const results = await Promise.all(batch.map(c => checkOneCompletion(c as any)))
+      nudged += results.filter(Boolean).length
     }
 
     supabase.rpc('record_agent_run', { fn_name: 'sequence-handoffs', status: 'ok' }).then(() => {}, () => {})

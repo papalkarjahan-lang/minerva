@@ -26,6 +26,16 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { isOwnerOfBusiness, getAuthenticatedCaller } from "../_shared/ownership.ts"
+import { chunk } from "../_shared/batch.ts"
+
+// Leads are processed in bounded-concurrency batches, not fully
+// sequentially — same fix shape as reconcile-billing/update-technician-
+// workload/daily-digest/detect-safety-hazards/sequence-handoffs
+// (scale-readiness pass, 2026-10-08). The cron sweep's candidate query is
+// already time-windowed to the last hour; the direct-invocation path only
+// ever has one leadId, so batching is a no-op harmless pass-through there
+// either way.
+const CONDUCTOR_BATCH_SIZE = 20
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -83,9 +93,17 @@ serve(async (req: Request) => {
     }
 
     let suggested = 0
-    for (const leadId of leadIds) {
+
+    // Extracted so it can run inside Promise.all per batch below — same
+    // exact logic/control-flow as the original sequential loop body
+    // (including the early `return` everywhere the original used
+    // `continue`: lead not found, claim failed, already suggested by a
+    // prior sweep), just returning a flag instead of incrementing the
+    // outer counter directly from inside a callback. Reads the outer
+    // directLeadId closure variable, same as the original loop did.
+    async function suggestForLead(leadId: string): Promise<boolean> {
       const { data: lead } = await supabase.from('industrial_leads').select('id, business_id, company_name, equipment_need').eq('id', leadId).maybeSingle()
-      if (!lead) continue
+      if (!lead) return false
 
       // Cron-sweep dedup only — the direct-invocation path (explicit,
       // single-fire request) always suggests regardless. Without this, a
@@ -99,8 +117,8 @@ serve(async (req: Request) => {
           .eq('id', leadId)
           .is('conductor_suggested_at', null)
           .select('id')
-        if (claimErr) { console.error('industrial-conductor: claim failed:', claimErr.message); continue }
-        if (!claimed || claimed.length === 0) continue // already suggested by a prior sweep
+        if (claimErr) { console.error('industrial-conductor: claim failed:', claimErr.message); return false }
+        if (!claimed || claimed.length === 0) return false // already suggested by a prior sweep
       }
 
       const { data: assets } = await supabase.from('industrial_assets')
@@ -120,7 +138,13 @@ serve(async (req: Request) => {
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
         body: JSON.stringify({ businessId: lead.business_id, text }),
       }).catch(() => {})
-      suggested++
+
+      return true
+    }
+
+    for (const batch of chunk(leadIds, CONDUCTOR_BATCH_SIZE)) {
+      const results = await Promise.all(batch.map(suggestForLead))
+      suggested += results.filter(Boolean).length
     }
 
     supabase.rpc('record_agent_run', { fn_name: 'industrial-conductor', status: 'ok' }).then(() => {}, () => {})

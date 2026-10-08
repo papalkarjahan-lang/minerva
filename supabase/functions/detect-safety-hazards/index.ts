@@ -18,6 +18,17 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { hasHumanMachineOverlap } from "./logic.ts"
+import { chunk } from "../_shared/batch.ts"
+
+// Sites are processed in bounded-concurrency batches, not fully
+// sequentially — same fix shape as reconcile-billing/update-technician-
+// workload/daily-digest (scale-readiness pass, 2026-10-08). Deferred when
+// those three were fixed because the industrial sector had zero real
+// customers at the time, so the actual risk was scanning an empty table
+// every 15 minutes, not a timeout — closing it out now that the pattern
+// is proven across three functions with zero regressions, rather than
+// leaving a known gap sitting unfixed indefinitely.
+const SAFETY_BATCH_SIZE = 20
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -38,7 +49,14 @@ serve(async (req: Request) => {
     if (error) throw error
 
     let flagged = 0
-    for (const site of sites || []) {
+
+    // Extracted so it can run inside Promise.all per batch below — same
+    // exact logic/control-flow as the original sequential loop body
+    // (including the early `return` where the original used `continue`,
+    // both for "no overlap" and for "a concurrent/prior run already
+    // claimed this site's open overlap"), just returning a flag instead
+    // of incrementing the outer counter directly from inside a callback.
+    async function checkOneSite(site: { id: string; business_id: string; name: string }): Promise<boolean> {
       const { data: checkins } = await supabase.from('site_checkins')
         .select('id, person_name, role, checkin_type, created_at')
         .eq('site_id', site.id)
@@ -53,7 +71,7 @@ serve(async (req: Request) => {
       // task but hadn't departed yet silently dropped off the "on site"
       // registry — a real proximity hazard with an automated process could
       // go undetected. (Fixed 2026-09-07 — see logic.ts/logic.test.ts.)
-      if (!hasHumanMachineOverlap(checkins || [])) continue
+      if (!hasHumanMachineOverlap(checkins || [])) return false
 
       // Claim-as-insert: a database-level partial unique index (site_id,
       // description WHERE acknowledged_at IS NULL — see
@@ -73,7 +91,7 @@ serve(async (req: Request) => {
 
       if (insertErr) {
         if (insertErr.code !== '23505') console.error('detect-safety-hazards: insert failed:', insertErr.message)
-        continue
+        return false
       }
 
       if (newIncident) {
@@ -100,7 +118,13 @@ serve(async (req: Request) => {
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
         body: JSON.stringify({ businessId: site.business_id, text: `⚠️ *Warden*: site *${site.name}* has a human technician and an automated process both active at once — proximity hazard, worth a check.` }),
       }).catch(() => {})
-      flagged++
+
+      return true
+    }
+
+    for (const batch of chunk(sites || [], SAFETY_BATCH_SIZE)) {
+      const results = await Promise.all(batch.map(checkOneSite))
+      flagged += results.filter(Boolean).length
     }
 
     supabase.rpc('record_agent_run', { fn_name: 'detect-safety-hazards', status: 'ok' }).then(() => {}, () => {})
