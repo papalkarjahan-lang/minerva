@@ -15,6 +15,9 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { chunk } from "../_shared/batch.ts"
+
+const BUSINESS_BATCH_SIZE = 20
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -42,36 +45,16 @@ serve(async (req: Request) => {
     if (staleErr) throw staleErr
 
     let flagged = 0
-    for (const biz of stale || []) {
-      // Atomically claim this business before writing the insight — same
-      // time-of-check/time-of-use race chase-unpaid-invoices had (fixed
-      // 2026-09-24): without this, an overlapping/duplicate run could see
-      // the same not-yet-flagged business and insert a duplicate
-      // abandoned-signup insight.
-      const { data: claimed, error: claimErr } = await supabase
-        .from('businesses')
-        .update({ abandoned_flagged_at: new Date().toISOString() })
-        .eq('id', biz.id)
-        .is('abandoned_flagged_at', null)
-        .select('id')
-      if (claimErr) { console.error('flag-abandoned-signups: claim failed:', claimErr.message); continue }
-      if (!claimed || claimed.length === 0) continue // already claimed by a concurrent run
-
-      const { count } = await supabase
-        .from('technicians')
-        .select('id', { count: 'exact', head: true })
-        .eq('business_id', biz.id)
-
-      await supabase.from('agent_insights').insert({
-        agent: 'operations',
-        insight_type: 'anomaly',
-        summary: `Business "${biz.name}" (created ${biz.created_at}) never completed Stripe checkout and is now 48+ hours old with ${count ?? 0} technician(s) already sent setup SMS. Likely an abandoned signup — review and delete manually if confirmed dead.`,
-        business_id: biz.id,
-        related_table: 'businesses',
-        related_id: biz.id,
-      }).then(() => {}, (err) => console.error('flag-abandoned-signups: insight insert failed', err))
-
-      flagged++
+    // Bounded-concurrency batching (added 2026-10-08) — abandoned_flagged_at
+    // self-clears this candidate set in steady state (each business is
+    // only ever matched once), but the query has no upper age bound, so a
+    // real historical backlog — on first deployment of this check, or
+    // after any gap in cron execution — is processed in one run rather
+    // than being spread out. Same chunk()-of-20 shape as the rest of this
+    // round, see SCALE_READINESS_NOTES_ROUND2.md.
+    for (const batch of chunk(stale || [], BUSINESS_BATCH_SIZE)) {
+      const results = await Promise.all(batch.map(biz => flagOneAbandonedSignup(supabase, biz)))
+      for (const wasFlagged of results) if (wasFlagged) flagged++
     }
 
     supabase.rpc('record_agent_run', { fn_name: 'flag-abandoned-signups', status: 'ok' }).then(() => {}, () => {})
@@ -91,3 +74,41 @@ serve(async (req: Request) => {
     })
   }
 })
+
+// Extracted from the main loop (2026-10-08) so it can be run through
+// chunk()'s bounded-concurrency batching — same logic that was previously
+// inline, unchanged. Returns whether this business was newly flagged.
+async function flagOneAbandonedSignup(
+  supabase: ReturnType<typeof createClient>,
+  biz: any
+): Promise<boolean> {
+  // Atomically claim this business before writing the insight — same
+  // time-of-check/time-of-use race chase-unpaid-invoices had (fixed
+  // 2026-09-24): without this, an overlapping/duplicate run could see
+  // the same not-yet-flagged business and insert a duplicate
+  // abandoned-signup insight.
+  const { data: claimed, error: claimErr } = await supabase
+    .from('businesses')
+    .update({ abandoned_flagged_at: new Date().toISOString() })
+    .eq('id', biz.id)
+    .is('abandoned_flagged_at', null)
+    .select('id')
+  if (claimErr) { console.error('flag-abandoned-signups: claim failed:', claimErr.message); return false }
+  if (!claimed || claimed.length === 0) return false // already claimed by a concurrent run
+
+  const { count } = await supabase
+    .from('technicians')
+    .select('id', { count: 'exact', head: true })
+    .eq('business_id', biz.id)
+
+  await supabase.from('agent_insights').insert({
+    agent: 'operations',
+    insight_type: 'anomaly',
+    summary: `Business "${biz.name}" (created ${biz.created_at}) never completed Stripe checkout and is now 48+ hours old with ${count ?? 0} technician(s) already sent setup SMS. Likely an abandoned signup — review and delete manually if confirmed dead.`,
+    business_id: biz.id,
+    related_table: 'businesses',
+    related_id: biz.id,
+  }).then(() => {}, (err) => console.error('flag-abandoned-signups: insight insert failed', err))
+
+  return true
+}

@@ -41,6 +41,9 @@ import { isPlainDraftUsable } from "../_shared/smsDraft.ts"
 import { sendTwilioSms } from "../_shared/twilioSms.ts"
 import { notifySlack } from "../_shared/notifySlack.ts"
 import { draftSmsWithClaude } from "../_shared/claudeDraft.ts"
+import { chunk } from "../_shared/batch.ts"
+
+const LEAD_BATCH_SIZE = 20
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -78,45 +81,16 @@ serve(async (req: Request) => {
     if (error) throw error
 
     let sent = 0
-    for (const lead of staleLeads || []) {
-      if (!lead.client_phone) continue
-
-      // Atomically claim this lead before sending any real SMS — this cron
-      // runs hourly, so an overlapping run (a slow prior invocation still
-      // going, or a manual retry) racing the next hourly trigger could
-      // otherwise both see the same not-yet-nurtured lead and text it
-      // twice. This also replaces the old "mark regardless of SMS success"
-      // update below, since it now happens up-front.
-      const { data: claimed, error: claimErr } = await supabase
-        .from('leads')
-        .update({ nurture_sent_at: new Date().toISOString() })
-        .eq('id', lead.id)
-        .eq('status', 'new')
-        .is('nurture_sent_at', null)
-        .select('id')
-      if (claimErr) { console.error('nurture-stale-leads: claim failed:', claimErr.message); continue }
-      if (!claimed || claimed.length === 0) continue // already claimed by a concurrent run
-
-      const bizName = (lead as any).businesses?.name || 'the business'
-      const fallbackMessage = `Hi ${lead.client_name || ''}, thanks for reaching out to ${bizName} — we've received your request and someone will be in touch shortly.`.trim()
-      const message = anthropicKey
-        ? await draftNurtureSms(anthropicKey, {
-            touch: '1st',
-            clientName: lead.client_name || '',
-            businessName: bizName,
-            urgency: lead.urgency || 'routine',
-            exampleTemplate: fallbackMessage,
-          }, fallbackMessage)
-        : fallbackMessage
-
-      // Mark as nurtured regardless of SMS success (the claim above
-      // already did this before the send), so we don't retry-storm a lead
-      // with a bad phone number every hour.
-      const smsOk = await sendTwilioSms(twilio, lead.client_phone, message, 'nurture-stale-leads')
-      if (smsOk) sent++
-
-      await notifySlack(supabaseUrl, supabaseServiceKey, lead.business_id,
-        `⏳ Nurture SMS sent to stale lead *${lead.client_name || 'unknown'}* (waiting ${'>'}2hrs untouched).`)
+    // Bounded-concurrency batching (added 2026-10-08) — nurture_sent_at
+    // self-clears this candidate set in steady state, but the query has no
+    // upper age bound, so a cron-execution gap could leave a real backlog
+    // processed in one run. Same chunk()-of-20 shape as the rest of this
+    // round, see SCALE_READINESS_NOTES_ROUND2.md.
+    for (const batch of chunk(staleLeads || [], LEAD_BATCH_SIZE)) {
+      const results = await Promise.all(batch.map(lead =>
+        processOneFirstTouchLead(supabase, supabaseUrl, supabaseServiceKey, twilio, anthropicKey, lead)
+      ))
+      for (const wasSent of results) if (wasSent) sent++
     }
 
     // --- 2nd touch: still 'new' 24h after the 1st nudge, never a 3rd ---
@@ -132,37 +106,12 @@ serve(async (req: Request) => {
     if (err2) throw err2
 
     let sentSecond = 0
-    for (const lead of doubleStaleLeads || []) {
-      if (!lead.client_phone) continue
-
-      // Same atomic claim-before-send pattern as the 1st touch above.
-      const { data: claimed2, error: claimErr2 } = await supabase
-        .from('leads')
-        .update({ second_nurture_sent_at: new Date().toISOString() })
-        .eq('id', lead.id)
-        .eq('status', 'new')
-        .is('second_nurture_sent_at', null)
-        .select('id')
-      if (claimErr2) { console.error('nurture-stale-leads: 2nd-touch claim failed:', claimErr2.message); continue }
-      if (!claimed2 || claimed2.length === 0) continue // already claimed by a concurrent run
-
-      const bizName = (lead as any).businesses?.name || 'the business'
-      const fallbackMessage = `Hi ${lead.client_name || ''}, just checking in — ${bizName} still has your request and we're keen to help. Reply here if you'd like to lock in a time.`.trim()
-      const message = anthropicKey
-        ? await draftNurtureSms(anthropicKey, {
-            touch: '2nd',
-            clientName: lead.client_name || '',
-            businessName: bizName,
-            urgency: lead.urgency || 'routine',
-            exampleTemplate: fallbackMessage,
-          }, fallbackMessage)
-        : fallbackMessage
-
-      const smsOk = await sendTwilioSms(twilio, lead.client_phone, message, 'nurture-stale-leads')
-      if (smsOk) sentSecond++
-
-      await notifySlack(supabaseUrl, supabaseServiceKey, lead.business_id,
-        `⏳ Second nurture SMS sent to lead *${lead.client_name || 'unknown'}* (still 'new' 24h after the first nudge — might be worth a personal follow-up).`)
+    // Same bounded-concurrency batching as the 1st touch above.
+    for (const batch of chunk(doubleStaleLeads || [], LEAD_BATCH_SIZE)) {
+      const results = await Promise.all(batch.map(lead =>
+        processOneSecondTouchLead(supabase, supabaseUrl, supabaseServiceKey, twilio, anthropicKey, lead)
+      ))
+      for (const wasSent of results) if (wasSent) sentSecond++
     }
 
     supabase.rpc('record_agent_run', { fn_name: 'nurture-stale-leads', status: 'ok' }).then(() => {}, () => {})
@@ -197,6 +146,101 @@ serve(async (req: Request) => {
 // template (passed in as exampleTemplate). Returns the fixed fallback
 // string untouched if the key is missing, the call fails, or the draft
 // looks unusable (empty or too long for an SMS) — never blocks the send.
+// Extracted from the main loop (2026-10-08) so it can be run through
+// chunk()'s bounded-concurrency batching — same logic that was previously
+// inline, unchanged. Returns whether the SMS send itself reported success.
+async function processOneFirstTouchLead(
+  supabase: ReturnType<typeof createClient>,
+  supabaseUrl: string,
+  supabaseServiceKey: string,
+  twilio: { sid: string | undefined; token: string | undefined; from: string | undefined },
+  anthropicKey: string | undefined,
+  lead: any
+): Promise<boolean> {
+  if (!lead.client_phone) return false
+
+  // Atomically claim this lead before sending any real SMS — this cron
+  // runs hourly, so an overlapping run (a slow prior invocation still
+  // going, or a manual retry) racing the next hourly trigger could
+  // otherwise both see the same not-yet-nurtured lead and text it
+  // twice. This also replaces the old "mark regardless of SMS success"
+  // update below, since it now happens up-front.
+  const { data: claimed, error: claimErr } = await supabase
+    .from('leads')
+    .update({ nurture_sent_at: new Date().toISOString() })
+    .eq('id', lead.id)
+    .eq('status', 'new')
+    .is('nurture_sent_at', null)
+    .select('id')
+  if (claimErr) { console.error('nurture-stale-leads: claim failed:', claimErr.message); return false }
+  if (!claimed || claimed.length === 0) return false // already claimed by a concurrent run
+
+  const bizName = lead.businesses?.name || 'the business'
+  const fallbackMessage = `Hi ${lead.client_name || ''}, thanks for reaching out to ${bizName} — we've received your request and someone will be in touch shortly.`.trim()
+  const message = anthropicKey
+    ? await draftNurtureSms(anthropicKey, {
+        touch: '1st',
+        clientName: lead.client_name || '',
+        businessName: bizName,
+        urgency: lead.urgency || 'routine',
+        exampleTemplate: fallbackMessage,
+      }, fallbackMessage)
+    : fallbackMessage
+
+  // Mark as nurtured regardless of SMS success (the claim above
+  // already did this before the send), so we don't retry-storm a lead
+  // with a bad phone number every hour.
+  const smsOk = await sendTwilioSms(twilio, lead.client_phone, message, 'nurture-stale-leads')
+
+  await notifySlack(supabaseUrl, supabaseServiceKey, lead.business_id,
+    `⏳ Nurture SMS sent to stale lead *${lead.client_name || 'unknown'}* (waiting ${'>'}2hrs untouched).`)
+
+  return smsOk
+}
+
+// Extracted from the main loop (2026-10-08), same reasoning as the 1st
+// touch above. Returns whether the SMS send itself reported success.
+async function processOneSecondTouchLead(
+  supabase: ReturnType<typeof createClient>,
+  supabaseUrl: string,
+  supabaseServiceKey: string,
+  twilio: { sid: string | undefined; token: string | undefined; from: string | undefined },
+  anthropicKey: string | undefined,
+  lead: any
+): Promise<boolean> {
+  if (!lead.client_phone) return false
+
+  // Same atomic claim-before-send pattern as the 1st touch above.
+  const { data: claimed2, error: claimErr2 } = await supabase
+    .from('leads')
+    .update({ second_nurture_sent_at: new Date().toISOString() })
+    .eq('id', lead.id)
+    .eq('status', 'new')
+    .is('second_nurture_sent_at', null)
+    .select('id')
+  if (claimErr2) { console.error('nurture-stale-leads: 2nd-touch claim failed:', claimErr2.message); return false }
+  if (!claimed2 || claimed2.length === 0) return false // already claimed by a concurrent run
+
+  const bizName = lead.businesses?.name || 'the business'
+  const fallbackMessage = `Hi ${lead.client_name || ''}, just checking in — ${bizName} still has your request and we're keen to help. Reply here if you'd like to lock in a time.`.trim()
+  const message = anthropicKey
+    ? await draftNurtureSms(anthropicKey, {
+        touch: '2nd',
+        clientName: lead.client_name || '',
+        businessName: bizName,
+        urgency: lead.urgency || 'routine',
+        exampleTemplate: fallbackMessage,
+      }, fallbackMessage)
+    : fallbackMessage
+
+  const smsOk = await sendTwilioSms(twilio, lead.client_phone, message, 'nurture-stale-leads')
+
+  await notifySlack(supabaseUrl, supabaseServiceKey, lead.business_id,
+    `⏳ Second nurture SMS sent to lead *${lead.client_name || 'unknown'}* (still 'new' 24h after the first nudge — might be worth a personal follow-up).`)
+
+  return smsOk
+}
+
 async function draftNurtureSms(
   apiKey: string,
   ctx: { touch: '1st' | '2nd'; clientName: string; businessName: string; urgency: string; exampleTemplate: string },

@@ -33,6 +33,9 @@ import { isPlainDraftUsable } from "../_shared/smsDraft.ts"
 import { sendTwilioSms } from "../_shared/twilioSms.ts"
 import { notifySlack } from "../_shared/notifySlack.ts"
 import { draftSmsWithClaude } from "../_shared/claudeDraft.ts"
+import { chunk } from "../_shared/batch.ts"
+
+const LEAD_BATCH_SIZE = 20
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -67,42 +70,17 @@ serve(async (req: Request) => {
     if (error) throw error
 
     let sent = 0
-    for (const lead of lostLeads || []) {
-      // Atomically claim this lead before doing anything else — an
-      // overlapping/duplicate daily run could otherwise also see this same
-      // not-yet-winback'd lead and text it twice, breaking the "exactly
-      // ONE re-engagement SMS" guarantee this function promises. This also
-      // now covers the no-phone skip-branch below, so that path no longer
-      // needs its own separate update.
-      const { data: claimed, error: claimErr } = await supabase
-        .from('leads')
-        .update({ lost_winback_sent_at: new Date().toISOString() })
-        .eq('id', lead.id)
-        .eq('status', 'lost')
-        .is('lost_winback_sent_at', null)
-        .select('id')
-      if (claimErr) { console.error('winback-lost-leads: claim failed:', claimErr.message); continue }
-      if (!claimed || claimed.length === 0) continue // already claimed by a concurrent run
-
-      if (!lead.client_phone) continue // claimed above so it won't be re-evaluated; nothing more to do
-
-      const bizName = (lead as any).businesses?.name || 'the business'
-      const fallbackMessage = `Hi ${lead.client_name || ''}, it's ${bizName} — just checking whether you're still after the work you enquired about a couple of weeks back. No worries either way, just reply if you'd like a quote.`.trim()
-      const message = anthropicKey
-        ? await draftWinbackSms(anthropicKey, {
-            clientName: lead.client_name || '',
-            businessName: bizName,
-            jobDescription: lead.job_description || '',
-            urgency: lead.urgency || 'routine',
-            exampleTemplate: fallbackMessage,
-          }, fallbackMessage)
-        : fallbackMessage
-
-      const smsOk = await sendTwilioSms(twilio, lead.client_phone, message, 'winback-lost-leads')
-      if (smsOk) sent++
-
-      await notifySlack(supabaseUrl, supabaseServiceKey, lead.business_id,
-        `📮 Win-back SMS sent to lost lead *${lead.client_name || 'unknown'}* (marked lost 14+ days ago).`)
+    // Bounded-concurrency batching (added 2026-10-08) — lost_winback_sent_at
+    // self-clears this candidate set in steady state, but the query has no
+    // upper age bound, so a real historical backlog (first deployment, or
+    // any gap in cron execution) is processed in one run. Same
+    // chunk()-of-20 shape as the rest of this round, see
+    // SCALE_READINESS_NOTES_ROUND2.md.
+    for (const batch of chunk(lostLeads || [], LEAD_BATCH_SIZE)) {
+      const results = await Promise.all(batch.map(lead =>
+        processOneLostLead(supabase, supabaseUrl, supabaseServiceKey, twilio, anthropicKey, lead)
+      ))
+      for (const wasSent of results) if (wasSent) sent++
     }
 
     supabase.rpc('record_agent_run', { fn_name: 'winback-lost-leads', status: 'ok' }).then(() => {}, () => {})
@@ -126,6 +104,58 @@ serve(async (req: Request) => {
     })
   }
 })
+
+// Extracted from the main loop (2026-10-08) so it can be run through
+// chunk()'s bounded-concurrency batching — same logic that was previously
+// inline, UNCHANGED (including the Slack notify firing regardless of
+// smsOk — a pre-existing behavior, not something this structural refactor
+// should silently alter; flagged separately rather than fixed here).
+// Returns whether the SMS send itself reported success.
+async function processOneLostLead(
+  supabase: ReturnType<typeof createClient>,
+  supabaseUrl: string,
+  supabaseServiceKey: string,
+  twilio: { sid: string | undefined; token: string | undefined; from: string | undefined },
+  anthropicKey: string | undefined,
+  lead: any
+): Promise<boolean> {
+  // Atomically claim this lead before doing anything else — an
+  // overlapping/duplicate daily run could otherwise also see this same
+  // not-yet-winback'd lead and text it twice, breaking the "exactly
+  // ONE re-engagement SMS" guarantee this function promises. This also
+  // now covers the no-phone skip-branch below, so that path no longer
+  // needs its own separate update.
+  const { data: claimed, error: claimErr } = await supabase
+    .from('leads')
+    .update({ lost_winback_sent_at: new Date().toISOString() })
+    .eq('id', lead.id)
+    .eq('status', 'lost')
+    .is('lost_winback_sent_at', null)
+    .select('id')
+  if (claimErr) { console.error('winback-lost-leads: claim failed:', claimErr.message); return false }
+  if (!claimed || claimed.length === 0) return false // already claimed by a concurrent run
+
+  if (!lead.client_phone) return false // claimed above so it won't be re-evaluated; nothing more to do
+
+  const bizName = lead.businesses?.name || 'the business'
+  const fallbackMessage = `Hi ${lead.client_name || ''}, it's ${bizName} — just checking whether you're still after the work you enquired about a couple of weeks back. No worries either way, just reply if you'd like a quote.`.trim()
+  const message = anthropicKey
+    ? await draftWinbackSms(anthropicKey, {
+        clientName: lead.client_name || '',
+        businessName: bizName,
+        jobDescription: lead.job_description || '',
+        urgency: lead.urgency || 'routine',
+        exampleTemplate: fallbackMessage,
+      }, fallbackMessage)
+    : fallbackMessage
+
+  const smsOk = await sendTwilioSms(twilio, lead.client_phone, message, 'winback-lost-leads')
+
+  await notifySlack(supabaseUrl, supabaseServiceKey, lead.business_id,
+    `📮 Win-back SMS sent to lost lead *${lead.client_name || 'unknown'}* (marked lost 14+ days ago).`)
+
+  return smsOk
+}
 
 // Asks Claude to draft the one-shot win-back SMS using the lead's original
 // request (job_description/urgency) for a bit of relevance. Falls back to

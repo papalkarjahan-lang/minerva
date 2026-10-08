@@ -29,6 +29,9 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { isPlainDraftUsable } from "../_shared/smsDraft.ts"
 import { sendTwilioSms } from "../_shared/twilioSms.ts"
 import { draftSmsWithClaude } from "../_shared/claudeDraft.ts"
+import { chunk } from "../_shared/batch.ts"
+
+const JOB_BATCH_SIZE = 20
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -76,49 +79,16 @@ serve(async (req: Request) => {
     if (error) throw error
 
     let sent = 0
-    for (const job of candidates || []) {
-      if (!job.client_phone) continue
-
-      // Atomically claim this job before doing anything else — same
-      // time-of-check/time-of-use race as chase-unpaid-invoices: an
-      // overlapping/duplicate weekly run could otherwise also see this
-      // same not-yet-checked-in job and text the client twice. This also
-      // now covers the "already has a newer job" skip-branch below, so
-      // that path no longer needs its own separate update.
-      const { data: claimed, error: claimErr } = await supabase
-        .from('jobs')
-        .update({ retention_sent_at: new Date().toISOString() })
-        .eq('id', job.id)
-        .eq('status', 'complete')
-        .is('retention_sent_at', null)
-        .select('id')
-      if (claimErr) { console.error('retention-checkin: claim failed:', claimErr.message); continue }
-      if (!claimed || claimed.length === 0) continue // already claimed by a concurrent run
-
-      // Skip if this client already has a newer job (any status) since —
-      // they're already back, no need to nudge them.
-      const { count: newerJobs } = await supabase
-        .from('jobs')
-        .select('id', { count: 'exact', head: true })
-        .eq('business_id', job.business_id)
-        .eq('client_phone', job.client_phone)
-        .gt('created_at', job.completed_at)
-      if ((newerJobs ?? 0) > 0) continue
-
-      const bizName = (job as any).businesses?.name || 'us'
-      const fallbackMessage = `Hi ${job.client_name || ''}, it's been a little while since ${bizName} last helped you out — just checking in, let us know if you need anything.`.trim()
-      const message = anthropicKey
-        ? await draftCheckinSms(anthropicKey, {
-            clientName: job.client_name || '',
-            businessName: bizName,
-            lastJobNotes: job.notes || '',
-            completedAt: job.completed_at,
-            exampleTemplate: fallbackMessage,
-          }, fallbackMessage)
-        : fallbackMessage
-
-      const smsOk = await sendTwilioSms(twilio, job.client_phone, message, 'retention-checkin')
-      if (smsOk) sent++
+    // Bounded-concurrency batching (added 2026-10-08) — this query is
+    // deliberately unbounded on the upper end (see the comment above it)
+    // specifically so a cron-downtime backlog is caught on the next run
+    // instead of silently lost — which means the candidate set here can
+    // be genuinely large, each one costing a claim + a newer-job check +
+    // an optional Claude draft + a Twilio send. Same chunk()-of-20 shape
+    // as the rest of this round, see SCALE_READINESS_NOTES_ROUND2.md.
+    for (const batch of chunk(candidates || [], JOB_BATCH_SIZE)) {
+      const results = await Promise.all(batch.map(job => processOneRetentionCandidate(supabase, twilio, anthropicKey, job)))
+      for (const wasSent of results) if (wasSent) sent++
     }
 
     supabase.rpc('record_agent_run', { fn_name: 'retention-checkin', status: 'ok' }).then(() => {}, () => {})
@@ -142,6 +112,58 @@ serve(async (req: Request) => {
     })
   }
 })
+
+// Extracted from the main loop (2026-10-08) so it can be run through
+// chunk()'s bounded-concurrency batching — same logic that was previously
+// inline, unchanged. Returns whether a check-in SMS was sent.
+async function processOneRetentionCandidate(
+  supabase: ReturnType<typeof createClient>,
+  twilio: { sid: string | undefined; token: string | undefined; from: string | undefined },
+  anthropicKey: string | undefined,
+  job: any
+): Promise<boolean> {
+  if (!job.client_phone) return false
+
+  // Atomically claim this job before doing anything else — same
+  // time-of-check/time-of-use race as chase-unpaid-invoices: an
+  // overlapping/duplicate weekly run could otherwise also see this
+  // same not-yet-checked-in job and text the client twice. This also
+  // now covers the "already has a newer job" skip-branch below, so
+  // that path no longer needs its own separate update.
+  const { data: claimed, error: claimErr } = await supabase
+    .from('jobs')
+    .update({ retention_sent_at: new Date().toISOString() })
+    .eq('id', job.id)
+    .eq('status', 'complete')
+    .is('retention_sent_at', null)
+    .select('id')
+  if (claimErr) { console.error('retention-checkin: claim failed:', claimErr.message); return false }
+  if (!claimed || claimed.length === 0) return false // already claimed by a concurrent run
+
+  // Skip if this client already has a newer job (any status) since —
+  // they're already back, no need to nudge them.
+  const { count: newerJobs } = await supabase
+    .from('jobs')
+    .select('id', { count: 'exact', head: true })
+    .eq('business_id', job.business_id)
+    .eq('client_phone', job.client_phone)
+    .gt('created_at', job.completed_at)
+  if ((newerJobs ?? 0) > 0) return false
+
+  const bizName = job.businesses?.name || 'us'
+  const fallbackMessage = `Hi ${job.client_name || ''}, it's been a little while since ${bizName} last helped you out — just checking in, let us know if you need anything.`.trim()
+  const message = anthropicKey
+    ? await draftCheckinSms(anthropicKey, {
+        clientName: job.client_name || '',
+        businessName: bizName,
+        lastJobNotes: job.notes || '',
+        completedAt: job.completed_at,
+        exampleTemplate: fallbackMessage,
+      }, fallbackMessage)
+    : fallbackMessage
+
+  return sendTwilioSms(twilio, job.client_phone, message, 'retention-checkin')
+}
 
 // Asks Claude to draft a short check-in SMS using the client's last-job
 // context (notes/date) for a bit of personalization. Falls back to the

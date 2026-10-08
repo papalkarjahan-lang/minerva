@@ -105,11 +105,50 @@ of its own, same reasoning round 1 used for its own 6 fixes.
 - **`optimize-industrial-routes`**: every active `site_project` platform-
   wide, each costing 2-3 round trips, runs every 30 minutes.
 
-13 of the 25 functions from the original list fixed so far; 12 remain to
-check (`agent-council-report`, `enrich-industrial-leads`,
-`flag-abandoned-signups`, `new-subscriber-checkin`, `notify-addon-trial-
-ending`, `nurture-stale-leads`, `recover-abandoned-signup`,
-`retention-checkin`, `winback-lost-leads`, plus `auto-assign-technician`/
-`test-agent-health`/`verify-checklist-photos`, the last of which already
-looks correctly bounded on first read — see Checked-and-fine below once
-confirmed).
+- **`retention-checkin`**: same deliberately-unbounded shape, explicitly
+  documented in the function's own header comment — no upper date bound
+  on completed jobs eligible for a check-in, specifically so a cron-
+  downtime backlog is caught on the next run rather than silently lost
+  forever. Each candidate costs a claim, a newer-job check, an optional
+  Claude draft, and a Twilio send.
+- **`flag-abandoned-signups`**, **`winback-lost-leads`**, both touches of
+  **`nurture-stale-leads`**: a correction to this file's own earlier,
+  too-quick triage — all 4 of these were initially filed as "probably
+  fine, self-clearing" by pattern-matching against `new-subscriber-
+  checkin`/`recover-abandoned-signup` (which genuinely do have both a
+  lower AND upper date bound). On actually reading each one, none of
+  these 4 have an upper bound — only a `.lt()`/`.is(..., null)` lower
+  threshold. Each is self-clearing in steady state (its own flag column
+  prevents re-matching once set), but every one is exposed to the same
+  "a cron-execution gap produces a real, unbounded backlog processed in
+  one run" risk as `retention-checkin` above — worth remembering as its
+  own lesson: confirm a candidate set is genuinely *bounded*, not just
+  *self-clearing* — the two properties are different, and only the first
+  one defuses the scale risk.
+
+16 of the 25 functions from the original list fixed so far; 9 remain to
+check (`agent-council-report` — already read in full, no per-row loop at
+all, confirmed fine, see below — `enrich-industrial-leads`,
+`new-subscriber-checkin`, `notify-addon-trial-ending`,
+`recover-abandoned-signup`, plus `auto-assign-technician` — already
+confirmed fine, single-job-scoped, see below — `test-agent-health`/
+`verify-checklist-photos`).
+
+## Checked and found fine (verified, not assumed)
+
+- **`agent-council-report`** — read in full. Not a per-row loop at all:
+  2 parallel bulk SELECTs (a week of `agent_insights` + all of
+  `agent_functions`), then pure in-memory JS grouping/counting (no
+  awaits), then at most ONE Claude call (explicitly cost-guarded at 1200
+  max_tokens, with its own prompt-sample cap of 8 insights per agent
+  group), then one insert. The large fetch itself isn't a sequential-
+  loop timeout risk — it's a single query, bounded by normal transfer
+  time, not multiplied by row count via repeated round trips, which is
+  the specific pattern every other fix in this file addresses.
+- **`auto-assign-technician`** — not a cron sweep despite being in the
+  original candidate list (it's in `cron.schedule` indirectly via a
+  trigger-style invocation, not a sweep). Takes a single `job_id`,
+  `.eq('id', job_id).single()`, with a `RECENT_JOB_WINDOW_MS` recency
+  check that rejects a stale call outright. Whatever candidate-technician
+  loop exists inside is scoped to one job's own pool of eligible
+  technicians — inherently small, not a platform-wide set.
