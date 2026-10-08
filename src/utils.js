@@ -427,3 +427,26 @@ export function computeGst(subtotal) {
   const subtotalCents = Math.round(subtotal * 100)
   return Math.round(subtotalCents / 10) / 100
 }
+
+// Guards against CSV/formula injection (CWE-1236) — found live (scale-
+// readiness pass, 2026-10-08) checking DispatcherView.jsx's CSV export
+// feature (no tier gate, every business can use it). A cell whose value
+// starts with =, +, -, or @ gets interpreted as a formula by Excel/
+// Google Sheets when the exported file is opened, regardless of CSV
+// quoting — quoting (DispatcherView's exportCSV already does this
+// correctly) only protects CSV structure (commas/newlines/quotes
+// inside a field), not spreadsheet formula parsing on open. Real, not
+// theoretical, here specifically: leads.client_name and
+// leads.job_description can originate from the fully public,
+// unauthenticated intake chat widget (ai-intake-chat) or TrackingView's
+// client-rebooking flow, with no sanitization before storage — an
+// anonymous visitor can put arbitrary text (including a formula
+// payload) directly into a field a business owner later exports and
+// opens in a spreadsheet. Prefixing with a single quote is the
+// standard, universal mitigation (Excel/Sheets then render the whole
+// value as literal text) — no legitimate client name, address, or note
+// would ever intentionally start with one of these four characters.
+export function neutralizeFormula(value) {
+  const str = String(value ?? '')
+  return /^[=+\-@]/.test(str) ? `'${str}` : str
+}

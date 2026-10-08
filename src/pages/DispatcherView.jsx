@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import Map, { Marker, NavigationControl, FullscreenControl, ScaleControl, Popup, Source, Layer } from 'react-map-gl'
 import { supabase } from '../supabaseClient'
-import { timeAgo, geocodeAddress, insertTechniciansWithPinRetry, haversineKm, isMapboxTokenConfigured, computeReplayStats, interpolateReplayPosition, describeAuditEntry, computeTechnicianReliability } from '../utils'
+import { timeAgo, geocodeAddress, insertTechniciansWithPinRetry, haversineKm, isMapboxTokenConfigured, computeReplayStats, interpolateReplayPosition, describeAuditEntry, computeTechnicianReliability, neutralizeFormula } from '../utils'
 import ContactSupportModal from '../components/ContactSupportModal'
 import LoadingScreen from '../components/LoadingScreen'
 import { MAX_ADDONS, hasAddon, isTrialing, trialDaysLeft, hasUsedTrial, startTrialPatch } from '../maxAddons'
@@ -1558,8 +1558,13 @@ export default function DispatcherView() {
   // developer app with that provider (see README.md) — this is the
   // zero-setup alternative.
   function exportCSV(headers, rows, filenamePrefix) {
+    // neutralizeFormula (src/utils.js) guards against CSV/formula
+    // injection before this existing quote-escaping — see its own
+    // header comment for why this export specifically is a real,
+    // live risk (leads.client_name/.job_description can originate
+    // from the fully public, unauthenticated intake chat widget).
     const csv = [headers, ...rows]
-      .map(row => row.map(field => `"${String(field ?? '').replace(/"/g, '""')}"`).join(','))
+      .map(row => row.map(field => `"${neutralizeFormula(field).replace(/"/g, '""')}"`).join(','))
       .join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)

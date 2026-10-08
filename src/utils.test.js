@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { haversineKm, generatePin, generateReferralCode, timeAgo, insertTechniciansWithPinRetry, classifyPriority, normalizeAddressForGeocoding, pickBestGeocodeFeature, isMapboxTokenConfigured, computeReplayStats, interpolateReplayPosition, describeAuditEntry, computeTechnicianReliability, RELIABILITY_FATIGUE_BASELINE_HOURS, computeProspectPriority, roundMoney, computeGst } from './utils'
+import { haversineKm, generatePin, generateReferralCode, timeAgo, insertTechniciansWithPinRetry, classifyPriority, normalizeAddressForGeocoding, pickBestGeocodeFeature, isMapboxTokenConfigured, computeReplayStats, interpolateReplayPosition, describeAuditEntry, computeTechnicianReliability, RELIABILITY_FATIGUE_BASELINE_HOURS, computeProspectPriority, roundMoney, computeGst, neutralizeFormula } from './utils'
 
 describe('haversineKm', () => {
   it('returns 0 for identical points', () => {
@@ -556,5 +556,38 @@ describe('computeGst', () => {
 
   it('handles a large realistic invoice subtotal', () => {
     expect(computeGst(1999.95)).toBe(200)
+  })
+})
+
+describe('neutralizeFormula', () => {
+  it('prefixes a value starting with = with a single quote', () => {
+    expect(neutralizeFormula('=HYPERLINK("https://evil.example","Click")')).toBe('\'=HYPERLINK("https://evil.example","Click")')
+  })
+
+  it('prefixes a value starting with +, -, or @ the same way', () => {
+    expect(neutralizeFormula('+1 234 555 0100')).toBe('\'+1 234 555 0100')
+    expect(neutralizeFormula('-5% discount applied')).toBe('\'-5% discount applied')
+    expect(neutralizeFormula('@mentioned the client')).toBe('\'@mentioned the client')
+  })
+
+  it('leaves an ordinary name, phone, or note completely unchanged', () => {
+    expect(neutralizeFormula('Sarah Smith')).toBe('Sarah Smith')
+    expect(neutralizeFormula('0412 345 678')).toBe('0412 345 678')
+    expect(neutralizeFormula('Leaking tap in kitchen')).toBe('Leaking tap in kitchen')
+  })
+
+  it('does not trigger on = /+/-/@ appearing mid-string, only at the start', () => {
+    expect(neutralizeFormula('Email me at test@example.com')).toBe('Email me at test@example.com')
+    expect(neutralizeFormula('10+2 Smith St')).toBe('10+2 Smith St')
+  })
+
+  it('handles null, undefined, and empty values safely', () => {
+    expect(neutralizeFormula(null)).toBe('')
+    expect(neutralizeFormula(undefined)).toBe('')
+    expect(neutralizeFormula('')).toBe('')
+  })
+
+  it('handles a non-string (number) value safely', () => {
+    expect(neutralizeFormula(42)).toBe('42')
   })
 })
