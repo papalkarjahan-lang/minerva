@@ -25,13 +25,22 @@ export function isAddonActive(business: AddonState | null | undefined, key: stri
   return !!trial?.ends_at && new Date(trial.ends_at).getTime() > Date.now()
 }
 
-// Mirrors src/maxAddons.js's isAddonAvailableForSector() exactly (added
-// 2026-10-08) — see that file's own comment on the asset_intelligence
-// catalog entry for the full reasoning. 'asset_intelligence' is the only
-// key with a real sector requirement today; everything else passes
-// through as available for any sector, including an unrecognized key.
+// Mirrors src/maxAddons.js's isAddonAvailableForSector() exactly. See
+// that file's own header comment for the full reasoning, including the
+// 2026-10-09 correction: the other 8 keys were wrongly assumed to be
+// sector-neutral until a full backend trace showed every one of them
+// keys off `jobs`/`invoices`/`quotes`, which industrial never
+// populates. Unrecognized key passes through as available.
 const ADDON_REQUIRED_SECTOR: Record<string, string> = {
   asset_intelligence: 'industrial',
+  surge_pricing: 'trade',
+  ai_quotes: 'trade',
+  crew_splitting: 'trade',
+  review_loop: 'trade',
+  demand_forecast: 'trade',
+  subcontractor_pool: 'trade',
+  carbon_estimate: 'trade',
+  xero_sync: 'trade',
 }
 
 export function isAddonAvailableForSector(key: string, sector: string | null | undefined): boolean {

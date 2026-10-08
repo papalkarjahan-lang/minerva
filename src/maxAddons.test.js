@@ -27,17 +27,24 @@ describe('isAddonAvailableForSector', () => {
     expect(isAddonAvailableForSector('asset_intelligence', 'trade')).toBe(false)
   })
 
-  it('allows every other catalog add-on for every sector, since none of them have a real sector dependency', () => {
-    const others = MAX_ADDONS.filter(a => a.key !== 'asset_intelligence')
-    expect(others.length).toBeGreaterThan(0)
-    for (const addon of others) {
+  it('allows the other 8 catalog add-ons only for trade — every one of them keys off jobs/invoices/quotes, which industrial never populates', () => {
+    const tradeOnly = MAX_ADDONS.filter(a => a.key !== 'asset_intelligence')
+    expect(tradeOnly.length).toBe(8)
+    for (const addon of tradeOnly) {
       expect(isAddonAvailableForSector(addon.key, 'trade')).toBe(true)
-      expect(isAddonAvailableForSector(addon.key, 'industrial')).toBe(true)
+      expect(isAddonAvailableForSector(addon.key, 'industrial')).toBe(false)
+    }
+  })
+
+  it('every catalog entry declares a requiresSector — none are sector-neutral today', () => {
+    for (const addon of MAX_ADDONS) {
+      expect(addon.requiresSector).toBeTruthy()
     }
   })
 
   it('passes an unknown addon key through as available, consistent with getAddonMeta\'s null-safe lookup', () => {
     expect(isAddonAvailableForSector('not_a_real_addon', 'trade')).toBe(true)
+    expect(isAddonAvailableForSector('not_a_real_addon', 'industrial')).toBe(true)
   })
 })
 

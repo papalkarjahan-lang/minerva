@@ -44,15 +44,32 @@ describe('isAddonAvailableForSector', () => {
     expect(isAddonAvailableForSector('asset_intelligence', 'trade')).toBe(false)
   })
 
-  it('allows a sector-neutral addon for any sector, including null/undefined', () => {
+  it('allows ai_quotes only for trade — its backend keys off quotes/leads/invoices, which industrial never populates', () => {
     expect(isAddonAvailableForSector('ai_quotes', 'trade')).toBe(true)
-    expect(isAddonAvailableForSector('ai_quotes', 'industrial')).toBe(true)
-    expect(isAddonAvailableForSector('ai_quotes', null)).toBe(true)
-    expect(isAddonAvailableForSector('ai_quotes', undefined)).toBe(true)
+    expect(isAddonAvailableForSector('ai_quotes', 'industrial')).toBe(false)
   })
 
   it('rejects asset_intelligence for a null/undefined sector, same as any other mismatch', () => {
     expect(isAddonAvailableForSector('asset_intelligence', null)).toBe(false)
     expect(isAddonAvailableForSector('asset_intelligence', undefined)).toBe(false)
+  })
+
+  it('rejects a trade-only addon for a null/undefined sector too', () => {
+    expect(isAddonAvailableForSector('xero_sync', null)).toBe(false)
+    expect(isAddonAvailableForSector('xero_sync', undefined)).toBe(false)
+  })
+
+  it('allows every other trade-only addon for trade and rejects it for industrial', () => {
+    const tradeOnlyKeys = ['surge_pricing', 'crew_splitting', 'review_loop', 'demand_forecast', 'subcontractor_pool', 'carbon_estimate', 'xero_sync']
+    for (const key of tradeOnlyKeys) {
+      expect(isAddonAvailableForSector(key, 'trade')).toBe(true)
+      expect(isAddonAvailableForSector(key, 'industrial')).toBe(false)
+    }
+  })
+
+  it('passes an unknown addon key through as available for any sector — the true sector-neutral fallback', () => {
+    expect(isAddonAvailableForSector('not_a_real_addon', 'trade')).toBe(true)
+    expect(isAddonAvailableForSector('not_a_real_addon', 'industrial')).toBe(true)
+    expect(isAddonAvailableForSector('not_a_real_addon', null)).toBe(true)
   })
 })

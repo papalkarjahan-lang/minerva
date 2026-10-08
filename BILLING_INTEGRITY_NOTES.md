@@ -358,6 +358,102 @@ single mistake" becoming an explicit bar.
   already exist on `businesses`; this is a pure application-level change
   shipping with each function's next normal redeploy.
 
+## 2026-10-09 — 8 of 9 Minerva Max add-ons were billable to industrial
+businesses despite being structurally dead for them
+
+Found while fixing an unrelated copy error in `src/maxAddons.js`'s own
+comment, same way the Standard-tier gap above was found — a stray
+observation while doing something else revealed something much bigger.
+That comment claimed 8 of the 9 `MAX_ADDONS` catalog entries "operate on
+sector-neutral tables (jobs, invoices, quotes, technicians,
+subcontractors, carbon_estimates)," with only `asset_intelligence`
+(fixed earlier, 2026-10-08) needing a `requiresSector` restriction. That
+claim directly contradicted this session's own earlier finding, a few
+entries up this file, that `IndustrialDispatcherView.jsx` never touches
+`jobs`/`leads`/`invoices` at all — so it got checked properly rather
+than trusted.
+
+Delegated the full per-addon backend trace rather than extrapolating
+from table names alone, since "does this table name sound sector-
+neutral" is exactly the kind of surface-level check that missed
+`asset_intelligence` itself the first time around. The trace (every
+gating call site, every edge function behind it, every schema file)
+confirmed the comment was wrong for all 8:
+  - `surge_pricing`, `ai_quotes`, `crew_splitting`, `review_loop`,
+    `demand_forecast`, `subcontractor_pool`, and `xero_sync` all key off
+    `jobs`, `invoices`, `quotes`, or `job_assignments` directly — all
+    four tables industrial never writes to.
+  - `carbon_estimate` looked like a possible exception — its
+    `carbon_estimates` table has a `site_id` column alongside `job_id`,
+    with a schema comment saying it "can attach to either a trade job or
+    an industrial site." But its only writer, `estimate-job-carbon`,
+    reads exclusively from `jobs` and never queries `site_projects` or
+    writes `site_id` — that column is unbuilt scaffolding for a feature
+    that was never actually built, not a working industrial path. Don't
+    let a schema comment's "can attach to either" read as "does."
+  - The one genuinely shared table, `technicians`, doesn't save any of
+    these — the features all key off a *job* (`current_job_id`,
+    `job_assignments.job_id`, etc.), and industrial never creates a
+    `jobs` row for a technician to be linked to in the first place.
+
+This was also live-reachable, not just theoretical: `update-addon-
+billing/index.ts`'s Stripe-charging chokepoint already checked
+`isAddonAvailableForSector` before every `enable` action, but the
+underlying `ADDON_REQUIRED_SECTOR` map only listed `asset_intelligence`
+— so for all 8 of these the check passed yes for industrial, and a real
+Stripe subscription item would have been created and billed immediately
+(`proration_behavior: 'always_invoice'`). The only thing stopping an
+industrial business from reaching that path today is that
+`IndustrialDispatcherView.jsx` hardcodes its add-on UI to a single
+`asset_intelligence` button rather than iterating `MAX_ADDONS` — a
+missing UI feature, never an enforced boundary, same lesson already on
+record in this file and in `SECURITY_NOTES.md`'s "forged-request"
+entries.
+
+Fix, same 3-layer shape as the `asset_intelligence` fix it corrects:
+  - `src/maxAddons.js` — all 8 now carry `requiresSector: 'trade'`; the
+    stale "sector-neutral" comment rewritten to document the correction
+    and point here.
+  - `supabase/functions/_shared/maxAddons.ts` — `ADDON_REQUIRED_SECTOR`
+    extended with the same 8 entries. This is the actual chokepoint
+    `update-addon-billing` reads, so no code change was needed there —
+    only a redeploy of that one function to pick up the new map (the
+    other 10 functions importing this shared file only call
+    `isAddonActive`, never `isAddonAvailableForSector`, so they're
+    unaffected and don't need redeploying for this specific fix).
+  - `supabase_schema_delta_addon_sector_guard.sql` (new) — generalizes
+    the old single-purpose `enforce_asset_intelligence_sector` trigger
+    (never deployed; deleted) into one `enforce_addon_sector_restrictions`
+    trigger that loops over all 9 addon-key → required-sector pairs from
+    one jsonb map, closing the free-trial path
+    (`startMaxAddonTrial`, two separate client-side copies in
+    `DispatcherView.jsx` and `IndustrialDispatcherView.jsx`, neither
+    going through any edge function) the same way the original trigger
+    did for `asset_intelligence` alone. Same old-vs-new transition logic
+    as the original, for the same reason: `businesses` rows get updated
+    constantly for unrelated columns, and a current-value-only check
+    would permanently brick any business that ever ends up with a
+    stale mismatched flag.
+  - No UI change needed in either dispatcher view — `DispatcherView.jsx`
+    already filters `MAX_ADDONS` generically via
+    `isAddonAvailableForSector`, so the catalog metadata change alone
+    makes it correctly continue showing all 8 (it's trade-only, so
+    always was showing them) while continuing to correctly hide
+    `asset_intelligence`; `IndustrialDispatcherView.jsx` never iterated
+    the catalog at all, so there was never a UI path exposing the other
+    8 to industrial either.
+
+Corrects the "All 9 Minerva Max add-on catalog descriptions... verified"
+entry below — that check asked "does the feature do what its catalog
+text claims," which is a different question from "can every sector
+that's allowed to buy it actually reach the tables it touches." The
+first one is description accuracy; the second is reachability, and it's
+the one that caught this, the Pro/Industrial gap, and the Standard-tier
+gap, every time. Worth deliberately re-asking that second question any
+time a new tier, sector, or add-on is added, rather than assuming a
+clean description-accuracy pass means the feature is actually reachable
+by everyone who can buy it.
+
 ## Checked and fine (no action needed)
 
 - **Every other `subscription_tier` write site** — grepped every file
@@ -392,7 +488,7 @@ single mistake" becoming an explicit bar.
   `carbon_estimate` (haversine distance × a static factor, matches its
   own "HONESTY NOTE" header exactly — already read in full for the scale-
   readiness fix), `xero_sync` (`Status: 'DRAFT'`, literally in the Xero
-  API payload). All 9 now verified, all 9 accurate — `asset_intelligence`
-  remains the only one that ever had a real gap (the sector mismatch
-  fixed above), and that was a reachability problem, not a description-
-  accuracy one.
+  API payload). All 9 now verified, all 9 accurate on description — but
+  **this check asked the wrong question for catching a sector gap**; see
+  the 2026-10-09 entry above, which found 8 more sector-reachability
+  problems this pass never tested for.

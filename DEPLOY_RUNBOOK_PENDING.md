@@ -53,14 +53,17 @@ Paste each into the Supabase SQL Editor. None of these depend on each other.
   (already in Phase 3's redeploy list below, and now has a `logic.ts`
   sibling for the first time) depends on this column existing, so run
   this before redeploying that function too.
-- `supabase_schema_delta_asset_intelligence_sector_guard.sql` — **new
-  2026-10-08**: adds 1 trigger, no new column. See its own file and
-  `BILLING_INTEGRITY_NOTES.md`'s "Asset Intelligence" entry — a trade-
-  sector business could pay for an add-on that structurally can never
-  work for them. No ordering dependency on any function redeploy, but
-  `update-addon-billing` (already in Phase 3's list) has the matching
-  application-level fix, so deploy them together rather than leaving a
-  gap between the two layers.
+- `supabase_schema_delta_addon_sector_guard.sql` — **new 2026-10-09,
+  supersedes the never-deployed `..._asset_intelligence_sector_guard.sql`
+  (deleted, don't look for it)**: adds 1 trigger, no new column, covering
+  all 9 Minerva Max add-ons' sector restrictions instead of just
+  asset_intelligence's. See its own file and `BILLING_INTEGRITY_NOTES.md`'s
+  "Asset Intelligence" and "8 of 9 Max add-ons" entries — a business on
+  the wrong sector could pay for an add-on that structurally can never
+  work for them, in either direction. No ordering dependency on any
+  function redeploy, but `update-addon-billing` (already in Phase 3's
+  list) has the matching application-level fix, so deploy them together
+  rather than leaving a gap between the two layers.
 - `supabase_schema_delta_signup_recovery.sql` — adds
   `businesses.signup_recovery_sent_at`
 - `supabase_schema_delta_new_subscriber_checkin.sql` — adds
