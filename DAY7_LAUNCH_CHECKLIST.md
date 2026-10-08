@@ -126,7 +126,54 @@ Stop and fix before continuing if any box fails — don't skip ahead.
       `/client/:token` shows this client's past jobs and invoices
 - [ ] Cancel/note this second test subscription the same way as step 1
 
-## 9. Industrial sector (only if you plan to sell to an industrial client —
+## 9. Standard tier (added 2026-10-09 — Standard's 6 automations are new;
+##    test this even if you're not specifically selling Standard, since it
+##    also confirms the gate correctly excludes Starter and industrial)
+
+Standard ($79/tech/mo) and Pro both get 6 proactive automations Starter
+doesn't: lead nurture, lead win-back, client retention check-ins, invoice
+reminders, no-show detection, and weather reschedule alerts — but only for
+`sector = 'trade'` businesses (industrial doesn't use the `jobs`/`leads`/
+`invoices` tables these read, so it correctly gets none of this on any
+tier — that's by design, not a bug, see `_shared/tierEligibility.ts`).
+Reuse the Pro test business from section 8 (it qualifies too) or sign up a
+third one on Standard, sector left as the trade default.
+
+- [ ] Confirm the test business's `sector` is `trade` and
+      `subscription_tier` is `standard` or `pro` (Table Editor → businesses)
+- [ ] Create an invoice, confirm its `status` is `unpaid`, then backdate
+      `created_at` to 4+ days ago (Table Editor → invoices) → invoke
+      `chase-unpaid-invoices` from Supabase Dashboard → Edge Functions →
+      "Invoke" → confirm `{"success": true, ...}` and the client receives
+      a payment reminder SMS
+- [ ] Create a lead, backdate `created_at` 3+ hours → invoke
+      `nurture-stale-leads` → confirm a first-touch nurture SMS goes out
+      (a second, 24+ hour backdate triggers the follow-up touch instead)
+- [ ] Set a lead's `status` to `lost` and backdate `created_at` 15+ days →
+      invoke `winback-lost-leads` → confirm a win-back SMS goes out
+- [ ] Complete a job, backdate `completed_at` 31+ days, clear
+      `retention_sent_at` → invoke `retention-checkin` → confirm the client
+      receives a check-in SMS
+- [ ] No-show detection: schedule a job for today with a real client
+      lat/lng and an assigned technician, then add a `technician_locations`
+      row for that `job_id` with `recorded_at` 16+ minutes ago at a point
+      more than ~150m from the client → invoke `detect-wasted-trips` →
+      confirm the job gets flagged and the client gets a reschedule SMS
+- [ ] Weather risk: add the business's trade type to
+      `weather_sensitive_trade_types` and schedule tomorrow's job with a
+      real client lat/lng → invoke `check-weather-risk` → confirm
+      `jobsChecked` includes it (a drafted reschedule only appears if
+      tomorrow's forecast is actually risky there — that part depends on
+      real weather, not something you can force)
+- [ ] **Negative test — confirm the gate actually excludes Starter**:
+      repeat the chase-unpaid-invoices or retention-checkin case on the
+      Starter-tier business from section 1 → confirm it reports scanning/
+      sending zero for that business, not an error
+- [ ] **Negative test — industrial exclusion is by design**: if you also
+      have an industrial test business (section 10) on Standard or Pro,
+      confirm the same functions skip it too
+
+## 10. Industrial sector (only if you plan to sell to an industrial client —
 ##    skip entirely if your first customers are trades/home-services)
 
 - [ ] Sign up a test business, then set its `sector` to `industrial` in
@@ -139,7 +186,7 @@ Stop and fix before continuing if any box fails — don't skip ahead.
 - [ ] Expand an asset → confirm the asset_telemetry_events section loads
       (empty is fine if no telemetry has been sent yet)
 
-## 10. Autonomous layer (only if you ran the pg_cron setup block)
+## 11. Autonomous layer (only if you ran the pg_cron setup block)
 
 - [ ] Dispatcher → Settings → paste a Slack webhook URL → save → capture a
       test lead via the intake widget → alert appears in Slack
@@ -148,11 +195,14 @@ Stop and fix before continuing if any box fails — don't skip ahead.
 - [ ] Dispatcher → Settings → enable auto-dispatch → add a job with a
       free, connected technician nearby → job auto-assigns within seconds
       (check Slack for the dispatch alert)
-- [ ] `retention-checkin`, `reconcile-billing`, `check-inventory-levels`,
-      `generate-growth-drafts` are scheduled agents — hard to trigger
-      naturally with real 30-90 day data, so invoke each directly once
-      from Supabase Dashboard → Edge Functions → function → "Invoke" and
-      confirm `{ "success": true, ... }` with no error
+- [ ] `reconcile-billing`, `check-inventory-levels`, `generate-growth-drafts`
+      are scheduled agents — hard to trigger naturally with real 30-90 day
+      data, so invoke each directly once from Supabase Dashboard → Edge
+      Functions → function → "Invoke" and confirm `{ "success": true, ... }`
+      with no error (`retention-checkin` is tested separately in section 9,
+      since it's now gated to Standard/Pro trade businesses specifically —
+      invoking it here on the wrong tier/sector would just report zero sent
+      and look like a false pass)
 - [ ] Marketing tab → after `generate-growth-drafts` has run at least
       once, a draft card appears → tap Reject on one → status updates to
       REJECTED and the pending badge count drops
@@ -163,7 +213,7 @@ Stop and fix before continuing if any box fails — don't skip ahead.
 - [ ] Approve an `outreach_sms` draft → confirm the SMS arrives on the
       test lead's phone and the draft's status updates to SENT
 
-## 11. Corrective-action tickets + fatigue-aware dispatch (added 2026-09-13
+## 12. Corrective-action tickets + fatigue-aware dispatch (added 2026-09-13
 ##     — no extra credentials needed, works on any tier/sector today)
 
 - [ ] Industrial sector: from a site's Safety tab, log an incident that
@@ -204,7 +254,7 @@ Stop and fix before continuing if any box fails — don't skip ahead.
       of the list with a "Hot" badge, and that the badge's tooltip lists
       the reason
 
-## 12. Voice receptionist (`voice-intake-agent`, added 2026-09-13 — genuinely
+## 13. Voice receptionist (`voice-intake-agent`, added 2026-09-13 — genuinely
 ##     blocked on Twilio's own number-verification step; skip entirely
 ##     until that's done, no point testing before then)
 
@@ -241,9 +291,11 @@ Stop and fix before continuing if any box fails — don't skip ahead.
 ## Go / no-go
 
 **Do not call a single real client until sections 1-7 are all ticked.**
-Section 8 only applies if you're selling Pro; section 9 only if you're
-selling to an industrial client; section 10 only if pg_cron is set up;
-section 11 applies to any tier/sector and needs no extra credentials;
-section 12 only once Twilio's number verification is actually done. If
-anything in 1-7 fails, that's the actual blocker — fix it before booking
-the first real call, not after.
+Section 8 only applies if you're selling Pro; section 9 is worth running
+regardless of which tier you're selling first, since it's the only place
+the Standard/Pro automation gate gets tested in both directions; section
+10 only if you're selling to an industrial client; section 11 only if
+pg_cron is set up; section 12 applies to any tier/sector and needs no
+extra credentials; section 13 only once Twilio's number verification is
+actually done. If anything in 1-7 fails, that's the actual blocker — fix
+it before booking the first real call, not after.
