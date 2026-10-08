@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
-import { timeAgo, describeAuditEntry } from '../utils'
+import { timeAgo, describeAuditEntry, neutralizeFormula } from '../utils'
 import LoadingScreen from '../components/LoadingScreen'
 import ContactSupportModal from '../components/ContactSupportModal'
 import { MAX_ADDONS, isTrialing, trialDaysLeft, hasUsedTrial, startTrialPatch } from '../maxAddons'
@@ -510,8 +510,12 @@ export default function IndustrialDispatcherView() {
         ticket?.closed_at ? new Date(ticket.closed_at).toLocaleString('en-AU') : '',
       ]
     })
+    // neutralizeFormula (src/utils.js) guards against CSV/formula
+    // injection (CWE-1236) — same fix as DispatcherView.jsx's
+    // exportCSV, applied here too for consistency/defense-in-depth,
+    // see that function's own comment for the full reasoning.
     const csv = [headers, ...rows]
-      .map(row => row.map(field => `"${String(field ?? '').replace(/"/g, '""')}"`).join(','))
+      .map(row => row.map(field => `"${neutralizeFormula(field).replace(/"/g, '""')}"`).join(','))
       .join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
     const url = URL.createObjectURL(blob)
