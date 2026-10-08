@@ -1399,6 +1399,23 @@ see git log / this file's "Confirmed live" section above for history.)*
 - **`OPERATOR_EMAIL` secret** still unset — payment-failure email alerts,
   the new-subscriber check-in, and the new support-request/enterprise-lead
   alerts (2026-10-05) all remain harmless no-ops until it's set.
+- **New 2026-10-08 — `RESEND_FROM_EMAIL` still unset, directly relevant to
+  sending outreach specifically.** Already documented in `send-email/
+  index.ts`'s own header comment but never surfaced here until now:
+  without it, every email this app sends — including `send-outreach-
+  batch`'s real cold-prospecting emails, the exact thing planned next —
+  goes out "From: Minerva <onboarding@resend.dev>", Resend's shared
+  sandbox/testing address, not a real Minerva domain. A prospect
+  receiving cold outreach from a third party's generic testing address
+  reads as unprofessional at best, and that shared address is unlikely to
+  have the sender reputation needed for real outreach deliverability at
+  any volume. In the Resend dashboard: verify a sending domain (adds the
+  DNS records Resend gives you — SPF/DKIM — at your domain registrar),
+  then set `RESEND_FROM_EMAIL` to an address on that verified domain
+  (e.g. `Minerva <hello@yourdomain.com>`). Needs a registered custom
+  domain first — `minervaops.com.au` was confirmed NOT yet registered
+  earlier in this project (see index.html's own comment on this) — so
+  this may be blocked on that happening first.
 - **`VITE_SENTRY_DSN` still unset** — `src/sentry.js` is already built and
   wired into `main.jsx`/`ErrorBoundary.jsx` (confirmed above), genuinely
   free to set up, and the one piece of this whole build that answers "did
