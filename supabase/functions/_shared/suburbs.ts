@@ -33,11 +33,27 @@ const STATE_POSTCODE_SUFFIX = new RegExp(`\\s+(?:${AU_STATES})\\s+\\d{4}\\s*$`, 
 const STATE_POSTCODE_ONLY = new RegExp(`^(?:${AU_STATES})\\s+\\d{4}$`, 'i')
 const POSTCODE_ONLY = /^\d{4}$/
 
+// Guards against a real, measured DoS in STATE_POSTCODE_SUFFIX — found
+// live (scale-readiness pass, 2026-10-08): tested against a long
+// non-matching string (no start anchor, so the regex engine retries its
+// \s+ backtracking from every position in the string), its running time
+// grows roughly quadratically, not linearly — a 50,000-character
+// adversarial input measured over 2 full seconds on a single synchronous
+// regex test. client_address is reachable from the fully public,
+// unauthenticated intake chat widget and TrackingView's rebooking flow,
+// and extractSuburb runs inside daily-digest/generate-growth-drafts, both
+// cron sweeps across every business. A real Australian suburb name or
+// state+postcode suffix is never anywhere near this long, so skipping
+// extraction entirely above this length can't affect any legitimate
+// address — it only short-circuits the attack shape.
+const MAX_SUBURB_SEGMENT_LENGTH = 200
+
 export function extractSuburb(address: string | null | undefined): string | null {
   if (!address) return null
   const segments = address.split(',')
   const last = (segments.pop() || '').trim()
   if (!last) return null
+  if (last.length > MAX_SUBURB_SEGMENT_LENGTH) return null
 
   if ((STATE_POSTCODE_ONLY.test(last) || POSTCODE_ONLY.test(last)) && segments.length > 0) {
     // The trailing segment is nothing but a state/postcode — the real

@@ -66,3 +66,34 @@ describe('rankSuburbsByJobCount', () => {
     expect(result[1]).toEqual(['Bondi', 1])
   })
 })
+
+describe('extractSuburb — ReDoS guard', () => {
+  // STATE_POSTCODE_SUFFIX has no start anchor, so a long non-matching
+  // string with a large internal whitespace run makes the regex engine's
+  // backtracking grow roughly quadratically — measured at ~1.9s for a
+  // single ~50,000-character adversarial client_address, reachable from
+  // the public intake chat widget and processed by daily-digest/
+  // generate-growth-drafts' cron sweeps. Confirmed this isn't neutralized
+  // by the .trim() already in extractSuburb, since trim only strips
+  // leading/trailing whitespace, not an internal run.
+  it('returns quickly (not null-by-luck) for a long address with a large internal whitespace run', () => {
+    const evil = '123 Main St' + ' '.repeat(50000) + 'notarealstate'
+    const start = Date.now()
+    const result = extractSuburb(evil)
+    const elapsedMs = Date.now() - start
+    expect(elapsedMs).toBeLessThan(100) // was ~1900ms before the length guard
+    expect(result).toBeNull() // too long to be a real suburb segment — same as "couldn't determine" elsewhere
+  })
+
+  it('still correctly extracts every legitimate address shape after the length guard', () => {
+    expect(extractSuburb('12 Main St, Parramatta NSW 2150')).toBe('Parramatta')
+    expect(extractSuburb('123 Main St, Parramatta, NSW 2150')).toBe('Parramatta')
+    expect(extractSuburb('5 Beach Rd, Bondi')).toBe('Bondi')
+  })
+
+  it('does not reject a merely long but legitimate single-segment address', () => {
+    // 150 chars — long but under the 200-char guard, must still process normally
+    const longButLegit = 'A'.repeat(140) + ' NSW 2150'
+    expect(extractSuburb(longButLegit)).toBe('A'.repeat(140))
+  })
+})
