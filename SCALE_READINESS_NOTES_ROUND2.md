@@ -79,12 +79,24 @@ of its own, same reasoning round 1 used for its own 6 fixes.
   batching costs nothing functionally over the sequential loop it
   replaces, so there was no reason not to.
 
-7 of the 25 functions from the original list fixed so far; 18 remain to
+- **`followup-outreach`**: unlike most other candidate sets in this
+  project, "sent, not yet replied, not unsubscribed" prospects don't
+  self-clear the way e.g. `flag-abandoned-signups`' one-time flag does —
+  a prospect can sit in this set through the full 3-stage follow-up
+  sequence, so the pool only grows as real outreach volume scales, each
+  needing a real Claude API call to draft its follow-up.
+- **`generate-growth-drafts`**: the most expensive per-row body of any
+  cron function audited this round — 4-8 sequential Supabase round trips
+  plus up to 2 Claude API calls, for every Pro-tier (now exclusively
+  trade-sector, per the separate Pro/Industrial billing-integrity fix
+  this same session) business on the platform.
+
+9 of the 25 functions from the original list fixed so far; 16 remain to
 check (`agent-council-report`, `check-weather-risk`, `enrich-industrial-
-leads`, `estimate-job-carbon`, `flag-abandoned-signups`, `followup-
-outreach`, `forecast-demand`, `generate-growth-drafts`, `new-subscriber-
-checkin`, `notify-addon-trial-ending`, `nurture-stale-leads`, `optimize-
-industrial-routes`, `recover-abandoned-signup`, `retention-checkin`,
-`winback-lost-leads`, plus `auto-assign-technician`/`test-agent-health`/
-`verify-checklist-photos`, the last of which already looks correctly
-bounded on first read — see Checked-and-fine below once confirmed).
+leads`, `estimate-job-carbon`, `flag-abandoned-signups`, `forecast-demand`,
+`new-subscriber-checkin`, `notify-addon-trial-ending`, `nurture-stale-
+leads`, `optimize-industrial-routes`, `recover-abandoned-signup`,
+`retention-checkin`, `winback-lost-leads`, plus `auto-assign-technician`/
+`test-agent-health`/`verify-checklist-photos`, the last of which already
+looks correctly bounded on first read — see Checked-and-fine below once
+confirmed).

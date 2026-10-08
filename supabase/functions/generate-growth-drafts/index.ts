@@ -44,6 +44,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { extractSuburb, rankSuburbsByJobCount } from "../_shared/suburbs.ts"
+import { chunk } from "../_shared/batch.ts"
+
+const BUSINESS_BATCH_SIZE = 20
 
 const CLAUDE_MODEL = 'claude-opus-5-5'
 
@@ -72,175 +75,16 @@ serve(async (req: Request) => {
     let drafted = 0
     let skippedNoKey = 0
 
-    for (const biz of businesses || []) {
-      // Skip if this business already has an unreviewed draft of either type
-      // sitting in the queue — don't bury the owner in a growing backlog
-      // they haven't gotten to yet.
-      const { count: pendingCount } = await supabase
-        .from('marketing_drafts')
-        .select('id', { count: 'exact', head: true })
-        .eq('business_id', biz.id)
-        .eq('status', 'pending')
-      if ((pendingCount ?? 0) >= 2) continue
-
-      const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString()
-      const { data: recentJobs } = await supabase
-        .from('jobs')
-        .select('client_address')
-        .eq('business_id', biz.id)
-        .eq('status', 'complete')
-        .gte('completed_at', ninetyDaysAgo)
-
-      const rankedSuburbs = rankSuburbsByJobCount(recentJobs || [])
-      const topSuburb = rankedSuburbs[0]
-
-      // Audience-opportunity insight (Marketing agent, added Phase 3) — no
-      // Claude call involved, so unlike the two drafts below this runs
-      // regardless of whether ANTHROPIC_API_KEY is configured. Surfaces the
-      // 2nd-highest suburb by completed-job count IF it hasn't already had a
-      // targeted ad_campaign draft in the last 90 days — purely informational,
-      // written to agent_insights for a human to notice. Never creates a new
-      // marketing_drafts row itself (the existing "max 2 pending drafts" cap
-      // below is untouched).
-      if (rankedSuburbs.length >= 2) {
-        const [secondSuburbName, secondJobCount] = rankedSuburbs[1]
-        const { count: priorSecondSuburbDraftCount } = await supabase
-          .from('marketing_drafts')
-          .select('id', { count: 'exact', head: true })
-          .eq('business_id', biz.id)
-          .eq('type', 'ad_campaign')
-          .eq('target_suburb', secondSuburbName)
-          .gte('created_at', ninetyDaysAgo)
-
-        if ((priorSecondSuburbDraftCount ?? 0) === 0) {
-          await supabase.from('agent_insights').insert({
-            agent: 'marketing',
-            insight_type: 'suggestion',
-            summary: `${secondSuburbName} is your 2nd-highest suburb by completed jobs (${secondJobCount} in 90 days) but has never had a targeted ad — worth considering once you've reviewed the current draft.`,
-            business_id: biz.id,
-            related_table: 'businesses',
-            related_id: biz.id,
-          }).then(() => {}, (insErr) => console.error('generate-growth-drafts: audience-opportunity insight failed', insErr))
-        }
-      }
-
-      // Forecast-linked audience insight (Marketing agent, added 2026-09-06) —
-      // same "informational only, no Claude call" shape as the block above,
-      // but sourced from another agent's signal instead of this function's
-      // own suburb ranking. Reads the business's most recent forecast-demand
-      // insight and, if it hasn't already been acted on (an ad_campaign draft
-      // targeting that suburb) or already surfaced recently (dedup window
-      // below), writes one informational suggestion row.
-      const { data: latestForecast } = await supabase
-        .from('agent_insights')
-        .select('trend_address, created_at')
-        .eq('business_id', biz.id)
-        .eq('agent', 'scheduling')
-        .eq('insight_type', 'demand_forecast')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-
-      if (latestForecast?.trend_address) {
-        const trendSuburb = extractSuburb(latestForecast.trend_address) || latestForecast.trend_address
-
-        const { count: priorTrendDraftCount } = await supabase
-          .from('marketing_drafts')
-          .select('id', { count: 'exact', head: true })
-          .eq('business_id', biz.id)
-          .eq('type', 'ad_campaign')
-          .eq('target_suburb', trendSuburb)
-          .gte('created_at', ninetyDaysAgo)
-
-        // 14-day dedup window — forecast-demand runs weekly and can keep
-        // flagging the same trending address for several weeks running;
-        // this stops the same suggestion being re-surfaced every single run.
-        const trendDedupCutoff = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()
-        const { count: priorTrendInsightCount } = await supabase
-          .from('agent_insights')
-          .select('id', { count: 'exact', head: true })
-          .eq('business_id', biz.id)
-          .eq('agent', 'marketing')
-          .eq('trend_address', latestForecast.trend_address)
-          .gte('created_at', trendDedupCutoff)
-
-        if ((priorTrendDraftCount ?? 0) === 0 && (priorTrendInsightCount ?? 0) === 0) {
-          await supabase.from('agent_insights').insert({
-            agent: 'marketing',
-            insight_type: 'suggestion',
-            summary: `Scheduling's demand forecast flagged rising bookings near "${latestForecast.trend_address}" — worth considering as a targeted ad area once you've reviewed the current draft.`,
-            business_id: biz.id,
-            related_table: 'businesses',
-            related_id: biz.id,
-            trend_address: latestForecast.trend_address,
-          }).then(() => {}, (insErr) => console.error('generate-growth-drafts: forecast-linked insight failed', insErr))
-        }
-      }
-
-      const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()
-      const { data: coldLeads } = await supabase
-        .from('leads')
-        .select('id, client_name, client_phone, job_description')
-        .eq('business_id', biz.id)
-        .in('status', ['contacted', 'quoted'])
-        .lt('created_at', fourteenDaysAgo)
-        .not('client_phone', 'is', null)
-        .is('growth_winback_sent_at', null) // don't re-draft leads already win-back'd — see supabase_schema_delta_growth_winback_dedup.sql
-        .limit(20)
-
-      if (!topSuburb && (!coldLeads || coldLeads.length === 0)) continue // nothing worth drafting this week
-      if (!ANTHROPIC_API_KEY) { skippedNoKey++; continue } // can't write copy without Claude — surfaced below via agent_insights
-
-      // Draft 1: ad campaign, only if we have a clear top suburb.
-      if (topSuburb) {
-        const [suburbName, jobCount] = topSuburb
-        try {
-          const { copy, qualityNotes } = await draftAndReview(ANTHROPIC_API_KEY, {
-            kind: 'ad',
-            bizName: biz.name,
-            tradeType: biz.trade_type || 'trade services',
-            context: `This business completed ${jobCount} jobs in ${suburbName} in the last 90 days — their busiest area.`,
-          })
-          await supabase.from('marketing_drafts').insert({
-            business_id: biz.id,
-            type: 'ad_campaign',
-            headline: copy.headline,
-            body_text: copy.body,
-            rationale: `${jobCount} completed jobs in ${suburbName} over the last 90 days — your busiest suburb. A targeted ad here reaches people already in your strongest area.`,
-            target_suburb: suburbName,
-            target_radius_km: 10,
-            daily_budget: 15,
-            platform: 'meta',
-            quality_notes: qualityNotes,
-          })
-          drafted++
-        } catch (err) {
-          console.error('generate-growth-drafts: ad copy failed', err)
-        }
-      }
-
-      // Draft 2: win-back SMS for cold quoted leads.
-      if (coldLeads && coldLeads.length > 0) {
-        try {
-          const { copy, qualityNotes } = await draftAndReview(ANTHROPIC_API_KEY, {
-            kind: 'sms',
-            bizName: biz.name,
-            tradeType: biz.trade_type || 'trade services',
-            context: `${coldLeads.length} leads were quoted but haven't booked in 2+ weeks.`,
-          })
-          await supabase.from('marketing_drafts').insert({
-            business_id: biz.id,
-            type: 'outreach_sms',
-            body_text: copy.body,
-            rationale: `${coldLeads.length} lead(s) were quoted more than 14 days ago and never booked. A short check-in SMS can recover some of these before they go elsewhere.`,
-            recipients: coldLeads.map(l => ({ leadId: l.id, name: l.client_name, phone: l.client_phone })),
-            platform: 'twilio',
-            quality_notes: qualityNotes,
-          })
-          drafted++
-        } catch (err) {
-          console.error('generate-growth-drafts: sms copy failed', err)
-        }
+    // Bounded-concurrency batching (added 2026-10-08) — every Pro-tier
+    // business, each costing 4-8 sequential Supabase round trips plus up
+    // to 2 Claude API calls (the most expensive per-row body of any cron
+    // function audited this round). Same chunk()-of-20 shape as the rest
+    // of this round, see SCALE_READINESS_NOTES_ROUND2.md.
+    for (const batch of chunk(businesses || [], BUSINESS_BATCH_SIZE)) {
+      const results = await Promise.all(batch.map(biz => processOneBusinessGrowthDrafts(supabase, ANTHROPIC_API_KEY, biz)))
+      for (const r of results) {
+        drafted += r.drafted
+        if (r.skippedNoKey) skippedNoKey++
       }
     }
 
@@ -320,6 +164,190 @@ async function draftCopy(
 // of that is used regardless (this is a quality pass, not a second approval
 // gate — the human Approve click in the Marketing tab remains the only
 // thing that can ever launch/send).
+// Extracted from the main loop (2026-10-08) so it can be run through
+// chunk()'s bounded-concurrency batching — same logic that was previously
+// inline, unchanged, just returning its own counts instead of closing
+// over the outer function's mutable totals.
+async function processOneBusinessGrowthDrafts(
+  supabase: ReturnType<typeof createClient>,
+  ANTHROPIC_API_KEY: string | undefined,
+  biz: any
+): Promise<{ drafted: number; skippedNoKey: boolean }> {
+  let drafted = 0
+
+  // Skip if this business already has an unreviewed draft of either type
+  // sitting in the queue — don't bury the owner in a growing backlog
+  // they haven't gotten to yet.
+  const { count: pendingCount } = await supabase
+    .from('marketing_drafts')
+    .select('id', { count: 'exact', head: true })
+    .eq('business_id', biz.id)
+    .eq('status', 'pending')
+  if ((pendingCount ?? 0) >= 2) return { drafted: 0, skippedNoKey: false }
+
+  const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString()
+  const { data: recentJobs } = await supabase
+    .from('jobs')
+    .select('client_address')
+    .eq('business_id', biz.id)
+    .eq('status', 'complete')
+    .gte('completed_at', ninetyDaysAgo)
+
+  const rankedSuburbs = rankSuburbsByJobCount(recentJobs || [])
+  const topSuburb = rankedSuburbs[0]
+
+  // Audience-opportunity insight (Marketing agent, added Phase 3) — no
+  // Claude call involved, so unlike the two drafts below this runs
+  // regardless of whether ANTHROPIC_API_KEY is configured. Surfaces the
+  // 2nd-highest suburb by completed-job count IF it hasn't already had a
+  // targeted ad_campaign draft in the last 90 days — purely informational,
+  // written to agent_insights for a human to notice. Never creates a new
+  // marketing_drafts row itself (the existing "max 2 pending drafts" cap
+  // below is untouched).
+  if (rankedSuburbs.length >= 2) {
+    const [secondSuburbName, secondJobCount] = rankedSuburbs[1]
+    const { count: priorSecondSuburbDraftCount } = await supabase
+      .from('marketing_drafts')
+      .select('id', { count: 'exact', head: true })
+      .eq('business_id', biz.id)
+      .eq('type', 'ad_campaign')
+      .eq('target_suburb', secondSuburbName)
+      .gte('created_at', ninetyDaysAgo)
+
+    if ((priorSecondSuburbDraftCount ?? 0) === 0) {
+      await supabase.from('agent_insights').insert({
+        agent: 'marketing',
+        insight_type: 'suggestion',
+        summary: `${secondSuburbName} is your 2nd-highest suburb by completed jobs (${secondJobCount} in 90 days) but has never had a targeted ad — worth considering once you've reviewed the current draft.`,
+        business_id: biz.id,
+        related_table: 'businesses',
+        related_id: biz.id,
+      }).then(() => {}, (insErr) => console.error('generate-growth-drafts: audience-opportunity insight failed', insErr))
+    }
+  }
+
+  // Forecast-linked audience insight (Marketing agent, added 2026-09-06) —
+  // same "informational only, no Claude call" shape as the block above,
+  // but sourced from another agent's signal instead of this function's
+  // own suburb ranking. Reads the business's most recent forecast-demand
+  // insight and, if it hasn't already been acted on (an ad_campaign draft
+  // targeting that suburb) or already surfaced recently (dedup window
+  // below), writes one informational suggestion row.
+  const { data: latestForecast } = await supabase
+    .from('agent_insights')
+    .select('trend_address, created_at')
+    .eq('business_id', biz.id)
+    .eq('agent', 'scheduling')
+    .eq('insight_type', 'demand_forecast')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (latestForecast?.trend_address) {
+    const trendSuburb = extractSuburb(latestForecast.trend_address) || latestForecast.trend_address
+
+    const { count: priorTrendDraftCount } = await supabase
+      .from('marketing_drafts')
+      .select('id', { count: 'exact', head: true })
+      .eq('business_id', biz.id)
+      .eq('type', 'ad_campaign')
+      .eq('target_suburb', trendSuburb)
+      .gte('created_at', ninetyDaysAgo)
+
+    // 14-day dedup window — forecast-demand runs weekly and can keep
+    // flagging the same trending address for several weeks running;
+    // this stops the same suggestion being re-surfaced every single run.
+    const trendDedupCutoff = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()
+    const { count: priorTrendInsightCount } = await supabase
+      .from('agent_insights')
+      .select('id', { count: 'exact', head: true })
+      .eq('business_id', biz.id)
+      .eq('agent', 'marketing')
+      .eq('trend_address', latestForecast.trend_address)
+      .gte('created_at', trendDedupCutoff)
+
+    if ((priorTrendDraftCount ?? 0) === 0 && (priorTrendInsightCount ?? 0) === 0) {
+      await supabase.from('agent_insights').insert({
+        agent: 'marketing',
+        insight_type: 'suggestion',
+        summary: `Scheduling's demand forecast flagged rising bookings near "${latestForecast.trend_address}" — worth considering as a targeted ad area once you've reviewed the current draft.`,
+        business_id: biz.id,
+        related_table: 'businesses',
+        related_id: biz.id,
+        trend_address: latestForecast.trend_address,
+      }).then(() => {}, (insErr) => console.error('generate-growth-drafts: forecast-linked insight failed', insErr))
+    }
+  }
+
+  const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()
+  const { data: coldLeads } = await supabase
+    .from('leads')
+    .select('id, client_name, client_phone, job_description')
+    .eq('business_id', biz.id)
+    .in('status', ['contacted', 'quoted'])
+    .lt('created_at', fourteenDaysAgo)
+    .not('client_phone', 'is', null)
+    .is('growth_winback_sent_at', null) // don't re-draft leads already win-back'd — see supabase_schema_delta_growth_winback_dedup.sql
+    .limit(20)
+
+  if (!topSuburb && (!coldLeads || coldLeads.length === 0)) return { drafted: 0, skippedNoKey: false } // nothing worth drafting this week
+  if (!ANTHROPIC_API_KEY) return { drafted: 0, skippedNoKey: true } // can't write copy without Claude — surfaced below via agent_insights
+
+  // Draft 1: ad campaign, only if we have a clear top suburb.
+  if (topSuburb) {
+    const [suburbName, jobCount] = topSuburb
+    try {
+      const { copy, qualityNotes } = await draftAndReview(ANTHROPIC_API_KEY, {
+        kind: 'ad',
+        bizName: biz.name,
+        tradeType: biz.trade_type || 'trade services',
+        context: `This business completed ${jobCount} jobs in ${suburbName} in the last 90 days — their busiest area.`,
+      })
+      await supabase.from('marketing_drafts').insert({
+        business_id: biz.id,
+        type: 'ad_campaign',
+        headline: copy.headline,
+        body_text: copy.body,
+        rationale: `${jobCount} completed jobs in ${suburbName} over the last 90 days — your busiest suburb. A targeted ad here reaches people already in your strongest area.`,
+        target_suburb: suburbName,
+        target_radius_km: 10,
+        daily_budget: 15,
+        platform: 'meta',
+        quality_notes: qualityNotes,
+      })
+      drafted++
+    } catch (err) {
+      console.error('generate-growth-drafts: ad copy failed', err)
+    }
+  }
+
+  // Draft 2: win-back SMS for cold quoted leads.
+  if (coldLeads && coldLeads.length > 0) {
+    try {
+      const { copy, qualityNotes } = await draftAndReview(ANTHROPIC_API_KEY, {
+        kind: 'sms',
+        bizName: biz.name,
+        tradeType: biz.trade_type || 'trade services',
+        context: `${coldLeads.length} leads were quoted but haven't booked in 2+ weeks.`,
+      })
+      await supabase.from('marketing_drafts').insert({
+        business_id: biz.id,
+        type: 'outreach_sms',
+        body_text: copy.body,
+        rationale: `${coldLeads.length} lead(s) were quoted more than 14 days ago and never booked. A short check-in SMS can recover some of these before they go elsewhere.`,
+        recipients: coldLeads.map(l => ({ leadId: l.id, name: l.client_name, phone: l.client_phone })),
+        platform: 'twilio',
+        quality_notes: qualityNotes,
+      })
+      drafted++
+    } catch (err) {
+      console.error('generate-growth-drafts: sms copy failed', err)
+    }
+  }
+
+  return { drafted, skippedNoKey: false }
+}
+
 async function draftAndReview(
   apiKey: string,
   opts: { kind: 'ad' | 'sms'; bizName: string; tradeType: string; context: string }

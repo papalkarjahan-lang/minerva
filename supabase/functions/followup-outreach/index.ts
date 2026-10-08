@@ -18,6 +18,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { computeFollowupDecision, fallbackFollowup } from "./logic.ts"
+import { chunk } from "../_shared/batch.ts"
+
+const PROSPECT_BATCH_SIZE = 20
 
 // Spam Act 2003 (Cth) opt-out line — see draft-outreach-batch/index.ts for
 // the full rationale (updated 2026-10-02 — was stale here too). As of
@@ -63,43 +66,20 @@ serve(async (req: Request) => {
 
     let drafted = 0, closedLost = 0
 
-    for (const p of sentProspects || []) {
-      const decision = computeFollowupDecision(p, Date.now())
-      if (decision.action === 'close_lost') {
-        await supabase.from('outreach_prospects').update({ status: 'closed_lost' }).eq('id', p.id)
-        closedLost++
-        continue
+    // Bounded-concurrency batching (added 2026-10-08) — unlike most other
+    // cron candidate sets in this project, "sent, not yet replied, not
+    // unsubscribed" prospects don't self-clear on their own the way e.g.
+    // flag-abandoned-signups' one-time flag does — a prospect can sit in
+    // this set for the full 3-stage follow-up sequence, so the pool only
+    // grows as real outreach volume scales, with a real Claude API call
+    // per prospect that needs a follow-up drafted. Same chunk()-of-20
+    // shape as the rest of this round, see SCALE_READINESS_NOTES_ROUND2.md.
+    for (const batch of chunk(sentProspects || [], PROSPECT_BATCH_SIZE)) {
+      const results = await Promise.all(batch.map(p => processOneProspectFollowup(supabase, anthropicKey, p)))
+      for (const r of results) {
+        if (r === 'closed_lost') closedLost++
+        else if (r === 'drafted') drafted++
       }
-      if (decision.action === 'wait') continue
-
-      const nextStage = decision.nextStage
-      let subject: string, bodyText: string
-      if (anthropicKey) {
-        const draft = await draftFollowup(anthropicKey, p, nextStage)
-        if (draft) { subject = draft.subject; bodyText = draft.body }
-        else ({ subject, body: bodyText } = fallbackFollowup(p, nextStage))
-      } else {
-        ({ subject, body: bodyText } = fallbackFollowup(p, nextStage))
-      }
-
-      if (!bodyText.includes('unsubscribe')) bodyText += UNSUBSCRIBE_LINE
-
-      // Atomically re-check status/followup_stage haven't moved since the
-      // SELECT above before writing — unlike the sibling outreach functions
-      // (nurture-stale-leads, retention-checkin, winback-lost-leads,
-      // sequence-handoffs), this final write had no state guard at all. An
-      // overlapping/duplicate invocation (or simply a human clicking "Send
-      // approved" in the admin console between this run's SELECT and this
-      // UPDATE) could otherwise have this write silently revert an
-      // already-sent prospect back to status='drafted' with stale content,
-      // resurfacing it for a human to re-approve and duplicate-send.
-      const { data: claimed } = await supabase.from('outreach_prospects').update({
-        draft_subject: subject,
-        draft_body: bodyText,
-        status: 'drafted',
-        followup_stage: nextStage,
-      }).eq('id', p.id).eq('status', 'sent').eq('followup_stage', p.followup_stage || 0).select('id')
-      if (claimed && claimed.length > 0) drafted++
     }
 
     await supabase.rpc('record_agent_run', { fn_name: 'followup-outreach', status: 'ok' })
@@ -119,6 +99,53 @@ serve(async (req: Request) => {
     })
   }
 })
+
+// Extracted from the main loop (2026-10-08) so it can be run through
+// chunk()'s bounded-concurrency batching — same logic that was previously
+// inline, unchanged. Returns 'closed_lost', 'drafted', or 'none' (waited,
+// or the final write's state-guard found this prospect had moved since
+// the SELECT, e.g. a human already sent it in the meantime).
+async function processOneProspectFollowup(
+  supabase: ReturnType<typeof createClient>,
+  anthropicKey: string | undefined,
+  p: any
+): Promise<'closed_lost' | 'drafted' | 'none'> {
+  const decision = computeFollowupDecision(p, Date.now())
+  if (decision.action === 'close_lost') {
+    await supabase.from('outreach_prospects').update({ status: 'closed_lost' }).eq('id', p.id)
+    return 'closed_lost'
+  }
+  if (decision.action === 'wait') return 'none'
+
+  const nextStage = decision.nextStage
+  let subject: string, bodyText: string
+  if (anthropicKey) {
+    const draft = await draftFollowup(anthropicKey, p, nextStage)
+    if (draft) { subject = draft.subject; bodyText = draft.body }
+    else ({ subject, body: bodyText } = fallbackFollowup(p, nextStage))
+  } else {
+    ({ subject, body: bodyText } = fallbackFollowup(p, nextStage))
+  }
+
+  if (!bodyText.includes('unsubscribe')) bodyText += UNSUBSCRIBE_LINE
+
+  // Atomically re-check status/followup_stage haven't moved since the
+  // SELECT above before writing — unlike the sibling outreach functions
+  // (nurture-stale-leads, retention-checkin, winback-lost-leads,
+  // sequence-handoffs), this final write had no state guard at all. An
+  // overlapping/duplicate invocation (or simply a human clicking "Send
+  // approved" in the admin console between this run's SELECT and this
+  // UPDATE) could otherwise have this write silently revert an
+  // already-sent prospect back to status='drafted' with stale content,
+  // resurfacing it for a human to re-approve and duplicate-send.
+  const { data: claimed } = await supabase.from('outreach_prospects').update({
+    draft_subject: subject,
+    draft_body: bodyText,
+    status: 'drafted',
+    followup_stage: nextStage,
+  }).eq('id', p.id).eq('status', 'sent').eq('followup_stage', p.followup_stage || 0).select('id')
+  return claimed && claimed.length > 0 ? 'drafted' : 'none'
+}
 
 async function draftFollowup(apiKey: string, p: any, stage: number): Promise<{ subject: string; body: string } | null> {
   try {
