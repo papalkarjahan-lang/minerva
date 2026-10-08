@@ -105,18 +105,32 @@ export default function Features() {
           "Review requests" sitting in the wrong section above did until
           2026-10-08. Each is an optional add-on billed on top of
           whichever plan a business is already on (not Pro-exclusive),
-          with a free trial per src/maxAddons.js's TRIAL_DAYS. */}
+          with a free trial per src/maxAddons.js's TRIAL_DAYS.
+          Per-card sector tag added 2026-10-09: every add-on here requires
+          a specific sector (requiresSector), same reason the sections
+          above tag themselves "(Pro)"/"(Industrial sector)" in their
+          title — but these 9 cards mix trade-only and industrial-only
+          within one grid, so the tag has to live per-card instead of
+          once on the section heading. Without it this grid silently
+          implied all 9 work "on top of any plan" for any visitor, which
+          was never true and is now also enforced server-side (see
+          BILLING_INTEGRITY_NOTES.md's 2026-10-09 entry). */}
       <div style={{ maxWidth: 900, margin: '0 auto 48px', padding: '0 24px' }}>
         <Reveal>
           <h2 style={{ fontSize: 22, fontWeight: 'bold', margin: '0 0 6px', color: '#1D9E75' }}>Minerva Max add-ons</h2>
-          <p style={{ color: '#888', fontSize: 14, margin: '0 0 20px' }}>Optional, one at a time, on top of any plan — not bundled, not required.</p>
+          <p style={{ color: '#888', fontSize: 14, margin: '0 0 20px' }}>Optional, one at a time, on top of any plan in that add-on's sector — not bundled, not required.</p>
         </Reveal>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 20 }}>
           {MAX_ADDONS.map((addon, i) => (
             <Reveal key={addon.key} style={{ transitionDelay: `${(i * 70) % 400}ms` }}>
               <div className="lp-card" onMouseMove={cardMove} onMouseLeave={cardLeave}>
                 <p style={{ color: '#fff', fontWeight: 'bold', fontSize: 15, margin: '0 0 4px' }}>{addon.name}</p>
-                <p style={{ color: '#1D9E75', fontSize: 13, fontWeight: 'bold', margin: '0 0 8px' }}>${addon.price}/mo</p>
+                <p style={{ color: '#1D9E75', fontSize: 13, fontWeight: 'bold', margin: '0 0 4px' }}>${addon.price}/mo</p>
+                {addon.requiresSector && (
+                  <p style={{ color: '#888', fontSize: 11, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: 0.4, margin: '0 0 8px' }}>
+                    {addon.requiresSector === 'industrial' ? 'Industrial sector only' : 'Trade sector only'}
+                  </p>
+                )}
                 <p style={{ color: '#666', fontSize: 13, margin: 0, lineHeight: 1.6 }}>{addon.description}</p>
               </div>
             </Reveal>
