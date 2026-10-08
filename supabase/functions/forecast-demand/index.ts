@@ -28,8 +28,10 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { bucketJobsByAddress, findBestTrendingAddress, MIN_RECENT_COUNT } from "./logic.ts"
 import { isAddonActive } from "../_shared/maxAddons.ts"
+import { chunk } from "../_shared/batch.ts"
 
 const LOOKBACK_DAYS = 28 // 4 weekly buckets
+const BUSINESS_BATCH_SIZE = 20
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -54,52 +56,15 @@ serve(async (req: Request) => {
     const cutoff = new Date(Date.now() - LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString()
     let flagged = 0
 
-    for (const biz of businesses || []) {
-      if (!isAddonActive(biz, 'demand_forecast')) continue
-      const { data: jobs } = await supabase
-        .from('jobs')
-        .select('client_address, created_at')
-        .eq('business_id', biz.id)
-        .gte('created_at', cutoff)
-        .not('client_address', 'is', null)
-
-      if (!jobs || jobs.length < MIN_RECENT_COUNT) continue
-
-      const now = Date.now()
-      const buckets = bucketJobsByAddress(jobs, now)
-      const best = findBestTrendingAddress(buckets)
-
-      if (best) {
-        // Dedup guard — this is a weekly cron job with no natural
-        // per-episode claim column (unlike a jobs/inventory row, a trend
-        // is recomputed fresh each run, not "claimed" once). An
-        // overlapping/duplicate run within the same week could otherwise
-        // insert a duplicate trend insight for the same business+address.
-        // A 6-day existence check (just under LOOKBACK_DAYS's weekly
-        // cadence) blocks that duplicate while still allowing a genuine
-        // fresh trend to be re-flagged next week.
-        const recentCutoff = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString()
-        const { data: existing } = await supabase
-          .from('agent_insights')
-          .select('id')
-          .eq('business_id', biz.id)
-          .eq('insight_type', 'demand_forecast')
-          .eq('trend_address', best.addr)
-          .gte('created_at', recentCutoff)
-          .limit(1)
-        if (existing && existing.length > 0) continue // already flagged this trend recently
-
-        await supabase.from('agent_insights').insert({
-          agent: 'scheduling',
-          insight_type: 'demand_forecast',
-          business_id: biz.id,
-          summary: `Bookings trending up near "${best.addr}" — ${best.recent} job(s) in the last 2 weeks vs ${best.older} in the 2 weeks before (trend math on your own job history, not a forecast model). Consider pre-positioning a technician or checking availability in that area.`,
-          // Structured copy of the trending address (summary above is prose-only) —
-          // lets generate-growth-drafts consume this signal without re-parsing text.
-          trend_address: best.addr,
-        })
-        flagged++
-      }
+    // Bounded-concurrency batching (added 2026-10-08) — every business
+    // with the demand_forecast add-on active, across the whole platform,
+    // was processed fully sequentially, each costing a real jobs query.
+    // Same chunk()-of-20 shape as the rest of this round, see
+    // SCALE_READINESS_NOTES_ROUND2.md.
+    const addonActiveBiz = (businesses || []).filter(b => isAddonActive(b, 'demand_forecast'))
+    for (const batch of chunk(addonActiveBiz, BUSINESS_BATCH_SIZE)) {
+      const results = await Promise.all(batch.map(biz => evaluateOneBusinessDemandForecast(supabase, cutoff, biz)))
+      for (const wasFlagged of results) if (wasFlagged) flagged++
     }
 
     supabase.rpc('record_agent_run', { fn_name: 'forecast-demand', status: 'ok' }).then(() => {}, () => {})
@@ -123,3 +88,57 @@ serve(async (req: Request) => {
     })
   }
 })
+
+// Extracted from the main loop (2026-10-08) so it can be run through
+// chunk()'s bounded-concurrency batching — same logic that was previously
+// inline, unchanged. Returns whether a trend was newly flagged.
+async function evaluateOneBusinessDemandForecast(
+  supabase: ReturnType<typeof createClient>,
+  cutoff: string,
+  biz: any
+): Promise<boolean> {
+  const { data: jobs } = await supabase
+    .from('jobs')
+    .select('client_address, created_at')
+    .eq('business_id', biz.id)
+    .gte('created_at', cutoff)
+    .not('client_address', 'is', null)
+
+  if (!jobs || jobs.length < MIN_RECENT_COUNT) return false
+
+  const now = Date.now()
+  const buckets = bucketJobsByAddress(jobs, now)
+  const best = findBestTrendingAddress(buckets)
+
+  if (!best) return false
+
+  // Dedup guard — this is a weekly cron job with no natural
+  // per-episode claim column (unlike a jobs/inventory row, a trend
+  // is recomputed fresh each run, not "claimed" once). An
+  // overlapping/duplicate run within the same week could otherwise
+  // insert a duplicate trend insight for the same business+address.
+  // A 6-day existence check (just under LOOKBACK_DAYS's weekly
+  // cadence) blocks that duplicate while still allowing a genuine
+  // fresh trend to be re-flagged next week.
+  const recentCutoff = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString()
+  const { data: existing } = await supabase
+    .from('agent_insights')
+    .select('id')
+    .eq('business_id', biz.id)
+    .eq('insight_type', 'demand_forecast')
+    .eq('trend_address', best.addr)
+    .gte('created_at', recentCutoff)
+    .limit(1)
+  if (existing && existing.length > 0) return false // already flagged this trend recently
+
+  await supabase.from('agent_insights').insert({
+    agent: 'scheduling',
+    insight_type: 'demand_forecast',
+    business_id: biz.id,
+    summary: `Bookings trending up near "${best.addr}" — ${best.recent} job(s) in the last 2 weeks vs ${best.older} in the 2 weeks before (trend math on your own job history, not a forecast model). Consider pre-positioning a technician or checking availability in that area.`,
+    // Structured copy of the trending address (summary above is prose-only) —
+    // lets generate-growth-drafts consume this signal without re-parsing text.
+    trend_address: best.addr,
+  })
+  return true
+}
