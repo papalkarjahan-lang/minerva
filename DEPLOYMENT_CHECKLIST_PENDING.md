@@ -1379,6 +1379,28 @@ Verified: lint clean, 16/16 tests passing, build clean.
 genuinely-open items hard to find. Resolved items are dropped entirely below;
 see git log / this file's "Confirmed live" section above for history.)*
 
+- **New 2026-10-08, most urgent item on this whole list — `VITE_ADMIN_EMAILS`
+  is unset, and `/admin` is currently inaccessible to everyone, including
+  you.** This was flagged once when the admin console was first built
+  (search this file's history above) but never carried into this "still
+  outstanding" section, so it silently fell out of tracking while staying
+  genuinely unset — confirmed directly: `.env.local` has no
+  `VITE_ADMIN_EMAILS` line at all (only `.env.local.example` does, as an
+  unfilled template), and `AdminConsole.jsx`'s own gate
+  (`!ADMIN_EMAILS.includes(...)`) rejects every single email when the
+  allowlist is empty, with no exception for the account owner. Practical
+  impact right now: you cannot review support requests, manage the
+  Big Accounts pipeline, override a business's tier, or — most relevant to
+  today's plan — reach the outreach-prospects approval screen at all. The
+  entire "approve a prospect, then Send approved" outreach workflow lives
+  behind this same gate. Not something I'll set myself: it's not a secret,
+  but it does ship inside the public JS bundle once set (same as the
+  code's own comment already says — "hides the button from everyone else,
+  not a hard security boundary"), and which email(s) belong on it is your
+  call. Set `VITE_ADMIN_EMAILS` in `.env.local` (comma-separated if more
+  than one person needs access) and the matching Vercel environment
+  variable, then redeploy the frontend. Tell me the email(s) and I can set
+  both directly.
 - **Bank-account-gated**: Mapbox billing, Twilio SMS-capable number purchase
   (also blocks the Voice webhook for `missed-call-webhook`/`voice-intake-agent`),
   Anthropic Console billing (`ANTHROPIC_API_KEY`), Stripe live mode + the 9
