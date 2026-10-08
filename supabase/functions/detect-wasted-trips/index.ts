@@ -31,6 +31,7 @@ import { wasOnSite, groupJobsByTechnicianDate, findOverloadedGroups } from "./lo
 import { sendTwilioSms } from "../_shared/twilioSms.ts"
 import { notifySlack } from "../_shared/notifySlack.ts"
 import { chunk } from "../_shared/batch.ts"
+import { hasStandardAutomation } from "../_shared/tierEligibility.ts"
 
 const ARRIVAL_RADIUS_KM = 0.15 // ~150 metres
 const MIN_DWELL_MINUTES = 15
@@ -60,13 +61,23 @@ serve(async (req: Request) => {
 
     const { data: candidateJobs, error } = await supabase
       .from('jobs')
-      .select('id, business_id, technician_id, client_name, client_phone, client_lat, client_lng, businesses(name)')
+      .select('id, business_id, technician_id, client_name, client_phone, client_lat, client_lng, businesses(name, subscription_tier, sector)')
       .eq('status', 'scheduled')
       .is('no_show_detected_at', null)
       .not('technician_id', 'is', null)
       .not('client_lat', 'is', null)
       .not('client_lng', 'is', null)
     if (error) throw error
+
+    // Standard-tier automation gate (added 2026-10-09) — see
+    // _shared/tierEligibility.ts's own header and BILLING_INTEGRITY_NOTES.md's
+    // "Standard tier had no real differentiator from Starter" entry. Only
+    // gates THIS no-show-detection loop, not the separate scheduling-
+    // overload heuristic further down in this same file — that one is an
+    // internal diagnostic insight, not a client-facing proactive save, same
+    // category as daily-digest/reconcile-technician-state which also stay
+    // universal.
+    const eligibleJobs = (candidateJobs || []).filter(job => hasStandardAutomation(job.businesses?.subscription_tier, job.businesses?.sector))
 
     let detected = 0
 
@@ -78,7 +89,7 @@ serve(async (req: Request) => {
     // hourly/daily functions already fixed this round. Same chunk()-of-20
     // shape as reconcile-billing/daily-digest/etc, see
     // SCALE_READINESS_NOTES.md / SCALE_READINESS_NOTES_ROUND2.md.
-    for (const batch of chunk(candidateJobs || [], JOB_BATCH_SIZE)) {
+    for (const batch of chunk(eligibleJobs, JOB_BATCH_SIZE)) {
       const results = await Promise.all(batch.map(job =>
         processOneJobCandidate(supabase, supabaseUrl, supabaseServiceKey, twilio, dwellCutoff, job)
       ))
@@ -169,7 +180,7 @@ serve(async (req: Request) => {
 
     supabase.rpc('record_agent_run', { fn_name: 'detect-wasted-trips', status: 'ok' }).then(() => {}, () => {})
 
-    return new Response(JSON.stringify({ success: true, scanned: (candidateJobs || []).length, detected }), {
+    return new Response(JSON.stringify({ success: true, scanned: eligibleJobs.length, detected }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     })

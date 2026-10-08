@@ -37,6 +37,7 @@ import { computeDaysOverdue, summarizeJobDescription, selectTonePrompt, isDraftU
 import { sendTwilioSms } from "../_shared/twilioSms.ts"
 import { draftSmsWithClaude } from "../_shared/claudeDraft.ts"
 import { chunk } from "../_shared/batch.ts"
+import { hasStandardAutomation } from "../_shared/tierEligibility.ts"
 
 const INVOICE_BATCH_SIZE = 20
 
@@ -67,12 +68,20 @@ serve(async (req: Request) => {
 
     const { data: unpaid, error } = await supabase
       .from('invoices')
-      .select('id, business_id, client_name, client_phone, total, created_at, reminder_sent_at, reminder_count, line_items, businesses(name)')
+      .select('id, business_id, client_name, client_phone, total, created_at, reminder_sent_at, reminder_count, line_items, businesses(name, subscription_tier, sector)')
       .eq('status', 'unpaid')
       .lt('created_at', threeDaysAgo)
       .or(`reminder_sent_at.is.null,reminder_sent_at.lt.${threeDaysAgo}`)
 
     if (error) throw error
+
+    // Standard-tier automation gate (added 2026-10-09) — see
+    // _shared/tierEligibility.ts's own header and BILLING_INTEGRITY_NOTES.md's
+    // "Standard tier had no real differentiator from Starter" entry.
+    // Automated invoice chasing is now one of Standard's real features —
+    // a Starter-tier business still gets everything else this function
+    // isn't gating, just not this proactive nudge.
+    const eligible = (unpaid || []).filter(inv => hasStandardAutomation(inv.businesses?.subscription_tier, inv.businesses?.sector))
 
     let sent = 0
     // Bounded-concurrency batching (added 2026-10-08) — unpaid invoices
@@ -84,7 +93,7 @@ serve(async (req: Request) => {
     // silently never chasing whichever invoices sorted later. Same
     // chunk()-of-20 shape as reconcile-billing/daily-digest/etc, see
     // SCALE_READINESS_NOTES.md.
-    for (const batch of chunk(unpaid || [], INVOICE_BATCH_SIZE)) {
+    for (const batch of chunk(eligible, INVOICE_BATCH_SIZE)) {
       const results = await Promise.all(batch.map(inv =>
         processOneInvoice(supabase, supabaseUrl, supabaseServiceKey, twilio, APP_URL, anthropicKey, threeDaysAgo, inv)
       ))
@@ -93,7 +102,7 @@ serve(async (req: Request) => {
 
     supabase.rpc('record_agent_run', { fn_name: 'chase-unpaid-invoices', status: 'ok' }).then(() => {}, () => {})
 
-    return new Response(JSON.stringify({ success: true, scanned: (unpaid || []).length, sent }), {
+    return new Response(JSON.stringify({ success: true, scanned: eligible.length, sent }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     })

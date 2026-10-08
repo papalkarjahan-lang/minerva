@@ -42,6 +42,7 @@ import { sendTwilioSms } from "../_shared/twilioSms.ts"
 import { notifySlack } from "../_shared/notifySlack.ts"
 import { draftSmsWithClaude } from "../_shared/claudeDraft.ts"
 import { chunk } from "../_shared/batch.ts"
+import { hasStandardAutomation } from "../_shared/tierEligibility.ts"
 
 const LEAD_BATCH_SIZE = 20
 
@@ -72,7 +73,7 @@ serve(async (req: Request) => {
     // --- 1st touch ---
     const { data: staleLeads, error } = await supabase
       .from('leads')
-      .select('id, business_id, client_name, client_phone, urgency, businesses(name)')
+      .select('id, business_id, client_name, client_phone, urgency, businesses(name, subscription_tier, sector)')
       .eq('status', 'new')
       .is('nurture_sent_at', null)
       .lt('created_at', twoHoursAgo)
@@ -80,13 +81,18 @@ serve(async (req: Request) => {
 
     if (error) throw error
 
+    // Standard-tier automation gate (added 2026-10-09) — see
+    // _shared/tierEligibility.ts's own header and BILLING_INTEGRITY_NOTES.md's
+    // "Standard tier had no real differentiator from Starter" entry.
+    const eligibleFirstTouch = (staleLeads || []).filter(lead => hasStandardAutomation(lead.businesses?.subscription_tier, lead.businesses?.sector))
+
     let sent = 0
     // Bounded-concurrency batching (added 2026-10-08) — nurture_sent_at
     // self-clears this candidate set in steady state, but the query has no
     // upper age bound, so a cron-execution gap could leave a real backlog
     // processed in one run. Same chunk()-of-20 shape as the rest of this
     // round, see SCALE_READINESS_NOTES_ROUND2.md.
-    for (const batch of chunk(staleLeads || [], LEAD_BATCH_SIZE)) {
+    for (const batch of chunk(eligibleFirstTouch, LEAD_BATCH_SIZE)) {
       const results = await Promise.all(batch.map(lead =>
         processOneFirstTouchLead(supabase, supabaseUrl, supabaseServiceKey, twilio, anthropicKey, lead)
       ))
@@ -96,7 +102,7 @@ serve(async (req: Request) => {
     // --- 2nd touch: still 'new' 24h after the 1st nudge, never a 3rd ---
     const { data: doubleStaleLeads, error: err2 } = await supabase
       .from('leads')
-      .select('id, business_id, client_name, client_phone, urgency, businesses(name)')
+      .select('id, business_id, client_name, client_phone, urgency, businesses(name, subscription_tier, sector)')
       .eq('status', 'new')
       .not('nurture_sent_at', 'is', null)
       .is('second_nurture_sent_at', null)
@@ -105,9 +111,11 @@ serve(async (req: Request) => {
 
     if (err2) throw err2
 
+    const eligibleSecondTouch = (doubleStaleLeads || []).filter(lead => hasStandardAutomation(lead.businesses?.subscription_tier, lead.businesses?.sector))
+
     let sentSecond = 0
     // Same bounded-concurrency batching as the 1st touch above.
-    for (const batch of chunk(doubleStaleLeads || [], LEAD_BATCH_SIZE)) {
+    for (const batch of chunk(eligibleSecondTouch, LEAD_BATCH_SIZE)) {
       const results = await Promise.all(batch.map(lead =>
         processOneSecondTouchLead(supabase, supabaseUrl, supabaseServiceKey, twilio, anthropicKey, lead)
       ))
@@ -118,9 +126,9 @@ serve(async (req: Request) => {
 
     return new Response(JSON.stringify({
       success: true,
-      scanned: (staleLeads || []).length,
+      scanned: eligibleFirstTouch.length,
       sent,
-      scannedSecondTouch: (doubleStaleLeads || []).length,
+      scannedSecondTouch: eligibleSecondTouch.length,
       sentSecondTouch: sentSecond,
     }), {
       status: 200,

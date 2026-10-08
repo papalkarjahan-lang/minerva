@@ -30,6 +30,7 @@ import { isPlainDraftUsable } from "../_shared/smsDraft.ts"
 import { sendTwilioSms } from "../_shared/twilioSms.ts"
 import { draftSmsWithClaude } from "../_shared/claudeDraft.ts"
 import { chunk } from "../_shared/batch.ts"
+import { hasStandardAutomation } from "../_shared/tierEligibility.ts"
 
 const JOB_BATCH_SIZE = 20
 
@@ -71,12 +72,17 @@ serve(async (req: Request) => {
     // run instead of being lost.
     const { data: candidates, error } = await supabase
       .from('jobs')
-      .select('id, business_id, client_name, client_phone, completed_at, notes, businesses(name)')
+      .select('id, business_id, client_name, client_phone, completed_at, notes, businesses(name, subscription_tier, sector)')
       .eq('status', 'complete')
       .is('retention_sent_at', null)
       .lt('completed_at', thirtyDaysAgo)
 
     if (error) throw error
+
+    // Standard-tier automation gate (added 2026-10-09) — see
+    // _shared/tierEligibility.ts's own header and BILLING_INTEGRITY_NOTES.md's
+    // "Standard tier had no real differentiator from Starter" entry.
+    const eligible = (candidates || []).filter(job => hasStandardAutomation(job.businesses?.subscription_tier, job.businesses?.sector))
 
     let sent = 0
     // Bounded-concurrency batching (added 2026-10-08) — this query is
@@ -86,14 +92,14 @@ serve(async (req: Request) => {
     // be genuinely large, each one costing a claim + a newer-job check +
     // an optional Claude draft + a Twilio send. Same chunk()-of-20 shape
     // as the rest of this round, see SCALE_READINESS_NOTES_ROUND2.md.
-    for (const batch of chunk(candidates || [], JOB_BATCH_SIZE)) {
+    for (const batch of chunk(eligible, JOB_BATCH_SIZE)) {
       const results = await Promise.all(batch.map(job => processOneRetentionCandidate(supabase, twilio, anthropicKey, job)))
       for (const wasSent of results) if (wasSent) sent++
     }
 
     supabase.rpc('record_agent_run', { fn_name: 'retention-checkin', status: 'ok' }).then(() => {}, () => {})
 
-    return new Response(JSON.stringify({ success: true, scanned: (candidates || []).length, sent }), {
+    return new Response(JSON.stringify({ success: true, scanned: eligible.length, sent }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     })

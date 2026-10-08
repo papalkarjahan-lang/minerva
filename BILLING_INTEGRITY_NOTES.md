@@ -275,6 +275,89 @@ single mistake" becoming an explicit bar.
   verification that doesn't fully hold" pattern this project keeps
   finding in different layers.
 
+- **Standard tier had no real differentiator from Starter — the broadest
+  finding this session, affecting every customer who picks the
+  apparently-featured middle tier, not one sector.** (2026-10-09) Found
+  while closing out a smaller, unrelated copy fix on `Pricing.jsx`:
+  Standard's own catalog entry read "Everything in Starter — Recommended
+  for growing teams," with no concrete feature claim at all. Grepped
+  every tier check in the entire codebase, 3 separate ways (literal
+  `=== 'standard'`/`== 'standard'` string match, any tier-ranking/level
+  comparison system, any tier-scoped rate-limit/quota reference) — zero
+  results on all three. Every single tier-gated check anywhere in this
+  project, frontend or backend, tests only for `'pro'` vs. not-`'pro'`.
+  Standard ($79/tech/mo) and Starter ($49/tech/mo) were 100% functionally
+  identical, everywhere, for every business. Standard is also the tier
+  `Onboarding.jsx` defaults to and the one marked featured in the pricing
+  UI (the trailing `true` in its `TIERS` row) — almost certainly the most
+  commonly selected tier, meaning this wasn't a corner case, it was the
+  default experience. Also caught and fixed, independent of the bigger
+  question: `Pricing.jsx`'s own `SIZE_GUIDE` claimed Starter and Standard
+  have "the same per-tech price either way" for a 2-10 technician team —
+  literally false ($49 vs $79), fixed regardless of which direction the
+  bigger question went.
+  **Asked the user directly** (this is a product/business decision, not
+  a technical one, same reasoning already applied to "should trade get an
+  asset_intelligence equivalent" and "should industrial get Pro-equivalent
+  features" earlier this session — not something to resolve unilaterally)
+  rather than guessing: keep it as an unexplained price gap, collapse it
+  into Starter, or build it a real feature set. **Chose: build a real
+  feature set.**
+  **The fix**: reused 6 fully-built, already-tested, already-proven
+  autonomous functions that were running completely ungated for every
+  business regardless of tier — proactive lead/client/invoice lifecycle
+  automation (`chase-unpaid-invoices`, `nurture-stale-leads`,
+  `retention-checkin`, `winback-lost-leads`, `check-weather-risk`,
+  `detect-wasted-trips`) — rather than inventing new functionality from
+  scratch. Genuinely coherent "growing team" story: Starter is the core
+  live-dispatch tool; Standard adds the automation that keeps leads,
+  clients, and invoices from falling through the cracks once there's more
+  volume than one person can track by memory. Deliberately excludes the
+  OTHER ungated autonomous functions this project has — `daily-digest`
+  (a basic utility every tier should keep, a summary rather than a
+  proactive save), `reconcile-technician-state` (an internal self-heal
+  with no customer-visible feature shape), and every operator/Minerva-
+  facing function (not a business's own feature at all).
+  **A second bug, caught before this ever shipped, in my own first draft
+  of the fix**: the first version of `hasStandardAutomation()` checked
+  tier alone. Re-examining it against the exact question that found the
+  original Pro/Industrial bug — "does every business that can buy this
+  actually have data in the tables it reads" — caught the identical bug
+  class being reintroduced here. `IndustrialDispatcherView.jsx` never
+  touches `invoices`, `leads`, or `jobs` at all (confirmed by grep: zero
+  write sites); industrial has its own entirely separate data model
+  (`industrial_leads`, `site_projects`, `safety_incidents`, ...). All 6
+  functions this gates read exactly those 3 (trade-only) tables — an
+  industrial Standard customer would have gotten the identical "paying
+  more for nothing reachable" problem this whole project-wide fix exists
+  to close, just relocated from Pro to Standard. Fixed before any of it
+  committed: `hasStandardAutomation()` now takes `(tier, sector)` and
+  requires `sector === 'trade'` explicitly, same proven pattern as
+  `isTierAvailableForSector`. `check-weather-risk` specifically is
+  technically redundant on the sector check (`weather_sensitive_trade_types`
+  is only ever set from the trade console, confirmed by grep — an
+  industrial business could never match its existing filter anyway) but
+  checks explicitly regardless, rather than relying on that staying true
+  if a future settings UI ever writes to that column from the industrial
+  side too.
+  `winback-lost-leads` is the one function of the 6 not yet gated as of
+  this entry — a separate task was mid-flight fixing an unrelated bug in
+  that exact file (a misleading "sent" Slack message on a failed SMS,
+  found during this session's own earlier batching refactor) when this
+  work started, and writing to the same file risked a concurrent-write
+  collision with that other process. Apply the identical gate there once
+  that work lands — same shape as the other 5, `businesses(name,
+  subscription_tier, sector)` in the join, `hasStandardAutomation(lead.
+  businesses?.subscription_tier, lead.businesses?.sector)` in the filter.
+  Marketing copy updated consistently across all 3 places that carry it
+  (`Pricing.jsx`, `Onboarding.jsx`, `LandingPage.jsx` — kept in sync by
+  hand per their own existing convention). Verified live in the browser,
+  not just read from source. 711/711 tests pass (11 in `_shared/
+  tierEligibility.test.ts` covering both the original sector check and
+  this one). No new SQL delta — `subscription_tier` and `sector` both
+  already exist on `businesses`; this is a pure application-level change
+  shipping with each function's next normal redeploy.
+
 ## Checked and fine (no action needed)
 
 - **Every other `subscription_tier` write site** — grepped every file

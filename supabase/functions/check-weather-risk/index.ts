@@ -29,6 +29,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { evaluateForecastRisk, addLocalDays, localMidnightUTC } from "./logic.ts"
 import { chunk } from "../_shared/batch.ts"
+import { hasStandardAutomation } from "../_shared/tierEligibility.ts"
 
 const BUSINESS_TIMEZONE = 'Australia/Sydney'
 const BUSINESS_BATCH_SIZE = 20
@@ -50,7 +51,7 @@ serve(async (req: Request) => {
 
     const { data: businesses, error } = await supabase
       .from('businesses')
-      .select('id, name, weather_sensitive_trade_types')
+      .select('id, name, weather_sensitive_trade_types, subscription_tier, sector')
       .not('weather_sensitive_trade_types', 'is', null)
     if (error) throw error
 
@@ -69,7 +70,20 @@ serve(async (req: Request) => {
     // naturally small, so the inner per-job loop stays sequential within
     // each business's own processing). Same chunk()-of-20 shape as the
     // rest of this round, see SCALE_READINESS_NOTES_ROUND2.md.
-    const weatherSensitiveBiz = (businesses || []).filter(b => (b.weather_sensitive_trade_types || []).length > 0)
+    // Standard-tier automation gate (added 2026-10-09) — see
+    // _shared/tierEligibility.ts's own header and BILLING_INTEGRITY_NOTES.md's
+    // "Standard tier had no real differentiator from Starter" entry. The
+    // sector half of this check is technically redundant here —
+    // weather_sensitive_trade_types is only ever set from DispatcherView.jsx
+    // (confirmed by grep: zero write sites in IndustrialDispatcherView.jsx),
+    // so an industrial business can never match the filter below it anyway
+    // — but applied explicitly rather than relying on that staying true,
+    // same reasoning as every other explicit check in this codebase that
+    // could otherwise silently break if a future settings UI ever wrote to
+    // this column from the industrial side too.
+    const weatherSensitiveBiz = (businesses || []).filter(b =>
+      (b.weather_sensitive_trade_types || []).length > 0 && hasStandardAutomation(b.subscription_tier, b.sector)
+    )
     for (const batch of chunk(weatherSensitiveBiz, BUSINESS_BATCH_SIZE)) {
       const results = await Promise.all(batch.map(biz =>
         checkOneBusinessWeatherRisk(supabase, supabaseUrl, supabaseServiceKey, tomorrowStart, tomorrowEnd, tomorrowDateStr, biz)

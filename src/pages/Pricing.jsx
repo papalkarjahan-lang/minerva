@@ -9,7 +9,7 @@ import { useDocumentMeta } from '../hooks/useDocumentMeta'
 // the same Starter tier at a technician count of 1, not a separate price.
 const TIERS = [
   ['Starter', '$49', 'per tech/month', ['Live GPS map', 'Client ETA SMS', 'Job start/complete', 'Dispatch board & job scheduling', 'Automatic intake chat & lead scoring', 'Works on any phone']],
-  ['Standard', '$79', 'per tech/month', ['Everything in Starter', 'Recommended for growing teams'], true],
+  ['Standard', '$79', 'per tech/month', ['Everything in Starter', 'Automated lead nurture & win-back', 'Automated client retention check-ins', 'Automated invoice payment reminders', 'Wasted-trip / no-show detection', 'Weather-risk reschedule alerts'], true],
   ['Pro', '$119', 'per tech/month', ['Everything in Standard', 'On-site invoicing', 'Asset tracking', 'Compliance & onboarding checklists', 'Materials & inventory tracking', 'Technician credential tracking', 'Automated growth marketing suggestions']],
 ]
 
@@ -21,7 +21,7 @@ const TIERS = [
 // (Onboarding.jsx) and is independent of which of the 3 tiers you pick.
 const SIZE_GUIDE = [
   ['Solo', '1 technician (you)', 'Starter, billed for exactly 1 tech — $49/mo total.'],
-  ['Small team', '2–10 technicians', 'Starter or Standard, same per-tech price either way.'],
+  ['Small team', '2–10 technicians', 'Starter for the core dispatch tool, or Standard once you want lead/client follow-up running automatically instead of by memory.'],
   ['Growing team', '10–30 technicians', 'Standard or Pro — Pro unlocks invoicing, inventory, and compliance checklists.'],
   ['Multi-site / fleet', 'Any size, asset-heavy', 'Any tier + Industrial sector at signup — asset telemetry, site check-ins, safety tracking.'],
   ['Enterprise', 'Multi-van fleets, FM companies, councils, strata', 'Talk to our team — see the Enterprise page.'],
