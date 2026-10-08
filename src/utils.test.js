@@ -590,4 +590,19 @@ describe('neutralizeFormula', () => {
   it('handles a non-string (number) value safely', () => {
     expect(neutralizeFormula(42)).toBe('42')
   })
+
+  it('also catches a trigger character hidden behind leading whitespace — found in self-review, a trivial bypass of the original ^[=+\\-@] check', () => {
+    expect(neutralizeFormula(' =HYPERLINK("https://evil.example")')).toBe('\' =HYPERLINK("https://evil.example")')
+    expect(neutralizeFormula('   \t=cmd|\' /C calc\'!A0')).toBe('\'   \t=cmd|\' /C calc\'!A0')
+  })
+
+  it('does not flag leading whitespace alone with no trigger character after it', () => {
+    expect(neutralizeFormula('  Sarah Smith')).toBe('  Sarah Smith')
+  })
+
+  it('resolves quickly for a long whitespace-only value (no ReDoS reintroduced by the \\s* addition)', () => {
+    const start = Date.now()
+    neutralizeFormula(' '.repeat(500000))
+    expect(Date.now() - start).toBeLessThan(100)
+  })
 })

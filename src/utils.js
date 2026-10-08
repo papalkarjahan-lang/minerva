@@ -446,7 +446,16 @@ export function computeGst(subtotal) {
 // standard, universal mitigation (Excel/Sheets then render the whole
 // value as literal text) — no legitimate client name, address, or note
 // would ever intentionally start with one of these four characters.
+//
+// Checks past any LEADING WHITESPACE too, not just position 0 — caught
+// in a self-review (2026-10-08, same day): a value like " =HYPERLINK(...)"
+// (a leading space before the trigger character) slipped straight
+// through the original `^[=+\-@]` check unmodified, a trivial bypass of
+// the exact protection this function exists to provide. \s* here is a
+// simple, non-backtracking, linear-time pattern — deliberately checked
+// this doesn't reintroduce the same class of ReDoS just fixed elsewhere
+// in this same pass (suburbs.ts) before shipping it.
 export function neutralizeFormula(value) {
   const str = String(value ?? '')
-  return /^[=+\-@]/.test(str) ? `'${str}` : str
+  return /^\s*[=+\-@]/.test(str) ? `'${str}` : str
 }
