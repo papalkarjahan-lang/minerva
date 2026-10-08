@@ -93,18 +93,32 @@ word alone.
   and within that small set, invoices are further filtered to
   not-yet-notified ones only. Doesn't scale with total business count.
 
+## Fixed 2026-10-08, continued — the 3 industrial-sector cron functions
+
+Originally deferred (see the superseded note this replaces, below the
+rule) because the industrial sector had zero real customers and the
+`chunk()` pattern was unproven. Closed out the same day once
+`reconcile-billing`/`update-technician-workload`/`daily-digest` had all
+landed cleanly: `detect-safety-hazards` (platform-wide
+`site_projects.status='active'` scan, every 15 min, with a nested
+per-site `site_checkins` query), `sequence-handoffs` (every 15 min,
+nested per-completion query, candidate set already time-windowed to the
+last hour), `industrial-conductor` (hourly cron sweep + a
+single-lead direct-invocation mode, the latter an intentional no-op
+pass-through through the same batching code since it only ever has one
+leadId). Same pattern, same per-function verification (full manual
+trace + brace/paren balance check, no Deno CLI available locally).
+
+**Superseded note, kept for the historical record of the original
+reasoning**: ~~4 industrial-sector cron functions still have the same
+unbounded-loop shape as the ones fixed above... the industrial sector
+has zero real customers today, so the actual risk right now is scanning
+an empty table every cycle, not a timeout... revisit then rather than
+spending effort on it blind today.~~ Revisited same-day instead, once
+"blind" no longer applied.
+
 ## Deliberately deferred, with reasoning
 
-- **4 industrial-sector cron functions still have the same unbounded-loop
-  shape as the ones fixed above**: `detect-safety-hazards` (platform-wide
-  `site_projects.status='active'` scan, every 15 min, with a nested
-  per-site `site_checkins` query), `sequence-handoffs` (every 15 min,
-  nested per-completion query), `industrial-conductor` (hourly). Not fixed
-  in this pass — the industrial sector has zero real customers today, so
-  the actual risk right now is scanning an empty table every cycle, not a
-  timeout. The fix pattern (`chunk()` from `_shared/batch.ts`) is now
-  proven and ready to apply the moment an industrial customer actually
-  signs up; revisit then rather than spending effort on it blind today.
 - **Business-owner-facing unbounded historical lists**:
   `DispatcherView.jsx`'s `invoices`/`review_requests`/`marketing_drafts`
   queries in `loadAll()`, and `IndustrialDispatcherView.jsx`'s
