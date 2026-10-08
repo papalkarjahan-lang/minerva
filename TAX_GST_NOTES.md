@@ -67,15 +67,25 @@ credentials only you can obtain:
 1. Go to `developer.xero.com`, sign in with (or create) your own Xero
    account, and register a free developer app.
 2. Xero gives you a `XERO_CLIENT_ID` and `XERO_CLIENT_SECRET`.
-3. Paste those to Claude in chat and it'll set `XERO_CLIENT_ID` /
-   `XERO_CLIENT_SECRET` as Supabase secrets via the Management API (this
-   project has no linked Supabase CLI, so this never goes through
-   `supabase secrets set` directly).
+3. **Correction (2026-10-08):** the line this replaced said to paste
+   these to Claude and it would set them as Supabase secrets directly —
+   that's now out of date with a hard rule this project has hit and
+   corrected multiple times since this note was first written: never use
+   a pasted credential/token/secret in a tool call, even one freely
+   offered. The actual process: Claude hands you the exact command —
+   `npx supabase secrets set XERO_CLIENT_ID=... XERO_CLIENT_SECRET=...
+   --project-ref xiikytqxevivrupkljwc` — and you run it yourself, in your
+   own terminal. Same reasoning as every other Supabase/GitHub credential
+   this project handles this way (see `minerva_github_push_credential`
+   and `never_use_pasted_credentials` in Claude's own memory, if you're
+   reading this in a future session and the rule isn't obviously in
+   effect — it should be).
 4. "Connect Xero" in Settings will then work — it currently just shows a
    setup message because those secrets aren't set.
 
 This is intentionally not something I can do for you: it requires you to
-hold your own Xero account and accept Xero's own developer terms.
+hold your own Xero account and accept Xero's own developer terms, and the
+actual secret-setting step is yours to run too, per the correction above.
 
 ## What to actually do, in order
 

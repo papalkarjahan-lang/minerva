@@ -49,7 +49,29 @@ follow up now goes into those two irreducible, human-only tasks instead.
 
 ## Part 2 — Deployment order (do this first, before any outreach)
 
-Nothing in Part 3 works until this is live. In order:
+**Correction (2026-10-08):** this section, and its specific 5-function/
+3-delta scope, is now a narrower, outdated subset of everything actually
+pending — the list below predates a much larger volume of work this
+project has accumulated since (security fixes, scale-readiness batching,
+billing-correctness fixes, and more, on top of the outreach engine this
+section describes). **`DEPLOY_RUNBOOK_PENDING.md` is the current,
+authoritative, complete deployment sequence** — generated directly from
+`git diff`, covering every pending SQL delta and every function that
+needs redeploying, in dependency order. Use that file, not the numbered
+list below, for the actual sequence. The list is kept here only as
+historical record of this plan's original thinking.
+
+Steps 3 and 6 below also describe a deploy method that's since been
+corrected: Claude never deploys a function itself (via the Management API
+or any other method) and never takes/uses a pasted PAT — it hands you the
+exact `npx supabase functions deploy <slug> --project-ref
+xiikytqxevivrupkljwc` command for each function, for you to run yourself.
+Same for any secret (`npx supabase secrets set KEY=value --project-ref
+xiikytqxevivrupkljwc`) — never a pasted value used directly, regardless of
+what an earlier version of this plan assumed.
+
+Nothing in Part 3 works until this is live. In order (superseded by
+`DEPLOY_RUNBOOK_PENDING.md`, see above):
 
 1. **Account-setup blockers** (all block core product functionality, not just
    outreach — see `ACCOUNT_SETUP_WALKTHROUGH.md` for the click-by-click steps):
@@ -61,17 +83,18 @@ Nothing in Part 3 works until this is live. In order:
    Editor: `supabase_schema_delta_twilio_number_unique.sql`,
    `supabase_schema_delta_outreach_engine.sql`,
    `supabase_schema_delta_roi_proposals.sql`.
-3. **Deploy the new edge functions** (via the multipart `/functions/deploy`
-   API method — see `minerva_supabase_function_deploy_method.md` memory,
-   never PATCH+JSON): `draft-outreach-batch`, `send-outreach-batch`,
-   `followup-outreach`, `generate-roi-proposal`, `parse-prospect-text`.
+3. **Deploy the new edge functions** yourself, one `npx supabase functions
+   deploy` command per function (see the correction above): `draft-
+   outreach-batch`, `send-outreach-batch`, `followup-outreach`,
+   `generate-roi-proposal`, `parse-prospect-text`.
 4. **Run `supabase_schema_delta_outreach_engine_cron.sql`** (registers only
    the daily follow-up draft sweep — nothing else runs unattended).
 5. **Set `RESEND_API_KEY`** — without it, `send-outreach-batch` safely no-ops
    instead of sending (same pattern as the existing welcome email).
-6. **Get a fresh Supabase PAT** to redeploy `stripe-webhook`/
-   `test-agent-health` (carrying operator-alert-email support from Round 5),
-   and optionally set `OPERATOR_EMAIL`.
+6. **Redeploy `stripe-webhook`/`test-agent-health` yourself** (carrying
+   operator-alert-email support from Round 5), and optionally set
+   `OPERATOR_EMAIL` — both via the commands Claude hands you, per the
+   correction above, not a pasted PAT.
 7. **Legal review**: have a real solicitor confirm the live Terms/Privacy
    pages match `COMPLIANCE_TEMPLATES.md` before onboarding paying clients
    with real contracts/data-sharing terms.

@@ -91,12 +91,19 @@ npm run dev
 
 ## Deploy Supabase Edge Functions
 
-Note: this specific project has never had a linked/logged-in Supabase CLI
-in its dev environment — every secret and function deploy here has
-actually gone through the raw Management API instead (paste the value to
-Claude in chat, or see `minerva_supabase_function_deploy_method.md`). The
-CLI steps below are the standard path if you're setting this up somewhere
-with a working `supabase login`/`supabase link`.
+**Correction (2026-10-08):** this note previously said every secret/
+function deploy here went through a "raw Management API" with a pasted
+value, and invited pasting one to Claude — that's out of date with a hard
+rule this project has hit and corrected multiple times since: Claude
+never takes a pasted credential and uses it directly, and never runs a
+deploy itself even when it technically could. The actual, current
+process: Claude's own execution environment never has Supabase CLI
+authentication, so for any secret or function deploy it hands you the
+exact `npx supabase ...` command below to run yourself, in your own
+terminal, where `supabase login`/`supabase link` (or a one-time
+interactive credential prompt) can actually work. The CLI steps below are
+that same real path — not a hypothetical "if you're setting this up
+somewhere else."
 
 Install the Supabase CLI first:
 ```bash

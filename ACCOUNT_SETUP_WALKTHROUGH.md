@@ -58,10 +58,15 @@ is done.
    If you want a proper local number, click **Buy a number** → filter
    Country: Australia → pick one with SMS capability → Buy.
 6. Copy the number in **E.164 format** (e.g. `+61412345678`)
-7. Paste that number to Claude in chat — there's no linked/logged-in
-   Supabase CLI in this project, so every secret here has always been set
-   via the Management API with a pasted access token rather than
-   `supabase secrets set`, and Claude will do the same with this value.
+7. **Correction (2026-10-08):** the line this replaced claimed Claude
+   would set this via a "Management API" using a pasted access token —
+   that's out of date with a hard rule this project has hit and corrected
+   multiple times since: never use a pasted credential/token in a tool
+   call, even one freely offered. Tell Claude the number in chat and it
+   will hand you the exact command —
+   `npx supabase secrets set TWILIO_PHONE_NUMBER=+61412345678
+   --project-ref xiikytqxevivrupkljwc` — to run yourself, in your own
+   terminal.
 8. **Voice webhook (for the missed-call-webhook feature)** — on the same
    Active Numbers page, click your number → scroll to **Voice
    Configuration** → set **"A call comes in"** to **Webhook** → paste:
@@ -90,9 +95,11 @@ already live), so this is the lowest-urgency of the 4.
    cents)
 4. Go to **Settings → API Keys → Create Key** → name it `minerva-prod` →
    copy the key (starts with `sk-ant-`)
-5. Paste the key to Claude in chat and it'll set it via the Management API
-   (same as every other secret in this project — there's no linked
-   Supabase CLI here, so this never goes through `supabase secrets set`)
+5. **Correction (2026-10-08):** same correction as Twilio's step 7 above
+   — Claude won't take the pasted key and set it directly. It will hand
+   you the exact command —
+   `npx supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
+   --project-ref xiikytqxevivrupkljwc` — to run yourself.
 
 **Done when:** a new quote drafted via `draft-quote` or a message in the
 `/intake/:businessId` widget reads as natural free-text instead of the
@@ -131,9 +138,14 @@ else first.
 7. Go to **Settings → Billing → Customer Portal** → make sure it's
    **Activated** (needed for `create-billing-portal-session` /
    self-serve cancellation)
-8. Paste these 5 live values to Claude in chat — it'll update all 5
-   Supabase secrets via the Management API (this project has no linked
-   Supabase CLI, so none of this goes through `supabase secrets set`):
+8. **Correction (2026-10-08):** same correction as the Twilio/Anthropic
+   steps above — Claude won't take these 5 pasted values and set them
+   directly. Tell Claude the 5 values in chat and it will hand you one
+   command covering all 5 —
+   `npx supabase secrets set STRIPE_SECRET_KEY=sk_live_...
+   STRIPE_PRICE_ID_STARTER=price_... STRIPE_PRICE_ID_STD=price_...
+   STRIPE_PRICE_ID_PRO=price_... STRIPE_WEBHOOK_SECRET=whsec_...
+   --project-ref xiikytqxevivrupkljwc` — to run yourself:
    - `STRIPE_SECRET_KEY` = `sk_live_...`
    - `STRIPE_PRICE_ID_STARTER` = `price_...`
    - `STRIPE_PRICE_ID_STD` = `price_...`
@@ -168,13 +180,17 @@ there affects all of your clients at once, not just one.
 
 1. Requires `RESEND_API_KEY` to already be set (see `send-email`'s own
    header comment) — without it, this is a no-op either way.
-2. Paste your own email to Claude in chat and it'll set `OPERATOR_EMAIL`
-   via the Management API (same as every other secret in this project —
-   no linked Supabase CLI here, so this never goes through
-   `supabase secrets set`).
-3. Claude will also redeploy `stripe-webhook` and `test-agent-health`
-   after setting this (secrets are only picked up by a function that's
-   been deployed after the secret was set).
+2. **Correction (2026-10-08):** same correction as every other step in
+   this file — Claude won't set this directly, and won't deploy anything
+   itself either (a second hard rule, separate from the credential one:
+   deploys are always handed to you as an exact command, never run by
+   Claude, even with a working CLI session). Tell Claude your email in
+   chat and it will hand you two things to run yourself: the secret
+   command — `npx supabase secrets set OPERATOR_EMAIL=you@example.com
+   --project-ref xiikytqxevivrupkljwc` — and, after that, the two
+   redeploy commands for `stripe-webhook` and `test-agent-health`
+   (secrets are only picked up by a function that's been deployed after
+   the secret was set).
 
 **Done when:** you can trigger a Stripe test-mode failed payment (Stripe
 dashboard → a test card like `4000 0000 0000 0341`) and an email actually
