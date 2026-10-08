@@ -28,15 +28,29 @@ const COMPANY_TYPES = [
 
 // Real, shipped capabilities that specifically differentiate multi-site /
 // industrial-sector operations from the standard trade tiers — cross-
-// checked against supabase_schema_delta_industrial.sql and DispatcherView/
-// IndustrialDispatcherView, not invented for this page.
+// checked against supabase_schema_delta_industrial.sql and
+// IndustrialDispatcherView (the console every page on this page's own
+// signup path actually lands an industrial-sector business in), not
+// invented for this page.
+//
+// A 6th bullet — "Custom automation workflows... webhook/Slack workflows
+// off lead, job, or invoice events" — was removed 2026-10-08. That
+// feature (custom_workflows, run-custom-workflows) is real, but every
+// call site and every bit of UI to configure it lives exclusively in
+// DispatcherView.jsx (the TRADE console) — IndustrialDispatcherView.jsx
+// has no equivalent, and industrial's own lead/job pipeline never fires
+// any of the 3 named trigger events. An industrial-sector prospect
+// reading this page — the exact audience it's written for — could never
+// actually reach the feature it promised. See
+// BILLING_INTEGRITY_NOTES.md's "Enterprise.jsx's custom-workflows claim"
+// entry. The 5 bullets below were individually re-verified against their
+// real backend at the same time and are genuinely industrial-correct.
 const CAPABILITIES = [
   ['🛰️', 'Asset telemetry & geofencing', 'Track engine hours, maintenance intervals, and geofenced site zones for every piece of equipment, not just people.'],
   ['📍', 'Multi-day site tracking', 'Sites get their own scope of work and arrival/departure check-ins, for jobs that run over multiple days.'],
   ['⚠️', 'Safety incident tracking', 'Log and acknowledge on-site safety incidents, by severity, in one place.'],
   ['📦', 'Consumables reorder alerts', 'Get flagged before on-site stock runs out, not after.'],
   ['📑', 'Client verification packages', 'Assemble evidence packages (photos, checklists, sign-off) for client and compliance handoff.'],
-  ['⚙️', 'Custom automation workflows', 'Trigger your own webhook/Slack workflows off lead, job, or invoice events.'],
 ]
 
 export default function Enterprise() {

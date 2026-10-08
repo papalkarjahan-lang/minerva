@@ -54,6 +54,19 @@ export default function Onboarding() {
     setTier(id)
   }
 
+  // Pro isn't offered for Industrial (see TIERS.filter below and
+  // BILLING_INTEGRITY_NOTES.md's "Pro tier has nothing for Industrial"
+  // entry) — every one of Pro's 6 marketed features only exists in the
+  // trade-sector console. Switching TO industrial while Pro is already
+  // selected must also clear that selection, or the tier grid would stop
+  // showing Pro as selected (the card disappears) while `tier` state
+  // silently stayed 'pro' underneath — submitting a tier the UI no longer
+  // even displays as chosen.
+  function selectSector(id) {
+    setSector(id)
+    if (id === 'industrial' && tier === 'pro') setTier('standard')
+  }
+
   const perTechPrice = TIERS.find(t => t.id === tier).price
 
   function updateBiz(field) { return (e) => setBiz(prev => ({ ...prev, [field]: e.target.value })) }
@@ -196,13 +209,13 @@ export default function Onboarding() {
             <div style={styles.fieldGroup}>
               <label style={styles.label}>What kind of business is this?</label>
               <div style={styles.sectorToggle} role="radiogroup" aria-label="Business sector">
-                <div onClick={() => setSector('trade')} onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), setSector('trade'))}
+                <div onClick={() => selectSector('trade')} onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), selectSector('trade'))}
                   role="radio" aria-checked={sector === 'trade'} tabIndex={0}
                   style={{ ...styles.sectorOption, ...(sector === 'trade' ? styles.sectorOptionActive : {}) }}>
                   <p style={styles.sectorOptionName}>Trade</p>
                   <p style={styles.sectorOptionBlurb}>Plumbers, electricians, HVAC, and other on-demand home/commercial trades</p>
                 </div>
-                <div onClick={() => setSector('industrial')} onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), setSector('industrial'))}
+                <div onClick={() => selectSector('industrial')} onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), selectSector('industrial'))}
                   role="radio" aria-checked={sector === 'industrial'} tabIndex={0}
                   style={{ ...styles.sectorOption, ...(sector === 'industrial' ? styles.sectorOptionActive : {}) }}>
                   <p style={styles.sectorOptionName}>Industrial</p>
@@ -295,8 +308,16 @@ export default function Onboarding() {
 
             {/* Plan tier */}
             <p style={styles.label}>Choose your plan</p>
+            {sector === 'industrial' && (
+              <p style={{ fontSize: 12.5, color: '#777', lineHeight: 1.5, margin: '-4px 0 10px' }}>
+                Pro is not yet available for Industrial — its extra features (invoicing, asset
+                tracking, compliance checklists) are built for the Trade console specifically.
+                Starter and Standard both include everything Industrial already has: asset
+                telemetry, site check-ins, and safety tracking.
+              </p>
+            )}
             <div style={styles.tierGrid} role="radiogroup" aria-label="Choose your plan">
-              {TIERS.map(t => (
+              {TIERS.filter(t => sector !== 'industrial' || t.id !== 'pro').map(t => (
                 <div key={t.id}
                   onClick={() => selectTier(t.id)}
                   onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), selectTier(t.id))}

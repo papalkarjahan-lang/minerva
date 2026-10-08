@@ -156,6 +156,95 @@ single mistake" becoming an explicit bar.
   unilaterally. The fix here is "don't charge for what can't work," not
   "make it work."
 
+- **Pro tier has nothing for Industrial — the same bug class as Asset
+  Intelligence, but at the entire top tier's scale, not one $39 add-on.**
+  Found by a dedicated audit applying the same trace deliberately
+  broadened beyond add-ons: does every tier's marketed feature set
+  actually work for every sector that can buy it? `Onboarding.jsx`'s and
+  `Pricing.jsx`'s `TIERS` copy both market Pro ($119/tech/mo) as
+  Standard ($79) + 6 specific features: on-site invoicing, asset
+  tracking, compliance/onboarding checklists, materials/inventory
+  tracking, technician credential tracking, automated growth marketing
+  suggestions. Sector and tier are chosen completely independently at
+  signup (`Onboarding.jsx`'s own `sector`/`tier` state, no
+  cross-validation), and `create-checkout-session` selects the Stripe
+  price from `tier` alone — `sector` wasn't even a parameter it received.
+  Every one of those 6 features' only real implementation is in
+  `DispatcherView.jsx` (the trade console) and its server-side tier
+  checks (`enforce_pro_tier_*` triggers, `generate-growth-drafts`' own
+  `.eq('subscription_tier','pro')` filter) have zero sector awareness.
+  `IndustrialDispatcherView.jsx` — the only console an industrial
+  business is ever routed to — has none of this UI, and the one feature
+  that looked merely tier-gated rather than sector-gated (on-site
+  invoicing via the shared `/tech` technician route) turned out to be
+  dead for industrial too: that flow only activates when
+  `technicians.current_job_id` is set, and nothing on the industrial
+  side ever sets that column (industrial assigns technicians to
+  `corrective_actions` tickets via a completely different column on a
+  completely different table). Net effect: an industrial business
+  selecting Pro pays up to 2.4x Standard's price for exactly Standard's
+  feature set, every month, with no code path that ever changes that —
+  not a race, not an edge case, the guaranteed outcome every time.
+  **Fix**: `create-checkout-session/logic.ts`'s new
+  `isTierAvailableForSector(tier, sector)` rejects the specific
+  `tier==='pro' && sector==='industrial'` combination, checked in
+  `index.ts` before any Stripe call — the same "the real chokepoint is
+  where money actually gets attached, not just the UI" reasoning as
+  every other guard added this session. `Onboarding.jsx` no longer even
+  renders the Pro card for Industrial (with a brief, honest explanation
+  of why, and what Starter/Standard already include instead), and
+  switching sector to Industrial while Pro was already selected resets
+  the selection to Standard rather than leaving a hidden, stale `tier`
+  state that would otherwise still submit 'pro' invisibly. No DB trigger
+  added for this one, unlike `asset_intelligence`'s: there's no
+  free/edge-function-bypassing path here with a real functional
+  consequence during the trial window the way `startMaxAddonTrial` had
+  — the only path that ever attaches a real, recurring Stripe price is
+  `create-checkout-session`, which is now the one place this is checked.
+  **Deliberately not attempted here, same reasoning as Asset
+  Intelligence**: building Pro-tier industrial equivalents for
+  invoicing/credentials/growth-marketing. Some of Pro's 6 features
+  already have a genuine, separately-built, currently UNGATED industrial
+  equivalent (asset tracking → `industrial_assets`, compliance →
+  `safety_incidents`/`verify-industrial-compliance`, inventory →
+  `consumables_items`/`track-consumables`) — meaning those specific ones
+  aren't really "missing," they're "already free at every industrial
+  tier today," which is its own real product question (should Industrial
+  ever have its own paid tier differentiation, and on what?) rather than
+  something to decide unilaterally. The other 3 (invoicing, credential
+  tracking, growth marketing) have no industrial equivalent built at
+  all. Either way, the fix here is the same: stop selling a specific
+  promise that has nothing behind it, not invent what should replace it.
+  No new SQL delta — this is an application-level-only fix (no new
+  column, no new trigger), so it ships with `create-checkout-session`'s
+  next normal redeploy with no extra sequencing step.
+- **Enterprise.jsx's "Custom automation workflows" claim was 100% dead
+  for the exact audience that page is written for.** Found by the same
+  broadened audit, checking every individual claim on the one marketing
+  page aimed specifically at prospects who will pick the industrial
+  sector. The claim — "Trigger your own webhook/Slack workflows off
+  lead, job, or invoice events" — describes a real, working feature
+  (`custom_workflows`, `run-custom-workflows`), but every UI to configure
+  one and every call site that fires a trigger event lives exclusively
+  in `DispatcherView.jsx`/trade-only functions; industrial's own lead
+  pipeline (`harvest-industrial-leads`, `industrial-conductor`) never
+  fires any of the 3 named trigger events and has no equivalent UI. The
+  other 5 claims on the same page were individually re-verified against
+  their real backend at the same time and are genuinely industrial-
+  correct (asset telemetry/geofencing, multi-day site tracking, safety
+  incident tracking, consumables reorder alerts, client verification
+  packages) — only this one bullet was broken. **Fix**: removed the one
+  false bullet from `Enterprise.jsx`'s `CAPABILITIES` array, rather than
+  inventing a replacement claim or promising a future date — the grid it
+  renders into is a responsive `auto-fit` layout, so 5 items instead of 6
+  reflows cleanly with no visual gap. Also corrected that array's own
+  header comment, which had claimed (prior to this fix) that every entry
+  was "cross-checked... not invented for this page" — true again now
+  that the one entry that wasn't actually fully correct has been removed,
+  but worth noting as its own small instance of the "a comment asserts a
+  verification that doesn't fully hold" pattern this project keeps
+  finding in different layers.
+
 ## Checked and fine (no action needed)
 
 - **Every other `subscription_tier` write site** — grepped every file

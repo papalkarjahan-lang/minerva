@@ -32,7 +32,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
-import { shouldAllowCheckoutCreation } from "./logic.ts"
+import { shouldAllowCheckoutCreation, isTierAvailableForSector } from "./logic.ts"
 
 const corsHeaders = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' }
 
@@ -61,12 +61,21 @@ serve(async (req: Request) => {
     // use this endpoint to probe which business ids are real.
     const { data: bizForToken, error: bizFetchErr } = await supabase
       .from('businesses')
-      .select('checkout_token')
+      .select('checkout_token, sector')
       .eq('id', businessId)
       .maybeSingle()
     if (bizFetchErr) throw new Error(`Failed to verify business: ${bizFetchErr.message}`)
     if (!shouldAllowCheckoutCreation(bizForToken?.checkout_token, checkoutToken)) {
       throw new Error('Invalid checkout token for this business')
+    }
+
+    // Pro/sector guard (added 2026-10-08) — see isTierAvailableForSector's
+    // own comment in logic.ts and BILLING_INTEGRITY_NOTES.md. Checked
+    // before any Stripe call: this is the one place that attaches a real,
+    // recurring price to a subscription, so it's the right chokepoint to
+    // refuse at, same reasoning as the checkout-hijack guard right above.
+    if (!isTierAvailableForSector(tier, bizForToken?.sector)) {
+      throw new Error('Pro tier is not yet available for Industrial-sector businesses — Starter or Standard are available now.')
     }
 
     // Pick the Stripe price id for the chosen tier.
