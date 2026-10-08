@@ -294,3 +294,22 @@ single mistake" becoming an explicit bar.
   the Stripe customer id is allowed to belong to, not event ordering) —
   confirmed this fix doesn't need to interact with it; that branch never
   writes `subscription_tier` at all, only the Stripe id columns.
+- **All 9 Minerva Max add-on catalog descriptions, cross-checked against
+  their actual implementation** (2026-10-09) — closes a gap the earlier
+  "sold vs. delivered" background audit explicitly deferred ("did not
+  re-check the remaining 6 add-ons beyond this, per the task's lower-
+  priority framing"). `ai_quotes` (fallback blank line item + always
+  `status: 'draft'` pending review — `draft-quote/index.ts`),
+  `surge_pricing` ($75 base + $50 after-hours + $50 weekend, an editable
+  suggested line item, never auto-applied — `TechnicianView.jsx`),
+  `crew_splitting` (crew inserted into `job_assignments` with a separate
+  `role`, lead stays `jobs.technician_id` — `DispatcherView.jsx`),
+  `subcontractor_pool` (`jobs.assigned_subcontractor_id`, a genuinely
+  separate column, overflow-fallback only — `auto-assign-technician`),
+  `carbon_estimate` (haversine distance × a static factor, matches its
+  own "HONESTY NOTE" header exactly — already read in full for the scale-
+  readiness fix), `xero_sync` (`Status: 'DRAFT'`, literally in the Xero
+  API payload). All 9 now verified, all 9 accurate — `asset_intelligence`
+  remains the only one that ever had a real gap (the sector mismatch
+  fixed above), and that was a reachability problem, not a description-
+  accuracy one.
