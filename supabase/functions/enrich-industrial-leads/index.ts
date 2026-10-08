@@ -40,6 +40,9 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { chunk } from "../_shared/batch.ts"
+
+const BUSINESS_BATCH_SIZE = 20
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -107,45 +110,13 @@ serve(async (req: Request) => {
     const { data: businesses } = await supabase.from('businesses').select('id, name').eq('sector', 'industrial')
 
     let nudged = 0
-    for (const biz of businesses || []) {
-      // Only nudge leads that haven't already been nudged once — without
-      // this filter, a lead stuck at status='new' gets re-Slacked every
-      // single day forever. Once nudged, it's silent until a human either
-      // enriches it (status changes away from 'new') or looks into it.
-      const { data: unenriched } = await supabase.from('industrial_leads')
-        .select('id, company_name')
-        .eq('business_id', biz.id)
-        .eq('status', 'new')
-        .is('decision_maker_contact', null)
-        .is('enrichment_nudge_sent_at', null)
-        .lt('created_at', dayAgo)
-
-      if (!unenriched || unenriched.length === 0) continue
-
-      // Atomically claim these leads BEFORE Slacking, not after — same
-      // claim-before-notify pattern used across this codebase's other
-      // alerting agents (e.g. verify-industrial-compliance). The previous
-      // order (Slack first, flag second) left a TOCTOU window where an
-      // overlapping/duplicate daily cron run could re-select the same
-      // still-unflagged leads and send a second Slack nudge for the same
-      // batch. Re-selecting with .is('enrichment_nudge_sent_at', null) in
-      // the WHERE clause (not just the initial SELECT) means a concurrent
-      // run's claim already flipped the flag, so this update affects 0 of
-      // those rows and they're excluded from the notification text below.
-      const { data: claimed } = await supabase.from('industrial_leads')
-        .update({ enrichment_nudge_sent_at: new Date().toISOString() })
-        .in('id', unenriched.map((l: any) => l.id))
-        .is('enrichment_nudge_sent_at', null)
-        .select('id, company_name')
-      if (!claimed || claimed.length === 0) continue
-
-      const names = claimed.slice(0, 3).map((l: any) => l.company_name).join(', ')
-      await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
-        body: JSON.stringify({ businessId: biz.id, text: `📇 *Enrich*: ${claimed.length} lead(s) still missing a decision-maker contact — ${names}${claimed.length > 3 ? ', ...' : ''}.` }),
-      }).catch(() => {})
-      nudged++
+    // Bounded-concurrency batching (added 2026-10-08) — every industrial-
+    // sector business platform-wide, each costing a nested leads query
+    // plus a conditional claim and Slack notify. Same chunk()-of-20 shape
+    // as the rest of this round, see SCALE_READINESS_NOTES_ROUND2.md.
+    for (const batch of chunk(businesses || [], BUSINESS_BATCH_SIZE)) {
+      const results = await Promise.all(batch.map(biz => nudgeOneBusinessEnrichment(supabase, supabaseUrl, supabaseServiceKey, dayAgo, biz)))
+      for (const wasNudged of results) if (wasNudged) nudged++
     }
 
     supabase.rpc('record_agent_run', { fn_name: 'enrich-industrial-leads', status: 'ok' }).then(() => {}, () => {})
@@ -165,3 +136,53 @@ serve(async (req: Request) => {
     })
   }
 })
+
+// Extracted from the main loop (2026-10-08) so it can be run through
+// chunk()'s bounded-concurrency batching — same logic that was previously
+// inline, unchanged. Returns whether this business was nudged.
+async function nudgeOneBusinessEnrichment(
+  supabase: ReturnType<typeof createClient>,
+  supabaseUrl: string,
+  supabaseServiceKey: string,
+  dayAgo: string,
+  biz: any
+): Promise<boolean> {
+  // Only nudge leads that haven't already been nudged once — without
+  // this filter, a lead stuck at status='new' gets re-Slacked every
+  // single day forever. Once nudged, it's silent until a human either
+  // enriches it (status changes away from 'new') or looks into it.
+  const { data: unenriched } = await supabase.from('industrial_leads')
+    .select('id, company_name')
+    .eq('business_id', biz.id)
+    .eq('status', 'new')
+    .is('decision_maker_contact', null)
+    .is('enrichment_nudge_sent_at', null)
+    .lt('created_at', dayAgo)
+
+  if (!unenriched || unenriched.length === 0) return false
+
+  // Atomically claim these leads BEFORE Slacking, not after — same
+  // claim-before-notify pattern used across this codebase's other
+  // alerting agents (e.g. verify-industrial-compliance). The previous
+  // order (Slack first, flag second) left a TOCTOU window where an
+  // overlapping/duplicate daily cron run could re-select the same
+  // still-unflagged leads and send a second Slack nudge for the same
+  // batch. Re-selecting with .is('enrichment_nudge_sent_at', null) in
+  // the WHERE clause (not just the initial SELECT) means a concurrent
+  // run's claim already flipped the flag, so this update affects 0 of
+  // those rows and they're excluded from the notification text below.
+  const { data: claimed } = await supabase.from('industrial_leads')
+    .update({ enrichment_nudge_sent_at: new Date().toISOString() })
+    .in('id', unenriched.map((l: any) => l.id))
+    .is('enrichment_nudge_sent_at', null)
+    .select('id, company_name')
+  if (!claimed || claimed.length === 0) return false
+
+  const names = claimed.slice(0, 3).map((l: any) => l.company_name).join(', ')
+  await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
+    body: JSON.stringify({ businessId: biz.id, text: `📇 *Enrich*: ${claimed.length} lead(s) still missing a decision-maker contact — ${names}${claimed.length > 3 ? ', ...' : ''}.` }),
+  }).catch(() => {})
+  return true
+}

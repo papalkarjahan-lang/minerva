@@ -31,8 +31,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { notifySlack } from "../_shared/notifySlack.ts"
+import { chunk } from "../_shared/batch.ts"
 
 const TRIAL_REMINDER_WINDOW_DAYS = 3
+const BUSINESS_BATCH_SIZE = 20
 
 const ADDON_NAMES: Record<string, string> = {
   surge_pricing: 'Emergency Surge Pricing',
@@ -72,36 +74,21 @@ serve(async (req: Request) => {
     if (error) throw error
 
     let alerted = 0
-    for (const biz of businesses || []) {
-      const trials = biz.max_addon_trials || {}
-      if (Object.keys(trials).length === 0) continue
-      for (const key of Object.keys(trials)) {
-        const trial = trials[key]
-        if (!trial?.ends_at || trial.reminder_sent_at) continue
-        if (biz.max_addons?.[key] === true) continue // already converted to paid
-
-        const msLeft = new Date(trial.ends_at).getTime() - nowMs
-        if (msLeft > windowMs || msLeft < 0) continue // not due yet, or already lapsed silently
-
-        // Atomically claim this addon's reminder before alerting — see
-        // header comment. A concurrent run's claim affects 0 rows.
-        const { data: claimed, error: claimErr } = await supabase
-          .from('businesses')
-          .update({ max_addon_trials: { ...trials, [key]: { ...trial, reminder_sent_at: now } } })
-          .eq('id', biz.id)
-          .filter(`max_addon_trials->${key}->>reminder_sent_at`, 'is', null)
-          .select('id')
-        if (claimErr) { console.error('notify-addon-trial-ending: claim failed:', claimErr.message); continue }
-        if (!claimed || claimed.length === 0) continue // already claimed by a concurrent run
-
-        const daysLeft = Math.max(0, Math.ceil(msLeft / (24 * 60 * 60 * 1000)))
-        const addonName = ADDON_NAMES[key] || key
-        const whenText = daysLeft <= 0 ? 'ends today' : `ends in ${daysLeft}d`
-        await notifySlack(supabaseUrl, supabaseServiceKey, biz.id,
-          `\u23F3 Your trial of *${addonName}* ${whenText}. Enable it from the MAX tab to keep using it — otherwise it just quietly turns off, no charge either way.`)
-
-        alerted++
-      }
+    // Bounded-concurrency batching (added 2026-10-08) — most iterations
+    // here are cheap in-memory date math (trial-ending-soon is the rare
+    // case), similar in shape to reconcile-technician-state's mostly-free
+    // loop. Batched anyway as defense in depth: trials are 30 days from
+    // whenever each business individually started one, with no inherent
+    // correlation — except that a real outreach-driven wave of new
+    // signups (the current plan this product is built around) could
+    // plausibly cluster many businesses' trial-start dates close together,
+    // which would later cluster their endings too. Same chunk()-of-20
+    // shape as the rest of this round, see SCALE_READINESS_NOTES_ROUND2.md.
+    for (const batch of chunk(businesses || [], BUSINESS_BATCH_SIZE)) {
+      const results = await Promise.all(batch.map(biz =>
+        notifyOneBusinessTrialsEnding(supabase, supabaseUrl, supabaseServiceKey, nowMs, now, windowMs, biz)
+      ))
+      for (const count of results) alerted += count
     }
 
     supabase.rpc('record_agent_run', { fn_name: 'notify-addon-trial-ending', status: 'ok' }).then(() => {}, () => {})
@@ -129,3 +116,49 @@ serve(async (req: Request) => {
     })
   }
 })
+
+// Extracted from the main loop (2026-10-08) so it can be run through
+// chunk()'s bounded-concurrency batching — same logic that was previously
+// inline, unchanged. Returns how many alerts were sent for this business
+// (0, 1, or more if several of its addon trials are due at once).
+async function notifyOneBusinessTrialsEnding(
+  supabase: ReturnType<typeof createClient>,
+  supabaseUrl: string,
+  supabaseServiceKey: string,
+  nowMs: number,
+  now: string,
+  windowMs: number,
+  biz: any
+): Promise<number> {
+  let alertedForThisBiz = 0
+  const trials = biz.max_addon_trials || {}
+  if (Object.keys(trials).length === 0) return 0
+  for (const key of Object.keys(trials)) {
+    const trial = trials[key]
+    if (!trial?.ends_at || trial.reminder_sent_at) continue
+    if (biz.max_addons?.[key] === true) continue // already converted to paid
+
+    const msLeft = new Date(trial.ends_at).getTime() - nowMs
+    if (msLeft > windowMs || msLeft < 0) continue // not due yet, or already lapsed silently
+
+    // Atomically claim this addon's reminder before alerting — see
+    // header comment. A concurrent run's claim affects 0 rows.
+    const { data: claimed, error: claimErr } = await supabase
+      .from('businesses')
+      .update({ max_addon_trials: { ...trials, [key]: { ...trial, reminder_sent_at: now } } })
+      .eq('id', biz.id)
+      .filter(`max_addon_trials->${key}->>reminder_sent_at`, 'is', null)
+      .select('id')
+    if (claimErr) { console.error('notify-addon-trial-ending: claim failed:', claimErr.message); continue }
+    if (!claimed || claimed.length === 0) continue // already claimed by a concurrent run
+
+    const daysLeft = Math.max(0, Math.ceil(msLeft / (24 * 60 * 60 * 1000)))
+    const addonName = ADDON_NAMES[key] || key
+    const whenText = daysLeft <= 0 ? 'ends today' : `ends in ${daysLeft}d`
+    await notifySlack(supabaseUrl, supabaseServiceKey, biz.id,
+      `\u23F3 Your trial of *${addonName}* ${whenText}. Enable it from the MAX tab to keep using it — otherwise it just quietly turns off, no charge either way.`)
+
+    alertedForThisBiz++
+  }
+  return alertedForThisBiz
+}
