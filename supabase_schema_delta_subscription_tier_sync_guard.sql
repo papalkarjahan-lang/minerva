@@ -1,0 +1,54 @@
+-- ============================================================
+-- MINERVA — Delta: businesses.subscription_tier_synced_at, 2026-10-08.
+-- Adds 1 new column only. Run this entire block once in the Supabase SQL
+-- Editor.
+--
+-- What this fixes: Stripe explicitly does not guarantee webhook delivery
+-- order (only "at least once"). stripe-webhook already defends against
+-- the SAME event being processed twice (processed_stripe_events, see its
+-- own delta/comment) — this is a different bug: two DIFFERENT, genuine
+-- events for the same subscription arriving out of order.
+--
+-- Concretely: planSubscriptionUpdated's own comment claimed a delayed
+-- customer.subscription.updated can never resurrect a cancelled business,
+-- because only status 'active'/'trialing' is trusted. That's true of the
+-- event's CONTENT, but not of delivery order — a stale update event's own
+-- status field correctly says 'active', because that was true when Stripe
+-- generated it, BEFORE a cancellation that happened moments later. If that
+-- stale update is delivered to this endpoint AFTER the
+-- customer.subscription.deleted that cancelled things, nothing previously
+-- stopped it from overwriting subscription_tier straight back from
+-- 'cancelled' to a real paid tier — a business that genuinely cancelled
+-- would silently regain full product access.
+--
+-- Fix: every write to subscription_tier now also stamps
+-- subscription_tier_synced_at with the WRITING EVENT's own timestamp
+-- (Stripe's event.created for the 2 webhook branches; "now" for
+-- AdminConsole's manual override). Each webhook write is guarded by a
+-- single atomic UPDATE ... WHERE subscription_tier_synced_at IS NULL OR
+-- subscription_tier_synced_at < this_event's_created — so whichever event
+-- is chronologically newest always wins the write, regardless of which
+-- one is DELIVERED second. A plain read-then-compare-then-write in
+-- application code would reopen the exact race the processed_stripe_events
+-- claim-first design was built to close (two near-simultaneous requests
+-- could both read "not yet newer" and both write) — this stays a single
+-- conditional UPDATE for the same reason.
+--
+-- Known accepted limitation: Stripe's event.created has 1-second
+-- resolution, so two distinct events for the same subscription generated
+-- within the same wall-clock second compare equal; the guard then resolves
+-- the tie as "first one committed to the database wins" rather than by
+-- true order, since no finer-grained sequence number is available from
+-- Stripe to break it. Two real subscription changes landing in the same
+-- second is already a narrow case; this is a documented edge of that
+-- narrow case, not a gap anyone chose to leave unhandled.
+--
+-- AdminConsole's manual tier override deliberately does NOT read this
+-- column before writing — an admin override is a deliberate human action
+-- and should always take effect immediately and unconditionally. It DOES
+-- write a fresh subscription_tier_synced_at (now()), so that an older,
+-- still-in-flight webhook event can't silently undo the override after
+-- the fact.
+-- ============================================================
+
+alter table businesses add column subscription_tier_synced_at timestamptz;

@@ -17,6 +17,7 @@ import {
   buildRefundFallbackSummary,
   shouldAlertOperator,
   shouldApplyCheckoutCompletion,
+  stripeEventCreatedToIso,
 } from './logic'
 
 const NOW = '2026-09-16T12:00:00.000Z'
@@ -343,5 +344,30 @@ describe('buildRefundFallbackSummary', () => {
     const summary = buildRefundFallbackSummary(null, 4999, 'AUD')
     expect(summary).not.toContain('for null')
     expect(summary).toContain('Payment fully refunded:')
+  })
+})
+
+describe('stripeEventCreatedToIso', () => {
+  it('converts Unix seconds to an ISO timestamp, not Unix milliseconds', () => {
+    // 1759900800 = 2025-10-08T05:20:00.000Z (verified with
+    // `new Date(1759900800 * 1000).toISOString()`, not hand-computed —
+    // this exact kind of date arithmetic is easy to get wrong by eye).
+    // The footgun this helper exists to prevent: new Date(1759900800) with
+    // no * 1000 lands in January 1970, not 2025 — a wrong-by-1000x bug
+    // that would make the ordering guard in index.ts compare against a
+    // garbage timestamp.
+    expect(stripeEventCreatedToIso(1759900800)).toBe('2025-10-08T05:20:00.000Z')
+  })
+
+  it('round-trips Date.now()-derived seconds back to the same second', () => {
+    const nowMs = Date.UTC(2026, 0, 15, 10, 30, 45)
+    const unixSeconds = nowMs / 1000
+    expect(stripeEventCreatedToIso(unixSeconds)).toBe(new Date(nowMs).toISOString())
+  })
+
+  it('preserves chronological ordering under string comparison (what the DB guard relies on)', () => {
+    const earlier = stripeEventCreatedToIso(1759900800)
+    const later = stripeEventCreatedToIso(1759900860) // 60s later
+    expect(earlier < later).toBe(true)
   })
 })

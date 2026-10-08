@@ -104,6 +104,14 @@ export interface SubscriptionUpdatedPlan {
   update: { subscription_tier: 'starter' | 'standard' | 'pro' }
 }
 
+// Stripe's Event.created is Unix seconds, not milliseconds — the standard
+// JS Date footgun (passing it straight to `new Date()` lands in 1970) is
+// exactly the kind of off-by-1000 mistake worth a named, tested helper
+// rather than an inline `* 1000` at each of the 2 call sites in index.ts.
+export function stripeEventCreatedToIso(createdUnixSeconds: number): string {
+  return new Date(createdUnixSeconds * 1000).toISOString()
+}
+
 // customer.subscription.updated — keeps businesses.subscription_tier in
 // sync with whatever Stripe actually has, for the self-serve "switch
 // tiers anytime from billing settings" plan change promised on
@@ -124,12 +132,15 @@ export interface SubscriptionUpdatedPlan {
 // cases: an unrecognized price id (a different product, a one-off
 // manually-created Stripe price, or those secrets not being set) must
 // never silently corrupt subscription_tier to some made-up value; and a
-// status that isn't 'active'/'trialing' (Stripe doesn't guarantee event
-// delivery order, and a subscription.updated carrying a stale price can
-// arrive around the same time as the subscription.deleted that's
-// actually cancelling it — only a genuinely live subscription's own
-// current price is trusted to set a real tier here, cancellation itself
-// stays exclusively planSubscriptionDeleted's job).
+// status that isn't 'active'/'trialing', which narrows but does NOT by
+// itself solve the out-of-order-delivery problem — a stale update event's
+// own status field correctly says 'active', since that was true when
+// Stripe generated it, even if a cancellation followed moments later and
+// is DELIVERED first. Closing that gap needs comparing event timestamps,
+// not just this event's own content — see index.ts's use of
+// subscription_tier_synced_at (supabase_schema_delta_subscription_tier_
+// sync_guard.sql) for the actual ordering guard, applied as a single
+// conditional UPDATE around the write this function plans.
 export function planSubscriptionUpdated(
   subscription: SubscriptionUpdatedLike,
   priceIdToTier: Record<string, 'starter' | 'standard' | 'pro'>

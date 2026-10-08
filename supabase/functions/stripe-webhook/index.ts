@@ -135,6 +135,7 @@ import {
   planCheckoutSessionCompleted,
   planSubscriptionDeleted,
   planSubscriptionUpdated,
+  stripeEventCreatedToIso,
   planInvoicePaymentFailed,
   planInvoicePaymentSucceeded,
   planPaymentIntentSucceeded,
@@ -267,12 +268,24 @@ serve(async (req: Request) => {
       case 'customer.subscription.deleted': {
         // Mark the business as cancelled so the dispatcher app can show a
         // "trial/subscription ended" state instead of silently continuing.
+        //
+        // Ordering guard (added 2026-10-08): stamps subscription_tier_synced_at
+        // with THIS event's own Stripe-generated timestamp and only commits the
+        // write if no newer event already landed — see
+        // supabase_schema_delta_subscription_tier_sync_guard.sql's header for
+        // the exact scenario this closes (a stale, pre-cancellation
+        // subscription.updated delivered AFTER this event, which would
+        // otherwise silently resurrect a cancelled business's tier). A plain
+        // UPDATE with no matching row (because a newer event already won) is
+        // not an error — it's the guard working as intended.
         const plan = planSubscriptionDeleted(event.data.object as Stripe.Subscription)
         if (plan) {
+          const eventCreatedIso = stripeEventCreatedToIso(event.created)
           const { error } = await supabaseAdmin
             .from('businesses')
-            .update(plan.update)
+            .update({ ...plan.update, subscription_tier_synced_at: eventCreatedIso })
             .eq('stripe_sub_id', plan.subscriptionId)
+            .or(`subscription_tier_synced_at.is.null,subscription_tier_synced_at.lt.${eventCreatedIso}`)
           if (error) throw new Error(`Failed to mark subscription cancelled: ${error.message}`)
         }
         break
@@ -282,6 +295,14 @@ serve(async (req: Request) => {
         // Keeps subscription_tier in sync with a self-serve plan switch
         // made through the Stripe Customer Portal — see planSubscriptionUpdated's
         // own comment for why this was missing and why it's scoped the way it is.
+        //
+        // Same ordering guard as customer.subscription.deleted above, and for
+        // the same reason: two genuine plan switches in quick succession (or
+        // a switch racing a cancellation) can be DELIVERED out of the order
+        // they actually happened in. Comparing against subscription_tier_
+        // synced_at — not just trusting whichever event arrives — makes
+        // whichever change is chronologically newest win regardless of
+        // delivery order.
         const priceIdToTier: Record<string, 'starter' | 'standard' | 'pro'> = {}
         const starterPrice = Deno.env.get('STRIPE_PRICE_ID_STARTER')
         const stdPrice = Deno.env.get('STRIPE_PRICE_ID_STD')
@@ -292,10 +313,12 @@ serve(async (req: Request) => {
 
         const plan = planSubscriptionUpdated(event.data.object as Stripe.Subscription, priceIdToTier)
         if (plan) {
+          const eventCreatedIso = stripeEventCreatedToIso(event.created)
           const { error } = await supabaseAdmin
             .from('businesses')
-            .update(plan.update)
+            .update({ ...plan.update, subscription_tier_synced_at: eventCreatedIso })
             .eq('stripe_sub_id', plan.subscriptionId)
+            .or(`subscription_tier_synced_at.is.null,subscription_tier_synced_at.lt.${eventCreatedIso}`)
           if (error) throw new Error(`Failed to sync subscription_tier: ${error.message}`)
         }
         break

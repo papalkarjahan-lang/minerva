@@ -38,6 +38,14 @@ Paste each into the Supabase SQL Editor. None of these depend on each other.
   fix**: revokes anon SELECT on 3 secret-bearing columns. See its own file
   and `SECURITY_NOTES.md`'s matching entry for why this one matters most.
 - `supabase_schema_delta_scale_readiness_indexes.sql` — 2 missing indexes
+- `supabase_schema_delta_subscription_tier_sync_guard.sql` — **new
+  2026-10-08, the billing-correctness fix**: adds
+  `businesses.subscription_tier_synced_at`. See its own file and
+  `BILLING_INTEGRITY_NOTES.md`'s matching entry — closes an out-of-order
+  webhook-delivery gap that could silently resurrect a cancelled
+  business's paid tier. `stripe-webhook` (already in Phase 3's redeploy
+  list below) depends on this column existing, so run this before
+  redeploying that function, not after.
 - `supabase_schema_delta_signup_recovery.sql` — adds
   `businesses.signup_recovery_sent_at`
 - `supabase_schema_delta_new_subscriber_checkin.sql` — adds

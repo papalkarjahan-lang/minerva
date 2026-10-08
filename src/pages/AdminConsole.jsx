@@ -171,7 +171,12 @@ export default function AdminConsole() {
     // manually caught and reverted.
     if (!window.confirm(`Override ${businessName || 'this business'}'s subscription tier to "${newTier}"? This bypasses Stripe and only affects Minerva's own tier field.`)) return
     setSavingId(businessId)
-    const { error } = await supabase.from('businesses').update({ subscription_tier: newTier }).eq('id', businessId)
+    // Also stamps subscription_tier_synced_at to now — not to gate this
+    // write (an admin override always takes effect immediately,
+    // unconditionally), but so a still-in-flight, older Stripe webhook
+    // event can't silently undo it afterward. See stripe-webhook/index.ts's
+    // matching guard and supabase_schema_delta_subscription_tier_sync_guard.sql.
+    const { error } = await supabase.from('businesses').update({ subscription_tier: newTier, subscription_tier_synced_at: new Date().toISOString() }).eq('id', businessId)
     if (error) { alert(`Couldn't update subscription tier: ${error.message}`); setSavingId(null); return }
     await loadBusinesses()
     setSavingId(null)
