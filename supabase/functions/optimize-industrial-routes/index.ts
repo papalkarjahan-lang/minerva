@@ -21,8 +21,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { findNearestAsset } from "./logic.ts"
+import { chunk } from "../_shared/batch.ts"
 
 const ROUTE_SUGGEST_SUPPRESS_HOURS = 24 // don't re-suggest the same still-unassigned site every 30 min
+const SITE_BATCH_SIZE = 20
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -47,42 +49,15 @@ serve(async (req: Request) => {
     const suppressSince = new Date(Date.now() - ROUTE_SUGGEST_SUPPRESS_HOURS * 60 * 60 * 1000).toISOString()
 
     let suggested = 0
-    for (const site of sites || []) {
-      if ((site as any).route_suggested_at && (site as any).route_suggested_at > suppressSince) continue // suggested recently, still quiet
-
-      const { data: assigned } = await supabase.from('industrial_assets').select('id').eq('geofence_site_id', site.id).limit(1)
-      if (assigned && assigned.length > 0) continue // already has an asset
-
-      const { data: candidates } = await supabase.from('industrial_assets')
-        .select('id, name, current_lat, current_lng')
-        .eq('business_id', site.business_id)
-        .eq('status', 'active')
-        .is('geofence_site_id', null)
-
-      if (!candidates || candidates.length === 0) continue
-
-      const nearest = findNearestAsset(candidates, site.site_lat, site.site_lng)
-      if (!nearest) continue
-      const { asset: best, distanceMeters: bestDist } = nearest
-
-      // Atomically claim this site before notifying — an already-claimed
-      // site (a concurrent/overlapping run, or one already suggested inside
-      // the suppress window by a run we raced with) skips the Slack send.
-      const { data: claimed, error: claimErr } = await supabase
-        .from('site_projects')
-        .update({ route_suggested_at: new Date().toISOString() })
-        .eq('id', site.id)
-        .or(`route_suggested_at.is.null,route_suggested_at.lt.${suppressSince}`)
-        .select('id')
-      if (claimErr) { console.error('optimize-industrial-routes: claim failed:', claimErr.message); continue }
-      if (!claimed || claimed.length === 0) continue // already claimed by a concurrent/prior run
-
-      await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
-        body: JSON.stringify({ businessId: site.business_id, text: `🗺️ *Route Optimizer*: site *${site.name}* has no asset assigned — nearest free asset is *${best.name}* (${(bestDist / 1000).toFixed(1)}km away).` }),
-      }).catch(() => {})
-      suggested++
+    // Bounded-concurrency batching (added 2026-10-08) — every active
+    // site_project platform-wide, each costing 2-3 round trips, runs
+    // every 30 minutes. Same chunk()-of-20 shape as the rest of this
+    // round, see SCALE_READINESS_NOTES_ROUND2.md.
+    for (const batch of chunk(sites || [], SITE_BATCH_SIZE)) {
+      const results = await Promise.all(batch.map(site =>
+        suggestAssetForOneSite(supabase, supabaseUrl, supabaseServiceKey, suppressSince, site)
+      ))
+      for (const wasSuggested of results) if (wasSuggested) suggested++
     }
 
     supabase.rpc('record_agent_run', { fn_name: 'optimize-industrial-routes', status: 'ok' }).then(() => {}, () => {})
@@ -102,3 +77,50 @@ serve(async (req: Request) => {
     })
   }
 })
+
+// Extracted from the main loop (2026-10-08) so it can be run through
+// chunk()'s bounded-concurrency batching — same logic that was previously
+// inline, unchanged. Returns whether a suggestion was sent for this site.
+async function suggestAssetForOneSite(
+  supabase: ReturnType<typeof createClient>,
+  supabaseUrl: string,
+  supabaseServiceKey: string,
+  suppressSince: string,
+  site: any
+): Promise<boolean> {
+  if (site.route_suggested_at && site.route_suggested_at > suppressSince) return false // suggested recently, still quiet
+
+  const { data: assigned } = await supabase.from('industrial_assets').select('id').eq('geofence_site_id', site.id).limit(1)
+  if (assigned && assigned.length > 0) return false // already has an asset
+
+  const { data: candidates } = await supabase.from('industrial_assets')
+    .select('id, name, current_lat, current_lng')
+    .eq('business_id', site.business_id)
+    .eq('status', 'active')
+    .is('geofence_site_id', null)
+
+  if (!candidates || candidates.length === 0) return false
+
+  const nearest = findNearestAsset(candidates, site.site_lat, site.site_lng)
+  if (!nearest) return false
+  const { asset: best, distanceMeters: bestDist } = nearest
+
+  // Atomically claim this site before notifying — an already-claimed
+  // site (a concurrent/overlapping run, or one already suggested inside
+  // the suppress window by a run we raced with) skips the Slack send.
+  const { data: claimed, error: claimErr } = await supabase
+    .from('site_projects')
+    .update({ route_suggested_at: new Date().toISOString() })
+    .eq('id', site.id)
+    .or(`route_suggested_at.is.null,route_suggested_at.lt.${suppressSince}`)
+    .select('id')
+  if (claimErr) { console.error('optimize-industrial-routes: claim failed:', claimErr.message); return false }
+  if (!claimed || claimed.length === 0) return false // already claimed by a concurrent/prior run
+
+  await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
+    body: JSON.stringify({ businessId: site.business_id, text: `🗺️ *Route Optimizer*: site *${site.name}* has no asset assigned — nearest free asset is *${best.name}* (${(bestDist / 1000).toFixed(1)}km away).` }),
+  }).catch(() => {})
+  return true
+}

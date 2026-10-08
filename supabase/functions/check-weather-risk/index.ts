@@ -28,8 +28,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { evaluateForecastRisk, addLocalDays, localMidnightUTC } from "./logic.ts"
+import { chunk } from "../_shared/batch.ts"
 
 const BUSINESS_TIMEZONE = 'Australia/Sydney'
+const BUSINESS_BATCH_SIZE = 20
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -59,68 +61,20 @@ serve(async (req: Request) => {
 
     let checked = 0, drafted = 0
 
-    for (const biz of businesses || []) {
-      const trades: string[] = biz.weather_sensitive_trade_types || []
-      if (trades.length === 0) continue
-
-      const { data: jobs, error: jobsErr } = await supabase
-        .from('jobs')
-        .select('id, client_name, client_lat, client_lng, scheduled_time')
-        .eq('business_id', biz.id)
-        .eq('status', 'scheduled')
-        .is('weather_risk_flagged_at', null)
-        .not('client_lat', 'is', null)
-        .not('client_lng', 'is', null)
-        .gte('scheduled_time', tomorrowStart.toISOString())
-        .lt('scheduled_time', tomorrowEnd.toISOString())
-      if (jobsErr) { console.error('check-weather-risk: jobs fetch failed', jobsErr); continue }
-
-      for (const job of jobs || []) {
-        checked++
-        try {
-          const forecast = await fetchForecast(job.client_lat!, job.client_lng!, tomorrowDateStr)
-          if (!forecast) continue
-
-          const { risky, reasons } = evaluateForecastRisk(forecast)
-
-          if (!risky) {
-            // Not risky today, but mark checked so we don't re-hit the API for
-            // this job every run — it'll naturally drop out of the "tomorrow"
-            // window after tomorrow passes anyway.
-            await supabase.from('jobs').update({ weather_risk_flagged_at: new Date().toISOString() }).eq('id', job.id)
-            continue
-          }
-
-          const summary = `Tomorrow (${tomorrowDateStr}): ${reasons.join(', ')}.`
-
-          // Atomically claim this job before writing the draft/notifying —
-          // same time-of-check/time-of-use race chase-unpaid-invoices had
-          // (fixed 2026-09-24): without this, an overlapping/duplicate run
-          // could see the same not-yet-flagged job and create a duplicate
-          // reschedule draft + duplicate Slack notification.
-          const { data: claimed, error: claimErr } = await supabase
-            .from('jobs')
-            .update({ weather_risk_flagged_at: new Date().toISOString() })
-            .eq('id', job.id)
-            .is('weather_risk_flagged_at', null)
-            .select('id')
-          if (claimErr) { console.error('check-weather-risk: claim failed:', claimErr.message); continue }
-          if (!claimed || claimed.length === 0) continue // already claimed by a concurrent run
-
-          await supabase.from('weather_reschedule_drafts').insert({
-            job_id: job.id,
-            business_id: biz.id,
-            forecast_summary: summary,
-            status: 'pending',
-          })
-          drafted++
-
-          await notifySlack(supabaseUrl, supabaseServiceKey, biz.id,
-            `⛈️ Weather risk flagged for tomorrow's job with *${job.client_name || 'a client'}* — ${summary} A reschedule draft is waiting for your review in the Weather tab.`)
-        } catch (err) {
-          console.error('check-weather-risk: forecast lookup failed for job', job.id, err)
-        }
-      }
+    // Bounded-concurrency batching (added 2026-10-08) — nested loop: every
+    // weather-sensitive business, each with its own tomorrow-scheduled
+    // jobs, each job costing a real external Open-Meteo API call plus
+    // 1-2 DB round trips. Batched at the business level (the primary
+    // scaling axis — a single business's own tomorrow schedule is
+    // naturally small, so the inner per-job loop stays sequential within
+    // each business's own processing). Same chunk()-of-20 shape as the
+    // rest of this round, see SCALE_READINESS_NOTES_ROUND2.md.
+    const weatherSensitiveBiz = (businesses || []).filter(b => (b.weather_sensitive_trade_types || []).length > 0)
+    for (const batch of chunk(weatherSensitiveBiz, BUSINESS_BATCH_SIZE)) {
+      const results = await Promise.all(batch.map(biz =>
+        checkOneBusinessWeatherRisk(supabase, supabaseUrl, supabaseServiceKey, tomorrowStart, tomorrowEnd, tomorrowDateStr, biz)
+      ))
+      for (const r of results) { checked += r.checked; drafted += r.drafted }
     }
 
     supabase.rpc('record_agent_run', { fn_name: 'check-weather-risk', status: 'ok' }).then(() => {}, () => {})
@@ -144,6 +98,82 @@ serve(async (req: Request) => {
     })
   }
 })
+
+// Extracted from the main loop (2026-10-08) so it can be run through
+// chunk()'s bounded-concurrency batching — same logic that was previously
+// inline, unchanged. Returns this business's own checked/drafted counts.
+async function checkOneBusinessWeatherRisk(
+  supabase: ReturnType<typeof createClient>,
+  supabaseUrl: string,
+  supabaseServiceKey: string,
+  tomorrowStart: Date,
+  tomorrowEnd: Date,
+  tomorrowDateStr: string,
+  biz: any
+): Promise<{ checked: number; drafted: number }> {
+  let checked = 0, drafted = 0
+
+  const { data: jobs, error: jobsErr } = await supabase
+    .from('jobs')
+    .select('id, client_name, client_lat, client_lng, scheduled_time')
+    .eq('business_id', biz.id)
+    .eq('status', 'scheduled')
+    .is('weather_risk_flagged_at', null)
+    .not('client_lat', 'is', null)
+    .not('client_lng', 'is', null)
+    .gte('scheduled_time', tomorrowStart.toISOString())
+    .lt('scheduled_time', tomorrowEnd.toISOString())
+  if (jobsErr) { console.error('check-weather-risk: jobs fetch failed', jobsErr); return { checked, drafted } }
+
+  for (const job of jobs || []) {
+    checked++
+    try {
+      const forecast = await fetchForecast(job.client_lat!, job.client_lng!, tomorrowDateStr)
+      if (!forecast) continue
+
+      const { risky, reasons } = evaluateForecastRisk(forecast)
+
+      if (!risky) {
+        // Not risky today, but mark checked so we don't re-hit the API for
+        // this job every run — it'll naturally drop out of the "tomorrow"
+        // window after tomorrow passes anyway.
+        await supabase.from('jobs').update({ weather_risk_flagged_at: new Date().toISOString() }).eq('id', job.id)
+        continue
+      }
+
+      const summary = `Tomorrow (${tomorrowDateStr}): ${reasons.join(', ')}.`
+
+      // Atomically claim this job before writing the draft/notifying —
+      // same time-of-check/time-of-use race chase-unpaid-invoices had
+      // (fixed 2026-09-24): without this, an overlapping/duplicate run
+      // could see the same not-yet-flagged job and create a duplicate
+      // reschedule draft + duplicate Slack notification.
+      const { data: claimed, error: claimErr } = await supabase
+        .from('jobs')
+        .update({ weather_risk_flagged_at: new Date().toISOString() })
+        .eq('id', job.id)
+        .is('weather_risk_flagged_at', null)
+        .select('id')
+      if (claimErr) { console.error('check-weather-risk: claim failed:', claimErr.message); continue }
+      if (!claimed || claimed.length === 0) continue // already claimed by a concurrent run
+
+      await supabase.from('weather_reschedule_drafts').insert({
+        job_id: job.id,
+        business_id: biz.id,
+        forecast_summary: summary,
+        status: 'pending',
+      })
+      drafted++
+
+      await notifySlack(supabaseUrl, supabaseServiceKey, biz.id,
+        `⛈️ Weather risk flagged for tomorrow's job with *${job.client_name || 'a client'}* — ${summary} A reschedule draft is waiting for your review in the Weather tab.`)
+    } catch (err) {
+      console.error('check-weather-risk: forecast lookup failed for job', job.id, err)
+    }
+  }
+
+  return { checked, drafted }
+}
 
 async function fetchForecast(lat: number, lng: number, dateStr: string): Promise<{ rainProb: number; windKmh: number; maxTempC: number } | null> {
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&daily=precipitation_probability_max,windspeed_10m_max,temperature_2m_max&timezone=Australia%2FSydney&start_date=${dateStr}&end_date=${dateStr}`

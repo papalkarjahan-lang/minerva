@@ -91,11 +91,24 @@ of its own, same reasoning round 1 used for its own 6 fixes.
   trade-sector, per the separate Pro/Industrial billing-integrity fix
   this same session) business on the platform.
 
-9 of the 25 functions from the original list fixed so far; 16 remain to
-check (`agent-council-report`, `check-weather-risk`, `enrich-industrial-
-leads`, `estimate-job-carbon`, `flag-abandoned-signups`, `forecast-demand`,
-`new-subscriber-checkin`, `notify-addon-trial-ending`, `nurture-stale-
-leads`, `optimize-industrial-routes`, `recover-abandoned-signup`,
+- **`forecast-demand`**, **`estimate-job-carbon`**: both addon-gated
+  (`demand_forecast`, `carbon_estimate`) but fetch every business
+  platform-wide before filtering, then loop sequentially over the
+  addon-active subset. `estimate-job-carbon`'s per-item cost is lighter
+  than most (pure math plus one upsert), batched anyway for consistency.
+- **`check-weather-risk`**: a genuine nested loop — every weather-
+  sensitive business, each with its own tomorrow-scheduled jobs, each job
+  costing a real external Open-Meteo API call plus 1-2 DB round trips.
+  Batched at the business level (the primary scaling axis); the inner
+  per-job loop stays sequential within each business's own processing,
+  since a single business's own next-day schedule is naturally small.
+- **`optimize-industrial-routes`**: every active `site_project` platform-
+  wide, each costing 2-3 round trips, runs every 30 minutes.
+
+13 of the 25 functions from the original list fixed so far; 12 remain to
+check (`agent-council-report`, `enrich-industrial-leads`,
+`flag-abandoned-signups`, `new-subscriber-checkin`, `notify-addon-trial-
+ending`, `nurture-stale-leads`, `recover-abandoned-signup`,
 `retention-checkin`, `winback-lost-leads`, plus `auto-assign-technician`/
 `test-agent-health`/`verify-checklist-photos`, the last of which already
 looks correctly bounded on first read — see Checked-and-fine below once
