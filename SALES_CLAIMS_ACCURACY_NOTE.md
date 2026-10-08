@@ -110,6 +110,31 @@ integration exists. Never imply live equipment tracking is turnkey — it
 requires the client's own hardware or vendor feed connected to a real, but
 currently unconnected, ingestion endpoint.
 
+## On Pro tier and Industrial sector (added 2026-10-08)
+
+**Never mention "Pro tier" or its $119/tech/mo price to an Industrial-
+sector prospect, even in passing.** Pro's entire marketed differentiator
+— on-site invoicing, asset tracking, compliance checklists, materials/
+inventory tracking, technician credential tracking, automated growth
+marketing — only exists in the trade-sector console; none of it was ever
+reachable for an industrial business. The signup flow itself won't offer
+or charge Pro to a business that picked Industrial (fixed 2026-10-08, see
+`BILLING_INTEGRITY_NOTES.md`'s "Pro tier has nothing for Industrial"
+entry), so this isn't just a pitch-accuracy issue anymore — promising it
+on a call would promise something the product will then visibly fail to
+deliver at signup, which is worse than a vague overclaim. For Industrial,
+pitch purely on capability (site check-ins, safety log, asset register,
+consumables alerts, client verification packages — see Client 9 below),
+never on tier name or price point; Starter/Standard are the only tiers
+that actually apply.
+
+**The "Asset Intelligence" Minerva Max add-on ($39/mo) is the same
+story, narrower scope:** its predictive-maintenance/idle-asset alerts
+only ever read industrial-sector asset data. Don't offer it to a trade-
+sector prospect — same reasoning, same "the product will visibly fail to
+deliver what was promised" consequence, now also prevented at the point
+of sale in-app (same fix).
+
 ## Rule of thumb for any new agent capability going forward
 
 Before it goes into a pitch script, ask: *does this claim hold true on the
