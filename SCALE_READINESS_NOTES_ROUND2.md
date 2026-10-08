@@ -126,13 +126,13 @@ of its own, same reasoning round 1 used for its own 6 fixes.
   *self-clearing* — the two properties are different, and only the first
   one defuses the scale risk.
 
-16 of the 25 functions from the original list fixed so far; 9 remain to
-check (`agent-council-report` — already read in full, no per-row loop at
-all, confirmed fine, see below — `enrich-industrial-leads`,
-`new-subscriber-checkin`, `notify-addon-trial-ending`,
-`recover-abandoned-signup`, plus `auto-assign-technician` — already
-confirmed fine, single-job-scoped, see below — `test-agent-health`/
-`verify-checklist-photos`).
+All remaining functions from the original list have now been checked —
+see the Final tally at the end of this file for the complete count.
+`enrich-industrial-leads` and `notify-addon-trial-ending` ended up
+needing the fix too (see their own entries above); `new-subscriber-
+checkin`, `recover-abandoned-signup`, `test-agent-health`, and
+`verify-checklist-photos` are confirmed fine (see Checked-and-fine
+below).
 
 ## Checked and found fine (verified, not assumed)
 
@@ -152,3 +152,36 @@ confirmed fine, single-job-scoped, see below — `test-agent-health`/
   check that rejects a stale call outright. Whatever candidate-technician
   loop exists inside is scoped to one job's own pool of eligible
   technicians — inherently small, not a platform-wide set.
+- **`new-subscriber-checkin`**, **`recover-abandoned-signup`** — genuinely
+  bounded, not just self-clearing (the distinction this file's own
+  earlier correction above is about): both use `gte(windowStart)` AND
+  `lte(windowEnd)`, a fixed-width window with BOTH bounds computed
+  relative to "now" on every run, not an accumulating "everything since
+  the dawn of time" lower-bound-only query. A cron-execution gap doesn't
+  grow this candidate set — whenever the function next runs, the window
+  has simply moved forward with it.
+- **`test-agent-health`** — its candidate set is `agent_functions` rows
+  (the registered cron functions themselves, currently ~35 across this
+  whole codebase), not businesses/jobs/leads. This scales with how many
+  distinct cron functions the codebase has — a number that grows with
+  development, roughly by a handful a month — never with customer count.
+  Not a realistic scale risk on any timeframe that matters.
+- **`verify-checklist-photos`**' second loop (the job-level verification
+  rollup) iterates `touchedJobIds`, a set that can have at most as many
+  entries as the main loop's own `pending` photo batch — already
+  `.limit(20)`-capped with its own explicit comment explaining why. Can
+  never exceed 20 regardless of platform size.
+
+## Final tally
+
+26 functions total from the original candidate list (one more than the
+25 initially estimated — an off-by-one in that first count, not a
+function missed). **20 fixed, 6 confirmed fine on actual inspection.**
+Combined with round 1's 6 fixed + 3 confirmed fine, every cron-scheduled
+function in this codebase (~35 total) has now been individually read and
+either fixed or verified fine, with the actual reasoning written down —
+not assumed, not pattern-matched without checking. The one recurring
+lesson worth carrying forward: *self-clearing* and *bounded* are
+different properties, and a query needs to actually have an upper bound
+(or a fixed-width window) to be safe against a cron-execution-gap
+backlog — a flag column alone only protects steady state.
