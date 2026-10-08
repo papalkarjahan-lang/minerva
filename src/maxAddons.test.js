@@ -8,6 +8,7 @@ import {
   trialDaysLeft,
   hasUsedTrial,
   startTrialPatch,
+  isAddonAvailableForSector,
 } from './maxAddons'
 
 describe('getAddonMeta', () => {
@@ -17,6 +18,26 @@ describe('getAddonMeta', () => {
 
   it('returns null for an unknown key', () => {
     expect(getAddonMeta('not_a_real_addon')).toBeNull()
+  })
+})
+
+describe('isAddonAvailableForSector', () => {
+  it('allows asset_intelligence only for industrial — its backend only ever reads industrial_assets', () => {
+    expect(isAddonAvailableForSector('asset_intelligence', 'industrial')).toBe(true)
+    expect(isAddonAvailableForSector('asset_intelligence', 'trade')).toBe(false)
+  })
+
+  it('allows every other catalog add-on for every sector, since none of them have a real sector dependency', () => {
+    const others = MAX_ADDONS.filter(a => a.key !== 'asset_intelligence')
+    expect(others.length).toBeGreaterThan(0)
+    for (const addon of others) {
+      expect(isAddonAvailableForSector(addon.key, 'trade')).toBe(true)
+      expect(isAddonAvailableForSector(addon.key, 'industrial')).toBe(true)
+    }
+  })
+
+  it('passes an unknown addon key through as available, consistent with getAddonMeta\'s null-safe lookup', () => {
+    expect(isAddonAvailableForSector('not_a_real_addon', 'trade')).toBe(true)
   })
 })
 

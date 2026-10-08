@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isAddonActive } from './maxAddons'
+import { isAddonActive, isAddonAvailableForSector } from './maxAddons'
 
 describe('isAddonActive', () => {
   it('is false for a null/undefined business', () => {
@@ -35,5 +35,24 @@ describe('isAddonActive', () => {
 
   it('checks only the requested key, ignoring other addons', () => {
     expect(isAddonActive({ max_addons: { xero_sync: true } }, 'ai_quotes')).toBe(false)
+  })
+})
+
+describe('isAddonAvailableForSector', () => {
+  it('allows asset_intelligence only for industrial', () => {
+    expect(isAddonAvailableForSector('asset_intelligence', 'industrial')).toBe(true)
+    expect(isAddonAvailableForSector('asset_intelligence', 'trade')).toBe(false)
+  })
+
+  it('allows a sector-neutral addon for any sector, including null/undefined', () => {
+    expect(isAddonAvailableForSector('ai_quotes', 'trade')).toBe(true)
+    expect(isAddonAvailableForSector('ai_quotes', 'industrial')).toBe(true)
+    expect(isAddonAvailableForSector('ai_quotes', null)).toBe(true)
+    expect(isAddonAvailableForSector('ai_quotes', undefined)).toBe(true)
+  })
+
+  it('rejects asset_intelligence for a null/undefined sector, same as any other mismatch', () => {
+    expect(isAddonAvailableForSector('asset_intelligence', null)).toBe(false)
+    expect(isAddonAvailableForSector('asset_intelligence', undefined)).toBe(false)
   })
 })

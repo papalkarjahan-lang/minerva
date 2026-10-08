@@ -65,6 +65,20 @@ export const MAX_ADDONS = [
     price: 39,
     tagline: 'Catch failing gear and idle assets before they cost you',
     description: 'Predictive maintenance flags based on each asset\'s own telemetry trend, plus idle-asset alerts after 14+ days of no activity. Not cross-fleet ML.',
+    // Added 2026-10-08: the ONLY add-on in this catalog with a real
+    // sector dependency. Its entire backend (detect-idle-assets,
+    // predict-asset-maintenance) reads exclusively from
+    // industrial_assets — a trade-sector business has no rows there at
+    // all (their own equipment lives in the separate, Pro-tier-gated
+    // `assets` table, which these functions never touch), so enabling
+    // this for a trade business would charge real money for a feature
+    // structurally guaranteed to never do anything. Checked: every other
+    // add-on in this catalog operates on sector-neutral tables (jobs,
+    // invoices, quotes, technicians, subcontractors, carbon_estimates) —
+    // this is a one-off, not a pattern to generalize into a bigger
+    // mechanism. See isAddonAvailableForSector() below and
+    // BILLING_INTEGRITY_NOTES.md's matching dated entry.
+    requiresSector: 'industrial',
   },
   {
     key: 'carbon_estimate',
@@ -84,6 +98,15 @@ export const MAX_ADDONS = [
 
 export function getAddonMeta(key) {
   return MAX_ADDONS.find(a => a.key === key) || null
+}
+
+// An add-on with no requiresSector is available to every sector — true of
+// 8 of the 9 add-ons today. Unknown key passes through as available rather
+// than throwing, consistent with getAddonMeta's own null-safe lookup.
+export function isAddonAvailableForSector(key, sector) {
+  const meta = getAddonMeta(key)
+  if (!meta?.requiresSector) return true
+  return meta.requiresSector === sector
 }
 
 export function hasAddon(business, key) {

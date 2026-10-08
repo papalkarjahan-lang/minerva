@@ -24,3 +24,18 @@ export function isAddonActive(business: AddonState | null | undefined, key: stri
   const trial = business.max_addon_trials?.[key]
   return !!trial?.ends_at && new Date(trial.ends_at).getTime() > Date.now()
 }
+
+// Mirrors src/maxAddons.js's isAddonAvailableForSector() exactly (added
+// 2026-10-08) — see that file's own comment on the asset_intelligence
+// catalog entry for the full reasoning. 'asset_intelligence' is the only
+// key with a real sector requirement today; everything else passes
+// through as available for any sector, including an unrecognized key.
+const ADDON_REQUIRED_SECTOR: Record<string, string> = {
+  asset_intelligence: 'industrial',
+}
+
+export function isAddonAvailableForSector(key: string, sector: string | null | undefined): boolean {
+  const required = ADDON_REQUIRED_SECTOR[key]
+  if (!required) return true
+  return required === sector
+}

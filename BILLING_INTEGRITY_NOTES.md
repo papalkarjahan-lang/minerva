@@ -85,6 +85,77 @@ single mistake" becoming an explicit bar.
   documentation memory alone, given how consequential a wrong guess here
   would be.
 
+- **The "Asset Intelligence" Minerva Max add-on was sellable, and
+  chargeable, to a sector it structurally can never work for.** Found by
+  tracing which table "Asset Intelligence" (`src/maxAddons.js`'s
+  catalog — "predictive maintenance flags... plus idle-asset alerts")
+  actually operates on. Its only 2 backend functions,
+  `detect-idle-assets` and `predict-asset-maintenance`, read exclusively
+  from `industrial_assets`. A trade-sector business has zero rows there,
+  ever — their own equipment lives in the entirely separate, Pro-tier-
+  gated `assets` table, which those 2 functions never touch. Nothing
+  anywhere stopped a trade-sector business from clicking "Enable —
+  $39/mo" on this add-on from their own dispatcher console: no sector
+  check in the catalog, the enable flow (`update-addon-billing`), or the
+  free-trial path (`startMaxAddonTrial`, which writes straight to
+  `businesses` from the browser with no server-side check of any kind).
+  The result: real, recurring money for a feature with no possible way
+  to ever do anything for that business — not a race, not an edge case,
+  a guaranteed-every-time null result. Checked every other add-on's
+  backend specifically to see if this was a wider pattern — it isn't;
+  the other 8 all operate on sector-neutral tables (`jobs`, `invoices`,
+  `quotes`, `technicians`, `subcontractors`, `carbon_estimates`,
+  `xero_oauth_states`) and have no equivalent gap.
+  **Fix, 3 layers**: (1) `src/maxAddons.js` catalog entry gets a new
+  `requiresSector: 'industrial'` field + `isAddonAvailableForSector()`
+  helper, mirrored in `supabase/functions/_shared/maxAddons.ts` for the
+  Deno side (same "can't literally share a module across runtimes"
+  reason every other shared check in this codebase is mirrored, not
+  imported). (2) `update-addon-billing/index.ts` refuses the `'enable'`
+  action for a sector-mismatched add-on — checked BEFORE any Stripe
+  call, deliberately, since catching this only at the subsequent
+  `businesses` UPDATE would mean the Stripe subscription item was
+  already created (and will bill on the next invoice) by the time the
+  DB write is rejected, leaving a real, billing, orphaned Stripe item
+  with no corresponding "enabled" state anywhere in the UI — worse than
+  the original bug. `'disable'` is never blocked, so anything enabled
+  before this fix (or by any other means) can always be turned back off.
+  (3) `DispatcherView.jsx` no longer renders asset_intelligence's
+  Enable/Trial buttons at all for a trade-sector business — closes the
+  normal UI path, though (2) and the trigger below are what actually
+  matter, since a hidden button alone has never been treated as a real
+  boundary anywhere else in this codebase either.
+  **Trigger, for defense in depth** — `supabase_schema_delta_asset_
+  intelligence_sector_guard.sql`, not yet applied live: covers
+  `startMaxAddonTrial`'s direct-from-browser write, the one path with no
+  edge function at all to add a check to. Deliberately compares OLD vs.
+  NEW rather than rejecting on current state alone — `businesses` is
+  updated constantly for unrelated reasons, and a stale
+  already-set-wrong value would otherwise re-trip a current-state-only
+  check on every single future unrelated update to that row, permanently
+  bricking it. Comparing OLD/NEW means it only fires when THIS statement
+  is the one introducing or changing the flag/trial, and never blocks a
+  disable (enabled going true→false always passes).
+  Verification: 695/695 tests pass (9 new — 3 in `maxAddons.test.js`, 3
+  in `_shared/maxAddons.test.ts` mirroring them, plus the edge-function
+  change covered by existing `_shared/maxAddons.test.ts` coverage of the
+  function it now calls). Lint clean on every touched file (pre-existing,
+  unrelated warnings in `DispatcherView.jsx` confirmed via `git stash` to
+  predate this change — that file has 39 of them already, none from this
+  edit). **Not yet applied live** — same reason as every schema change
+  this session: run `supabase_schema_delta_asset_intelligence_sector_
+  guard.sql` in the Supabase SQL Editor, then redeploy
+  `update-addon-billing`.
+  **Deliberately not attempted here**: building a trade-sector
+  equivalent of asset telemetry/idle-detection so the add-on could
+  actually work for trade too. Trade's `assets` table has no
+  `last_telemetry_at`/telemetry-event concept to build predictive
+  maintenance on top of today — that's a real, substantial product
+  decision (what would "telemetry" even mean for a trade business's
+  tools/equipment?), not a bug fix, and not something to decide
+  unilaterally. The fix here is "don't charge for what can't work," not
+  "make it work."
+
 ## Checked and fine (no action needed)
 
 - **Every other `subscription_tier` write site** — grepped every file

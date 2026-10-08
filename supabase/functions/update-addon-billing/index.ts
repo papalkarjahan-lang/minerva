@@ -38,6 +38,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import Stripe from "https://esm.sh/stripe@14?target=deno"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { isOwnerOfBusiness, getAuthenticatedCaller } from "../_shared/ownership.ts"
+import { isAddonAvailableForSector } from "../_shared/maxAddons.ts"
 import {
   addonPriceEnvVar,
   isValidAction,
@@ -90,7 +91,7 @@ serve(async (req: Request) => {
 
     const { data: business, error: bizErr } = await supabaseAdmin
       .from('businesses')
-      .select('owner_user_id, contact_email, stripe_sub_id, max_addons, max_addon_stripe_items, subscription_tier')
+      .select('owner_user_id, contact_email, stripe_sub_id, max_addons, max_addon_stripe_items, subscription_tier, sector')
       .eq('id', businessId)
       .maybeSingle()
     if (bizErr) throw new Error(bizErr.message)
@@ -120,6 +121,22 @@ serve(async (req: Request) => {
 
     if (!business.stripe_sub_id) {
       throw new Error('No active subscription on file for this business yet — this usually means checkout has not completed. Contact support if this seems wrong.')
+    }
+
+    // Sector-eligibility guard (added 2026-10-08) — see src/maxAddons.js's
+    // comment on asset_intelligence and BILLING_INTEGRITY_NOTES.md's
+    // matching entry. Checked BEFORE any Stripe call, not after: this
+    // function creates a real, billing Stripe subscription item for
+    // 'enable', and a trigger-level guard on the businesses UPDATE that
+    // follows it would catch the mismatch too late — after the Stripe
+    // item already exists and will be billed on the next invoice, with
+    // the DB write (and so the UI's own "enabled" state) rolled back,
+    // leaving an orphaned, billing, invisible-to-the-dashboard item.
+    // 'disable' is deliberately never blocked here — a business should
+    // always be able to turn off something that was enabled before this
+    // guard existed, or by any other means.
+    if (action === 'enable' && !isAddonAvailableForSector(addonKey, business.sector)) {
+      throw new Error(`"${addonKey}" is not available for this business's sector (${business.sector || 'unknown'}).`)
     }
 
     // stripe-webhook's customer.subscription.deleted handler sets

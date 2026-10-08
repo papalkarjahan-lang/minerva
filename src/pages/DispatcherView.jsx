@@ -5,7 +5,7 @@ import { supabase } from '../supabaseClient'
 import { timeAgo, geocodeAddress, insertTechniciansWithPinRetry, haversineKm, isMapboxTokenConfigured, computeReplayStats, interpolateReplayPosition, describeAuditEntry, computeTechnicianReliability, neutralizeFormula } from '../utils'
 import ContactSupportModal from '../components/ContactSupportModal'
 import LoadingScreen from '../components/LoadingScreen'
-import { MAX_ADDONS, hasAddon, isTrialing, trialDaysLeft, hasUsedTrial, startTrialPatch } from '../maxAddons'
+import { MAX_ADDONS, hasAddon, isTrialing, trialDaysLeft, hasUsedTrial, startTrialPatch, isAddonAvailableForSector } from '../maxAddons'
 import { isTrialExpired, SIGNUP_TRIAL_DAYS } from '../businessAccess'
 import 'mapbox-gl/dist/mapbox-gl.css'
 
@@ -3512,7 +3512,16 @@ export default function DispatcherView() {
                 Trials are free — enabling a paid add-on bills your card immediately (prorated for
                 the rest of this billing cycle).
               </p>
-              {MAX_ADDONS.map(addon => {
+              {/* Filtered by sector (added 2026-10-08) — asset_intelligence's
+                  entire backend only reads industrial_assets, so it would do
+                  nothing for this (trade-sector) business. See
+                  isAddonAvailableForSector's own comment in maxAddons.js and
+                  BILLING_INTEGRITY_NOTES.md. This view is only ever reached by
+                  a trade-sector business (App.jsx routes trade to /dispatch,
+                  industrial to /industrial), but filtering by the business's
+                  own sector field rather than hardcoding 'trade' keeps this
+                  correct even if that routing assumption ever changes. */}
+              {MAX_ADDONS.filter(addon => isAddonAvailableForSector(addon.key, business?.sector)).map(addon => {
                 const enabled = business?.max_addons?.[addon.key] === true
                 const trialing = isTrialing(business, addon.key)
                 return (
