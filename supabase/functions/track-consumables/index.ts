@@ -10,6 +10,9 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { chunk } from "../_shared/batch.ts"
+
+const CONSUMABLES_BATCH_SIZE = 20
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -32,46 +35,17 @@ serve(async (req: Request) => {
     if (err2) throw err2
 
     let flagged = 0
-    for (const item of lowItems || []) {
-      // At-or-below threshold counts as low (matches check-inventory-levels'
-      // semantic in the trade sector — "reorder_threshold" means the level
-      // at which you should reorder, not one unit past it). Fixed
-      // 2026-09-07: this previously only fired strictly below the
-      // threshold, so an item sitting exactly at reorder_threshold never
-      // alerted.
-      if (item.quantity_on_hand > item.reorder_threshold) continue
-
-      // Atomically claim this item before flagging — same claim-before-notify
-      // pattern as industrial-conductor/chase-unpaid-invoices/stripe-webhook.
-      // The previous design checked "already flagged?" with a plain SELECT
-      // and only UPDATEd reorder_requested_at afterward — two overlapping
-      // hourly runs (a slow prior run still in flight when the next tick
-      // fires) could both pass that check before either had written the
-      // flag, both Slack-alerting and both inserting a duplicate
-      // agent_insights row for the same low-stock item. (Fixed 2026-09-29 —
-      // same TOCTOU class as the other idempotency fixes this session.)
-      const { data: claimed, error: claimErr } = await supabase
-        .from('consumables_items')
-        .update({ reorder_requested_at: new Date().toISOString() })
-        .eq('id', item.id)
-        .is('reorder_requested_at', null)
-        .select('id')
-      if (claimErr) { console.error('track-consumables: claim failed:', claimErr.message); continue }
-      if (!claimed || claimed.length === 0) continue // already flagged by a concurrent/prior run
-      // Also written as an agent_insights row so a business repeatedly
-      // running low on the same consumable shows up as a pattern in the
-      // weekly agent-council-report.
-      await supabase.from('agent_insights').insert({
-        agent: 'core', insight_type: 'low_stock',
-        summary: `"${item.name}" fell below reorder threshold (${item.quantity_on_hand}${item.unit} of ${item.reorder_threshold}${item.unit}).`,
-        related_table: 'consumables_items', related_id: item.id,
-      }).then(() => {}, () => {})
-      await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
-        body: JSON.stringify({ businessId: item.business_id, text: `📦 *Quartermaster*: *${item.name}* is at ${item.quantity_on_hand}${item.unit} (below reorder threshold of ${item.reorder_threshold}${item.unit}) — approve a reorder.` }),
-      }).catch(() => {})
-      flagged++
+    // Bounded-concurrency batching (added 2026-10-08) — consumables_items
+    // is fetched with NO filter above (every item for every business on
+    // the platform), so at hundreds of businesses this loop could run
+    // long enough to risk the Edge Function wall-clock timeout partway
+    // through — the risk is even tighter here than the daily crons since
+    // this runs hourly, so a slow run risks overlapping the next tick.
+    // Same chunk()-of-20 shape as reconcile-billing/daily-digest/etc, see
+    // SCALE_READINESS_NOTES.md.
+    for (const batch of chunk(lowItems || [], CONSUMABLES_BATCH_SIZE)) {
+      const results = await Promise.all(batch.map(item => checkOneConsumable(supabase, supabaseUrl, supabaseServiceKey, item)))
+      for (const didFlag of results) if (didFlag) flagged++
     }
 
     supabase.rpc('record_agent_run', { fn_name: 'track-consumables', status: 'ok' }).then(() => {}, () => {})
@@ -91,3 +65,53 @@ serve(async (req: Request) => {
     })
   }
 })
+
+// Extracted from the main loop (2026-10-08) so it can be run through
+// chunk()'s bounded-concurrency batching — same logic that was previously
+// inline, unchanged. Returns whether this item was newly flagged.
+async function checkOneConsumable(
+  supabase: ReturnType<typeof createClient>,
+  supabaseUrl: string,
+  supabaseServiceKey: string,
+  item: any
+): Promise<boolean> {
+  // At-or-below threshold counts as low (matches check-inventory-levels'
+  // semantic in the trade sector — "reorder_threshold" means the level
+  // at which you should reorder, not one unit past it). Fixed
+  // 2026-09-07: this previously only fired strictly below the
+  // threshold, so an item sitting exactly at reorder_threshold never
+  // alerted.
+  if (item.quantity_on_hand > item.reorder_threshold) return false
+
+  // Atomically claim this item before flagging — same claim-before-notify
+  // pattern as industrial-conductor/chase-unpaid-invoices/stripe-webhook.
+  // The previous design checked "already flagged?" with a plain SELECT
+  // and only UPDATEd reorder_requested_at afterward — two overlapping
+  // hourly runs (a slow prior run still in flight when the next tick
+  // fires) could both pass that check before either had written the
+  // flag, both Slack-alerting and both inserting a duplicate
+  // agent_insights row for the same low-stock item. (Fixed 2026-09-29 —
+  // same TOCTOU class as the other idempotency fixes this session.)
+  const { data: claimed, error: claimErr } = await supabase
+    .from('consumables_items')
+    .update({ reorder_requested_at: new Date().toISOString() })
+    .eq('id', item.id)
+    .is('reorder_requested_at', null)
+    .select('id')
+  if (claimErr) { console.error('track-consumables: claim failed:', claimErr.message); return false }
+  if (!claimed || claimed.length === 0) return false // already flagged by a concurrent/prior run
+  // Also written as an agent_insights row so a business repeatedly
+  // running low on the same consumable shows up as a pattern in the
+  // weekly agent-council-report.
+  await supabase.from('agent_insights').insert({
+    agent: 'core', insight_type: 'low_stock',
+    summary: `"${item.name}" fell below reorder threshold (${item.quantity_on_hand}${item.unit} of ${item.reorder_threshold}${item.unit}).`,
+    related_table: 'consumables_items', related_id: item.id,
+  }).then(() => {}, () => {})
+  await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
+    body: JSON.stringify({ businessId: item.business_id, text: `📦 *Quartermaster*: *${item.name}* is at ${item.quantity_on_hand}${item.unit} (below reorder threshold of ${item.reorder_threshold}${item.unit}) — approve a reorder.` }),
+  }).catch(() => {})
+  return true
+}

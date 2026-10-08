@@ -36,6 +36,9 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { computeDaysOverdue, summarizeJobDescription, selectTonePrompt, isDraftUsable } from "./logic.ts"
 import { sendTwilioSms } from "../_shared/twilioSms.ts"
 import { draftSmsWithClaude } from "../_shared/claudeDraft.ts"
+import { chunk } from "../_shared/batch.ts"
+
+const INVOICE_BATCH_SIZE = 20
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -72,82 +75,20 @@ serve(async (req: Request) => {
     if (error) throw error
 
     let sent = 0
-    for (const inv of unpaid || []) {
-      if (!inv.client_phone) continue
-
-      // Atomically claim this invoice before sending any real SMS — the
-      // SELECT above alone is a time-of-check/time-of-use race: an
-      // overlapping/duplicate invocation (a slow run still going when the
-      // next day's cron fires, or a manual retry racing the scheduled one)
-      // could otherwise also see this same not-yet-reminded invoice and
-      // text the client a second time. This conditional update only
-      // succeeds for whichever invocation gets there first; a second one
-      // sees 0 rows affected and skips the invoice entirely.
-      const originalReminderSentAt = inv.reminder_sent_at
-      let claimQuery = supabase
-        .from('invoices')
-        .update({ reminder_sent_at: new Date().toISOString() })
-        .eq('id', inv.id)
-        .eq('status', 'unpaid')
-      claimQuery = originalReminderSentAt
-        ? claimQuery.lt('reminder_sent_at', threeDaysAgo)
-        : claimQuery.is('reminder_sent_at', null)
-      const { data: claimed, error: claimErr } = await claimQuery.select('id')
-      if (claimErr) { console.error('chase-unpaid-invoices: claim failed:', claimErr.message); continue }
-      if (!claimed || claimed.length === 0) continue // already claimed by a concurrent run
-
-      const bizName = (inv as any).businesses?.name || 'the business'
-      const link = `${APP_URL}/invoice/${inv.id}`
-
-      const amount = Number(inv.total).toFixed(2)
-      const fallbackMessage = `Hi ${inv.client_name || ''}, this is a friendly reminder that your invoice from ${bizName} for $${amount} is still unpaid. View it here: ${link}`.trim()
-
-      const daysOverdue = computeDaysOverdue(inv.created_at)
-      const priorReminders = inv.reminder_count || 0
-      const jobDescription = summarizeJobDescription((inv as any).line_items)
-
-      const message = anthropicKey
-        ? await draftReminderSms(anthropicKey, {
-            clientName: inv.client_name || '',
-            businessName: bizName,
-            amount,
-            link,
-            daysOverdue,
-            priorReminders,
-            jobDescription,
-            exampleTemplate: fallbackMessage,
-          }, fallbackMessage)
-        : fallbackMessage
-
-      const smsOk = await sendTwilioSms(twilio, inv.client_phone, message, 'chase-unpaid-invoices')
-
-      // Only advance the 3-day throttle on an actual successful send — a
-      // transient Twilio error (or Twilio being unconfigured) should get
-      // retried on tomorrow's run instead of silently going quiet for 3
-      // days while looking like a reminder went out. (Fixed 2026-09-07 —
-      // this previously updated unconditionally.) Since the claim above
-      // already advanced reminder_sent_at optimistically, a failure here
-      // reverts it back to its pre-claim value rather than leaving it
-      // unset in the first place, to still close the race window above.
-      if (smsOk) {
-        await supabase.from('invoices').update({
-          reminder_count: (inv.reminder_count || 0) + 1,
-        }).eq('id', inv.id)
-        sent++
-      } else {
-        await supabase.from('invoices').update({ reminder_sent_at: originalReminderSentAt }).eq('id', inv.id)
-      }
-
-      await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
-        body: JSON.stringify({
-          businessId: inv.business_id,
-          text: smsOk
-            ? `💰 Payment reminder sent for unpaid invoice ($${Number(inv.total).toFixed(2)}) — *${inv.client_name || 'unknown client'}*.`
-            : `⚠️ Payment reminder for unpaid invoice ($${Number(inv.total).toFixed(2)}) — *${inv.client_name || 'unknown client'}* — failed to send. Check the number on file.`,
-        }),
-      }).catch(() => {})
+    // Bounded-concurrency batching (added 2026-10-08) — unpaid invoices
+    // across the whole platform, each costing up to 2 external API calls
+    // (Claude draft + Twilio send) plus 2-3 DB round trips, were processed
+    // fully sequentially. At hundreds of businesses this is the most
+    // expensive per-row loop of any cron function audited this round —
+    // real risk of the Edge Function wall-clock timeout partway through,
+    // silently never chasing whichever invoices sorted later. Same
+    // chunk()-of-20 shape as reconcile-billing/daily-digest/etc, see
+    // SCALE_READINESS_NOTES.md.
+    for (const batch of chunk(unpaid || [], INVOICE_BATCH_SIZE)) {
+      const results = await Promise.all(batch.map(inv =>
+        processOneInvoice(supabase, supabaseUrl, supabaseServiceKey, twilio, APP_URL, anthropicKey, threeDaysAgo, inv)
+      ))
+      for (const didSend of results) if (didSend) sent++
     }
 
     supabase.rpc('record_agent_run', { fn_name: 'chase-unpaid-invoices', status: 'ok' }).then(() => {}, () => {})
@@ -171,6 +112,97 @@ serve(async (req: Request) => {
     })
   }
 })
+
+// Extracted from the main loop (2026-10-08) so it can be run through
+// chunk()'s bounded-concurrency batching — same logic that was previously
+// inline, unchanged. Returns whether a reminder was actually sent.
+async function processOneInvoice(
+  supabase: ReturnType<typeof createClient>,
+  supabaseUrl: string,
+  supabaseServiceKey: string,
+  twilio: { sid: string | undefined; token: string | undefined; from: string | undefined },
+  APP_URL: string,
+  anthropicKey: string | undefined,
+  threeDaysAgo: string,
+  inv: any
+): Promise<boolean> {
+  if (!inv.client_phone) return false
+
+  // Atomically claim this invoice before sending any real SMS — the
+  // SELECT above alone is a time-of-check/time-of-use race: an
+  // overlapping/duplicate invocation (a slow run still going when the
+  // next day's cron fires, or a manual retry racing the scheduled one)
+  // could otherwise also see this same not-yet-reminded invoice and
+  // text the client a second time. This conditional update only
+  // succeeds for whichever invocation gets there first; a second one
+  // sees 0 rows affected and skips the invoice entirely.
+  const originalReminderSentAt = inv.reminder_sent_at
+  let claimQuery = supabase
+    .from('invoices')
+    .update({ reminder_sent_at: new Date().toISOString() })
+    .eq('id', inv.id)
+    .eq('status', 'unpaid')
+  claimQuery = originalReminderSentAt
+    ? claimQuery.lt('reminder_sent_at', threeDaysAgo)
+    : claimQuery.is('reminder_sent_at', null)
+  const { data: claimed, error: claimErr } = await claimQuery.select('id')
+  if (claimErr) { console.error('chase-unpaid-invoices: claim failed:', claimErr.message); return false }
+  if (!claimed || claimed.length === 0) return false // already claimed by a concurrent run
+
+  const bizName = inv.businesses?.name || 'the business'
+  const link = `${APP_URL}/invoice/${inv.id}`
+
+  const amount = Number(inv.total).toFixed(2)
+  const fallbackMessage = `Hi ${inv.client_name || ''}, this is a friendly reminder that your invoice from ${bizName} for $${amount} is still unpaid. View it here: ${link}`.trim()
+
+  const daysOverdue = computeDaysOverdue(inv.created_at)
+  const priorReminders = inv.reminder_count || 0
+  const jobDescription = summarizeJobDescription(inv.line_items)
+
+  const message = anthropicKey
+    ? await draftReminderSms(anthropicKey, {
+        clientName: inv.client_name || '',
+        businessName: bizName,
+        amount,
+        link,
+        daysOverdue,
+        priorReminders,
+        jobDescription,
+        exampleTemplate: fallbackMessage,
+      }, fallbackMessage)
+    : fallbackMessage
+
+  const smsOk = await sendTwilioSms(twilio, inv.client_phone, message, 'chase-unpaid-invoices')
+
+  // Only advance the 3-day throttle on an actual successful send — a
+  // transient Twilio error (or Twilio being unconfigured) should get
+  // retried on tomorrow's run instead of silently going quiet for 3
+  // days while looking like a reminder went out. (Fixed 2026-09-07 —
+  // this previously updated unconditionally.) Since the claim above
+  // already advanced reminder_sent_at optimistically, a failure here
+  // reverts it back to its pre-claim value rather than leaving it
+  // unset in the first place, to still close the race window above.
+  if (smsOk) {
+    await supabase.from('invoices').update({
+      reminder_count: (inv.reminder_count || 0) + 1,
+    }).eq('id', inv.id)
+  } else {
+    await supabase.from('invoices').update({ reminder_sent_at: originalReminderSentAt }).eq('id', inv.id)
+  }
+
+  await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
+    body: JSON.stringify({
+      businessId: inv.business_id,
+      text: smsOk
+        ? `💰 Payment reminder sent for unpaid invoice ($${Number(inv.total).toFixed(2)}) — *${inv.client_name || 'unknown client'}*.`
+        : `⚠️ Payment reminder for unpaid invoice ($${Number(inv.total).toFixed(2)}) — *${inv.client_name || 'unknown client'}* — failed to send. Check the number on file.`,
+    }),
+  }).catch(() => {})
+
+  return smsOk
+}
 
 // Asks Claude to draft a reminder that keeps the same required facts (dollar
 // amount, invoice link) but modulates tone by how many reminders have

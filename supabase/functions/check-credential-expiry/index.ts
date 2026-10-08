@@ -20,6 +20,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { computeThresholds, evaluateCredential } from "./logic.ts"
+import { chunk } from "../_shared/batch.ts"
+
+const CREDENTIAL_BATCH_SIZE = 20
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -47,84 +50,21 @@ serve(async (req: Request) => {
 
     let warned30 = 0, warned14 = 0, warned7 = 0, urgentPings = 0
 
-    for (const cred of credentials || []) {
-      const tech = (cred as any).technicians
-      const techName = tech?.name || 'a technician'
-      const evalResult = evaluateCredential({
-        expiryDate: cred.expiry_date,
-        warning30SentAt: cred.warning_30_sent_at,
-        warning14SentAt: cred.warning_14_sent_at,
-        warning7SentAt: cred.warning_7_sent_at,
-        urgentNotifiedAt: (cred as any).urgent_notified_at,
-        hasCurrentJob: !!tech?.current_job_id,
-      }, thresholds)
-
-      // Each threshold below atomically claims its own warning_*_sent_at
-      // column before notifying — same claim-before-notify pattern as
-      // chase-unpaid-invoices (fixed 2026-09-24) — so an overlapping/
-      // duplicate run can't send the same threshold's Slack alert twice.
-
-      // 30-day threshold
-      if (evalResult.should30) {
-        const { data: claimed30 } = await supabase.from('technician_credentials')
-          .update({ warning_30_sent_at: new Date().toISOString() }).eq('id', cred.id).is('warning_30_sent_at', null).select('id')
-        if (claimed30 && claimed30.length > 0) {
-          await notifySlack(supabaseUrl, supabaseServiceKey, cred.business_id,
-            `📋 *${techName}*'s ${cred.credential_name || 'credential'} expires ${cred.expiry_date} (30 days away).`)
-          warned30++
-          await writeCredentialInsight(supabase, anthropicKey, cred, techName,
-            `Renewal not yet due but worth starting: ${techName}'s ${cred.credential_name || 'credential'} expires in 30 days (${cred.expiry_date}).`,
-            `A dispatcher for a home-services business just got a 30-day heads-up that technician "${techName}"'s credential "${cred.credential_name || 'credential'}" expires on ${cred.expiry_date}. Give one short, practical sentence on what to check or do first at this early stage.`)
-        }
-      }
-      // 14-day threshold
-      if (evalResult.should14) {
-        const { data: claimed14 } = await supabase.from('technician_credentials')
-          .update({ warning_14_sent_at: new Date().toISOString() }).eq('id', cred.id).is('warning_14_sent_at', null).select('id')
-        if (claimed14 && claimed14.length > 0) {
-          await notifySlack(supabaseUrl, supabaseServiceKey, cred.business_id,
-            `📋 *${techName}*'s ${cred.credential_name || 'credential'} expires ${cred.expiry_date} (14 days away).`)
-          warned14++
-          await writeCredentialInsight(supabase, anthropicKey, cred, techName,
-            `Renewal window closing: ${techName}'s ${cred.credential_name || 'credential'} expires in 14 days (${cred.expiry_date}).`,
-            `A dispatcher for a home-services business just got a 14-day warning that technician "${techName}"'s credential "${cred.credential_name || 'credential'}" expires on ${cred.expiry_date}. Give one short, practical sentence on what to check or do first now that the window is closing.`)
-        }
-      }
-      // 7-day threshold
-      if (evalResult.should7) {
-        const { data: claimed7 } = await supabase.from('technician_credentials')
-          .update({ warning_7_sent_at: new Date().toISOString() }).eq('id', cred.id).is('warning_7_sent_at', null).select('id')
-        if (claimed7 && claimed7.length > 0) {
-          await notifySlack(supabaseUrl, supabaseServiceKey, cred.business_id,
-            `📋 *${techName}*'s ${cred.credential_name || 'credential'} expires ${cred.expiry_date} (7 days or less).`)
-          warned7++
-          await writeCredentialInsight(supabase, anthropicKey, cred, techName,
-            `Urgent renewal window: ${techName}'s ${cred.credential_name || 'credential'} expires within 7 days (${cred.expiry_date}).`,
-            `A dispatcher for a home-services business just got a 7-day-or-less warning that technician "${techName}"'s credential "${cred.credential_name || 'credential'}" expires on ${cred.expiry_date}. Give one short, practical sentence on the single most useful thing to do right now.`)
-        }
-      }
-
-      // Urgent: expired-or-expiring-within-3-days AND currently on a job.
-      // Unlike the 30/14/7-day thresholds, this condition can persist across
-      // many daily runs (a lapsed credential doesn't resolve itself), so it
-      // uses the same "claim on transition, clear on resolve" shape as
-      // monitor-asset-telemetry's geofence/maintenance flags — alert once
-      // when urgent_notified_at transitions null -> set, then clear it once
-      // the technician is renewed/off the job so the NEXT genuine crossing
-      // still alerts fresh, instead of re-Slacking this every single day.
-      if (evalResult.shouldNotifyUrgent) {
-        const { data: claimedUrgent } = await supabase.from('technician_credentials')
-          .update({ urgent_notified_at: new Date().toISOString() }).eq('id', cred.id).is('urgent_notified_at', null).select('id')
-        if (claimedUrgent && claimedUrgent.length > 0) {
-          await notifySlack(supabaseUrl, supabaseServiceKey, cred.business_id,
-            `🚨 *${techName}* is currently on a job with ${evalResult.expired ? 'an EXPIRED' : 'a credential expiring within 3 days'}: ${cred.credential_name || 'credential'} (expiry ${cred.expiry_date}). Worth a same-day check.`)
-          urgentPings++
-          await writeCredentialInsight(supabase, anthropicKey, cred, techName,
-            `${techName} is currently on a job with ${evalResult.expired ? 'an EXPIRED' : 'a credential expiring within 3 days'} (${cred.credential_name || 'credential'}, expiry ${cred.expiry_date}) — worth a same-day check.`,
-            `A dispatcher for a home-services business just got an urgent alert: technician "${techName}" is CURRENTLY assigned to a job while their credential "${cred.credential_name || 'credential'}" is ${evalResult.expired ? 'already EXPIRED' : 'expiring within 3 days'} (expiry ${cred.expiry_date}). Give one short, practical sentence on the single most useful same-day action.`)
-        }
-      } else if (evalResult.shouldClearUrgent) {
-        await supabase.from('technician_credentials').update({ urgent_notified_at: null }).eq('id', cred.id)
+    // Bounded-concurrency batching (added 2026-10-08) — technician_
+    // credentials is fetched with NO filter above (every credential for
+    // every technician on the platform, every day), so at hundreds of
+    // businesses this loop could run long enough to risk the Edge
+    // Function wall-clock timeout partway through, silently never
+    // reaching whichever credentials sorted later — the same pattern
+    // already fixed in reconcile-billing/daily-digest/etc, see
+    // SCALE_READINESS_NOTES.md. Same chunk()-of-20, sequential-batches-
+    // of-parallel shape as those fixes.
+    for (const batch of chunk(credentials || [], CREDENTIAL_BATCH_SIZE)) {
+      const results = await Promise.all(batch.map(cred =>
+        processOneCredential(supabase, supabaseUrl, supabaseServiceKey, anthropicKey, thresholds, cred)
+      ))
+      for (const r of results) {
+        warned30 += r.warned30; warned14 += r.warned14; warned7 += r.warned7; urgentPings += r.urgentPings
       }
     }
 
@@ -149,6 +89,101 @@ serve(async (req: Request) => {
     })
   }
 })
+
+// Extracted from the main loop (2026-10-08) so it can be run through
+// chunk()'s bounded-concurrency batching — preserves the exact same
+// per-credential logic that was previously inline, just returns its own
+// counts instead of closing over the outer function's mutable totals.
+async function processOneCredential(
+  supabase: ReturnType<typeof createClient>,
+  supabaseUrl: string,
+  supabaseServiceKey: string,
+  anthropicKey: string | undefined,
+  thresholds: ReturnType<typeof computeThresholds>,
+  cred: any
+): Promise<{ warned30: number; warned14: number; warned7: number; urgentPings: number }> {
+  let warned30 = 0, warned14 = 0, warned7 = 0, urgentPings = 0
+  const tech = cred.technicians
+  const techName = tech?.name || 'a technician'
+  const evalResult = evaluateCredential({
+    expiryDate: cred.expiry_date,
+    warning30SentAt: cred.warning_30_sent_at,
+    warning14SentAt: cred.warning_14_sent_at,
+    warning7SentAt: cred.warning_7_sent_at,
+    urgentNotifiedAt: cred.urgent_notified_at,
+    hasCurrentJob: !!tech?.current_job_id,
+  }, thresholds)
+
+  // Each threshold below atomically claims its own warning_*_sent_at
+  // column before notifying — same claim-before-notify pattern as
+  // chase-unpaid-invoices (fixed 2026-09-24) — so an overlapping/
+  // duplicate run can't send the same threshold's Slack alert twice.
+
+  // 30-day threshold
+  if (evalResult.should30) {
+    const { data: claimed30 } = await supabase.from('technician_credentials')
+      .update({ warning_30_sent_at: new Date().toISOString() }).eq('id', cred.id).is('warning_30_sent_at', null).select('id')
+    if (claimed30 && claimed30.length > 0) {
+      await notifySlack(supabaseUrl, supabaseServiceKey, cred.business_id,
+        `📋 *${techName}*'s ${cred.credential_name || 'credential'} expires ${cred.expiry_date} (30 days away).`)
+      warned30++
+      await writeCredentialInsight(supabase, anthropicKey, cred, techName,
+        `Renewal not yet due but worth starting: ${techName}'s ${cred.credential_name || 'credential'} expires in 30 days (${cred.expiry_date}).`,
+        `A dispatcher for a home-services business just got a 30-day heads-up that technician "${techName}"'s credential "${cred.credential_name || 'credential'}" expires on ${cred.expiry_date}. Give one short, practical sentence on what to check or do first at this early stage.`)
+    }
+  }
+  // 14-day threshold
+  if (evalResult.should14) {
+    const { data: claimed14 } = await supabase.from('technician_credentials')
+      .update({ warning_14_sent_at: new Date().toISOString() }).eq('id', cred.id).is('warning_14_sent_at', null).select('id')
+    if (claimed14 && claimed14.length > 0) {
+      await notifySlack(supabaseUrl, supabaseServiceKey, cred.business_id,
+        `📋 *${techName}*'s ${cred.credential_name || 'credential'} expires ${cred.expiry_date} (14 days away).`)
+      warned14++
+      await writeCredentialInsight(supabase, anthropicKey, cred, techName,
+        `Renewal window closing: ${techName}'s ${cred.credential_name || 'credential'} expires in 14 days (${cred.expiry_date}).`,
+        `A dispatcher for a home-services business just got a 14-day warning that technician "${techName}"'s credential "${cred.credential_name || 'credential'}" expires on ${cred.expiry_date}. Give one short, practical sentence on what to check or do first now that the window is closing.`)
+    }
+  }
+  // 7-day threshold
+  if (evalResult.should7) {
+    const { data: claimed7 } = await supabase.from('technician_credentials')
+      .update({ warning_7_sent_at: new Date().toISOString() }).eq('id', cred.id).is('warning_7_sent_at', null).select('id')
+    if (claimed7 && claimed7.length > 0) {
+      await notifySlack(supabaseUrl, supabaseServiceKey, cred.business_id,
+        `📋 *${techName}*'s ${cred.credential_name || 'credential'} expires ${cred.expiry_date} (7 days or less).`)
+      warned7++
+      await writeCredentialInsight(supabase, anthropicKey, cred, techName,
+        `Urgent renewal window: ${techName}'s ${cred.credential_name || 'credential'} expires within 7 days (${cred.expiry_date}).`,
+        `A dispatcher for a home-services business just got a 7-day-or-less warning that technician "${techName}"'s credential "${cred.credential_name || 'credential'}" expires on ${cred.expiry_date}. Give one short, practical sentence on the single most useful thing to do right now.`)
+    }
+  }
+
+  // Urgent: expired-or-expiring-within-3-days AND currently on a job.
+  // Unlike the 30/14/7-day thresholds, this condition can persist across
+  // many daily runs (a lapsed credential doesn't resolve itself), so it
+  // uses the same "claim on transition, clear on resolve" shape as
+  // monitor-asset-telemetry's geofence/maintenance flags — alert once
+  // when urgent_notified_at transitions null -> set, then clear it once
+  // the technician is renewed/off the job so the NEXT genuine crossing
+  // still alerts fresh, instead of re-Slacking this every single day.
+  if (evalResult.shouldNotifyUrgent) {
+    const { data: claimedUrgent } = await supabase.from('technician_credentials')
+      .update({ urgent_notified_at: new Date().toISOString() }).eq('id', cred.id).is('urgent_notified_at', null).select('id')
+    if (claimedUrgent && claimedUrgent.length > 0) {
+      await notifySlack(supabaseUrl, supabaseServiceKey, cred.business_id,
+        `🚨 *${techName}* is currently on a job with ${evalResult.expired ? 'an EXPIRED' : 'a credential expiring within 3 days'}: ${cred.credential_name || 'credential'} (expiry ${cred.expiry_date}). Worth a same-day check.`)
+      urgentPings++
+      await writeCredentialInsight(supabase, anthropicKey, cred, techName,
+        `${techName} is currently on a job with ${evalResult.expired ? 'an EXPIRED' : 'a credential expiring within 3 days'} (${cred.credential_name || 'credential'}, expiry ${cred.expiry_date}) — worth a same-day check.`,
+        `A dispatcher for a home-services business just got an urgent alert: technician "${techName}" is CURRENTLY assigned to a job while their credential "${cred.credential_name || 'credential'}" is ${evalResult.expired ? 'already EXPIRED' : 'expiring within 3 days'} (expiry ${cred.expiry_date}). Give one short, practical sentence on the single most useful same-day action.`)
+    }
+  } else if (evalResult.shouldClearUrgent) {
+    await supabase.from('technician_credentials').update({ urgent_notified_at: null }).eq('id', cred.id)
+  }
+
+  return { warned30, warned14, warned7, urgentPings }
+}
 
 async function notifySlack(supabaseUrl: string, supabaseServiceKey: string, businessId: string, text: string) {
   await fetch(`${supabaseUrl}/functions/v1/notify-slack`, {
