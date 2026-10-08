@@ -148,10 +148,13 @@ import {
   planInvoiceRefunded,
   buildRefundMessage,
   buildRefundFallbackSummary,
+  buildProIndustrialMismatchMessage,
+  buildProIndustrialMismatchFallbackSummary,
   shouldAlertOperator,
   shouldApplyCheckoutCompletion,
 } from "./logic.ts"
 import { escapeHtml } from "../_shared/html.ts"
+import { isTierAvailableForSector } from "../_shared/tierEligibility.ts"
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, {
   apiVersion: '2023-10-16',
@@ -313,6 +316,48 @@ serve(async (req: Request) => {
 
         const plan = planSubscriptionUpdated(event.data.object as Stripe.Subscription, priceIdToTier)
         if (plan) {
+          // Pro/Industrial Customer-Portal mismatch guard (added
+          // 2026-10-08) — see buildProIndustrialMismatchMessage's own
+          // comment in logic.ts. This is the ONE path the signup-time
+          // create-checkout-session guard can't reach: an existing
+          // customer self-serving a plan switch through Stripe's own
+          // hosted Customer Portal. Checked against a fresh read of the
+          // business's sector (not cached/assumed) before applying
+          // anything.
+          const { data: bizForTierCheck } = await supabaseAdmin
+            .from('businesses')
+            .select('id, name, sector')
+            .eq('stripe_sub_id', plan.subscriptionId)
+            .maybeSingle()
+
+          if (!isTierAvailableForSector(plan.update.subscription_tier, bizForTierCheck?.sector)) {
+            console.error('stripe-webhook: Pro/Industrial mismatch via Customer Portal — not syncing subscription_tier, alerting operator. business:', bizForTierCheck?.id, 'subscription:', plan.subscriptionId)
+
+            const operatorEmail = Deno.env.get('OPERATOR_EMAIL')
+            if (shouldAlertOperator(operatorEmail)) {
+              fetch(`${Deno.env.get('SUPABASE_URL')!}/functions/v1/send-email`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!}` },
+                body: JSON.stringify({
+                  to: operatorEmail,
+                  subject: `[Minerva] Pro/Industrial billing mismatch — ${bizForTierCheck?.name || plan.subscriptionId}`,
+                  html: `<p>${escapeHtml(buildProIndustrialMismatchMessage(bizForTierCheck?.name || null, plan.subscriptionId))}</p>`,
+                }),
+              }).catch(err => console.error('stripe-webhook: Pro/Industrial mismatch operator alert failed', err))
+            }
+
+            await supabaseAdmin.from('agent_insights').insert({
+              agent: 'finance',
+              insight_type: 'anomaly',
+              summary: buildProIndustrialMismatchFallbackSummary(bizForTierCheck?.name || null, plan.subscriptionId),
+              business_id: bizForTierCheck?.id || null,
+              related_table: 'businesses',
+              related_id: bizForTierCheck?.id || null,
+            }).then(() => {}, (insErr) => console.error('stripe-webhook: Pro/Industrial mismatch insight insert failed', insErr))
+
+            break
+          }
+
           const eventCreatedIso = stripeEventCreatedToIso(event.created)
           const { error } = await supabaseAdmin
             .from('businesses')

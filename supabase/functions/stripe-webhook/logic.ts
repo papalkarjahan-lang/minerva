@@ -112,6 +112,30 @@ export function stripeEventCreatedToIso(createdUnixSeconds: number): string {
   return new Date(createdUnixSeconds * 1000).toISOString()
 }
 
+// Pro-tier/Industrial-sector mismatch via Customer Portal self-serve switch
+// (added 2026-10-08) — see _shared/tierEligibility.ts's header and
+// BILLING_INTEGRITY_NOTES.md's "Pro tier has nothing for Industrial" entry.
+// create-checkout-session refuses to SELL Pro to an industrial business at
+// signup, but an EXISTING customer can still reach the same bad state by
+// self-serving a plan switch through Stripe's own hosted Customer Portal —
+// a path that never touches create-checkout-session at all. index.ts
+// detects this here (tier would become 'pro', business sector is
+// 'industrial') and does NOT apply the tier sync — Stripe is still
+// charging the higher price regardless of what this function does, so
+// skipping the sync avoids ALSO telling Minerva's own app the business
+// has real Pro-tier access it doesn't — then alerts a human, same
+// "detect real financial anomalies, never auto-correct" posture as the
+// dispute/refund handling elsewhere in this file.
+export function buildProIndustrialMismatchMessage(businessName: string | null, subscriptionId: string): string {
+  const who = businessName ? businessName : 'A business'
+  return `${who} just switched to Pro via the Stripe Customer Portal, but their sector is Industrial — Pro's extra features (invoicing, asset tracking, compliance checklists) don't exist for that sector, so they're now being charged $119/tech/mo for exactly the same functionality as Standard ($79/tech/mo). Minerva's own subscription_tier was deliberately NOT updated to 'pro' to avoid compounding the mismatch, but Stripe itself is still charging the higher price regardless — reach out to this business, explain the mismatch, and consider a partial refund/credit for the difference via the Stripe Dashboard. Subscription: ${subscriptionId}.`
+}
+
+export function buildProIndustrialMismatchFallbackSummary(businessName: string | null, subscriptionId: string): string {
+  const who = businessName ? businessName : 'A business'
+  return `${who} (Industrial sector) switched to Pro via self-serve billing — Pro has no Industrial-specific features, so they're being overcharged for nothing extra. Needs manual outreach and likely a partial refund. Subscription: ${subscriptionId}.`
+}
+
 // customer.subscription.updated — keeps businesses.subscription_tier in
 // sync with whatever Stripe actually has, for the self-serve "switch
 // tiers anytime from billing settings" plan change promised on

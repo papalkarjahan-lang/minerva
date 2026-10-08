@@ -218,6 +218,36 @@ single mistake" becoming an explicit bar.
   No new SQL delta — this is an application-level-only fix (no new
   column, no new trigger), so it ships with `create-checkout-session`'s
   next normal redeploy with no extra sequencing step.
+  **Follow-up, same day: the fix above only covers signup.** Re-examined
+  it by asking "does this actually close every path to the same bad
+  state, or just the one path I found it through" — and it didn't.
+  `Pricing.jsx`'s own FAQ promises self-serve plan switching "anytime
+  from billing settings," which goes through Stripe's own hosted Customer
+  Portal, not `create-checkout-session` — an **existing** industrial
+  customer could self-serve-switch to Pro through the Portal and land in
+  the exact same overcharge, completely bypassing the signup-time guard.
+  `stripe-webhook`'s own `customer.subscription.updated` handler already
+  existed specifically to sync `subscription_tier` after a Portal switch
+  (its header comment even already said so) — it just had zero sector
+  awareness, same gap, different entry point. Stripe's Customer Portal
+  itself can't be made sector-aware (its allowed-price list is one global
+  setting, not per-customer), so this can't be prevented the same way as
+  signup — the fix here is detection, not prevention: when a switch would
+  set `subscription_tier` to `'pro'` for an `'industrial'` business, the
+  tier sync is skipped (so the app itself doesn't compound the mismatch
+  by also claiming real Pro access) and an operator alert +
+  `agent_insights` row fire instead, same "detect real financial
+  anomalies, never auto-correct" posture as this file's dispute/refund
+  handling — a human reaches out and handles the refund manually, Stripe
+  itself isn't touched automatically.
+  `isTierAvailableForSector()` moved from `create-checkout-session/logic.ts`
+  to the new `_shared/tierEligibility.ts` once a second function needed
+  the identical check — same reasoning `_shared/maxAddons.ts`'s own header
+  already gives for its own move. 705/705 tests pass (5 new in the shared
+  module's own test file, 4 new for the webhook's 2 new message builders,
+  `create-checkout-session`'s own test file trimmed to a 1-case smoke test
+  now that full coverage lives in the shared module). No new SQL delta
+  here either.
 - **Enterprise.jsx's "Custom automation workflows" claim was 100% dead
   for the exact audience that page is written for.** Found by the same
   broadened audit, checking every individual claim on the one marketing

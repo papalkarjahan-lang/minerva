@@ -35,28 +35,9 @@ describe('shouldAllowCheckoutCreation', () => {
   })
 })
 
-describe('isTierAvailableForSector', () => {
-  it('rejects pro for industrial — none of Pro\'s 6 marketed features exist for that sector', () => {
+describe('isTierAvailableForSector (smoke test — moved to ../_shared/tierEligibility.ts, full coverage lives in its own test file there)', () => {
+  it('re-exports a working function', () => {
     expect(isTierAvailableForSector('pro', 'industrial')).toBe(false)
-  })
-
-  it('allows pro for trade', () => {
     expect(isTierAvailableForSector('pro', 'trade')).toBe(true)
-  })
-
-  it('allows starter and standard for either sector', () => {
-    expect(isTierAvailableForSector('starter', 'industrial')).toBe(true)
-    expect(isTierAvailableForSector('standard', 'industrial')).toBe(true)
-    expect(isTierAvailableForSector('starter', 'trade')).toBe(true)
-    expect(isTierAvailableForSector('standard', 'trade')).toBe(true)
-  })
-
-  it('allows an unrecognised tier through — create-checkout-session already defaults that to Standard pricing, not a Pro charge', () => {
-    expect(isTierAvailableForSector('not_a_real_tier', 'industrial')).toBe(true)
-  })
-
-  it('allows pro when sector is null/undefined (a pre-sector-column legacy row, if any) — only an explicit industrial match is rejected', () => {
-    expect(isTierAvailableForSector('pro', null)).toBe(true)
-    expect(isTierAvailableForSector('pro', undefined)).toBe(true)
   })
 })

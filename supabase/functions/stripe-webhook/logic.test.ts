@@ -18,6 +18,8 @@ import {
   shouldAlertOperator,
   shouldApplyCheckoutCompletion,
   stripeEventCreatedToIso,
+  buildProIndustrialMismatchMessage,
+  buildProIndustrialMismatchFallbackSummary,
 } from './logic'
 
 const NOW = '2026-09-16T12:00:00.000Z'
@@ -369,5 +371,34 @@ describe('stripeEventCreatedToIso', () => {
     const earlier = stripeEventCreatedToIso(1759900800)
     const later = stripeEventCreatedToIso(1759900860) // 60s later
     expect(earlier < later).toBe(true)
+  })
+})
+
+describe('buildProIndustrialMismatchMessage', () => {
+  it('names the business and explains the overcharge when the business is known', () => {
+    const msg = buildProIndustrialMismatchMessage('Acme Civil', 'sub_123')
+    expect(msg).toContain('Acme Civil')
+    expect(msg).toContain('Industrial')
+    expect(msg).toContain('$119')
+    expect(msg).toContain('$79')
+    expect(msg).toContain('sub_123')
+  })
+
+  it('falls back to generic wording when the business could not be resolved', () => {
+    const msg = buildProIndustrialMismatchMessage(null, 'sub_456')
+    expect(msg).toContain('A business')
+    expect(msg).not.toContain('null')
+  })
+})
+
+describe('buildProIndustrialMismatchFallbackSummary', () => {
+  it('includes the business name when known', () => {
+    expect(buildProIndustrialMismatchFallbackSummary('Acme Civil', 'sub_123')).toContain('Acme Civil')
+  })
+
+  it('falls back to generic wording when unknown rather than naming it falsely', () => {
+    const summary = buildProIndustrialMismatchFallbackSummary(null, 'sub_456')
+    expect(summary).toContain('A business')
+    expect(summary).not.toContain('null')
   })
 })
