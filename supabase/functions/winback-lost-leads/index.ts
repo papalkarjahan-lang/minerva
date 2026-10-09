@@ -34,6 +34,7 @@ import { sendTwilioSms } from "../_shared/twilioSms.ts"
 import { notifySlack } from "../_shared/notifySlack.ts"
 import { draftSmsWithClaude } from "../_shared/claudeDraft.ts"
 import { chunk } from "../_shared/batch.ts"
+import { hasStandardAutomation } from "../_shared/tierEligibility.ts"
 
 const LEAD_BATCH_SIZE = 20
 
@@ -62,12 +63,21 @@ serve(async (req: Request) => {
 
     const { data: lostLeads, error } = await supabase
       .from('leads')
-      .select('id, business_id, client_name, client_phone, created_at, job_description, urgency, businesses(name)')
+      .select('id, business_id, client_name, client_phone, created_at, job_description, urgency, businesses(name, subscription_tier, sector)')
       .eq('status', 'lost')
       .is('lost_winback_sent_at', null)
       .lt('created_at', fourteenDaysAgo) // proxy for "marked lost a while ago" — leads has no status-change timestamp
 
     if (error) throw error
+
+    // Standard-tier automation gate (added 2026-10-09) — see
+    // _shared/tierEligibility.ts's own header and BILLING_INTEGRITY_NOTES.md's
+    // "Standard tier had no real differentiator from Starter" entry. The
+    // 6th and last of the 6 functions this gates — deferred earlier in
+    // this same pass while a separate task was mid-flight fixing the
+    // misleading-Slack-message bug just below (now landed, see
+    // processOneLostLead).
+    const eligible = (lostLeads || []).filter(lead => hasStandardAutomation(lead.businesses?.subscription_tier, lead.businesses?.sector))
 
     let sent = 0
     // Bounded-concurrency batching (added 2026-10-08) — lost_winback_sent_at
@@ -76,7 +86,7 @@ serve(async (req: Request) => {
     // any gap in cron execution) is processed in one run. Same
     // chunk()-of-20 shape as the rest of this round, see
     // SCALE_READINESS_NOTES_ROUND2.md.
-    for (const batch of chunk(lostLeads || [], LEAD_BATCH_SIZE)) {
+    for (const batch of chunk(eligible, LEAD_BATCH_SIZE)) {
       const results = await Promise.all(batch.map(lead =>
         processOneLostLead(supabase, supabaseUrl, supabaseServiceKey, twilio, anthropicKey, lead)
       ))
@@ -85,7 +95,7 @@ serve(async (req: Request) => {
 
     supabase.rpc('record_agent_run', { fn_name: 'winback-lost-leads', status: 'ok' }).then(() => {}, () => {})
 
-    return new Response(JSON.stringify({ success: true, scanned: (lostLeads || []).length, sent }), {
+    return new Response(JSON.stringify({ success: true, scanned: eligible.length, sent }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     })
@@ -107,10 +117,7 @@ serve(async (req: Request) => {
 
 // Extracted from the main loop (2026-10-08) so it can be run through
 // chunk()'s bounded-concurrency batching — same logic that was previously
-// inline, UNCHANGED (including the Slack notify firing regardless of
-// smsOk — a pre-existing behavior, not something this structural refactor
-// should silently alter; flagged separately rather than fixed here).
-// Returns whether the SMS send itself reported success.
+// inline. Returns whether the SMS send itself reported success.
 async function processOneLostLead(
   supabase: ReturnType<typeof createClient>,
   supabaseUrl: string,
@@ -152,7 +159,9 @@ async function processOneLostLead(
   const smsOk = await sendTwilioSms(twilio, lead.client_phone, message, 'winback-lost-leads')
 
   await notifySlack(supabaseUrl, supabaseServiceKey, lead.business_id,
-    `📮 Win-back SMS sent to lost lead *${lead.client_name || 'unknown'}* (marked lost 14+ days ago).`)
+    smsOk
+      ? `📮 Win-back SMS sent to lost lead *${lead.client_name || 'unknown'}* (marked lost 14+ days ago).`
+      : `⚠️ Win-back SMS to lost lead *${lead.client_name || 'unknown'}* (marked lost 14+ days ago) failed to send. Check the number on file.`)
 
   return smsOk
 }

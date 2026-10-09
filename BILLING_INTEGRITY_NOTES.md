@@ -340,19 +340,23 @@ single mistake" becoming an explicit bar.
   checks explicitly regardless, rather than relying on that staying true
   if a future settings UI ever writes to that column from the industrial
   side too.
-  `winback-lost-leads` is the one function of the 6 not yet gated as of
-  this entry — a separate task was mid-flight fixing an unrelated bug in
-  that exact file (a misleading "sent" Slack message on a failed SMS,
-  found during this session's own earlier batching refactor) when this
-  work started, and writing to the same file risked a concurrent-write
-  collision with that other process. Apply the identical gate there once
-  that work lands — same shape as the other 5, `businesses(name,
-  subscription_tier, sector)` in the join, `hasStandardAutomation(lead.
-  businesses?.subscription_tier, lead.businesses?.sector)` in the filter.
-  Marketing copy updated consistently across all 3 places that carry it
+  `winback-lost-leads` was initially deferred — a separate background
+  task was mid-flight fixing an unrelated bug in that exact file (a
+  misleading "sent" Slack message on a failed SMS, found during this
+  session's own earlier batching refactor) when this work started, and
+  writing to the same file risked a concurrent-write collision. Applied
+  2026-10-09 once that file's uncommitted diff was re-read and confirmed
+  complete and non-overlapping (the Slack-message fix touches
+  `processOneLostLead`'s notify call; this gate touches the main query +
+  filter, a different region) — same shape as the other 5,
+  `businesses(name, subscription_tier, sector)` in the join,
+  `hasStandardAutomation(lead.businesses?.subscription_tier, lead.
+  businesses?.sector)` in the filter. All 6 of 6 Standard-tier functions
+  are now gated. Marketing copy updated consistently across all 3 places
+  that carry it
   (`Pricing.jsx`, `Onboarding.jsx`, `LandingPage.jsx` — kept in sync by
   hand per their own existing convention). Verified live in the browser,
-  not just read from source. 711/711 tests pass (11 in `_shared/
+  not just read from source. 715/715 tests pass (11 in `_shared/
   tierEligibility.test.ts` covering both the original sector check and
   this one). No new SQL delta — `subscription_tier` and `sector` both
   already exist on `businesses`; this is a pure application-level change
