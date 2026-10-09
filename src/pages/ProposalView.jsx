@@ -88,9 +88,10 @@ export default function ProposalView() {
           this uses a conservative 15%), not a guarantee — actual savings
           depend on your current routing, vehicle types, and driving
           patterns. Also included at no extra calculation shown here: live
-          GPS tracking, automated customer SMS updates, and (on the
-          Industrial tier) safety/compliance incident logging and
-          technician credential tracking.
+          GPS tracking and automated customer SMS updates
+          {proposal.trade_type?.toLowerCase() === 'industrial'
+            ? ', plus the site check-in log, safety incident log, asset register, and auto-assembled client verification package built for Industrial.'
+            : ', plus (on Pro) on-site invoicing, asset tracking, compliance checklists, and technician credential tracking.'}
         </p>
 
         <Link to="/start" className="no-print" style={styles.ctaBtn}>Start a free 7-day trial</Link>

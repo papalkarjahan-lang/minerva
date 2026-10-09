@@ -52,6 +52,26 @@ split applied to `fallbackTemplate`. 4 new tests on the fallback
 template's sector branching (`logic.test.ts`). Commit:
 "Fix trade/industrial content mismatch in automated outreach drafting".
 
+**Follow-up, caught 2026-10-10 re-reading my own earlier work:** the
+original audit flagged this exact bug in *two* places —
+`draft-outreach-batch` (fixed same day, above) and
+`src/pages/ProposalView.jsx`'s disclaimer paragraph on the public
+`/proposal/:id` ROI page, which unconditionally told every viewer
+"(on the Industrial tier) safety/compliance incident logging and
+technician credential tracking" — the identical conflation of
+trade-Pro's credential tracking with industrial's own safety log,
+shown to 100% of viewers regardless of `proposal.trade_type`. Only the
+first ever actually got fixed at the time; the second sat unactioned
+for a full day despite being flagged in the same report. Fixed now:
+the disclaimer branches on `proposal.trade_type?.toLowerCase() === 'industrial'`
+(case-insensitive — `outreach_prospects.trade_type` is free text, not
+an enum, so an operator-typed CSV value like "Industrial" needs to
+still match). Worth remembering generally: a multi-finding report
+needs every finding individually checked off against the commit log,
+not just the ones that happened to get fixed in the moment — "I fixed
+the thing this report was about" isn't the same claim as "I fixed
+everything this report found."
+
 ### Fixed: unsubscribe was keyed to a database row, not an email address
 
 `outreach_prospects` had no uniqueness constraint on `contact_email` —
