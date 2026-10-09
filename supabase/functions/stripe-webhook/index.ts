@@ -498,13 +498,46 @@ serve(async (req: Request) => {
         // through and the subscription is healthy again, or this is the
         // very first invoice on a fresh subscription (payment_failed_at is
         // already null then, so this is a harmless no-op in that case).
+        //
+        // This event fires for EVERY successful invoice, including every
+        // ordinary monthly renewal — silence is the expected, correct
+        // behavior there (nobody wants a "your payment worked" email every
+        // month). The .not(...) filter below (added 2026-10-09) makes the
+        // UPDATE only actually match — and `biz` only get returned — when
+        // payment_failed_at was genuinely set beforehand, i.e. this is a
+        // real recovery after a real failure, not a routine renewal.
+        // Completes the chain the payment-failed/cancellation notices
+        // above started: still retrying, gave up and cancelled, or — this
+        // one — recovered. A business that got the "payment didn't go
+        // through" email deserves the "you're all set" follow-up too,
+        // without which the only way they'd know it resolved is the
+        // banner disappearing next time they happen to log in.
         const plan = planInvoicePaymentSucceeded(event.data.object as Stripe.Invoice)
         if (plan) {
-          const { error } = await supabaseAdmin
+          const { data: biz, error } = await supabaseAdmin
             .from('businesses')
             .update(plan.update)
             .eq('stripe_sub_id', plan.subscriptionId)
+            .not('payment_failed_at', 'is', null)
+            .select('id, name, contact_email')
+            .maybeSingle()
           if (error) throw new Error(`Failed to clear payment_failed_at: ${error.message}`)
+
+          if (biz?.contact_email) {
+            fetch(`${Deno.env.get('SUPABASE_URL')!}/functions/v1/send-email`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!}` },
+              body: JSON.stringify({
+                to: biz.contact_email,
+                subject: `Your Minerva payment went through — you're all set`,
+                html: `<p>Hi,</p><p>Good news — your payment for <strong>${escapeHtml(biz.name || 'your account')}</strong> went through, and your account is fully up to date. No further action needed.</p><p>— The Minerva team</p>`,
+              }),
+            }).catch(err => console.error('stripe-webhook: payment-recovered business email failed', err))
+          }
+          if (biz?.id) {
+            await notifySlack(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, biz.id,
+              `✅ Payment recovered for *${biz.name || 'this business'}* — account is up to date again.`)
+          }
         }
         break
       }

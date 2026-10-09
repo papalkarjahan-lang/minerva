@@ -56,6 +56,12 @@ Stop and fix before continuing if any box fails — don't skip ahead.
       simulate the *involuntary* wording without exhausting a real
       dunning cycle, so take that branch on trust from the code/tests
       rather than trying to force it live.
+- [ ] Recovery path (same CLI prerequisite): right after the
+      declined-card test above, `stripe trigger invoice.payment_succeeded`
+      → confirm a "you're all set" email + Slack alert arrive this time
+      (they shouldn't have on any OTHER successful-payment event during
+      this checklist — this one only fires because the test business's
+      `payment_failed_at` is genuinely set from the step above)
 
 ## 2. Dispatcher + technician live tracking
 

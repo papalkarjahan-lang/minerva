@@ -640,3 +640,32 @@ changed for anyone to be told about.
 given). 730/730 tests pass. Verified `index.ts` itself parses cleanly
 with `npx esbuild` (not just that the `logic.ts` the tests import does —
 see minerva_setup_progress.md's technique note). Not yet deployed.
+
+## 2026-10-09 — closed the loop: a recovered payment now tells the business too, not just a disappearing banner
+
+The last piece of this chain. `invoice.payment_succeeded` already
+cleared `payment_failed_at` on a successful charge, silently — correct
+for the overwhelmingly common case (an ordinary monthly renewal, where
+`payment_failed_at` was already null and nothing newsworthy happened),
+but also silent for the one case where it IS newsworthy: a real recovery
+after a real failure. A business that got the "payment didn't go
+through" email had no equivalent "you're all set now" follow-up — the
+only way they'd find out was the in-app banner quietly disappearing
+next time they happened to log in.
+
+Distinguishes the two cases without a new column: added
+`.not('payment_failed_at', 'is', null)` to the existing UPDATE, so the
+row (and the notification) only matches when the value was genuinely
+set beforehand — a routine renewal where it's already null simply
+doesn't match, `biz` comes back null, and nothing fires. Same
+email+Slack channel as its two siblings (payment-failed, cancelled).
+
+With this, the full subscription-billing lifecycle is proactively
+communicated end to end for the first time: trial starting (pre-existing
+welcome email) → trial ending soon (`notify-trial-ending`, new) →
+payment declined, still retrying (extended) → payment recovered (this
+entry) → subscription actually cancelled (extended), each reaching the
+business itself and, where relevant, the operator — not just an
+in-app banner nobody's guaranteed to see. 730/730 tests pass (no new
+pure logic — conditional UPDATE + inline fetch, same shape as its
+siblings). Not yet deployed.
