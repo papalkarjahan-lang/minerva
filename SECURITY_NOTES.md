@@ -2069,3 +2069,112 @@ file: this session is not authorized to run Supabase SQL itself.
 Editor (the verification query at the bottom of that file confirms it
 live), no function redeploy needed — this is a pure database-trigger
 fix, nothing in the edge functions or frontend changes.
+
+## `businesses` SELECT was never actually scoped by role — any logged-in business owner could read every other business's full row (2026-10-10) — fix written, NOT YET APPLIED LIVE
+
+Found while re-reading this file's own "Phase 2 priority" section for
+this project's "hundreds of customers" goal, and noticing it contradicted
+itself: the correction above that section had already proven "~45
+background agents run on the anon key" false (all use service_role), but
+the "still open" bullet two paragraphs below it still cited that same
+reason as a blocker for scoping `businesses` SELECT. Re-checked rather
+than trusted either paragraph.
+
+`businesses`' SELECT policy, `"anon select business"` (`supabase_schema.sql`,
+`for select using (true)`), has no `TO &lt;role&gt;` restriction, so despite
+its name it has applied to every Postgres role — anon AND authenticated —
+since the original schema. The 2026-09-14 UPDATE fix
+(`rls_scoping_v3.sql`) correctly scoped writes to the row's own owner;
+SELECT was left as the one operation still fully open. Concretely: any
+already-logged-in business owner — a real, paying customer, not a
+stranger — could read every *other* business's complete row, including
+`contact_email`, `contact_phone`, `subscription_tier`, `stripe_customer_id`,
+`stripe_sub_id`, and `payment_failed_at`, by running the exact same
+unfiltered query `AdminConsole.jsx`'s own `loadBusinesses()` already
+uses (no `.eq('id', ...)`), with nothing more than their own ordinary
+session. A competitor who also happens to be a Minerva customer could
+enumerate every other customer's name, contact details, tier, and
+payment-health status.
+
+Fix (`supabase_schema_delta_businesses_select_scoping.sql`, new file):
+splits the single policy into `anon` (any row, by design — the
+unguessable-link model this table has always used for first-touch
+pages) and `authenticated` (scoped by row: the caller's own business as
+owner, the one-time unclaimed-business email match, admin_users
+membership, or — see below — their own employer as a technician), plus
+switches `anon`'s column access from "everything" to an explicit
+allowlist (`id, name, trade_type, city, sector, abn`) using
+`REVOKE SELECT ... FROM anon` + `GRANT SELECT (...) ... TO anon`, so a
+column added later is safe-by-default rather than silently exposed.
+
+**Traced every real caller before writing this, not assumed** — both a
+direct grep of every `.from('businesses')` call and a separate,
+independent trace of every *embedded* `businesses(...)` join from
+another table, since those are easy to miss and this table has 6 of
+them across `DisputeView.jsx`, `TrackingView.jsx`,
+`ClientHistoryView.jsx`, `QuoteView.jsx`, `InvoiceView.jsx`, and
+`TechnicianView.jsx`. Two things the trace caught that a plain copy of
+the UPDATE policy's shape would have gotten wrong:
+
+1. **`InvoiceView.jsx`'s embedded read needs `abn`, not just `name`.**
+   The public `/invoice/:id` page (anon, no login) reads
+   `businesses(name, abn)` and uses both — the "Tax Invoice" vs
+   "Invoice" heading and the printed ABN depend on it. Every *other*
+   anon embedded read only needs `name`, which is exactly why this one
+   was easy to miss without checking every caller individually.
+2. **`TechnicianView.jsx`'s PIN-login embedded `businesses(*)` runs as
+   the *technician's own* authenticated session, not the owner's, and
+   not anon either** — confirmed by tracing the actual client-library
+   code path (`technician-login` mints a `token_hash` via
+   `admin.generateLink()`, then the browser's own `supabase.auth.verifyOtp()`
+   establishes the real session, awaited, before the next query fires —
+   no race, no gap). A straight copy of the UPDATE policy's
+   owner-or-admin shape has no branch matching a technician at all,
+   which would have silently cut off the Pro-tier gate, the trial/
+   cancelled-subscription banners, and add-on detection for every
+   technician at every business — not with an error, just
+   `businesses: null` forever, the kind of regression that would never
+   show up in a smoke test. The fix adds a 4th branch:
+   `exists (select 1 from technicians t where t.auth_user_id = auth.uid()
+   and t.business_id = businesses.id)`. Also independently confirmed
+   neither `rls_scoping_v2.sql` nor `rls_scoping_v3.sql`'s own
+   "deliberately not touched" reasoning for this table's SELECT policy
+   ever mentions technicians at all — this gap predates this fix, it
+   isn't introduced by it.
+
+As a defensive measure on the frontend regardless of how a genuinely
+uncertain runtime-behavior question resolves — whether PostgREST's
+embedded `(*)` wildcard interacts with a column-level `REVOKE` the same
+way a top-level `select('*')` does is not something either this session
+or static code reading can answer with certainty, and there's no safe
+way to live-test it — `TechnicianView.jsx`'s `businesses(*)` was
+rewritten to the exact explicit 6-column list it actually uses
+(`name, subscription_tier, stripe_sub_id, created_at, max_addons,
+max_addon_trials`), which behaves identically to any other named-column
+embed (already proven safe — `InvoiceView.jsx`'s `businesses(name, abn)`
+works exactly this way) regardless of that answer. This read is
+authenticated, not anon, so the column-level change doesn't directly
+apply to it either way — the rewrite is also just better practice on
+its own (a technician's phone has no reason to receive
+`meta_access_token`/`slack_webhook_url`/every other column on the row).
+
+**Flagged, not fixed here**: `technicians` itself carries the exact same
+unrestricted-by-role SELECT shape (`"anon select technicians"`), but
+*deliberately* — that policy's own comment says it's needed by PIN
+login, the dispatcher's live map, and Realtime subscriptions for live
+GPS tracking, and "cannot be narrowed... without breaking live
+tracking." That's a separate, already-reasoned-through tradeoff this
+delta doesn't attempt to touch, noted here only so it isn't mistaken for
+the same bug once this one's fixed.
+
+**Not yet applied live** — this session is not authorized to run
+Supabase SQL itself. **Action needed from you**: run
+`supabase_schema_delta_businesses_select_scoping.sql` in the Supabase
+SQL Editor (verification queries at the bottom of that file), then spot
+check: your own test business's dispatcher login, a technician's PIN
+login (specifically the Pro-tier checklist/invoicing flow if that test
+business is on Pro — the exact path that would have silently broken
+without the technician branch), the admin console's business list, and
+a public invoice link all still load correctly. No function redeploy
+strictly needed for the SQL half; the `TechnicianView.jsx` frontend
+change ships with the next normal Vercel deploy once pushed.

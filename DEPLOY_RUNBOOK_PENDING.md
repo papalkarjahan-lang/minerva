@@ -12,7 +12,7 @@ run, no edge function redeployed.
 interactive terminal, once), work through the 4 phases below **in order**.
 Phase order matters — some SQL deltas explicitly depend on an earlier phase
 (each file's own header says so; this list just saves you from having to
-open all 23 to figure out the order yourself). Re-generate this list instead
+open all 24 to figure out the order yourself). Re-generate this list instead
 of trusting it if much more time passes and more commits stack up — it's a
 snapshot, not a live view.
 
@@ -65,15 +65,27 @@ Paste each into the Supabase SQL Editor. None of these depend on each other.
   function redeploy, but `update-addon-billing` (already in Phase 3's
   list) has the matching application-level fix, so deploy them together
   rather than leaving a gap between the two layers.
-- `supabase_schema_delta_billing_identity_guard.sql` — **new 2026-10-09,
-  the most important one on this list**: adds 1 trigger, no new column.
-  See its own file and `SECURITY_NOTES.md`'s matching 2026-10-09 entry —
-  until this runs, any logged-in business owner can PATCH their own
-  `subscription_tier`/`max_addons` directly and get every paid feature
-  for free, no Stripe charge, permanently. No ordering dependency on any
-  function redeploy (pure database trigger, nothing in the edge functions
-  or frontend changes) — but run this one first among the three new
-  2026-10-09 triggers if you only do one today.
+- `supabase_schema_delta_billing_identity_guard.sql` — **new 2026-10-09**:
+  adds 1 trigger, no new column. See its own file and
+  `SECURITY_NOTES.md`'s matching 2026-10-09 entry — until this runs, any
+  logged-in business owner can PATCH their own `subscription_tier`/
+  `max_addons` directly and get every paid feature for free, no Stripe
+  charge, permanently. No ordering dependency on any function redeploy
+  (pure database trigger, nothing in the edge functions or frontend
+  changes).
+- `supabase_schema_delta_businesses_select_scoping.sql` — **new
+  2026-10-10, the single most important one on this list**: 2 policies +
+  a column grant/revoke, no new column. See its own file and
+  `SECURITY_NOTES.md`'s matching entry — until this runs, any logged-in
+  business owner can read every OTHER business's full row (contact
+  details, subscription tier, Stripe ids, payment-failed status), not
+  just their own. Broader than the billing-identity gap above (that one
+  was self-escalation; this one is reading every other customer's data).
+  Pairs with a frontend change already committed
+  (`TechnicianView.jsx`'s `businesses(*)` narrowed to an explicit field
+  list) — ships with the next normal push/Vercel deploy, no separate
+  action needed for that half. Run this and the billing-identity trigger
+  before any real customer signs up, not after.
 - `supabase_schema_delta_signup_recovery.sql` — adds
   `businesses.signup_recovery_sent_at`
 - `supabase_schema_delta_new_subscriber_checkin.sql` — adds

@@ -353,9 +353,19 @@ export default function TechnicianView() {
       return
     }
 
+    // businesses(...) uses an explicit field list, not businesses(*) —
+    // these 6 are the only ones this file (and businessAccess.js's
+    // isTrialExpired / maxAddons.js's hasAddon, both called with this
+    // object) actually reads. Narrowed 2026-10-10 alongside
+    // supabase_schema_delta_businesses_select_scoping.sql: this read runs
+    // as the technician's own authenticated session (not anon), so it's
+    // unaffected by that delta's column-level change either way, but an
+    // explicit list is still better than pulling every column (including
+    // things like meta_access_token/slack_webhook_url) down to a
+    // technician's phone for no reason this code uses.
     const { data, error } = await supabase
       .from('technicians')
-      .select('*, businesses(*)')
+      .select('*, businesses(name, subscription_tier, stripe_sub_id, created_at, max_addons, max_addon_trials)')
       .eq('pin', pin)
       .eq('is_active', true)
       .single()
