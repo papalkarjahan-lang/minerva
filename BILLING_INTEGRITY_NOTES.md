@@ -564,3 +564,42 @@ discipline already proven out earlier today:
 
 726/726 tests pass. Not yet applied/deployed live — same reason as every
 other pending delta this session.
+
+## 2026-10-09 — a declined card was only ever surfaced to the business via an in-app banner, never proactively
+
+Found immediately after building `notify-trial-ending` above, by asking
+the same question against the adjacent case: does the business get told
+when something billing-related actually needs their attention, or only
+if they happen to be looking at the app? `invoice.payment_failed`
+already recorded `payment_failed_at` (read by an in-app banner in
+`DispatcherView.jsx`/`IndustrialDispatcherView.jsx`) and emailed the
+*operator* — but never the business itself. Stripe's own dunning/retry
+cycle can run for days to weeks before giving up and firing
+`customer.subscription.deleted`; a business could lose their whole
+account having never been proactively told their card was declined,
+only an in-app banner they might never see. Unlike the trial-ending
+case, there's no existing softening factor here (no upfront email sets
+an expectation about THIS) — went ahead and built it directly rather
+than asking again, same category of fix, now with the user's own
+precedent from the trial-ending approval.
+
+Fixed by extending the existing `invoice.payment_failed` handler in
+`stripe-webhook/index.ts` (no new function, no new SQL delta — the
+`businesses.contact_email` and `payment_failed_at` columns already
+exist) to also email the business's own `contact_email`, alongside the
+pre-existing operator email, mirroring the welcome/trial-ending emails'
+channel and tone. No throttle on repeated Stripe retries, matching the
+operator alert's own already-established, already-accepted behavior —
+each retry is genuinely new information, not a duplicate.
+
+Checked the two adjacent cases for the same gap before stopping —
+`charge.dispute.created`/`closed` and `charge.refunded` — and confirmed
+they're correctly operator-only **by design**, not an oversight: those
+are disputes/refunds against client invoice payments processed through
+Minerva's *own* Stripe account (not split via Connect), so it's the
+operator who needs to submit evidence or track the refund, not the
+business — already explicitly reasoned through in that code's own
+comment. 726/726 tests pass (no new pure logic extracted — this is a
+direct `fetch` call alongside the existing, equally-untested operator
+alert it mirrors). Not yet deployed — `stripe-webhook` is already in
+Phase 3's redeploy list.

@@ -383,7 +383,7 @@ serve(async (req: Request) => {
             .from('businesses')
             .update(plan.update)
             .eq('stripe_sub_id', plan.subscriptionId)
-            .select('id, name')
+            .select('id, name, contact_email')
             .maybeSingle()
           if (error) throw new Error(`Failed to record payment_failed_at: ${error.message}`)
 
@@ -403,6 +403,30 @@ serve(async (req: Request) => {
                 html: `<p>A Stripe charge for <strong>${escapeHtml(biz?.name || 'a business')}</strong> (subscription ${plan.subscriptionId}) failed. Stripe will retry automatically per its dunning schedule — no action needed unless it keeps failing. Check the dispatcher app's billing warning or the Stripe dashboard for details.</p>`,
               }),
             }).catch(err => console.error('stripe-webhook: operator payment-failed alert failed', err))
+          }
+
+          // Business-facing alert (added 2026-10-09) — until now, the ONLY
+          // place a declined card ever surfaced to the business itself was
+          // an in-app banner (DispatcherView/IndustrialDispatcherView,
+          // reading payment_failed_at), visible only if someone happens to
+          // log in while it's set. Stripe's own dunning cycle can run for
+          // days to weeks before giving up and firing
+          // customer.subscription.deleted — a business could lose their
+          // whole account with no proactive warning at all beyond that
+          // banner. Mirrors the welcome/trial-ending emails' own channel
+          // and tone. No throttle on repeat retries, same as the operator
+          // alert above — each Stripe retry is genuinely new information
+          // ("we tried again, still declined"), not a duplicate.
+          if (biz?.contact_email) {
+            fetch(`${Deno.env.get('SUPABASE_URL')!}/functions/v1/send-email`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!}` },
+              body: JSON.stringify({
+                to: biz.contact_email,
+                subject: `Action needed: your Minerva payment didn't go through`,
+                html: `<p>Hi,</p><p>Your most recent payment for <strong>${escapeHtml(biz.name || 'your account')}</strong> didn't go through — your bank or card issuer declined the charge. Stripe will automatically retry over the next few days, but if it keeps failing your account will eventually be cancelled.</p><p>Update your card from Settings → Billing in the app as soon as you can to avoid any interruption.</p><p>— The Minerva team</p>`,
+              }),
+            }).catch(err => console.error('stripe-webhook: business payment-failed email failed', err))
           }
         }
         break

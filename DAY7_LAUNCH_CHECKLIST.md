@@ -37,6 +37,15 @@ Stop and fix before continuing if any box fails — don't skip ahead.
       app (or ask Stripe support) and cancel/note this test subscription**
       so you're not charged when the 7-day trial ends — do this now, not
       at the end, in case you get distracted later
+- [ ] Declined-card path (optional, needs the Stripe CLI — skip if you
+      don't have it installed): `stripe trigger invoice.payment_failed`
+      against this webhook endpoint → confirm both the operator inbox AND
+      this test business's `contact_email` receive a "payment didn't go
+      through" email (not just one or the other), and the in-app billing
+      banner appears on next dispatcher login. Hard to trigger with a
+      real card in live mode on purpose, so the CLI trigger is the
+      practical way to confirm this path before a real customer ever
+      hits it for real.
 
 ## 2. Dispatcher + technician live tracking
 
