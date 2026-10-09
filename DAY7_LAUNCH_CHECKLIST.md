@@ -195,14 +195,20 @@ third one on Standard, sector left as the trade default.
 - [ ] Dispatcher → Settings → enable auto-dispatch → add a job with a
       free, connected technician nearby → job auto-assigns within seconds
       (check Slack for the dispatch alert)
-- [ ] `reconcile-billing`, `check-inventory-levels`, `generate-growth-drafts`
-      are scheduled agents — hard to trigger naturally with real 30-90 day
-      data, so invoke each directly once from Supabase Dashboard → Edge
-      Functions → function → "Invoke" and confirm `{ "success": true, ... }`
-      with no error (`retention-checkin` is tested separately in section 9,
-      since it's now gated to Standard/Pro trade businesses specifically —
-      invoking it here on the wrong tier/sector would just report zero sent
-      and look like a false pass)
+- [ ] `reconcile-billing`, `check-inventory-levels`, `generate-growth-drafts`,
+      `notify-trial-ending` are scheduled agents — hard to trigger
+      naturally with real 3-90 day data, so invoke each directly once from
+      Supabase Dashboard → Edge Functions → function → "Invoke" and
+      confirm `{ "success": true, ... }` with no error (`retention-checkin`
+      is tested separately in section 9, since it's now gated to
+      Standard/Pro trade businesses specifically — invoking it here on the
+      wrong tier/sector would just report zero sent and look like a false
+      pass). For `notify-trial-ending` specifically, your own step-1 test
+      business is genuinely `trialing` right after signup, so confirm it
+      correctly scans without alerting yet (`trial_end` is 7 days out,
+      outside the 3-day window) — to actually see the email + Slack
+      alert fire, you'd need a trial within 3 days of ending, which the
+      step-1 business won't be yet
 - [ ] Marketing tab → after `generate-growth-drafts` has run at least
       once, a draft card appears → tap Reject on one → status updates to
       REJECTED and the pending badge count drops

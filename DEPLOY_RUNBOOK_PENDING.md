@@ -1,17 +1,18 @@
 # Minerva — Deploy Runbook (everything queued behind the git push blocker)
 
-Generated 2026-10-08, from a direct `git diff origin/main..HEAD` — this is the
-complete, accurate picture as of this file's own commit, not a list
-reconstructed from memory. 73 local commits are ahead of `origin/main`, none
-of them live yet: not pushed to GitHub (so Vercel hasn't built any of the
-frontend changes), no SQL delta run, no edge function redeployed.
+Generated 2026-10-08, last refreshed 2026-10-09 against a direct
+`git diff origin/main..HEAD` — this is the complete, accurate picture as of
+this file's own commit, not a list reconstructed from memory. 97 local
+commits are ahead of `origin/main`, none of them live yet: not pushed to
+GitHub (so Vercel hasn't built any of the frontend changes), no SQL delta
+run, no edge function redeployed.
 
 **How to use this**: once `git push origin main` actually works (see
 `minerva_github_push_credential` memory for the fix — this needs you, in an
 interactive terminal, once), work through the 4 phases below **in order**.
 Phase order matters — some SQL deltas explicitly depend on an earlier phase
 (each file's own header says so; this list just saves you from having to
-open all 20 to figure out the order yourself). Re-generate this list instead
+open all 23 to figure out the order yourself). Re-generate this list instead
 of trusting it if much more time passes and more commits stack up — it's a
 snapshot, not a live view.
 
@@ -83,6 +84,12 @@ Paste each into the Supabase SQL Editor. None of these depend on each other.
   `big_account_targets.notified_at`
 - `supabase_schema_delta_rebooking_notify.sql` — adds
   `leads.rebooking_notified_at`
+- `supabase_schema_delta_trial_ending_reminder.sql` — **new 2026-10-09**:
+  adds `businesses.trial_ending_reminder_sent_at`. See its own file and
+  `BILLING_INTEGRITY_NOTES.md`'s matching entry — the main 7-day account
+  trial had no ending-soon reminder, unlike Minerva Max add-on trials.
+  `notify-trial-ending` (new function, Phase 3) depends on this column
+  existing.
 
 ## Phase 2 — SQL: Agent OS registration deltas (after Phase 1, before Phase 3)
 
@@ -97,8 +104,26 @@ Phase 1 before any of these rather than tracking per-family order.
 - `supabase_schema_delta_support_request_notify_registration.sql`
 - `supabase_schema_delta_enterprise_lead_notify_registration.sql`
 - `supabase_schema_delta_rebooking_notify_registration.sql`
+- `supabase_schema_delta_trial_ending_reminder_registration.sql` — **new
+  2026-10-09**
 
-## Phase 3 — Edge functions: redeploy all 27
+## Phase 3 — Edge functions: redeploy 46
+
+**Re-generated 2026-10-09** from `git diff origin/main..HEAD --name-only`
+— the previous "27" count here was a 2026-10-08 snapshot, already stale
+by the next day's own work (the Standard-tier automation gate across 6
+functions, the Minerva Max sector-gating fix, and notify-trial-ending all
+landed after that snapshot was written). Don't trust either number if
+you're reading this much later — regenerate the same way:
+`git diff origin/main..HEAD --name-only -- supabase/functions/ | grep -E
+"/(index|logic)\.ts$" | sed -E 's#supabase/functions/([^/]+)/.*#\1#' |
+sort -u`, plus any function that ONLY imports a changed `_shared/` file
+without its own index.ts changing (check each shared file's own commit
+message/header — e.g. today's `_shared/maxAddons.ts` change only
+actually affects `update-addon-billing`, the one function that calls
+`isAddonAvailableForSector`; the other 10 importers only call
+`isAddonActive`, unaffected, and don't need redeploying for that specific
+change).
 
 One command per function:
 
@@ -114,14 +139,14 @@ only internal logic, so whatever it's currently set to is still correct.
 no Supabase auth header) — if the CLI prompts about this or defaults
 differently, explicitly pass `--no-verify-jwt` for that one only.
 
-New functions this session (never deployed before, so there's no existing
-dashboard setting to preserve):
+New functions (never deployed before, so there's no existing dashboard
+setting to preserve):
 - `notify-new-support-request`, `notify-new-enterprise-lead`,
   `notify-rebooking-request`, `recover-abandoned-signup`,
-  `new-subscriber-checkin` — all 5 are `supabase.functions.invoke()`-style
-  or cron-triggered, matching the pattern of their siblings; default
-  `verify_jwt: true` is correct for all 5 unless you specifically know
-  otherwise.
+  `new-subscriber-checkin`, `notify-trial-ending` (newest, 2026-10-09) —
+  all 6 are `supabase.functions.invoke()`-style or cron-triggered,
+  matching the pattern of their siblings; default `verify_jwt: true` is
+  correct for all 6 unless you specifically know otherwise.
 
 Full list (alphabetical):
 
@@ -129,31 +154,50 @@ Full list (alphabetical):
 agent-council-report
 ai-intake-chat
 auto-assign-technician
+chase-unpaid-invoices
 check-credential-expiry
+check-inventory-levels
+check-weather-risk
 client-support-chat
+create-checkout-session
 create-invoice-payment-intent
 daily-digest
+detect-idle-assets
 detect-safety-hazards
+detect-wasted-trips
 draft-outreach-batch
 draft-quote
+enrich-industrial-leads
+estimate-job-carbon
+flag-abandoned-signups
 followup-outreach
+forecast-demand
 generate-growth-drafts
 industrial-conductor
 new-subscriber-checkin
+notify-addon-trial-ending
 notify-new-enterprise-lead
 notify-new-support-request
 notify-rebooking-request
+notify-trial-ending
+nurture-stale-leads
+optimize-industrial-routes
 parse-prospect-text
+predict-asset-maintenance
 reconcile-billing
+reconcile-technician-state
 recover-abandoned-signup
 respond-to-quote
+retention-checkin
 sequence-handoffs
 stripe-webhook
 technician-login
+track-consumables
 update-addon-billing
 update-technician-workload
 verify-checklist-photos
 voice-intake-agent
+winback-lost-leads
 ```
 
 After each deploy, a quick OPTIONS smoke test is good practice (matches
@@ -173,9 +217,17 @@ one, not something to push through.
   `recover-abandoned-signup` deployed first
 - `supabase_schema_delta_new_subscriber_checkin_cron.sql` — needs
   `new-subscriber-checkin` deployed first
+- `supabase_schema_delta_trial_ending_reminder_cron.sql` — **new
+  2026-10-09**, needs `notify-trial-ending` deployed first
 
-Both files are pre-filled with the real project ref/anon key already (per
-their own header comments) — no placeholder values to fill in.
+All 3 files are pre-filled with the real project ref/anon key already
+(per their own header comments) — no placeholder values to fill in.
+Also don't forget the 2 standalone triggers from today that have no
+cron schedule of their own (they fire on `businesses` writes, not on a
+timer) — `supabase_schema_delta_addon_sector_guard.sql` and
+`supabase_schema_delta_billing_identity_guard.sql` — both already listed
+in Phase 1, just noting here so neither gets skipped as "only a Phase 4
+thing."
 
 ## Verification after all 4 phases
 
@@ -183,10 +235,10 @@ their own header comments) — no placeholder values to fill in.
   comment has the exact `curl` command to confirm the security fix took
   effect (expect `42501 permission denied`, not real secret values back).
 - `select name, cron, command from cron.job order by jobid;` in the SQL
-  Editor — confirms both new cron jobs registered with the schedule each
+  Editor — confirms all 3 new cron jobs registered with the schedule each
   file's own header documents.
-- `supabase functions list` — confirms all 27 functions show `ACTIVE`, and
-  spot-check a couple of version numbers moved (old version → new).
+- `supabase functions list` — confirms all 46 functions show `ACTIVE`,
+  and spot-check a couple of version numbers moved (old version → new).
 
 ## What this file does NOT cover
 

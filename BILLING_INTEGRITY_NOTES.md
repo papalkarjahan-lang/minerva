@@ -517,3 +517,50 @@ escalation hole, not a feature-delivery gap. Deliberately leaves
 `max_addon_trials` unlocked — the free trial is already documented
 elsewhere as self-serve "by design," a separate, lower-priority,
 product-call item, not folded into this fix.
+
+## 2026-10-09 — added `notify-trial-ending`, the main account trial had no ending-soon reminder
+
+Noticed while closing out the two entries above: Minerva Max add-on
+trials get a reminder 3 days before they lapse
+(`notify-addon-trial-ending`), but the main account's 7-day Stripe trial
+— the one every signup starts on — never had an equivalent, even though
+it ends in a real card charge rather than a feature quietly turning off.
+Confirmed with the user before building (a genuine product-completeness
+call, not a bug — there's already a welcome email at signup stating the
+billing terms upfront, which meaningfully softens the gap): asked via
+`AskUserQuestion`, chose to build it.
+
+New function `notify-trial-ending` (`supabase/functions/notify-trial-ending/`),
+registered + scheduled daily at 6:45am UTC
+(`supabase_schema_delta_trial_ending_reminder{,_registration,_cron}.sql`,
+none yet applied live). Unlike the add-on-trial reminder, there's no
+local column to read a trial's end date from — it lives only on the
+Stripe subscription object — so this calls `stripe.subscriptions.retrieve()`
+per candidate business, batched via `chunk()` from the start (same cost
+shape as `reconcile-billing`'s own per-business Stripe calls, built
+batched up front rather than needing a later scale-readiness pass).
+
+Two correctness issues caught before this ever shipped, both by the same
+discipline already proven out earlier today:
+- **Pure logic extracted and tested** (`logic.ts`/`logic.test.ts`, 11
+  tests) specifically because Stripe's `trial_end` is Unix *seconds* and
+  every other date computation in this codebase is milliseconds — a
+  silent 1000x mixup would make the reminder fire constantly or
+  basically never, not throw. Writing the seconds-to-ms test caught a
+  real bug in the first draft: `Math.ceil` on the remaining-time
+  calculation reported "1 day left" for a trial ending in 3 hours,
+  overstating how soon it actually was. Fixed to `Math.floor`, which
+  can't say more time remains than genuinely does.
+- **Self-clearing vs. bounded, caught against my own new code this
+  time**: the first draft only stamped the claim column when actually
+  sending a reminder. A business that converts to paid (or cancels)
+  *before* ever reaching the 3-day window would then never get stamped,
+  staying in every future run's Stripe-querying candidate set forever —
+  the exact lesson `SCALE_READINESS_NOTES_ROUND2.md` already names for a
+  different function, re-applied here against a function written the
+  same day. Fixed by splitting the decision into `shouldSend` (actually
+  notify) and `shouldClaim` (stop checking this business again) —
+  claims on "no longer trialing" too, not just "reminder sent."
+
+726/726 tests pass. Not yet applied/deployed live — same reason as every
+other pending delta this session.
