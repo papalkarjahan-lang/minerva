@@ -596,21 +596,38 @@ alter table technicians add column burnout_flag_sent_at timestamptz;
 -- ============================================================
 -- ROW LEVEL SECURITY
 --
--- Minerva has no login step for business owners, technicians, or clients —
--- by design, access is via unguessable UUID links (dispatch URL, tracking
--- URL) or a technician PIN. That means every operation below runs as the
--- anon role. There is deliberately NO "authenticated" bypass policy: a
--- generic "auth.role() = authenticated" policy would grant ANY visitor who
--- self-registers a free Supabase Auth account (enabled by default on new
--- projects) full read/write access to every business's data, since nothing
--- in this schema ties an authenticated session to a specific tenant. See
--- SECURITY_NOTES.md for the full threat model and the Phase 2 recommendation
--- to add real per-owner authentication before scaling past pilot clients.
+-- **Corrected 2026-10-09 — the paragraph below was true when written
+-- (original schema) and is now stale/wrong, left unnoticed through
+-- several later sessions: a classic instance of this project's own
+-- documented "stale falsifiable claim" bug class (see
+-- minerva_setup_progress.md memory). Clients still have no login, by
+-- design (unguessable tracking-URL links). Business owners and
+-- technicians DO now have real Supabase Auth sessions —
+-- supabase_schema_delta_owner_auth.sql (owner magic-link login, via
+-- Login.jsx's signInWithOtp) and supabase_schema_delta_technician_auth_v1.sql
+-- (PIN-backed technician auth.uid()), both 2026-09-05, with real
+-- auth.uid()-scoped RLS policies layered on across
+-- supabase_schema_delta_rls_scoping_v1.sql through _v5.sql (2026-09-05
+-- through 2026-09-30) and supabase_schema_delta_billing_identity_guard.sql
+-- (2026-10-09). DO NOT follow the old "disable new signups" instruction
+-- this paragraph used to give — doing so now would break every
+-- first-time business owner's login, since signInWithOtp's magic link
+-- auto-creates their auth.users row on first use; new-user signup must
+-- stay enabled. See each of the deltas named above, and SECURITY_NOTES.md's
+-- matching dated entries, for the current real model instead of
+-- reasoning from this comment block's original text alone.**
 --
--- IMPORTANT Day-1 setup step: in Supabase Dashboard > Authentication >
--- Providers, disable "Allow new users to sign up". This closes off the
--- authenticated-role attack surface entirely as a belt-and-suspenders
--- measure, even though no policy below currently grants it any access.
+-- Below is the ORIGINAL reasoning, preserved for history — accurate only
+-- for anon-reached tables/columns, which is still most of them:
+--
+-- Minerva (originally) had no login step for business owners, technicians,
+-- or clients — by design, access was via unguessable UUID links (dispatch
+-- URL, tracking URL) or a technician PIN. That meant every operation below
+-- ran as the anon role. There was deliberately NO "authenticated" bypass
+-- policy: a generic "auth.role() = authenticated" policy would grant ANY
+-- visitor who self-registers a free Supabase Auth account full read/write
+-- access to every business's data, since nothing in this schema tied an
+-- authenticated session to a specific tenant.
 --
 -- CRITICAL: CREATE POLICY alone is not enough. RLS policies only filter
 -- ROWS on an operation that's already permitted at the table-grant level —

@@ -492,3 +492,24 @@ by everyone who can buy it.
   **this check asked the wrong question for catching a sector gap**; see
   the 2026-10-09 entry above, which found 8 more sector-reachability
   problems this pass never tested for.
+
+## 2026-10-09 — any business owner could self-upgrade their own tier/add-ons for free, no Stripe charge (full writeup in SECURITY_NOTES.md)
+
+Found immediately after the two entries above, by asking one level
+deeper than "can the business that bought this reach it": "is the record
+of what they bought itself forgeable." It was — `businesses`' 2026-09-14
+RLS fix correctly stops a *stranger* editing a business they don't own,
+but never restricted *which columns* the row's own real, logged-in owner
+may write, so any customer could PATCH their own `subscription_tier` or
+`max_addons` directly and every trigger/function that trusts those
+columns (all of this session's own tier/sector fixes included) would
+have believed it. Different and more serious than the sector-reachability
+bugs above: those meant a paying customer couldn't use what they bought;
+this meant nobody had to pay at all. Full writeup, exact exploit, and the
+fix (`supabase_schema_delta_billing_identity_guard.sql`, a new `BEFORE
+UPDATE` trigger — not yet applied live) are in `SECURITY_NOTES.md`'s
+matching 2026-10-09 entry, since this is fundamentally a privilege-
+escalation hole, not a feature-delivery gap. Deliberately leaves
+`max_addon_trials` unlocked — the free trial is already documented
+elsewhere as self-serve "by design," a separate, lower-priority,
+product-call item, not folded into this fix.

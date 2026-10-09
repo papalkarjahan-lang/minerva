@@ -1982,3 +1982,90 @@ to run Supabase SQL itself. **Action needed from you**: run
 Editor, then redeploy `create-checkout-session` (now has a sibling
 `logic.ts` for the first time — deploy picks up the whole function
 directory automatically, no separate step needed for that).
+
+## Residual gap in the 2026-09-14 `businesses` RLS fix: row-scoped, not column-scoped — any logged-in owner could self-upgrade their own tier/add-ons for free (2026-10-09) — fix written, NOT YET APPLIED LIVE
+
+Found while re-examining today's two "sold vs. delivered" billing fixes
+(see `BILLING_INTEGRITY_NOTES.md`'s 2026-10-09 entries) for a deeper
+variant of the same question: not just "can the business that bought
+this reach it," but "is the record of what they bought itself forgeable."
+
+`supabase_schema_delta_rls_scoping_v3.sql` (2026-09-14, "RLS read/write-
+scoping, pass 3") replaced `businesses`' original blanket anon
+`using (true)` UPDATE policy — added by an earlier delta specifically to
+unblock 3 real features that were silently no-op'ing — with a real,
+owner-scoped one: `owner_user_id = auth.uid()`, OR the one-time
+first-login claim, OR `admin_users` membership. That correctly closed off
+a *stranger* touching a business they don't own. It did not, and was
+never trying to, restrict *which columns* a row's own legitimate,
+authenticated owner may write once they pass that check — RLS `using`/
+`with check` clauses are row-scoped by construction, with no column
+granularity. Column-level `GRANT`/`REVOKE` (the mechanism this project
+already uses for the 3 secret columns and `checkout_token`, both above)
+can't fill that gap either, because it can't express "authenticated, but
+only when NOT in admin_users" — that distinction is itself row-level data
+(the `admin_users` table), invisible to a column grant.
+
+Net effect: every Pro-tier-gating trigger
+(`supabase_schema_delta_pro_tier_gating*.sql`) and every Minerva Max
+add-on backend (`draft-quote`, `xero-sync-invoice`,
+`detect-idle-assets`, ...) trusts `businesses.subscription_tier` /
+`max_addons` as ground truth, but nothing stops a business's own real,
+logged-in owner from writing either column directly. Concretely, once
+logged in (which every real customer will be, via `RequireBusinessAuth`'s
+own first-login claim), a business owner could open devtools and run:
+
+```js
+fetch('<supabase-url>/rest/v1/businesses?id=eq.<their own id>', {
+  method: 'PATCH',
+  headers: {apikey: ANON_KEY, Authorization: `Bearer ${theirOwnJWT}`, 'Content-Type': 'application/json'},
+  body: JSON.stringify({subscription_tier: 'pro'})
+})
+```
+
+— and permanently self-upgrade to Pro (or flip on any Minerva Max
+add-on), no Stripe charge, forever, with the request succeeding because
+it legitimately passes the row-level owner check. This is a different
+and more serious class than either of today's two sold-vs-delivered
+fixes: those meant a legitimately-paying customer couldn't reach what
+they bought; this means a customer doesn't have to pay at all. Zero real
+customers exist yet (per this session's own standing context), so this
+has caused no actual loss — but per that same standing instruction
+("not one single mistake... before starting"), this is exactly the class
+of gap that has to close before outreach begins, not be discovered after.
+
+Fixed with a new `BEFORE UPDATE` trigger on `businesses`
+(`supabase_schema_delta_billing_identity_guard.sql`, new file) that
+blocks any change to `subscription_tier`, `subscription_tier_synced_at`,
+`max_addons`, `stripe_customer_id`, `stripe_sub_id`, `stripe_sub_item_id`,
+`max_addon_stripe_items`, or `payment_failed_at` unless the caller is
+`service_role` (every legitimate backend writer: `stripe-webhook`,
+`update-addon-billing`, `reconcile-billing`, `sync-technician-billing`)
+or an `admin_users` member (`AdminConsole.jsx`'s deliberate manual
+`overrideTier()`). Reuses the exact `exists (select 1 from admin_users a
+where a.user_id = auth.uid())` subquery `rls_scoping_v3.sql`'s own
+businesses policy already proves works for this. Scoped to `UPDATE` only
+— `Onboarding.jsx`'s signup `INSERT` legitimately sets an initial,
+not-yet-paid `subscription_tier`, already a separate, already-closed
+concern (the `checkout_token` fix above: nothing about a business is
+actually usable until a real Stripe checkout completes).
+
+**Deliberately excludes `max_addon_trials`**: unlike every column above,
+the free 30-day Minerva Max trial is explicitly documented as "a free,
+unbilled client-side preview by design" (`update-addon-billing/index.ts`'s
+own header comment) — self-serve, no server validation, by prior
+deliberate decision, not an oversight this session is aware of
+discovering for the first time. The same forgeability applies there too
+(a client could set an arbitrarily long trial window directly) but it's
+a materially smaller problem — no charge is bypassed, only an extended
+free preview — and overriding an already-deliberate product tradeoff
+isn't this fix's call to make unilaterally. Flagged here as a known,
+separate, lower-priority item rather than folded in.
+
+**Not yet applied live** — same reason as every other delta in this
+file: this session is not authorized to run Supabase SQL itself.
+**Action needed from you**: run
+`supabase_schema_delta_billing_identity_guard.sql` in the Supabase SQL
+Editor (the verification query at the bottom of that file confirms it
+live), no function redeploy needed — this is a pure database-trigger
+fix, nothing in the edge functions or frontend changes.
