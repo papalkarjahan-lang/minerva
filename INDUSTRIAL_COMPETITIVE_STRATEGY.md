@@ -199,8 +199,16 @@ to 1 complaint."
 shot in the industrial doc.** GoCanvas's documented, dated, multi-reviewer
 complaint pattern — contracts that only go up, never down, as headcount
 changes — is the *exact* pain a subcontractor with a fluctuating crew size
-feels hardest. Minerva's flat per-site pricing (Part Three below) is a
-direct, honest answer to a real, cited failure mode, not a hypothetical one.
+feels hardest. **Corrected 2026-10-10:** Minerva's actual answer to this
+isn't a flat per-site rate (that was never built — checked directly
+against the billing code; industrial is priced per-technician, same as
+every Minerva sector) — it's that the per-technician price genuinely
+moves *both* directions automatically (`sync-technician-billing` fires on
+both adding and removing a technician, confirmed in code), unlike
+GoCanvas's documented one-way-only contracts. Still a direct, honest
+answer to the same real, cited failure mode (Part Three below has the
+corrected pitch line) — just a different, real mechanism, not an
+unbuilt one.
 
 ---
 
@@ -244,19 +252,23 @@ on. Across all 7 products:
 **Rule 1 (unchanged):** never name a competitor in public marketing. In 1:1
 conversations, use the sourced complaints above factually.
 
-**Rule 2, applied here:** don't say "we're cheaper than GoCanvas." Say:
-*"You've got a crew that goes from 4 to 9 people depending on the job. On a
-per-seat product, your contract only ever goes up — GoCanvas customers have
-filed public complaints about not being able to reduce seats even after
-letting people go. Minerva is flat per site, not per head. Your price
-doesn't move when your crew does."* The prospect does the math themselves.
+**Rule 2, applied here — corrected 2026-10-10 (was describing an unbuilt
+flat per-site rate; see the GoCanvas section above):** don't say "we're
+cheaper than GoCanvas." Say: *"You've got a crew that goes from 4 to 9
+people depending on the job. On a lot of per-seat products, your contract
+only ever goes up — GoCanvas customers have filed public complaints about
+not being able to reduce seats even after letting people go. Minerva's
+per-technician, and it actually goes down too — remove someone and your
+bill drops the same day, automatically."* The prospect does the math
+themselves.
 
-**Rule 3, applied here:** the GoCanvas Trustpilot pattern (contract lock-in,
-"370% increase without authorization," support unreachable for 4+ days) is
-the industrial equivalent of the ServiceTitan/Simpro horror stories in the
-Trade doc — same close, same mechanism: *"I built it flat per site
-specifically because of what happens on per-seat products when your
-headcount moves."*
+**Rule 3, applied here — same correction:** the GoCanvas Trustpilot
+pattern (contract lock-in, "370% increase without authorization," support
+unreachable for 4+ days) is the industrial equivalent of the
+ServiceTitan/Simpro horror stories in the Trade doc — same close, same
+mechanism: *"I built it to bill per technician, moving both directions
+automatically, specifically because of what happens on per-seat products
+when your headcount moves and the contract only ever adjusts one way."*
 
 **Rule 4, applied here:** there's no Android-demo equivalent yet (no live
 hardware demo to run) — until a real telemetry integration is live, the

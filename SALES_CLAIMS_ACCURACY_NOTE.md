@@ -19,19 +19,45 @@ is running its fallback path.
 ## Safe to say on a call today
 
 These are true regardless of whether the Anthropic key is live, because the
-underlying mechanism runs either way:
+underlying mechanism runs either way — **but as of 2026-10-10, most of them
+are also tier/sector-gated, which this list didn't reflect until now.**
+Found while correcting the same error already fixed in
+`EXACT_OUTREACH_EMAIL_DRAFTS.md` — a reminder that AI-key-dependence isn't
+the only thing that can make a "safe to say" claim stop being true; a
+billing/tier change can too, and this file needs the same re-check
+whenever one lands, not just when a new agent capability ships.
 
-- "Minerva automatically re-texts leads that went cold, trying to win them
-  back." — true (template SMS if no key, Claude-drafted if key is live)
-- "Minerva drafts weekly ad copy for suburbs you're under-booked in." — true
-  either way, drafts are always human-approved before sending
-- "Minerva flags billing mismatches / overdue invoices / expiring
-  credentials automatically." — true, the anomaly detection logic itself
-  isn't AI-dependent, only the plain-English explanation attached to it is
+**True for every Minerva customer, any tier, any sector:**
+- "Minerva flags billing mismatches automatically." — true, the anomaly
+  detection logic itself isn't AI-dependent, only the plain-English
+  explanation attached to it is
 - "Minerva watches technician hours and flags burnout risk." — true, pure
   threshold logic, no AI involved at all
-- "Minerva reschedules around bad weather automatically." — true, uses a
-  free weather API, not AI
+
+**True only for Standard tier and up, trade sector only** (this automation
+bundle didn't exist as a real differentiator until 2026-10-09 — see
+`BILLING_INTEGRITY_NOTES.md`'s "Standard tier had no real differentiator"
+entry; industrial never gets any of these regardless of tier, since they
+read `jobs`/`invoices`/`leads`, tables industrial doesn't use):
+- "Minerva automatically re-texts leads that went cold, trying to win them
+  back." (template SMS if no key, Claude-drafted if key is live)
+- "Minerva automatically reminds clients about overdue invoices."
+- "Minerva reschedules around bad weather automatically." — uses a free
+  weather API, not AI, but still gated the same way as the other two
+- "Minerva checks in with clients who haven't come back in a while." —
+  the fourth automation in the same Standard+/trade bundle; wasn't in
+  this list before even pre-dating the gate, add it alongside the other
+  three now that all four are correctly scoped together
+
+**True only for Pro tier, trade sector only** (pre-existing gate, just
+never reflected in this specific list before — don't assume something's
+accurate here just because it predates the Standard-tier change above):
+- "Minerva drafts weekly ad copy for suburbs you're under-booked in." —
+  drafts are always human-approved before sending, but the drafting
+  itself only runs for `subscription_tier = 'pro'`
+- "Minerva flags expiring technician credentials automatically." — reads
+  `technician_credentials`, a Pro-tier-only trade table (nothing outside
+  Pro/trade can ever have a row there to flag)
 
 ## NOT safe to say until `ANTHROPIC_API_KEY` is live
 
@@ -125,8 +151,21 @@ on a call would promise something the product will then visibly fail to
 deliver at signup, which is worse than a vague overclaim. For Industrial,
 pitch purely on capability (site check-ins, safety log, asset register,
 consumables alerts, client verification packages — see Client 9 below),
-never on tier name or price point; Starter/Standard are the only tiers
-that actually apply.
+never on tier name or price point.
+
+**Correction (2026-10-10): don't say "Starter/Standard" as if both are a
+live option worth discussing.** Checked while fixing the same error in
+`EXACT_OUTREACH_EMAIL_DRAFTS.md`'s Client 9 pricing (it had invented a
+fictional flat per-site rate that was never built — industrial is billed
+the same per-technician way as trade): nothing in the industrial-specific
+code path checks `subscription_tier` at all, so Standard ($79/tech) costs
+more than Starter ($49/tech) for zero functional difference on this
+sector — the exact same "tier costs more, delivers nothing extra" bug
+already found and fixed for trade's own Starter/Standard gap on
+2026-10-09. Industrial's real price is just $49/tech/month; don't invent
+a reason to upsell to $79 that doesn't exist today. Flagged to the user
+as a real product question (same as the trade one was) — this note will
+need updating if/when Standard gets real industrial-specific value.
 
 **The "Asset Intelligence" Minerva Max add-on ($39/mo) is the same
 story, narrower scope:** its predictive-maintenance/idle-asset alerts

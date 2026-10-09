@@ -165,9 +165,10 @@ phone they carry. If you've got an Android phone nearby, happy to send you
 a link right now and you can watch a live dot move on it yourself — no
 call needed.
 
-Also: every week, Minerva looks at which suburbs you're under-booked in and
-drafts ad copy for you to approve — you're not paying an agency to figure
-that out, and nothing goes out without you clicking approve first.
+Also worth knowing for later: on Pro ($119/tech), Minerva looks at which
+suburbs you're under-booked in every week and drafts ad copy for you to
+approve — you're not paying an agency to figure that out, and nothing
+goes out without you clicking approve first.
 
 Reply "not now" and I'll leave it.
 
@@ -364,9 +365,11 @@ Following up in case this got buried.
 automatic service confirmations and route optimisation (usually 30–45
 minutes less driving on a 15-pool day).
 
-Also: Minerva checks the forecast and drafts a reschedule text before bad
-weather hits, and drafts weekly ad copy for suburbs you're under-booked in
-— you approve both before anything goes out.
+Also worth knowing for later: on Standard ($79/tech), Minerva checks the
+forecast and drafts a reschedule text before bad weather hits; on Pro
+($119/tech) it also drafts weekly ad copy for suburbs you're under-booked
+in — you approve both before anything goes out, at whichever tier has
+them.
 
 7-day free trial, no card required.
 
@@ -403,10 +406,10 @@ hearing the same thing from other tradies. [Pick the matching line:
 answer the phone myself when something goes wrong." / "Your branding
 stays on every client email, not mine."]
 
-None of this — the dead-lead win-back, the weekly ad drafts, the weather
-reschedule texts — exists in ServiceM8 or Tradify at all. It's not a
-feature gap you'd be trading up from, it's a category they don't compete
-in.
+None of this — the dead-lead win-back and weather reschedule texts
+(Standard tier up), the weekly ad drafts (Pro) — exists in ServiceM8 or
+Tradify at all. It's not a feature gap you'd be trading up from, it's a
+category they don't compete in.
 
 I'll move your client list and technician setup across for free — one
 session, you do nothing except confirm the details. Want to jump on a
@@ -459,11 +462,11 @@ Hi [First name],
 
 Following up in case this got buried.
 
-Pricing is flat per active site, not per seat — $199/site/month for the
-check-in log, safety incident log, asset register, and consumables
-alerts; $349/site adds the auto-assembled client verification package. It
-doesn't move if your crew size changes site to site, which is the thing
-most per-seat products in this category get wrong.
+Pricing is $49/tech/month, same per-technician model as the rest of
+Minerva — not a separate industrial price band. That one price already
+includes the check-in log, safety incident log, asset register,
+consumables alerts, and the auto-assembled client verification package;
+none of it is behind a higher tier.
 
 Also worth knowing: when a proximity or safety hazard gets flagged, it
 doesn't just sit in a log — it automatically becomes an assignable ticket
@@ -491,10 +494,14 @@ not useful right now, no hard feelings.
 
 ## Reply handling additions (industrial-specific — see `OUTREACH_EMAILS.md` for the general set)
 
-**"How much for our situation?"** → Ask how many active sites and roughly
-what crew size per site, then quote Site Standard/Pro directly — never lead
-with the per-technician trade pricing table for this profile, it's the
-wrong mental model for this buyer.
+**"How much for our situation?"** → Ask roughly how many technicians/crew
+are on the platform across all their sites, then quote $49/tech/month —
+it's the same per-technician pricing as every other Minerva customer,
+Starter tier, which already includes everything industrial gets (there's
+no separate per-site rate, and no Standard/Pro upgrade that unlocks
+anything more for this sector today — see `SALES_CLAIMS_ACCURACY_NOTE.md`'s
+"On Pro tier and Industrial sector" entry before ever mentioning a higher
+tier to this buyer).
 
 **"We already log this in a site diary"** → "A site diary tells you what
 someone remembered to write down after the fact. This is timestamped as it

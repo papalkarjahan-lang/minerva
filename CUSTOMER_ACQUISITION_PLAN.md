@@ -18,9 +18,14 @@ parts are yours to execute (can't be done by an agent), and why.
 
 Verified against the actual code (not assumed):
 
-- `generate-growth-drafts` — weekly cron, drafts ad copy/SMS blasts per
-  business based on under-booked suburbs, writes to `marketing_drafts` with
-  `status: 'pending'`. Nothing sent automatically.
+- `generate-growth-drafts` — weekly cron, drafts ad copy/SMS blasts based
+  on under-booked suburbs, writes to `marketing_drafts` with
+  `status: 'pending'`. Nothing sent automatically. **Corrected 2026-10-10:
+  this is Pro-tier only** (`subscription_tier = 'pro'` in the function's
+  own query) — Starter and Standard businesses never get a draft
+  generated regardless of Meta setup. Missed in the original version of
+  this check, which only verified the function's own internal logic, not
+  which of your own customers could ever reach it.
 - `launch-ad-campaign` — only runs on a business owner's explicit
   "Approve & Launch" click in the Marketing tab. Uses that business's own
   Meta access token/ad account/page ID (`businesses.meta_access_token` etc,
@@ -31,12 +36,20 @@ Verified against the actual code (not assumed):
   atomic claim fix.
 - `send-referral-code-sms` — already fires automatically on every paid
   invoice, no approval gate needed (low-stakes, single thank-you text per
-  the function's own header comment).
+  the function's own header comment), and is NOT tier-gated — every paying
+  customer gets this one regardless of tier.
 
-**Conclusion: this pillar is code-complete and safe.** The only reason it
-"doesn't run live" for a given business is that *that business* hasn't
-connected its own Meta ad account in Settings yet — which is expected
-self-serve behaviour, not a gap to fix. Nothing further to build here.
+**Conclusion: this pillar is code-complete and safe, but "doesn't run
+live" has two real causes, not one.** The documented one (that business
+hasn't connected its own Meta ad account in Settings yet) is expected
+self-serve behaviour, not a gap. The undocumented one, until this
+correction: a Starter or Standard customer who HAS connected Meta will
+still never see a draft, because `generate-growth-drafts` only runs for
+Pro. If your own first customers sign up on Starter or Standard (the
+likely case for an early, price-sensitive first few), don't expect this
+pillar to start working for them without a Pro upgrade — worth knowing
+when you're the one fielding "why isn't the ad-drafting thing doing
+anything" from an early customer.
 
 ---
 

@@ -14,27 +14,35 @@ call.** Some of these are safe to say today; some aren't live until
 ## New capability lines to insert into the existing 8 scripts
 
 These are genuinely built and deployed-pending (not aspirational) — safe to
-use once the corresponding functions are confirmed deployed:
+use once the corresponding functions are confirmed deployed, **and once
+you've checked the tier/sector note on each one below (added 2026-10-10 —
+these didn't used to need a qualifier, but three of the four now do; see
+`SALES_CLAIMS_ACCURACY_NOTE.md`'s "Safe to say" section for the full,
+current list)**:
 
-**Dead-lead win-back** (`winback-lost-leads`) — insert into Clients 1, 2, 3,
-5, 6, 7 (anywhere leads go cold): *"Minerva also automatically re-texts
-leads that went quiet — quotes you sent that never got a reply — trying to
-win the job back. You don't have to remember to chase them."*
+**Dead-lead win-back** (`winback-lost-leads`) — **Standard tier and up**
+(trade sector only, which Clients 1/2/3/5/6/7 all are — fine for this
+list, just don't reuse the line for a Starter-tier conversation or an
+industrial prospect). Insert into Clients 1, 2, 3, 5, 6, 7 (anywhere leads
+go cold): *"Minerva also automatically re-texts leads that went quiet —
+quotes you sent that never got a reply — trying to win the job back. You
+don't have to remember to chase them."*
 
 **Weekly growth drafts** (`generate-growth-drafts` + `launch-ad-campaign` +
-`send-growth-message`) — insert into Clients 1, 3, 6, 7 (businesses actively
-growing their client base): *"Every week, Minerva looks at which suburbs
-you're under-booked in and drafts ad copy for you to approve — you're not
-paying an agency to figure that out, and nothing goes out without you
-clicking approve first."*
+`send-growth-message`) — **Pro tier only.** Insert into Clients 1, 3, 6, 7
+(businesses actively growing their client base), but only once Pro is
+actually on the table for that conversation: *"Every week, Minerva looks
+at which suburbs you're under-booked in and drafts ad copy for you to
+approve — you're not paying an agency to figure that out, and nothing
+goes out without you clicking approve first."*
 
 **Weather-risk auto-reschedule** (`check-weather-risk` +
-`send-weather-reschedule-sms`) — insert into any outdoor-work business
-(roofing, gutter, painting, pest control outdoor treatments, pool — not
-currently one of the 8 profiles but relevant to 6 and 7): *"For outdoor
-jobs, Minerva checks the forecast and drafts a reschedule text before bad
-weather hits — you approve it, the client gets a heads-up instead of a
-no-show."*
+`send-weather-reschedule-sms`) — **Standard tier and up, trade sector
+only.** Insert into any outdoor-work business (roofing, gutter, painting,
+pest control outdoor treatments, pool — not currently one of the 8
+profiles but relevant to 6 and 7): *"For outdoor jobs, Minerva checks the
+forecast and drafts a reschedule text before bad weather hits — you
+approve it, the client gets a heads-up instead of a no-show."*
 
 **Fair-rotation / burnout guard** (`update-technician-workload`) — insert
 into Client 2 (HVAC, seasonal overtime risk) and Client 4 (cleaning, split
@@ -48,9 +56,10 @@ to lose your best tech."*
 no extra setup, no separate app."*
 
 **Client 8 (competitor-switcher) — extra line:** *"None of this — the
-dead-lead win-back, the weekly ad drafts, the weather reschedule — exists in
-ServiceM8 or Tradify at all. It's not a feature gap you're trading up from,
-it's a category they don't compete in."*
+dead-lead win-back and weather reschedule (Standard tier up), the weekly
+ad drafts (Pro) — exists in ServiceM8 or Tradify at all. It's not a
+feature gap you're trading up from, it's a category they don't compete
+in."*
 
 ---
 
@@ -110,36 +119,50 @@ something that exists out of the box."*
 "site manager" / "operations manager" + relevant trade, tender/registry
 sites where subcontractors are listed publicly.
 
-**Pricing:** Flat per-site, not per-seat — deliberately, because it's the
-direct answer to the single most-documented competitor complaint in the
-sector (see `INDUSTRIAL_COMPETITIVE_STRATEGY.md`, GoCanvas: dated,
-multi-reviewer complaints about contracts that only go up, never down, as
-crew headcount changes; Fieldwire: multiple reviewers citing cost jumping
-once past ~5 seats). Minerva's price doesn't move when crew size does.
+**Pricing — corrected 2026-10-10, read this before quoting anyone:** this
+section used to describe a flat per-site "Site Standard $199 / Site Pro
+$349" model, framed as a deliberate answer to competitors' per-seat
+pricing complaints. That pricing was never built — checked directly
+against the billing code (Onboarding.jsx, Stripe price IDs,
+create-checkout-session): industrial is billed exactly the same
+per-technician way as every other Minerva sector, because it shares the
+same `subscription_tier` column and the same three Stripe prices. There
+is no per-site rate, no "Site Standard," no "Site Pro," and no
+data-sharing-discount variant of either. Whoever wrote this section was
+describing a real, well-reasoned product idea — flat-rate-per-site is a
+genuinely good differentiator against GoCanvas/Fieldwire's per-seat
+complaints — but it describes something that doesn't exist in the live
+product, and quoting it on a real call would set an expectation the
+actual Stripe checkout then contradicts.
 
-- **Site Standard — $199/site/month flat, unlimited crew on that site.**
-  Site check-in log (with the Warden proximity flag), safety incident log,
-  asset register (manual/CSV engine-hours entry), consumables low-stock
-  alerts. This alone already beats Raken's Basic/Professional tiers on
-  safety tracking — Raken gates Incident Tracking behind its top-priced
-  Performance plan; it's in Minerva's base tier.
-- **Site Pro — $349/site/month flat.** Adds client verification packages
-  (the auto-assembled evidence snapshot) and priority support (founder's
-  mobile, same as every other Minerva tier).
-- **Data-sharing discount — $169/site (Standard) or $299/site (Pro)** for
-  clients who opt into the same anonymized data-sharing arrangement as the
-  Trade tiers' discount.
-- **Real-time telemetry — scoped as a project, not a subscription tier.**
-  Quoted once a client's actual hardware or telematics vendor feed is
-  confirmed and connected to the existing ingestion endpoint. Don't fold
-  this into a monthly number until it's a real, scoped integration.
+**What to actually quote today: $49/tech/month, Starter tier.** That one
+price already includes everything below — site check-in log (with the
+Warden proximity flag), safety incident log, asset register (manual/CSV
+engine-hours entry), consumables low-stock alerts, and client
+verification packages. Standard ($79/tech) exists as a tier name but adds
+nothing for this sector today (nothing in the industrial code path checks
+`subscription_tier` at all — see `SALES_CLAIMS_ACCURACY_NOTE.md`'s
+"On Pro tier and Industrial sector" correction) — don't offer it as an
+upgrade with no answer to "upgrade to get what, exactly." Pro isn't
+offered for Industrial at all.
 
-Sanity check against the market: a 10-person site on Raken Performance
-($37/user) or Fieldwire Pro ($39/user) runs $370–390/month for one site —
-Site Standard at $199 flat (or $169 with the data-sharing discount) is
-cheaper for any site with more than 5–6 people on it, and the price doesn't
-change as the crew does. Below that headcount, lead with the flat-vs-per-
-seat stability argument, not the raw number.
+**The flat-rate-per-site pitch angle is still worth having — as a real
+product decision, not sales copy for something unbuilt.** If a genuine
+flat-per-site price (or a per-site cap/ceiling on top of the existing
+per-technician billing) is something worth actually building, that's a
+product call, not a copy-editing one — flag it to decide, same as every
+other "should we build this" question this project has handled by
+asking rather than assuming. Until/unless that happens, sell on
+capability and the real per-technician price, not a pricing structure
+that sounds more competitive but isn't live.
+
+**The competitive comparison against Raken/Fieldwire below is removed,
+not rewritten** — it was built entirely on the fictional per-site numbers
+(e.g. "$199 flat beats $370-390 for a 10-person site"), and redoing that
+math honestly for $49/tech pricing needs current, verified competitor
+pricing this note can't source or confirm from the codebase — that's a
+research task for whoever owns this pitch material next, not something
+to guess at here.
 
 **Objection — "we already log this in a site diary":** *"A site diary tells
 you what someone remembered to write down after the fact. This is
@@ -151,12 +174,21 @@ contractors doing commercial or industrial work (switchboard installs,
 site-power hookups, plant maintenance contracts) sit on multiple active job
 sites with a mix of crew and equipment — the exact shape of Client 9's buyer.
 If a Client 3 conversation surfaces this kind of work, it's a legitimate
-in-account upsell to Site Standard/Pro, not a separate cold pitch: *"Since
-you're already running Minerva for dispatch — on the industrial or
-commercial jobs, do you ever get asked to prove who was on site and when?
-That's a separate add-on, same account."* Don't lead a Client 3 call with
-this — it's a follow-up question once the core electrical pitch has landed,
-not a reason to complicate the opener.
+in-account upsell question, not a separate cold pitch — but it's a bigger
+ask than this note used to make it sound. **This isn't an add-on toggle on
+the same account: industrial is a separate `sector` value set once at
+signup, with its own console (`IndustrialDispatcherView.jsx`) and its own
+data model entirely separate from the trade jobs/leads/invoices Client 3
+is already using.** A Client 3 business genuinely running both trade
+dispatch and industrial site work today needs a second Minerva signup for
+the industrial side, not a same-account upgrade — worth knowing before
+promising something that sounds like a checkbox and is actually a second
+account. Still ask the question if it surfaces: *"Since you're already
+running Minerva for dispatch — on the industrial or commercial jobs, do
+you ever get asked to prove who was on site and when? Minerva has a
+separate side built for exactly that, same pricing, different console —
+worth a quick look?"* Don't lead a Client 3 call with this — it's a
+follow-up question once the core electrical pitch has landed.
 
 ---
 
