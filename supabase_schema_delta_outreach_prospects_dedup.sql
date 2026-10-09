@@ -1,0 +1,60 @@
+-- ============================================================
+-- MINERVA — Delta: prevent duplicate outreach_prospects rows for the same
+-- email, 2026-10-10. Adds 1 unique index only. Run this entire block once
+-- in the Supabase SQL Editor, before relying on real outreach volume.
+--
+-- Why: outreach_prospects had no uniqueness constraint on contact_email at
+-- all — re-importing the same business from a second CSV, or re-running
+-- the AI-paste extraction over text that includes someone already in the
+-- table, silently created a second, fully independent row. Found during
+-- a full outreach-pipeline audit ahead of real campaign volume. This
+-- matters specifically because outreach-unsubscribe's self-service link
+-- is keyed to the one row id a given email was sent from — a real person
+-- clicking "unsubscribe" only silenced that one row; any duplicate
+-- sibling stayed eligible to be drafted/approved/sent to the same person
+-- again. The matching code fix (outreach-unsubscribe/index.ts, committed
+-- separately, see SECURITY_NOTES.md/BILLING_INTEGRITY_NOTES.md-adjacent
+-- history in that commit) makes a real unsubscribe sweep every row with
+-- that email, which closes the compliance gap regardless of how many
+-- duplicates exist — this index is the complementary fix stopping NEW
+-- duplicates from being created in the first place, which also just
+-- keeps the admin console's prospect list honest (one card per real
+-- business, not two).
+--
+-- Case-sensitive on purpose, not case-insensitive like the unsubscribe
+-- sweep: a case-insensitive expression index needs upsert's onConflict to
+-- target that exact expression, which Supabase's JS client doesn't cleanly
+-- support for a non-column conflict target — not worth the complexity for
+-- what's fundamentally a data-entry convenience, not a security boundary.
+-- Real-world email addresses are overwhelmingly treated case-insensitively
+-- anyway, and the unsubscribe sweep (the part that actually matters for
+-- compliance) stays case-insensitive regardless of this index's
+-- collation, so a "Bob@x.com" vs "bob@x.com" pair would still both get
+-- correctly unsubscribed together even though this index wouldn't have
+-- stopped the second one from being inserted.
+--
+-- Partial (`where contact_email is not null`) so prospects with no email
+-- on file (phone-only leads, or a row still being filled in) never
+-- collide with each other — standard SQL NULL semantics already make
+-- this the default for a plain unique index, but spelled out here since
+-- it's load-bearing for CSV rows that only have a phone number.
+--
+-- The two insert sites (AdminConsole.jsx's importCsv, and
+-- parse-prospect-text/index.ts) are updated in matching frontend/function
+-- commits to upsert with `ignoreDuplicates: true` against this constraint
+-- instead of a plain insert, so a batch that happens to include one
+-- already-known email skips just that row instead of failing the whole
+-- batch.
+-- ============================================================
+
+create unique index if not exists outreach_prospects_contact_email_key
+  on outreach_prospects (contact_email)
+  where contact_email is not null;
+
+-- Verify after running:
+--
+-- select indexname from pg_indexes
+-- where tablename = 'outreach_prospects'
+--   and indexname = 'outreach_prospects_contact_email_key';
+--
+-- Expect one row back.

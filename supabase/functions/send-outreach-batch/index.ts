@@ -81,6 +81,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { computeSentUpdates, isValidEmail } from "./logic.ts"
 import { isAdminCaller, getAuthenticatedCaller } from "../_shared/ownership.ts"
 import { escapeHtml } from "../_shared/html.ts"
+import { isOutreachEligible } from "../_shared/outreachEligibility.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -123,9 +124,18 @@ serve(async (req: Request) => {
     const { data: prospects, error } = await query
     if (error) throw error
 
+    // Belt-and-suspenders re-check (2026-10-10), on top of the
+    // already-existing defense-in-depth comment above this query — filters
+    // through the same, separately-tested predicate used by
+    // draft-outreach-batch/followup-outreach too, rather than each
+    // function's own inline .is('unsubscribed_at', null) being the only
+    // thing standing between a real "stop emailing me" and this send.
+    // See _shared/outreachEligibility.ts.
+    const eligible = (prospects || []).filter(isOutreachEligible)
+
     let sent = 0, skippedNoEmail = 0, skippedInvalidEmail = 0, failed = 0
 
-    for (const p of prospects || []) {
+    for (const p of eligible) {
       if (!p.contact_email) { skippedNoEmail++; continue }
       if (!isValidEmail(p.contact_email)) { skippedInvalidEmail++; continue }
 

@@ -19,6 +19,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { computeFollowupDecision, fallbackFollowup } from "./logic.ts"
 import { chunk } from "../_shared/batch.ts"
+import { isOutreachEligible } from "../_shared/outreachEligibility.ts"
 
 const PROSPECT_BATCH_SIZE = 20
 
@@ -64,6 +65,13 @@ serve(async (req: Request) => {
       .is('unsubscribed_at', null)
     if (error) throw error
 
+    // Belt-and-suspenders re-check (2026-10-10) — see
+    // _shared/outreachEligibility.ts's own header. The query above
+    // already excludes unsubscribed rows; this re-applies the same,
+    // separately-tested predicate to the fetched result so a future edit
+    // to this query can't silently drop that protection.
+    const eligible = (sentProspects || []).filter(isOutreachEligible)
+
     let drafted = 0, closedLost = 0
 
     // Bounded-concurrency batching (added 2026-10-08) — unlike most other
@@ -74,7 +82,7 @@ serve(async (req: Request) => {
     // grows as real outreach volume scales, with a real Claude API call
     // per prospect that needs a follow-up drafted. Same chunk()-of-20
     // shape as the rest of this round, see SCALE_READINESS_NOTES_ROUND2.md.
-    for (const batch of chunk(sentProspects || [], PROSPECT_BATCH_SIZE)) {
+    for (const batch of chunk(eligible, PROSPECT_BATCH_SIZE)) {
       const results = await Promise.all(batch.map(p => processOneProspectFollowup(supabase, anthropicKey, p)))
       for (const r of results) {
         if (r === 'closed_lost') closedLost++

@@ -56,6 +56,9 @@ export default function AdminConsole() {
   const [unsubEmail, setUnsubEmail] = useState('')
   const [unsubBusy, setUnsubBusy] = useState(false)
   const [unsubStatus, setUnsubStatus] = useState('')
+  const [replyEmail, setReplyEmail] = useState('')
+  const [replyBusy, setReplyBusy] = useState(false)
+  const [replyStatus, setReplyStatus] = useState('')
   // A single shared "busy id" here meant that starting a generate-roi-
   // proposal call for prospect B while prospect A's own call was still
   // in flight would overwrite roiBusyId to B — prospect A's button then
@@ -238,10 +241,18 @@ export default function AdminConsole() {
     }).filter(r => r.company_name)
     if (rows.length === 0) { setCsvStatus('No valid rows found — expected: company_name,contact_name,contact_email,trade_type,city'); return }
     setCsvBusy(true)
-    const { error } = await supabase.from('outreach_prospects').insert(rows)
+    // upsert + ignoreDuplicates (not a plain insert) against the
+    // contact_email unique index (supabase_schema_delta_outreach_prospects_dedup.sql,
+    // added 2026-10-10) — a batch that happens to include an email
+    // already in the table skips just that row instead of failing the
+    // whole paste. Rows with no contact_email never collide (partial
+    // index), so they always insert normally.
+    const { data, error } = await supabase.from('outreach_prospects').upsert(rows, { onConflict: 'contact_email', ignoreDuplicates: true }).select('id')
     setCsvBusy(false)
     if (error) { setCsvStatus(`Import failed: ${error.message}`); return }
-    setCsvStatus(`Imported ${rows.length} prospect(s).`)
+    const insertedCount = data?.length ?? 0
+    const skipped = rows.length - insertedCount
+    setCsvStatus(skipped > 0 ? `Imported ${insertedCount} prospect(s) — ${skipped} already on the list, skipped.` : `Imported ${insertedCount} prospect(s).`)
     setCsvText('')
     loadProspects()
   }
@@ -258,7 +269,9 @@ export default function AdminConsole() {
     setPasteBusy(false)
     if (error) { setPasteStatus(`Extraction failed: ${error.message}`); return }
     if (data?.error) { setPasteStatus(data.error); return }
-    setPasteStatus(data?.note || `Imported ${data?.inserted ?? 0} prospect(s).`)
+    setPasteStatus(data?.note || (data?.skipped > 0
+      ? `Imported ${data?.inserted ?? 0} prospect(s) — ${data.skipped} already on the list, skipped.`
+      : `Imported ${data?.inserted ?? 0} prospect(s).`))
     setPasteText('')
     loadProspects()
   }
@@ -369,7 +382,13 @@ export default function AdminConsole() {
   async function approveProspect(id) {
     if (savingId === id) return
     setSavingId(id)
-    const { error } = await supabase.from('outreach_prospects').update({ status: 'approved' }).eq('id', id)
+    // .eq('status', 'drafted') added 2026-10-10 — the UI already only
+    // renders this action for a drafted, non-dirty card, but that was
+    // never re-enforced at the write itself (outreach_prospects.status
+    // has no DB-level check constraint either). Matches the same
+    // defense-in-depth guard send-outreach-batch's own send already
+    // applies server-side rather than trusting the UI alone.
+    const { error } = await supabase.from('outreach_prospects').update({ status: 'approved' }).eq('id', id).eq('status', 'drafted')
     setSavingId(null)
     if (error) { alert(`Couldn't approve: ${error.message}`); return }
     loadProspects()
@@ -441,7 +460,11 @@ export default function AdminConsole() {
       : `Approve ${ids.length} drafted email(s) for sending? This does not send them yet — you still click "Send approved" separately.`
     if (!window.confirm(confirmMsg)) return
     setOutreachBusy(true)
-    const { error } = await supabase.from('outreach_prospects').update({ status: 'approved' }).in('id', ids)
+    // .eq('status', 'drafted') added 2026-10-10 — same server-side
+    // re-enforcement as approveProspect's single-card path above; `ids`
+    // is already filtered to drafted rows in JS, but that filter alone
+    // was never re-checked at the write itself.
+    const { error } = await supabase.from('outreach_prospects').update({ status: 'approved' }).in('id', ids).eq('status', 'drafted')
     setOutreachBusy(false)
     if (error) { alert(`Couldn't approve selected: ${error.message}`); return }
     clearSelection()
@@ -483,6 +506,44 @@ export default function AdminConsole() {
     if (!data || data.length === 0) { setUnsubStatus('No prospect found with that email.'); return }
     setUnsubStatus(`Marked unsubscribed: ${data.map(d => d.company_name).join(', ')}`)
     setUnsubEmail('')
+    loadProspects()
+  }
+
+  // Added 2026-10-10 — closes a real gap found in a full outreach-pipeline
+  // audit: outreach_prospects.replied_at is read by followup-outreach
+  // (.is('replied_at', null), so a reply correctly stops further
+  // follow-ups) and status='replied'/'closed_won' are both displayed in
+  // the summary counter below, but until now nothing anywhere ever WROTE
+  // either one — there's no inbound-email-reply-parsing webhook in this
+  // codebase, so a real reply or a real conversion had no way to be
+  // recorded short of editing the database directly. Same manual,
+  // operator-confirms-what-they-personally-saw shape as "Mark
+  // unsubscribed" above — realistic and sufficient at this stage (no
+  // paying customers yet, so real volume is low enough that an operator
+  // will actually see each reply).
+  //
+  // Setting status (not just replied_at) also matters functionally, not
+  // just for the counter: followup-outreach's own query additionally
+  // filters status='sent', so moving status off 'sent' independently
+  // stops the follow-up cycle too — belt-and-suspenders with the
+  // replied_at filter, same reasoning as _shared/outreachEligibility.ts's
+  // own defense-in-depth check elsewhere in this pipeline.
+  async function markReplied(won) {
+    const email = replyEmail.trim().toLowerCase()
+    if (!email) return
+    setReplyBusy(true)
+    setReplyStatus('')
+    const nowIso = new Date().toISOString()
+    const { data, error } = await supabase
+      .from('outreach_prospects')
+      .update({ replied_at: nowIso, status: won ? 'closed_won' : 'replied' })
+      .ilike('contact_email', email)
+      .select('id, company_name')
+    setReplyBusy(false)
+    if (error) { setReplyStatus(`Error: ${error.message}`); return }
+    if (!data || data.length === 0) { setReplyStatus('No prospect found with that email.'); return }
+    setReplyStatus(`Marked ${won ? 'won' : 'replied'}: ${data.map(d => d.company_name).join(', ')}`)
+    setReplyEmail('')
     loadProspects()
   }
 
@@ -793,6 +854,28 @@ export default function AdminConsole() {
                   {unsubBusy ? 'Working...' : 'Mark unsubscribed'}
                 </button>
                 {unsubStatus && <span style={{ color: '#8fd0e8', fontSize: 12 }}>{unsubStatus}</span>}
+              </div>
+            </div>
+
+            <div style={{ ...cardStyle, maxWidth: 'none', textAlign: 'left', marginTop: 14, padding: '12px 16px' }}>
+              <p style={{ color: '#fff', fontWeight: 'bold', margin: '0 0 6px', fontSize: 13 }}>Record a reply or a win</p>
+              <p style={{ color: '#888', fontSize: 12, margin: '0 0 10px' }}>
+                Same gap as above — no inbound-reply parsing exists yet, so a real reply or a real signup from this
+                campaign has to be recorded by hand too, or it just sits as "sent" forever and keeps getting follow-ups.
+              </p>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                <input
+                  aria-label="Prospect email that replied or converted"
+                  type="email" placeholder="prospect@company.com" value={replyEmail} onChange={e => setReplyEmail(e.target.value)}
+                  style={{ ...inputStyle, width: 240 }}
+                />
+                <button onClick={() => markReplied(false)} disabled={replyBusy || !replyEmail.trim()} style={{ background: '#2D5FA8', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', cursor: replyBusy ? 'default' : 'pointer', fontSize: 13, opacity: replyBusy ? 0.6 : 1 }}>
+                  {replyBusy ? 'Working...' : 'Mark replied'}
+                </button>
+                <button onClick={() => markReplied(true)} disabled={replyBusy || !replyEmail.trim()} style={{ background: '#1D9E75', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 16px', cursor: replyBusy ? 'default' : 'pointer', fontSize: 13, opacity: replyBusy ? 0.6 : 1 }}>
+                  {replyBusy ? 'Working...' : 'Mark won (signed up)'}
+                </button>
+                {replyStatus && <span style={{ color: '#8fd0e8', fontSize: 12 }}>{replyStatus}</span>}
               </div>
             </div>
           </div>

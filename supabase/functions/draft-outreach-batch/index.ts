@@ -42,6 +42,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { fallbackTemplate, appendUnsubscribeIfMissing } from "./logic.ts"
 import { isAdminCaller, getAuthenticatedCaller } from "../_shared/ownership.ts"
+import { isOutreachEligible } from "../_shared/outreachEligibility.ts"
 
 // Only real, shipped, verified capabilities — deliberately not the full
 // aspirational pitch deck. Keeps AI-drafted claims honest by construction:
@@ -137,9 +138,16 @@ serve(async (req: Request) => {
     const { data: prospects, error } = await query
     if (error) throw error
 
+    // Belt-and-suspenders re-check (2026-10-10) — the query above already
+    // excludes unsubscribed rows; this filters the fetched result through
+    // the same, separately-tested predicate again, so a future edit that
+    // accidentally drops the query-level filter still can't draft an
+    // email to someone who opted out. See _shared/outreachEligibility.ts.
+    const eligible = (prospects || []).filter(isOutreachEligible)
+
     let drafted = 0, aiDrafted = 0, fallbackUsed = 0
 
-    for (const p of prospects || []) {
+    for (const p of eligible) {
       let subject: string
       let bodyText: string
       let usedAi = false

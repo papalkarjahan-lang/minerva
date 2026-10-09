@@ -31,6 +31,21 @@
 // client's link-scanning security feature, just re-sets the same
 // unsubscribed_at (harmless) rather than erroring.
 //
+// Email-wide sweep (added 2026-10-10): outreach_prospects has no unique
+// constraint on contact_email (see supabase_schema_delta_outreach_prospects_dedup.sql
+// for the fix closing off NEW duplicates at insert time) — a prospect
+// re-imported from a second CSV or AI-paste source ends up as a second,
+// independent row with its own id and its own unsubscribed_at. Since this
+// link is keyed to the one row id embedded in the specific email that was
+// sent, a real person clicking it was previously only silencing *that*
+// row — any duplicate sibling row stayed fully eligible to be drafted,
+// approved, and sent to the same person again, which the Spam Act 2003
+// opt-out requirement this function exists for doesn't really tolerate.
+// AdminConsole.jsx's own manual "Mark unsubscribed" tool already does the
+// right thing here (an ILIKE match across every row with that email, no
+// limit) — this makes the self-service link match that already-correct
+// behavior instead of being the weaker of the two paths.
+//
 // Deploy with: supabase functions deploy outreach-unsubscribe --no-verify-jwt
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
@@ -54,11 +69,12 @@ serve(async (req: Request) => {
 
   if (!id) return page("This unsubscribe link is missing some information — reply to any of our emails and we'll take care of it by hand.")
 
+  const nowIso = new Date().toISOString()
   const { data: prospect, error } = await supabase
     .from('outreach_prospects')
-    .update({ unsubscribed_at: new Date().toISOString() })
+    .update({ unsubscribed_at: nowIso })
     .eq('id', id)
-    .select('id')
+    .select('id, contact_email')
     .maybeSingle()
 
   if (error) {
@@ -72,6 +88,19 @@ serve(async (req: Request) => {
     // so no error_msg here, but still worth an ok run record for visibility.
     supabase.rpc('record_agent_run', { fn_name: 'outreach-unsubscribe', status: 'ok' }).then(() => {}, () => {})
     return page("You're not on our list, so there's nothing to unsubscribe from.")
+  }
+
+  // Sweep any duplicate rows for the same email too — see header comment.
+  // Best-effort: a failure here doesn't change the response to the real
+  // person clicking the link, since their own row (above) is already
+  // correctly unsubscribed either way.
+  if (prospect.contact_email) {
+    const { error: sweepError } = await supabase
+      .from('outreach_prospects')
+      .update({ unsubscribed_at: nowIso })
+      .ilike('contact_email', prospect.contact_email)
+      .is('unsubscribed_at', null)
+    if (sweepError) console.error('outreach-unsubscribe: sibling sweep failed:', sweepError.message)
   }
 
   supabase.rpc('record_agent_run', { fn_name: 'outreach-unsubscribe', status: 'ok' }).then(() => {}, () => {})

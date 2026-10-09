@@ -90,14 +90,23 @@ serve(async (req: Request) => {
       })
     }
 
-    const { data, error } = await supabase.from('outreach_prospects').insert(
-      rows.map(r => ({ ...r, source: 'pasted_text' }))
+    // upsert + ignoreDuplicates (not a plain insert) against the
+    // contact_email unique index (supabase_schema_delta_outreach_prospects_dedup.sql,
+    // added 2026-10-10) — text pasted from the same source twice, or
+    // overlapping with an existing CSV import, skips the already-known
+    // rows instead of creating duplicates (or failing the whole batch,
+    // which a plain insert would have done on the first collision).
+    const { data, error } = await supabase.from('outreach_prospects').upsert(
+      rows.map(r => ({ ...r, source: 'pasted_text' })),
+      { onConflict: 'contact_email', ignoreDuplicates: true }
     ).select('id')
     if (error) throw error
 
     supabase.rpc('record_agent_run', { fn_name: 'parse-prospect-text', status: 'ok' }).then(() => {}, () => {})
 
-    return new Response(JSON.stringify({ success: true, inserted: data?.length || 0 }), {
+    const insertedCount = data?.length || 0
+    const skipped = rows.length - insertedCount
+    return new Response(JSON.stringify({ success: true, inserted: insertedCount, skipped }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     })

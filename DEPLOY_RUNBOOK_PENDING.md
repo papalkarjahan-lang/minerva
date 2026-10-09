@@ -12,7 +12,7 @@ run, no edge function redeployed.
 interactive terminal, once), work through the 4 phases below **in order**.
 Phase order matters — some SQL deltas explicitly depend on an earlier phase
 (each file's own header says so; this list just saves you from having to
-open all 24 to figure out the order yourself). Re-generate this list instead
+open all 25 to figure out the order yourself). Re-generate this list instead
 of trusting it if much more time passes and more commits stack up — it's a
 snapshot, not a live view.
 
@@ -86,6 +86,16 @@ Paste each into the Supabase SQL Editor. None of these depend on each other.
   list) — ships with the next normal push/Vercel deploy, no separate
   action needed for that half. Run this and the billing-identity trigger
   before any real customer signs up, not after.
+- `supabase_schema_delta_outreach_prospects_dedup.sql` — **new
+  2026-10-10**: 1 unique index on `outreach_prospects.contact_email`, no
+  new column. See its own file and `OUTREACH_INTEGRITY_NOTES.md`'s
+  matching entry — stops a re-imported prospect from creating a
+  duplicate row that a real unsubscribe click wouldn't cover. No
+  ordering dependency on any function redeploy, but `draft-outreach-batch`
+  and `parse-prospect-text` (both already in Phase 3's list) now upsert
+  against this constraint instead of plain-inserting, so deploy them
+  together rather than leaving a gap where the constraint exists but the
+  functions still assume plain insert semantics.
 - `supabase_schema_delta_signup_recovery.sql` — adds
   `businesses.signup_recovery_sent_at`
 - `supabase_schema_delta_new_subscriber_checkin.sql` — adds
