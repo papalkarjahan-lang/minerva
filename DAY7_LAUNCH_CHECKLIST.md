@@ -149,6 +149,14 @@ Stop and fix before continuing if any box fails — don't skip ahead.
 - [ ] Client-history portal: complete a job, then open the client-history
       link generated from the tracking view's job-complete screen →
       `/client/:token` shows this client's past jobs and invoices
+- [ ] **Cross-tenant data isolation (important — this is what this
+      session's biggest security fix protects, worth running once with
+      real test data before any real customer exists)**: you now have two
+      real business ids (this one and section 1's). In the Supabase SQL
+      Editor, run the authenticated cross-tenant check at the bottom of
+      `supabase_schema_delta_businesses_select_scoping.sql` (grab each
+      business's `owner_user_id` from Table Editor first) → confirm it
+      returns 0 rows, not the other business's data
 - [ ] Cancel/note this second test subscription the same way as step 1
 
 ## 9. Standard tier (added 2026-10-09 — Standard's 6 automations are new;

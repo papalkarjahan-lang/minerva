@@ -148,3 +148,18 @@ grant select (id, name, trade_type, city, sector, abn) on businesses to anon;
 -- silently broken without the technician branch), the admin console's
 -- business list, and a public invoice link (/invoice/:id) all still
 -- load correctly.
+--
+-- Finally, the actual bug this delta fixes — a real AUTHENTICATED owner
+-- reading a business they don't own — needs its own check, since neither
+-- curl above (anon) nor the login spot-checks above exercise it. Run in
+-- the Supabase SQL Editor with two real business ids from your own test
+-- data (DAY7_LAUNCH_CHECKLIST.md's sections 1 and 8 already create two):
+--
+-- set role authenticated;
+-- set request.jwt.claims = '{"sub": "<business 1's owner_user_id>", "role": "authenticated"}';
+-- select id, name, contact_email, subscription_tier from businesses where id = '<business 2's id>';
+-- reset role;
+--
+-- Expect: 0 rows (not an error — RLS silently filters, same as every
+-- other row-level policy). Before this delta, this same query returned
+-- business 2's full row.
