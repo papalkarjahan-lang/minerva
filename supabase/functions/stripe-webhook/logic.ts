@@ -80,11 +80,20 @@ export function shouldApplyCheckoutCompletion(
 
 export interface SubscriptionLike {
   id?: string | null
+  cancellation_details?: { reason?: string | null } | null
 }
 
 export interface SubscriptionCancelledPlan {
   subscriptionId: string
   update: { subscription_tier: 'cancelled'; max_addons: Record<string, never>; max_addon_stripe_items: Record<string, never> }
+  // Whether this looks like an involuntary cancellation (Stripe's dunning
+  // cycle gave up after repeated payment failures / a dispute) vs a
+  // deliberate one (the business cancelled themselves through the
+  // Customer Portal, which already confirms it on Stripe's own
+  // cancellation screen). Different situations need different wording —
+  // a business that just clicked "cancel" doesn't need to be told their
+  // card was declined.
+  involuntary: boolean
 }
 
 export interface SubscriptionUpdatedLike {
@@ -207,7 +216,13 @@ export function planSubscriptionUpdated(
 // so cancellation shouldn't cut one short either way.
 export function planSubscriptionDeleted(subscription: SubscriptionLike): SubscriptionCancelledPlan | null {
   if (!subscription.id) return null
-  return { subscriptionId: subscription.id, update: { subscription_tier: 'cancelled', max_addons: {}, max_addon_stripe_items: {} } }
+  const reason = subscription.cancellation_details?.reason
+  const involuntary = reason === 'payment_failed' || reason === 'payment_disputed'
+  return {
+    subscriptionId: subscription.id,
+    update: { subscription_tier: 'cancelled', max_addons: {}, max_addon_stripe_items: {} },
+    involuntary,
+  }
 }
 
 export interface InvoiceLike {

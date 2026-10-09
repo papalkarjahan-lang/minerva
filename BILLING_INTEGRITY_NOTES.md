@@ -603,3 +603,40 @@ comment. 726/726 tests pass (no new pure logic extracted — this is a
 direct `fetch` call alongside the existing, equally-untested operator
 alert it mirrors). Not yet deployed — `stripe-webhook` is already in
 Phase 3's redeploy list.
+
+## 2026-10-09 — the most severe case in this same chain: an actual cancellation notified nobody at all, business or operator
+
+Followed the same question one step further to its worst case:
+`customer.subscription.deleted` — the final outcome when Stripe's
+dunning cycle gives up entirely — was a pure database write
+(`subscription_tier: 'cancelled'`) with **zero notification to anyone**.
+The existing comment said this was "so the dispatcher app can show a
+cancelled state," which only reaches someone who happens to log back in
+after their service has already stopped. Worse than the payment-failed
+gap above: this is the actual, often-irreversible endpoint, not a
+still-retrying warning, and unlike that case, not even the *operator*
+was told — a platform owner could lose a subscriber and never find out
+except by noticing in the Stripe dashboard.
+
+Fixed by extending `planSubscriptionDeleted` (`logic.ts`) to read
+Stripe's own `cancellation_details.reason` and classify the event as
+`involuntary` (payment failed/disputed — Stripe gave up) or not (the
+business cancelled themselves via the Customer Portal, which already
+showed them Stripe's own confirmation screen). Wording branches on
+this: an involuntary cancellation tells the business what happened and
+how to come back; a voluntary one is just a plain confirmation, since
+they already know. Notifies three ways: business email, business Slack
+(if configured — added here as the **first** use of Slack alongside
+cancellation, and extended the payment-failed email above to also post
+Slack, so these three closely-related billing alerts don't look like
+one of them was built to a lower standard than its neighbors), and
+operator email, consistent with every other operator alert in this
+file. Only fires when the update actually wins the existing out-of-order
+guard — a stale/superseded event correctly stays silent, since nothing
+changed for anyone to be told about.
+
+4 new tests on `planSubscriptionDeleted`'s involuntary classification
+(cancellation_requested / payment_failed / payment_disputed / no reason
+given). 730/730 tests pass. Verified `index.ts` itself parses cleanly
+with `npx esbuild` (not just that the `logic.ts` the tests import does —
+see minerva_setup_progress.md's technique note). Not yet deployed.

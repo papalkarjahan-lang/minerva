@@ -79,11 +79,31 @@ describe('planSubscriptionDeleted', () => {
     expect(planSubscriptionDeleted({})).toBeNull()
   })
 
-  it('marks the matching subscription cancelled and clears paid add-on state', () => {
+  it('marks the matching subscription cancelled and clears paid add-on state, not involuntary when no cancellation reason is given', () => {
     expect(planSubscriptionDeleted({ id: 'sub_1' })).toEqual({
       subscriptionId: 'sub_1',
       update: { subscription_tier: 'cancelled', max_addons: {}, max_addon_stripe_items: {} },
+      involuntary: false,
     })
+  })
+
+  it('is not involuntary for a deliberate self-serve cancellation', () => {
+    const result = planSubscriptionDeleted({ id: 'sub_1', cancellation_details: { reason: 'cancellation_requested' } })
+    expect(result?.involuntary).toBe(false)
+  })
+
+  it('is involuntary when Stripe cancelled after exhausting payment retries', () => {
+    const result = planSubscriptionDeleted({ id: 'sub_1', cancellation_details: { reason: 'payment_failed' } })
+    expect(result?.involuntary).toBe(true)
+  })
+
+  it('is involuntary for a payment dispute too', () => {
+    const result = planSubscriptionDeleted({ id: 'sub_1', cancellation_details: { reason: 'payment_disputed' } })
+    expect(result?.involuntary).toBe(true)
+  })
+
+  it('is not involuntary when cancellation_details itself is null/missing', () => {
+    expect(planSubscriptionDeleted({ id: 'sub_1', cancellation_details: null }).involuntary).toBe(false)
   })
 })
 

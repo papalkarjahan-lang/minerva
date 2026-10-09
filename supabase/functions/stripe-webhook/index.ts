@@ -155,6 +155,7 @@ import {
 } from "./logic.ts"
 import { escapeHtml } from "../_shared/html.ts"
 import { isTierAvailableForSector } from "../_shared/tierEligibility.ts"
+import { notifySlack } from "../_shared/notifySlack.ts"
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, {
   apiVersion: '2023-10-16',
@@ -284,12 +285,62 @@ serve(async (req: Request) => {
         const plan = planSubscriptionDeleted(event.data.object as Stripe.Subscription)
         if (plan) {
           const eventCreatedIso = stripeEventCreatedToIso(event.created)
-          const { error } = await supabaseAdmin
+          const { data: biz, error } = await supabaseAdmin
             .from('businesses')
             .update({ ...plan.update, subscription_tier_synced_at: eventCreatedIso })
             .eq('stripe_sub_id', plan.subscriptionId)
             .or(`subscription_tier_synced_at.is.null,subscription_tier_synced_at.lt.${eventCreatedIso}`)
+            .select('id, name, contact_email')
+            .maybeSingle()
           if (error) throw new Error(`Failed to mark subscription cancelled: ${error.message}`)
+
+          // Notify (added 2026-10-09) — until now this was a pure database
+          // write with no notification to anyone, business or operator:
+          // "so the dispatcher app can show a cancelled state" only ever
+          // reaches someone who happens to log back in. `biz` is only set
+          // when THIS update actually won the ordering guard above (a
+          // stale/out-of-order event correctly gets 0 rows and stays
+          // silent — nothing to tell anyone about an event that didn't
+          // actually apply). Wording branches on `plan.involuntary`: a
+          // business that just clicked "cancel" in the Customer Portal
+          // already saw Stripe's own confirmation and doesn't need to be
+          // told their card was declined, which didn't happen.
+          if (biz) {
+            if (biz.contact_email) {
+              const bizName = biz.name || 'your account'
+              const subject = plan.involuntary ? `Your Minerva subscription has been cancelled` : `Minerva subscription cancelled — confirmed`
+              const html = plan.involuntary
+                ? `<p>Hi,</p><p>Your Minerva subscription for <strong>${escapeHtml(bizName)}</strong> has been cancelled after repeated payment attempts failed. Dispatch and tracking for your business have stopped.</p><p>If this wasn't intentional, you can start a new subscription any time from the app at the same sign-up link you used originally.</p><p>— The Minerva team</p>`
+                : `<p>Hi,</p><p>This confirms your Minerva subscription for <strong>${escapeHtml(bizName)}</strong> has been cancelled, as requested. Dispatch and tracking for your business have stopped.</p><p>You're welcome back any time — just sign up again from the app.</p><p>— The Minerva team</p>`
+              fetch(`${Deno.env.get('SUPABASE_URL')!}/functions/v1/send-email`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!}` },
+                body: JSON.stringify({ to: biz.contact_email, subject, html }),
+              }).catch(err => console.error('stripe-webhook: cancellation business email failed', err))
+            }
+
+            await notifySlack(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, biz.id,
+              plan.involuntary
+                ? `🚫 Subscription cancelled after repeated failed payments — *${biz.name || 'this business'}* is no longer active.`
+                : `🚫 Subscription cancelled (self-serve) — *${biz.name || 'this business'}* is no longer active.`)
+
+            // Operator alert too — a cancelled subscriber is exactly the
+            // kind of thing the person running Minerva would want to know
+            // about for their own retention/outreach tracking, same
+            // reasoning as every other operator alert in this file.
+            const operatorEmail = Deno.env.get('OPERATOR_EMAIL')
+            if (shouldAlertOperator(operatorEmail)) {
+              fetch(`${Deno.env.get('SUPABASE_URL')!}/functions/v1/send-email`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!}` },
+                body: JSON.stringify({
+                  to: operatorEmail,
+                  subject: `[Minerva] Subscription cancelled — ${biz.name || plan.subscriptionId}`,
+                  html: `<p><strong>${escapeHtml(biz.name || 'A business')}</strong>'s subscription was cancelled${plan.involuntary ? ' after repeated failed payments' : ' (self-serve, via the Customer Portal)'}.</p>`,
+                }),
+              }).catch(err => console.error('stripe-webhook: cancellation operator alert failed', err))
+            }
+          }
         }
         break
       }
@@ -427,6 +478,16 @@ serve(async (req: Request) => {
                 html: `<p>Hi,</p><p>Your most recent payment for <strong>${escapeHtml(biz.name || 'your account')}</strong> didn't go through — your bank or card issuer declined the charge. Stripe will automatically retry over the next few days, but if it keeps failing your account will eventually be cancelled.</p><p>Update your card from Settings → Billing in the app as soon as you can to avoid any interruption.</p><p>— The Minerva team</p>`,
               }),
             }).catch(err => console.error('stripe-webhook: business payment-failed email failed', err))
+          }
+
+          // Slack too, same channel as every other business-facing
+          // time-sensitive billing alert in this codebase (weather risk,
+          // retention, trial-ending, cancellation below) — added alongside
+          // the cancellation notice for consistency, rather than leaving
+          // this one email-only while its neighbors use both channels.
+          if (biz?.id) {
+            await notifySlack(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, biz.id,
+              `💳 Payment failed for *${biz.name || 'this business'}* — Stripe will retry automatically. We've emailed the account owner. If it keeps failing, the subscription will eventually be cancelled.`)
           }
         }
         break

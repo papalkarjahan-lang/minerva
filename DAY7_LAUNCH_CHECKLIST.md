@@ -41,11 +41,21 @@ Stop and fix before continuing if any box fails — don't skip ahead.
       don't have it installed): `stripe trigger invoice.payment_failed`
       against this webhook endpoint → confirm both the operator inbox AND
       this test business's `contact_email` receive a "payment didn't go
-      through" email (not just one or the other), and the in-app billing
+      through" email (not just one or the other), this business's Slack
+      (if you set one up) gets a matching alert, and the in-app billing
       banner appears on next dispatcher login. Hard to trigger with a
       real card in live mode on purpose, so the CLI trigger is the
       practical way to confirm this path before a real customer ever
       hits it for real.
+- [ ] Cancellation path (same CLI prerequisite): `stripe trigger
+      customer.subscription.deleted` → confirm the business email,
+      business Slack, AND operator email all arrive, worded as a
+      self-serve confirmation (no mention of a declined card) — Stripe's
+      CLI trigger fires with no `cancellation_details.reason`, which this
+      code correctly treats as voluntary. There's no practical way to
+      simulate the *involuntary* wording without exhausting a real
+      dunning cycle, so take that branch on trust from the code/tests
+      rather than trying to force it live.
 
 ## 2. Dispatcher + technician live tracking
 
