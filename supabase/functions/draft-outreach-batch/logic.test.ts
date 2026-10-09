@@ -22,6 +22,26 @@ describe('fallbackTemplate', () => {
     const { body } = fallbackTemplate({ contact_name: 'Jane', trade_type: 'plumbing', company_name: 'Acme' })
     expect(body).toContain('this is the plain-template fallback')
   })
+
+  it('never mentions Xero sync or Pro-tier pricing to an industrial prospect — both are trade-only', () => {
+    const { body } = fallbackTemplate({ contact_name: 'Sam', trade_type: 'industrial', company_name: 'BigSite Co' })
+    expect(body).not.toContain('Xero')
+    expect(body).not.toContain('$119')
+    expect(body).toContain('$49-$79/tech/month')
+  })
+
+  it('pitches industrial-real capabilities (sites, safety, assets) instead of trade-only ones', () => {
+    const { body } = fallbackTemplate({ contact_name: 'Sam', trade_type: 'industrial', company_name: 'BigSite Co' })
+    expect(body).toContain('across sites')
+    expect(body).toContain('safety incidents')
+    expect(body).toContain('asset register')
+  })
+
+  it('still pitches the full $49-$119 range and Xero sync for a non-industrial trade prospect', () => {
+    const { body } = fallbackTemplate({ contact_name: 'Jane', trade_type: 'plumbing', company_name: 'Acme' })
+    expect(body).toContain('Xero')
+    expect(body).toContain('$49-$119/tech/month')
+  })
 })
 
 describe('appendUnsubscribeIfMissing', () => {

@@ -46,16 +46,42 @@ import { isAdminCaller, getAuthenticatedCaller } from "../_shared/ownership.ts"
 // Only real, shipped, verified capabilities — deliberately not the full
 // aspirational pitch deck. Keeps AI-drafted claims honest by construction:
 // it literally cannot mention what isn't in this list.
-const REAL_FEATURES = `
+//
+// Split by sector (2026-10-10) — this used to be one flat list fed to
+// every prospect regardless of trade_type, and it was wrong on both
+// sides: it quoted the $119/tech/mo Pro-tier ceiling and Xero sync (a
+// trade-only Minerva Max add-on) to industrial prospects, who can't
+// reach either (Pro isn't offered for Industrial, and
+// isAddonAvailableForSector blocks xero_sync there — see
+// BILLING_INTEGRITY_NOTES.md's 2026-10-09 entries), and it also
+// conflated two genuinely different things under one Industrial-labeled
+// bullet: trade-Pro's "compliance checklists"/"technician credential
+// tracking" (checklist_templates/technician_credentials, never reachable
+// by an industrial business) with industrial's own real, separate
+// "safety incident logging" (safety_incidents table). Same "sold vs.
+// delivered" bug class found repeatedly elsewhere in this project, this
+// time in outreach copy instead of the product itself.
+const REAL_FEATURES_TRADE = `
 - Live GPS tracking of technicians on a map, shareable tracking link sent to the customer
-- Automated SMS: job assignment, ETA, completion, review request, invoice reminder
+- Automated SMS: job assignment and ETA to the client
 - A missed-call auto-text-back (requires pointing a phone number at Minerva)
 - An embeddable website chat widget that qualifies leads and texts the team
-- Route optimization and wasted-trip detection to cut fuel/drive time
-- One-click Xero invoice sync (their own Xero org)
-- Safety/compliance incident logging and technician credential-expiry tracking (Industrial tier)
-- $49-$119 AUD per technician per month, 7-day free trial, ~20 minute setup, no app install
+- Starter $49/tech/month for live dispatch; Standard $79 adds automated lead follow-up, client check-ins and invoice reminders; Pro $119 adds on-site invoicing, asset tracking, compliance checklists and Xero sync
+- 7-day free trial, ~20 minute setup, no app install
 `.trim()
+
+const REAL_FEATURES_INDUSTRIAL = `
+- Live tracking of crews and assets across sites, with arrival/departure check-ins for multi-day jobs
+- Safety incident logging, plus an asset register with maintenance alerts
+- Client verification packages that assemble evidence for compliance/audit handoff
+- An embeddable website chat widget that qualifies leads and texts the team
+- Starter $49/tech/month, Standard $79/tech/month (Pro isn't offered for Industrial — its invoicing/asset/compliance-checklist features are trade-console-only)
+- 7-day free trial, ~20 minute setup, no app install
+`.trim()
+
+function realFeaturesFor(tradeType: string | null | undefined): string {
+  return tradeType === 'industrial' ? REAL_FEATURES_INDUSTRIAL : REAL_FEATURES_TRADE
+}
 
 // Spam Act 2003 (Cth) requires every commercial electronic message to carry
 // a functional unsubscribe facility and accurate sender ID.
