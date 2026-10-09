@@ -1,11 +1,13 @@
 # Minerva — Deploy Runbook (everything queued behind the git push blocker)
 
-Generated 2026-10-08, last refreshed 2026-10-09 against a direct
+Generated 2026-10-08, last refreshed 2026-10-10 against a direct
 `git diff origin/main..HEAD` — this is the complete, accurate picture as of
-this file's own commit, not a list reconstructed from memory. 97 local
-commits are ahead of `origin/main`, none of them live yet: not pushed to
-GitHub (so Vercel hasn't built any of the frontend changes), no SQL delta
-run, no edge function redeployed.
+this file's own commit, not a list reconstructed from memory. 100+ local
+commits are ahead of `origin/main` as of this refresh (check `git log
+--oneline origin/main..HEAD | wc -l` for the exact current count — it
+keeps moving every session, don't trust a hardcoded number here), none
+of them live yet: not pushed to GitHub (so Vercel hasn't built any of
+the frontend changes), no SQL delta run, no edge function redeployed.
 
 **How to use this**: once `git push origin main` actually works (see
 `minerva_github_push_credential` memory for the fix — this needs you, in an
@@ -129,14 +131,13 @@ Phase 1 before any of these rather than tracking per-family order.
 - `supabase_schema_delta_trial_ending_reminder_registration.sql` — **new
   2026-10-09**
 
-## Phase 3 — Edge functions: redeploy 46
+## Phase 3 — Edge functions: redeploy 49
 
-**Re-generated 2026-10-09** from `git diff origin/main..HEAD --name-only`
-— the previous "27" count here was a 2026-10-08 snapshot, already stale
-by the next day's own work (the Standard-tier automation gate across 6
-functions, the Minerva Max sector-gating fix, and notify-trial-ending all
-landed after that snapshot was written). Don't trust either number if
-you're reading this much later — regenerate the same way:
+**Re-generated 2026-10-10** from `git diff origin/main..HEAD --name-only`
+— this list has already gone stale twice in two days (27 → 46 → 49), each
+time from real same-day work landing after the previous snapshot was
+written. Don't trust this number either if you're reading it much later —
+regenerate the same way:
 `git diff origin/main..HEAD --name-only -- supabase/functions/ | grep -E
 "/(index|logic)\.ts$" | sed -E 's#supabase/functions/([^/]+)/.*#\1#' |
 sort -u`, plus any function that ONLY imports a changed `_shared/` file
@@ -204,6 +205,7 @@ notify-rebooking-request
 notify-trial-ending
 nurture-stale-leads
 optimize-industrial-routes
+outreach-unsubscribe
 parse-prospect-text
 predict-asset-maintenance
 reconcile-billing
@@ -211,6 +213,7 @@ reconcile-technician-state
 recover-abandoned-signup
 respond-to-quote
 retention-checkin
+send-outreach-batch
 sequence-handoffs
 stripe-webhook
 technician-login
@@ -259,7 +262,7 @@ thing."
 - `select name, cron, command from cron.job order by jobid;` in the SQL
   Editor — confirms all 3 new cron jobs registered with the schedule each
   file's own header documents.
-- `supabase functions list` — confirms all 46 functions show `ACTIVE`,
+- `supabase functions list` — confirms all 49 functions show `ACTIVE`,
   and spot-check a couple of version numbers moved (old version → new).
 
 ## What this file does NOT cover
