@@ -669,3 +669,106 @@ business itself and, where relevant, the operator — not just an
 in-app banner nobody's guaranteed to see. 730/730 tests pass (no new
 pure logic — conditional UPDATE + inline fetch, same shape as its
 siblings). Not yet deployed.
+
+## 2026-10-10 — an industrial subscription couldn't actually be worked, by anyone, ever
+
+The most severe sold-vs-delivered instance found in this project so far
+— not wrong-sector (lesson 10's usual shape, Pro/Standard/8 Minerva Max
+add-ons all marketed to the wrong sector but at least reachable by the
+*right* one), but entirely unbuilt for the sector it's FOR. An
+industrial business signs up, adds technicians in Onboarding.jsx exactly
+like a trade business does, and Minerva texts each one a real
+`/tech?pin=...` setup link today — that part has worked since the
+industrial sector shipped (2026-09-01). But `TechnicianView.jsx` — the
+only technician-facing view in the whole app, used regardless of sector
+— discovers "what work is assigned to me" exclusively through
+`technicians.current_job_id -> jobs`, a trade-only mechanism with no
+industrial equivalent of any kind: no column, no join table, nothing.
+Confirmed by a full repo grep (both the live app and a dedicated
+read-only investigation before any code was touched): zero code paths
+anywhere ever set such a thing for industrial, and zero code paths
+anywhere ever INSERT into `site_checkins` either — every single
+reference to that table across `src/` and `supabase/functions/` was a
+read. `Features.jsx`/`Enterprise.jsx` market "Multi-day site
+tracking... arrival/departure check-ins" as a real, working capability
+— it could not produce one row, for any business, ever, since the
+industrial sector launched. Three cron agents ("The Warden" —
+detect-safety-hazards, "The Pacer" — sequence-handoffs, and
+package-client-verification) have been reading this permanently-empty
+table on schedule the entire time.
+
+Concretely, before today: an industrial technician taps their real setup
+SMS link, authenticates successfully (PIN auth is completely
+sector-blind), and sees their name, their business name, and a single
+"Start Tracking" button — forever. GPS pings still send but go nowhere
+useful (no live map on the industrial console, by design). Reporting an
+issue still writes to `technician_incidents`, but that table was never
+read by `IndustrialDispatcherView.jsx` either (a second, smaller, same-
+root-cause gap, fixed in the same pass) — so even that was invisible to
+their own dispatcher. No error anywhere, no crash — just a permanent,
+silent dead end for every real industrial technician who will ever sign
+up, undetected because the industrial sector has zero real customers
+yet and nothing short of actually using the technician app as an
+industrial technician would surface it.
+
+Fix mirrors the proven trade-side pattern exactly rather than inventing
+a new one: `technicians.current_site_id` is the direct sibling of
+`current_job_id` (`supabase_schema_delta_technician_site_assignment.sql`
+— 1 new column + 3 RLS policies, not yet run). No new join table needed
+— unlike `jobs.technician_id` (one job, one primary tech, crew via
+`job_assignments`), this points the other way, FROM the technician, so
+multiple technicians can already share one `current_site_id` with
+nothing extra required, a natural fit for multi-day site work. RLS
+needed real care, not just a column: `site_projects`/`site_checkins`
+were correctly scoped to the business OWNER's session by
+`rls_scoping_v3.sql` (2026-09-14) — a technician's own authenticated
+session satisfies neither policy at all, the identical near-miss shape
+already caught once today in `businesses_select_scoping.sql`'s own 4th
+branch. Checked `rls_scoping_v3.sql`'s actual policy text before writing
+any UI, not assumed — without the two new technician-scoped policies,
+every read/write on the new site card would have silently failed RLS
+with no indication why.
+
+`IndustrialDispatcherView.jsx`: technicians query now includes
+`current_site_id`; new `assignTechnicianToSite()` plus an assign/remove
+UI on each site card (Sites tab); new "Field reports" section (Safety
+tab) surfacing `technician_incidents`, previously never read here.
+`TechnicianView.jsx`: `sector` added to the existing explicit
+`businesses(...)` field list; new `currentSite`/`checkedIn` state; new
+`loadSite()` (mirrors `loadJob()`, also derives current-checked-in state
+from the technician's own most recent check-in — same open/closed
+presence rule "The Warden"'s `computeOpenPresenceByPerson` uses, scoped
+to one person); new `toggleSiteCheckin()` writing `role:
+'human_technician'`; realtime subscription extended to watch
+`current_site_id` alongside the existing `current_job_id` watch; a site
+card mirroring the job card, Check in/Check out buttons reusing the
+existing `btnGreen`/`btnOrange` styles. All of this is additive — every
+effect/handler already keyed on `currentJob` (SMS triggers, voice notes,
+crew detection) is untouched and continues to no-op exactly as before
+for an industrial technician, since `currentJob` was already always
+null for them.
+
+Deliberately NOT built: the `'automated_process'` leg of `site_checkins`
+(what the Warden/Pacer's other half consumes) — what a piece of
+equipment "checking in" even means physically isn't specified anywhere
+in this codebase, it's a separate and far more speculative integration,
+and unlike arrival/departure check-ins it was never itself a marketed,
+customer-facing claim. Left exactly as it already was: a dormant
+downstream consumer that simply won't fire until/unless that side is
+built later — not a regression, since neither leg existed before today
+either. Also deliberately NOT built: SMS notification when a technician
+is assigned to a site (the direct parallel to `send-job-assignment-sms`)
+— valuable, but a materially bigger, separately-scoped lift to build
+with the same idempotency/ownership-auth/kill-switch hardening that
+function has, and not itself required to make the marketed check-in
+capability real. Flagged here as a clear, well-defined follow-up rather
+than silently dropped.
+
+737/737 tests pass (no regressions; no new pure logic extracted —
+consistent with this project's existing convention that neither
+`TechnicianView.jsx` nor `IndustrialDispatcherView.jsx` has ever had a
+`.test.js`, both being page components with no extracted `logic.ts`).
+Both files re-verified with `npx esbuild --bundle=false` (no Deno/node
+test runner reaches these two directly). Not yet deployed — the SQL
+delta must run before either file's next deploy, same ordering rule as
+every other delta in this file.

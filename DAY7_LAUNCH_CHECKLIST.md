@@ -218,6 +218,21 @@ third one on Standard, sector left as the trade default.
       correctly
 - [ ] Expand an asset → confirm the asset_telemetry_events section loads
       (empty is fine if no telemetry has been sent yet)
+- [ ] **Technician site assignment + check-in (added 2026-10-10 — run the
+      `supabase_schema_delta_technician_site_assignment.sql` delta first,
+      or this entire step will fail RLS silently)**: add a technician to
+      this industrial business in Onboarding (or directly in the
+      Supabase Table Editor), then from the Sites tab use "+ Assign
+      technician..." on the site you created above → the technician's
+      name appears as a badge on that site card. Open the technician's
+      own `/tech?pin=...` setup link (a different browser/incognito
+      window) → confirm a "CURRENT SITE" card appears with the site's
+      name and scope of work, NOT an empty screen → tap "Check in" →
+      confirm it flips to "Check out" with no error → back in the
+      dispatcher, expand "View check-ins ▼" on that site → the check-in
+      row appears (HUMAN · arrival). This is the one flow that was
+      completely unbuilt before today — confirm it end to end, don't
+      just spot-check one side.
 
 ## 11. Autonomous layer (only if you ran the pg_cron setup block)
 

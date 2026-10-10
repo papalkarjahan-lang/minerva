@@ -99,6 +99,18 @@ export default function TechnicianView() {
 
   const [tech, setTech] = useState(null)
   const [currentJob, setCurrentJob] = useState(null)
+  // Industrial sector's sibling of currentJob — a technician whose business
+  // has sector='industrial' has current_job_id null forever (nothing on
+  // that side ever sets it, confirmed by repo-wide grep) and instead gets
+  // work through technicians.current_site_id -> site_projects. Added
+  // 2026-10-10: this was the single technician-facing view in the whole
+  // app, used regardless of sector, but had zero sector awareness at all —
+  // an industrial technician could log in and would see a permanently
+  // empty screen, with no way to check into a site, forever. See
+  // supabase_schema_delta_technician_site_assignment.sql.
+  const [currentSite, setCurrentSite] = useState(null)
+  const [checkedIn, setCheckedIn] = useState(false)
+  const [checkinBusy, setCheckinBusy] = useState(false)
   const [business, setBusiness] = useState(null)
   const [tracking, setTracking] = useState(false)
   const [status, setStatus] = useState('idle') // idle | tracking | job_active | job_done
@@ -354,7 +366,7 @@ export default function TechnicianView() {
     }
 
     // businesses(...) uses an explicit field list, not businesses(*) —
-    // these 6 are the only ones this file (and businessAccess.js's
+    // these 7 are the only ones this file (and businessAccess.js's
     // isTrialExpired / maxAddons.js's hasAddon, both called with this
     // object) actually reads. Narrowed 2026-10-10 alongside
     // supabase_schema_delta_businesses_select_scoping.sql: this read runs
@@ -362,10 +374,12 @@ export default function TechnicianView() {
     // unaffected by that delta's column-level change either way, but an
     // explicit list is still better than pulling every column (including
     // things like meta_access_token/slack_webhook_url) down to a
-    // technician's phone for no reason this code uses.
+    // technician's phone for no reason this code uses. `sector` added the
+    // same day the industrial site-tracking gap was fixed — needed to
+    // decide whether to look for a job or a site below.
     const { data, error } = await supabase
       .from('technicians')
-      .select('*, businesses(name, subscription_tier, stripe_sub_id, created_at, max_addons, max_addon_trials)')
+      .select('*, businesses(name, subscription_tier, stripe_sub_id, created_at, max_addons, max_addon_trials, sector)')
       .eq('pin', pin)
       .eq('is_active', true)
       .single()
@@ -377,6 +391,7 @@ export default function TechnicianView() {
     setTech(data)
     setBusiness(data.businesses)
     if (data.current_job_id) loadJob(data.current_job_id)
+    if (data.businesses?.sector === 'industrial' && data.current_site_id) loadSite(data.current_site_id, data.name)
 
     // Compliance checklists are a Pro-tier feature — one template per
     // business, applied to every job completion.
@@ -461,8 +476,58 @@ export default function TechnicianView() {
     }
   }
 
-  // Listen for the dispatcher assigning a new job (or clearing one) without
-  // requiring the technician to manually refresh the page.
+  // Industrial sibling of loadJob — loads the assigned site, then checks
+  // this technician's own most recent check-in at that site to know
+  // whether they're currently checked in (open = 'arrival'/'task_start'
+  // with no later 'departure', same open/closed presence rule "The
+  // Warden" uses — detect-safety-hazards/logic.ts's
+  // computeOpenPresenceByPerson — just scoped to one person instead of
+  // everyone on site). techName is passed explicitly rather than read off
+  // `tech` state: the very first call happens inside loadTech() right
+  // after a fresh fetch, before setTech(data) has actually committed, so
+  // `tech` in this closure would still be null.
+  async function loadSite(siteId, techName) {
+    const { data, error } = await supabase
+      .from('site_projects')
+      .select('*')
+      .eq('id', siteId)
+      .single()
+    if (error || !data) { console.error('loadSite failed', error); return }
+    setCurrentSite(data)
+    const { data: lastCheckin } = await supabase
+      .from('site_checkins')
+      .select('checkin_type')
+      .eq('site_id', siteId)
+      .eq('person_name', techName)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    setCheckedIn(lastCheckin?.checkin_type === 'arrival' || lastCheckin?.checkin_type === 'task_start')
+  }
+
+  // Logs an arrival/departure check-in for the current site — the write
+  // side of the "Multi-day site tracking... arrival/departure check-ins"
+  // capability Features.jsx/Enterprise.jsx already market. role is always
+  // 'human_technician' here; the 'automated_process' side of this same
+  // table (equipment/telemetry check-ins) is a separate, not-yet-built
+  // integration, left untouched by this fix.
+  async function toggleSiteCheckin() {
+    if (!currentSite || !tech || checkinBusy) return
+    setCheckinBusy(true)
+    const { error } = await supabase.from('site_checkins').insert({
+      site_id: currentSite.id,
+      business_id: tech.business_id,
+      person_name: tech.name,
+      role: 'human_technician',
+      checkin_type: checkedIn ? 'departure' : 'arrival',
+    })
+    setCheckinBusy(false)
+    if (error) { alert(`Couldn't record check-in: ${error.message}`); return }
+    setCheckedIn(!checkedIn)
+  }
+
+  // Listen for the dispatcher assigning a new job or site (or clearing
+  // either) without requiring the technician to manually refresh the page.
   useEffect(() => {
     if (!tech) return
     const channel = supabase
@@ -471,6 +536,12 @@ export default function TechnicianView() {
         event: 'UPDATE', schema: 'public', table: 'technicians',
         filter: `id=eq.${tech.id}`
       }, (payload) => {
+        const newSiteId = payload.new.current_site_id
+        if (newSiteId && newSiteId !== currentSite?.id) {
+          loadSite(newSiteId, tech.name)
+        } else if (!newSiteId) {
+          setCurrentSite(null)
+        }
         const newJobId = payload.new.current_job_id
         if (newJobId && newJobId !== currentJob?.id) {
           loadJob(newJobId)
@@ -480,7 +551,7 @@ export default function TechnicianView() {
       })
       .subscribe()
     return () => supabase.removeChannel(channel)
-  }, [tech?.id, currentJob?.id])
+  }, [tech?.id, currentJob?.id, currentSite?.id])
 
   // Re-derive local status/tracking from the job's actual DB status
   // whenever currentJob (re)loads — closes a real dead end: `status` and
@@ -1399,6 +1470,25 @@ export default function TechnicianView() {
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Current site card — industrial sector's sibling of the job card
+          above. See currentSite/loadSite/toggleSiteCheckin. */}
+      {currentSite && (
+        <div style={styles.jobCard}>
+          <p style={styles.jobLabel}>CURRENT SITE</p>
+          <p style={styles.clientName}>{currentSite.name}</p>
+          {currentSite.scope_of_work && <p style={styles.clientAddr}>{currentSite.scope_of_work}</p>}
+          <p style={styles.jobStatus}>{checkedIn ? '✓ Checked in' : 'Not checked in'}</p>
+          <button
+            type="button"
+            style={{ ...(checkedIn ? styles.btnOrange : styles.btnGreen), marginTop: 12, width: '100%' }}
+            onClick={toggleSiteCheckin}
+            disabled={checkinBusy}
+          >
+            {checkinBusy ? 'Saving...' : checkedIn ? 'Check out' : 'Check in'}
+          </button>
         </div>
       )}
 

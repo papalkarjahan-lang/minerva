@@ -24,6 +24,7 @@ export default function IndustrialDispatcherView() {
   const [correctiveActions, setCorrectiveActions] = useState([])
   const [technicians, setTechnicians] = useState([])
   const [packages, setPackages] = useState([])
+  const [fieldReports, setFieldReports] = useState([])
   const [tab, setTab] = useState('overview') // 'overview' | 'leads' | 'sites' | 'assets' | 'inventory' | 'safety' | 'verification'
   const [showAddLead, setShowAddLead] = useState(false)
   const [showAddSite, setShowAddSite] = useState(false)
@@ -160,12 +161,25 @@ export default function IndustrialDispatcherView() {
     setCorrectiveActions(actionList || [])
 
     const { data: techList } = await supabase.from('technicians')
-      .select('id, name').eq('business_id', businessId).eq('is_active', true).order('name', { ascending: true })
+      .select('id, name, current_site_id').eq('business_id', businessId).eq('is_active', true).order('name', { ascending: true })
     setTechnicians(techList || [])
 
     const { data: packageList } = await supabase.from('client_verification_packages')
       .select('*').eq('business_id', businessId).order('created_at', { ascending: false })
     setPackages(packageList || [])
+
+    // Field reports (disputes/near-misses/notes a technician or dispatcher
+    // logs on the spot) — the same `technician_incidents` table
+    // DispatcherView surfaces per-job on the trade side. Industrial has no
+    // job to scope by, so this loads the whole business's log at once,
+    // same shape as safety_incidents above. Previously never read here at
+    // all, so a real industrial technician's incident report (submitted
+    // from TechnicianView.jsx, which already writes this table correctly)
+    // was invisible to their own dispatcher — found 2026-10-10 while
+    // tracing the technician-side site-tracking gap.
+    const { data: fieldReportList } = await supabase.from('technician_incidents')
+      .select('*').eq('business_id', businessId).order('created_at', { ascending: false })
+    setFieldReports(fieldReportList || [])
   }
 
   // Lazy-loads an asset's recent telemetry events (geofence breaches +
@@ -438,13 +452,35 @@ export default function IndustrialDispatcherView() {
     loadAll()
   }
 
+  // Assigns (or clears, when siteId is null) a technician's current site —
+  // technicians.current_site_id, the industrial sibling of the trade
+  // side's current_job_id (DispatcherView's assignJob). Unlike a job (one
+  // primary technician, crew handled separately via job_assignments), this
+  // points the other way: FROM the technician, so more than one tech can
+  // already share the same current_site_id with nothing extra needed — a
+  // natural fit for multi-day site work. See
+  // supabase_schema_delta_technician_site_assignment.sql for the RLS this
+  // depends on (the technician's own session needs SELECT on site_projects
+  // and SELECT+INSERT on site_checkins to actually use this once assigned
+  // — both added in that same delta, found missing by reading rls_scoping_
+  // v3.sql's existing owner-only policy before writing any of this UI).
+  async function assignTechnicianToSite(technicianId, siteId) {
+    if (busyId === technicianId) return
+    setBusyId(technicianId)
+    const { error } = await supabase.from('technicians').update({ current_site_id: siteId }).eq('id', technicianId)
+    setBusyId(null)
+    if (error) { alert(`Couldn't update site assignment: ${error.message}`); return }
+    loadAll()
+  }
+
   // Corrective-action ticket actions — see corrective_actions load in
-  // loadAll(). All three are direct row updates (same "anon all" RLS model
-  // as safety_incidents), not a separate edge function, matching how
-  // acknowledgeIncident/restockItem above already write straight to their
-  // tables from this console. Each write is idempotent (re-setting the
-  // same status/date/close timestamp causes no distinct harm), but the
-  // busyId guard is added anyway for consistency with the rest of this
+  // loadAll(). All three are direct row updates (owner-scoped RLS, same
+  // pattern as safety_incidents — both tightened from the original "anon
+  // all" shape by rls_scoping_v3.sql), not a separate edge function,
+  // matching how acknowledgeIncident/restockItem above already write
+  // straight to their tables from this console. Each write is idempotent
+  // (re-setting the same status/date/close timestamp causes no distinct
+  // harm), but the busyId guard is added anyway for consistency with the rest of this
   // console's mutating handlers and to avoid redundant network calls.
   async function assignCorrectiveAction(id, technicianId) {
     if (busyId === id) return
@@ -734,6 +770,36 @@ export default function IndustrialDispatcherView() {
                     {expandedSiteId === s.id ? 'Hide check-ins ▲' : 'View check-ins ▼'}
                   </button>
                 </div>
+                {/* Technician assignment — sets technicians.current_site_id,
+                    what TechnicianView.jsx reads to show this site and let
+                    the assigned tech(s) check in/out. More than one
+                    technician can be assigned to the same site at once
+                    (see assignTechnicianToSite's own comment). */}
+                <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                  {technicians.filter(t => t.current_site_id === s.id).map(t => (
+                    <span key={t.id} style={styles.statusBadge('in_use')}>
+                      {t.name}
+                      <button
+                        aria-label={`Remove ${t.name} from "${s.name}"`}
+                        style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', marginLeft: 6, padding: 0, font: 'inherit' }}
+                        disabled={busyId === t.id}
+                        onClick={() => assignTechnicianToSite(t.id, null)}
+                      >✕</button>
+                    </span>
+                  ))}
+                  {technicians.filter(t => t.current_site_id !== s.id).length > 0 && (
+                    <select
+                      aria-label={`Assign a technician to "${s.name}"`}
+                      style={styles.smallSelect}
+                      value=""
+                      disabled={busyId != null}
+                      onChange={e => { if (e.target.value) assignTechnicianToSite(e.target.value, s.id) }}
+                    >
+                      <option value="">+ Assign technician...</option>
+                      {technicians.filter(t => t.current_site_id !== s.id).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                    </select>
+                  )}
+                </div>
                 {expandedSiteId === s.id && (
                   <div style={{ marginTop: 10, borderTop: '1px solid #1e293b', paddingTop: 8 }}>
                     {(siteCheckins[s.id] || []).length > 0 ? (
@@ -927,6 +993,31 @@ export default function IndustrialDispatcherView() {
                 </div>
               )
             })}
+
+            {/* Field reports — technician_incidents, the same dispute/near-
+                miss/note log DispatcherView shows per-job on the trade
+                side. A genuinely different table from safety_incidents
+                above: this is a human-reported note (TechnicianView.jsx's
+                "Report an issue"), not the Warden's own automated
+                proximity detection. Never surfaced here before — a real
+                industrial technician's field report was being written
+                successfully but was invisible to their own dispatcher.
+                Found and fixed 2026-10-10 alongside the technician
+                site-tracking gap. */}
+            <div style={{ ...styles.sectionHead, marginTop: 24 }}>
+              <p style={styles.sectionLabel}>Field reports</p>
+            </div>
+            {fieldReports.length === 0 && <p style={styles.emptyText}>No field reports yet.</p>}
+            {fieldReports.map(r => (
+              <div key={r.id} style={styles.row}>
+                <p style={styles.rowDesc}>{r.description}</p>
+                <p style={styles.rowMeta}>
+                  {(r.category || 'note').replace('_', ' ')}
+                  {r.reported_by ? ` · reported by ${r.reported_by}` : ''}
+                  {' · '}{timeAgo(r.created_at)}
+                </p>
+              </div>
+            ))}
           </>
         )}
 

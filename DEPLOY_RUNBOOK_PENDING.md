@@ -88,6 +88,17 @@ Paste each into the Supabase SQL Editor. None of these depend on each other.
   list) — ships with the next normal push/Vercel deploy, no separate
   action needed for that half. Run this and the billing-identity trigger
   before any real customer signs up, not after.
+- `supabase_schema_delta_technician_site_assignment.sql` — **new
+  2026-10-10**: 1 new column (`technicians.current_site_id`) + 3 RLS
+  policies, no edge function changes. See its own file and
+  `BILLING_INTEGRITY_NOTES.md`'s matching entry — without this,
+  `TechnicianView.jsx`'s new industrial site card (same commit) and
+  `IndustrialDispatcherView.jsx`'s new site-assignment UI (same commit)
+  are both already shipped in the frontend but every read/write they do
+  will silently fail RLS the moment an industrial business actually uses
+  them — run this before that frontend change reaches production, not
+  after. No function redeploy needed, this is a pure schema+RLS change
+  paired with a frontend-only commit.
 - `supabase_schema_delta_outreach_prospects_dedup.sql` — **new
   2026-10-10**: 1 unique index on `outreach_prospects.contact_email`, no
   new column. See its own file and `OUTREACH_INTEGRITY_NOTES.md`'s
