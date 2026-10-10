@@ -22,7 +22,7 @@ const TIERS = [
 const SIZE_GUIDE = [
   ['Solo', '1 technician (you)', 'Starter, billed for exactly 1 tech — $49/mo total.'],
   ['Small team', '2–10 technicians', 'Starter for the core dispatch tool, or Standard once you want lead/client follow-up running automatically instead of by memory.'],
-  ['Growing team', '10–30 technicians', 'Standard or Pro — Pro unlocks invoicing, inventory, and compliance checklists.'],
+  ['Growing team', '10–30 technicians', 'Standard or Pro — Pro unlocks invoicing, inventory, and compliance checklists for trade businesses. Asset-heavy or multi-site instead? See Multi-site / fleet.'],
   ['Multi-site / fleet', 'Any size, asset-heavy', 'Any tier + Industrial sector at signup — asset telemetry, site check-ins, safety tracking.'],
   ['Enterprise', 'Multi-van fleets, FM companies, councils, strata', 'Talk to our team — see the Enterprise page.'],
 ]
