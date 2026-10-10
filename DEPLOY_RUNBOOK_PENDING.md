@@ -151,22 +151,26 @@ Phase 1 before any of these rather than tracking per-family order.
 - `supabase_schema_delta_trial_ending_reminder_registration.sql` — **new
   2026-10-09**
 
-## Phase 3 — Edge functions: redeploy 49
+## Phase 3 — Edge functions: redeploy 50
 
-**Re-generated 2026-10-10** from `git diff origin/main..HEAD --name-only`
-— this list has already gone stale twice in two days (27 → 46 → 49), each
-time from real same-day work landing after the previous snapshot was
-written. Don't trust this number either if you're reading it much later —
-regenerate the same way:
+**Re-generated 2026-10-10 (again)** from `git diff origin/main..HEAD
+--name-only` — this list has now gone stale three times in two days
+(27 → 46 → 49 → 50), each time from real same-day work landing after the
+previous snapshot was written. Don't trust this number either if you're
+reading it much later — regenerate the same way:
 `git diff origin/main..HEAD --name-only -- supabase/functions/ | grep -E
 "/(index|logic)\.ts$" | sed -E 's#supabase/functions/([^/]+)/.*#\1#' |
 sort -u`, plus any function that ONLY imports a changed `_shared/` file
 without its own index.ts changing (check each shared file's own commit
-message/header — e.g. today's `_shared/maxAddons.ts` change only
-actually affects `update-addon-billing`, the one function that calls
-`isAddonAvailableForSector`; the other 10 importers only call
-`isAddonActive`, unaffected, and don't need redeploying for that specific
-change).
+message/header — e.g. the `_shared/maxAddons.ts` change on 2026-10-09
+only actually affected `update-addon-billing`, the one function that
+calls `isAddonAvailableForSector`; the other 10 importers only call
+`isAddonActive`, unaffected. Same check today for `_shared/sms.ts`'s
+`buildEtaMessage` change: 17 functions import something from that file,
+but only `send-eta-sms` actually calls `buildEtaMessage` — confirmed by
+grepping for the specific call, not just the shared-file import — so it
+alone was the addition this round, already captured by the plain
+`index.ts`-diff count above since its own `index.ts` changed too).
 
 One command per function:
 
@@ -233,6 +237,7 @@ reconcile-technician-state
 recover-abandoned-signup
 respond-to-quote
 retention-checkin
+send-eta-sms
 send-outreach-batch
 sequence-handoffs
 stripe-webhook
