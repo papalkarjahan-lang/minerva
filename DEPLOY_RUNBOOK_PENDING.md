@@ -108,6 +108,12 @@ Paste each into the Supabase SQL Editor. None of these depend on each other.
   "invalid link" error state for every real package too, since anon has
   no read access yet. Run before that frontend change reaches
   production. No function redeploy needed.
+- `supabase_schema_delta_incoming_sms_webhook.sql` — **new 2026-10-11**:
+  1 new table (`processed_sms_sids`), no new column. See its own file
+  and `BILLING_INTEGRITY_NOTES.md`'s matching entry — needed before
+  `incoming-sms-webhook` (new function, Phase 3) is deployed, since that
+  function's idempotency claim will fail with a missing-table error
+  otherwise. Its retention cron is a separate file, Phase 4 below.
 - `supabase_schema_delta_outreach_prospects_dedup.sql` — **new
   2026-10-10**: 1 unique index on `outreach_prospects.contact_email`, no
   new column. See its own file and `OUTREACH_INTEGRITY_NOTES.md`'s
@@ -150,8 +156,10 @@ Phase 1 before any of these rather than tracking per-family order.
 - `supabase_schema_delta_rebooking_notify_registration.sql`
 - `supabase_schema_delta_trial_ending_reminder_registration.sql` — **new
   2026-10-09**
+- `supabase_schema_delta_incoming_sms_webhook_registration.sql` — **new
+  2026-10-11**
 
-## Phase 3 — Edge functions: redeploy 50
+## Phase 3 — Edge functions: redeploy 51
 
 **Re-generated 2026-10-10 (again)** from `git diff origin/main..HEAD
 --name-only` — this list has now gone stale three times in two days
@@ -190,10 +198,16 @@ New functions (never deployed before, so there's no existing dashboard
 setting to preserve):
 - `notify-new-support-request`, `notify-new-enterprise-lead`,
   `notify-rebooking-request`, `recover-abandoned-signup`,
-  `new-subscriber-checkin`, `notify-trial-ending` (newest, 2026-10-09) —
-  all 6 are `supabase.functions.invoke()`-style or cron-triggered,
-  matching the pattern of their siblings; default `verify_jwt: true` is
-  correct for all 6 unless you specifically know otherwise.
+  `new-subscriber-checkin`, `notify-trial-ending` (2026-10-09) — all 6
+  are `supabase.functions.invoke()`-style or cron-triggered, matching the
+  pattern of their siblings; default `verify_jwt: true` is correct for
+  all 6 unless you specifically know otherwise.
+- `incoming-sms-webhook` (newest, 2026-10-11) is a different shape —
+  **needs `--no-verify-jwt`**, same as its sibling `missed-call-webhook`:
+  Twilio calls it directly with no Supabase auth header. Also needs its
+  own Twilio Console setup per business (README.md's Twilio section,
+  step 5) before it does anything — deploying it alone doesn't wire
+  anything up.
 
 Full list (alphabetical):
 
@@ -220,6 +234,7 @@ flag-abandoned-signups
 followup-outreach
 forecast-demand
 generate-growth-drafts
+incoming-sms-webhook
 industrial-conductor
 new-subscriber-checkin
 notify-addon-trial-ending
@@ -269,9 +284,20 @@ one, not something to push through.
   `new-subscriber-checkin` deployed first
 - `supabase_schema_delta_trial_ending_reminder_cron.sql` — **new
   2026-10-09**, needs `notify-trial-ending` deployed first
+- `supabase_schema_delta_incoming_sms_webhook_cron.sql` — **new
+  2026-10-11**, different dependency shape from the other 3: this is a
+  retention-cleanup cron for `processed_sms_sids` (a raw SQL `delete`,
+  same pattern as `cleanup-processed-call-sids-daily`), not one that
+  calls `incoming-sms-webhook` itself — Twilio invokes that function
+  directly, pg_cron never does. Only actually needs the table from
+  Phase 1's `supabase_schema_delta_incoming_sms_webhook.sql`, not the
+  function deployed — but no harm running it after Phase 3 along with
+  the other 3, simplest to just keep all cron files together here.
 
-All 3 files are pre-filled with the real project ref/anon key already
-(per their own header comments) — no placeholder values to fill in.
+The first 3 are pre-filled with the real project ref/anon key already
+(per their own header comments) — no placeholder values to fill in. The
+4th (`incoming_sms_webhook_cron`) needs neither — it's a pure SQL
+`delete`, no HTTP call, nothing to fill in either way.
 Also don't forget the 2 standalone triggers from today that have no
 cron schedule of their own (they fire on `businesses` writes, not on a
 timer) — `supabase_schema_delta_addon_sector_guard.sql` and

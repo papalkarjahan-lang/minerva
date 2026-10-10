@@ -970,3 +970,69 @@ All three touched backend/frontend files re-verified with `npx esbuild`.
 Verified live: both updated marketing pages render the new text
 correctly. Not yet deployed — `send-eta-sms` needs a normal function
 redeploy (no SQL delta, no new column).
+
+## 2026-10-11 — a real client reply had nowhere to land
+
+Every client-facing SMS this product sends (completion, invoice, quote,
+review-request) is, by definition, a text message — which invites a
+reply. Checked whether anything in this codebase ever handled one
+coming back. Nothing did: confirmed by grep, the only incoming-message
+webhook anywhere is `missed-call-webhook`, for voice calls. A real
+client who typed back "running late, can you come at 3 instead?" had
+that message go precisely nowhere a business owner would see it in
+their normal Minerva workflow — at best it would sit in the raw Twilio
+Console, which nobody checks as part of daily operations. Checked
+README.md, SECURITY_NOTES.md, and the sales/outreach docs before
+concluding this was a genuine, unnoticed gap rather than an
+already-considered, deliberately-deferred decision — this project
+otherwise has a strong, consistent habit of flagging exactly this kind
+of limitation explicitly, and this one wasn't flagged anywhere.
+
+Not a full two-way conversation UI — that's a genuinely bigger feature,
+out of scope here. Built the minimum that keeps a real reply from
+vanishing: a new `incoming-sms-webhook` (mirrors `missed-call-webhook`'s
+proven shape almost exactly — same Twilio-signature validation, same
+claim-before-act idempotency against Twilio's own retry behavior, same
+admin-client pattern). The one real architecture question — Minerva's
+SMS all send from either a business's own `twilio_number` or the shared
+platform fallback, so an incoming reply needs to be routed to the right
+business — was already solved by `missed-call-webhook` for voice calls
+via the exact same `twilio_number = To` lookup; this reuses that proven
+pattern rather than inventing a new one. A business still on the shared
+fallback number has the same inherent routing ambiguity
+`missed-call-webhook` already accepts — not a new limitation this adds.
+
+Goes one step further than a bare Slack relay: correlates the reply to
+the client's own most recent active job by phone number (both sides
+normalized through the same `formatAuPhone` this codebase already uses
+for outbound sends) and appends it to that job's notes — the same
+place, in the same `[timestamp] text` format, a technician's own voice
+note already appears in `TechnicianView.jsx`, so a dispatcher finds it
+exactly where they're already looking. Also posts to Slack either way,
+matched or not, so nothing depends on a business owner proactively
+opening a specific job. Deliberately does not auto-reply — an empty
+TwiML response, not a generic "thanks for your message" text, since
+auto-replying to an unknown, possibly urgent message risks reading as
+dismissive; better to just make sure a real human sees it.
+
+New table `processed_sms_sids` (same minimal, service-role-only shape as
+the existing `processed_call_sids`) plus its own 90-day retention cron —
+split into separate DDL and cron files per this project's own documented
+convention against mixing the two, which an earlier draft of this exact
+change briefly got wrong before being caught and fixed. Registered in
+`agent_functions` ('core', matching its sibling) with no kill-switch
+wired into the code itself, same risk-based scoping `missed-call-webhook`
+already uses and explains in its own header — low-blast-radius side
+effects (a notes append, a Slack post), and the function must always
+return valid TwiML to Twilio regardless of any switch.
+
+README.md's Twilio setup section gets a new optional step 5, mirroring
+step 4's existing missed-call-webhook instructions exactly, including
+that no extra `twilio_number` setup is needed if step 4 was already
+done. 744/744 tests pass (no regressions; consistent with
+`missed-call-webhook` itself, this function has no separate `logic.ts`
+— it's I/O orchestration, not extractable pure logic). The new
+`index.ts` re-verified with `npx esbuild`. Not yet deployed — needs the
+new table before the function, and is genuinely opt-in per business
+(requires that business's own Twilio Console configuration, same as
+`missed-call-webhook`) even once deployed.

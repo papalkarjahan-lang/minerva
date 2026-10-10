@@ -41,6 +41,18 @@ A separate, additive **industrial sector** also exists for multi-site/heavy-equi
    method `HTTP POST`. Also set the business's number in the `businesses`
    table (`twilio_number` column, E.164 format e.g. `+61412345678`) so the
    webhook can look up the right business name for the auto-reply SMS.
+5. (Optional — see client SMS replies, added 2026-10-11) Without this, a
+   client who texts back "running late, can you come at 3 instead?" in
+   reply to any of Minerva's own SMS has nowhere to land that you'd ever
+   see it. Once `incoming-sms-webhook` is deployed, go to the same number's
+   configuration page → **Messaging Configuration** → set **"A message
+   comes in"** to Webhook, paste
+   `https://YOUR_PROJECT_REF.supabase.co/functions/v1/incoming-sms-webhook`,
+   method `HTTP POST`. Same `twilio_number` column as above does the
+   business lookup — no extra setup if you already did step 4. A matched
+   reply gets appended to that client's active job notes and posted to
+   Slack (if configured); an unmatched one still posts to Slack with the
+   raw number.
 
 ### 4. Stripe (billing)
 1. Go to https://stripe.com/au → Sign up with your ABN
