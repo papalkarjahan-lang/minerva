@@ -1036,3 +1036,38 @@ done. 744/744 tests pass (no regressions; consistent with
 new table before the function, and is genuinely opt-in per business
 (requires that business's own Twilio Console configuration, same as
 `missed-call-webhook`) even once deployed.
+
+## 2026-10-11, same day — the email equivalent, but this one has no code fix
+
+Found immediately after the incoming-SMS fix, by applying the same
+question to email: does "just reply to this email" actually work?
+Two operator-authored emails make this promise —
+`recover-abandoned-signup` ("just reply to this email or get in touch")
+and `new-subscriber-checkin` ("Just reply to this email. **A real
+person reads every reply.**", the stronger, more specific claim of the
+two.
+
+Unlike the SMS case, this isn't a missing-webhook problem — normal
+email already supports replies natively, no code required, *if* the
+sending address is a real, monitored mailbox. Checked what it actually
+is today: `RESEND_FROM_EMAIL` is unset anywhere (confirmed — not in
+`.env.local`, not referenced as already configured anywhere), so
+`send-email/index.ts`'s own fallback is live right now:
+`onboarding@resend.dev`, Resend's shared sandbox address. This is not a
+future risk — it is the **currently active** sending address for every
+email this project has sent in testing so far. A reply to it would
+bounce or land in Resend's own infrastructure, not anywhere a human at
+Minerva would see it. "A real person reads every reply" is actively
+false today, for anyone who has ever replied.
+
+No code change to make here — the fix is real infrastructure, not a
+function. `RESEND_FROM_EMAIL` needs to point at an address with an
+actual mailbox behind it. Two realistic paths once the domain's DNS is
+being configured anyway (same sitting as the Vercel A record and
+Resend's own SPF/DKIM verification): Cloudflare Email Routing (free,
+forwards any address at the domain straight to an existing inbox, if
+DNS ends up on Cloudflare) or a real hosted mailbox (Google Workspace
+or similar, ~$8-10/month). Flagged clearly rather than silently
+noted — this is exactly the kind of thing that's easy to fix at the
+code level (just change the email copy to stop promising a reply) but
+the more valuable fix is making the promise true, not quieter.
