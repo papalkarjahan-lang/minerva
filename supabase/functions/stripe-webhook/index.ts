@@ -501,7 +501,7 @@ serve(async (req: Request) => {
               body: JSON.stringify({
                 to: biz.contact_email,
                 subject: `Action needed: your Minerva payment didn't go through`,
-                html: `<p>Hi,</p><p>Your most recent payment for <strong>${escapeHtml(biz.name || 'your account')}</strong> didn't go through — your bank or card issuer declined the charge. Stripe will automatically retry over the next few days, but if it keeps failing your account will eventually be cancelled.</p><p>Update your card from Settings → Billing in the app as soon as you can to avoid any interruption.</p><p>— The Minerva team</p>`,
+                html: `<p>Hi,</p><p>Your most recent payment for <strong>${escapeHtml(biz.name || 'your account')}</strong> didn't go through — your bank or card issuer declined the charge. Stripe will automatically retry over the next few days, but if it keeps failing your account will eventually be cancelled.</p><p>Update your card from your billing settings in the app as soon as you can to avoid any interruption.</p><p>— The Minerva team</p>`,
               }),
             }).catch(err => console.error('stripe-webhook: business payment-failed email failed', err))
           }

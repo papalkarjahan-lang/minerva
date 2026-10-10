@@ -167,7 +167,7 @@ async function notifyOneBusinessTrialEnding(
       body: JSON.stringify({
         to: biz.contact_email,
         subject: `Your Minerva trial ${whenText}`,
-        html: `<p>Hi,</p><p>Your free trial for <strong>${safeName}</strong> ${whenText}, and your card will then be billed automatically for your plan — same as we mentioned when you signed up.</p><p>Nothing to do if you want to keep going. If you'd rather not continue, cancel any time before then from Settings → Billing in the app, and you won't be charged.</p><p>— The Minerva team</p>`,
+        html: `<p>Hi,</p><p>Your free trial for <strong>${safeName}</strong> ${whenText}, and your card will then be billed automatically for your plan — same as we mentioned when you signed up.</p><p>Nothing to do if you want to keep going. If you'd rather not continue, cancel any time before then from your billing settings in the app, and you won't be charged.</p><p>— The Minerva team</p>`,
       }),
     })
     if (!emailRes.ok) console.error(`notify-trial-ending: send-email returned ${emailRes.status} for business ${biz.id}`)
@@ -180,7 +180,7 @@ async function notifyOneBusinessTrialEnding(
   // configured yet, but it's free to attempt and consistent with every
   // other time-sensitive agent in this codebase trying both channels.
   await notifySlack(supabaseUrl, supabaseServiceKey, biz.id,
-    `⏳ Your Minerva trial for *${bizName}* ${whenText} — we've emailed the account owner. Card will be billed automatically unless cancelled first from Settings → Billing.`)
+    `⏳ Your Minerva trial for *${bizName}* ${whenText} — we've emailed the account owner. Card will be billed automatically unless cancelled first from billing settings.`)
 
   return true
 }
