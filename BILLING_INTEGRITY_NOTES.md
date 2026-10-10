@@ -889,3 +889,29 @@ copying from. 737/737 tests pass; `index.ts` re-verified with `npx
 esbuild`. `stripe-webhook` was already in `DEPLOY_RUNBOOK_PENDING.md`'s
 pending-redeploy list from earlier changes today, so no new deploy-order
 entry was needed — this just rides along with that existing redeploy.
+
+**Considered, deliberately not implemented, same pass:** a separate
+operator alert for the moment a trial actually converts to its first
+real charge — arguably even more significant than the signup alert
+above, since a trial can be abandoned before ever converting, and 7
+days is long enough that the operator may have forgotten the original
+signup ping by then. `invoice.payment_succeeded`'s own comment already
+explains why it's currently silent for this exact case on purpose: it
+only alerts on a genuine payment-failed recovery (`.not('payment_failed_at',
+'is', null)`), and is deliberately silent for "the very first invoice on
+a fresh subscription" same as every routine renewal, since
+`payment_failed_at` is null in both cases. Distinguishing "first real
+charge after a trial" from "just another monthly renewal" needs a
+reliable signal this codebase has never used anywhere
+(confirmed by grep — zero references to Stripe's `billing_reason` field
+or an invoice's `amount_paid`/trial status anywhere in this directory),
+and guessing at Stripe's exact semantics here without a real test
+account to verify against risks shipping something worse than not
+having it: either silently never firing (looks done, isn't) or firing
+on a $0 trial-start invoice with "payment succeeded!" wording that
+would actively mislead the operator. Worth building once there's a way
+to verify it against Stripe test-mode data for real — the research
+starting point is Stripe's own `invoice.billing_reason` field
+(`subscription_create` on the very first invoice of a subscription,
+`subscription_cycle` on every renewal after) — but not worth guessing
+at blind.
