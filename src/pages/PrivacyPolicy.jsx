@@ -16,7 +16,7 @@ export default function PrivacyPolicy() {
       <div style={containerStyle}>
         <Link to="/" style={backLink}>← Minerva</Link>
         <h1 style={h1Style}>Privacy Policy</h1>
-        <p style={updatedStyle}>Last updated: 6 September 2026</p>
+        <p style={updatedStyle}>Last updated: 10 October 2026</p>
 
         <Section title="1. What this covers">
           <p>
@@ -55,6 +55,7 @@ export default function PrivacyPolicy() {
             <li><strong>Mapbox</strong> — map rendering and route display.</li>
             <li><strong>Anthropic (Claude)</strong> — AI lead-intake chat, quote drafting, and checklist photo verification, when those features are enabled.</li>
             <li><strong>Resend</strong> — transactional email, where configured.</li>
+            <li><strong>Sentry</strong> — error monitoring, once enabled for this account: receives automatic crash reports (what failed, the page it happened on, device/browser type) so we can fix bugs quickly. Not used to collect business, technician, or client personal information.</li>
             <li><strong>Meta (Facebook/Instagram)</strong> — only if a business connects its own ad account to use the optional ad-campaign feature; used solely to run that business's own ads.</li>
             <li><strong>Xero</strong> — only if a business connects its own Xero account to sync invoices.</li>
           </ul>
