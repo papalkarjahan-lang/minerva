@@ -400,6 +400,16 @@ describe('describeAuditEntry', () => {
       .toBe('Reported safety incident')
     expect(describeAuditEntry({ action: 'ingestion_key.regenerated', details: {} }))
       .toBe('Regenerated telemetry ingestion key')
+    expect(describeAuditEntry({ action: 'technician.site_assigned', details: { technician_name: 'Jane Doe', site_name: 'North Yard' } }))
+      .toBe('Assigned Jane Doe to site North Yard')
+    expect(describeAuditEntry({ action: 'technician.site_assigned', details: {} }))
+      .toBe('Assigned a technician to site')
+    expect(describeAuditEntry({ action: 'technician.site_unassigned', details: { technician_name: 'Jane Doe', site_name: 'North Yard' } }))
+      .toBe('Removed Jane Doe from site North Yard')
+    expect(describeAuditEntry({ action: 'verification_package.signed_off', details: { site_name: 'North Yard' } }))
+      .toBe('Marked verification package signed off — North Yard')
+    expect(describeAuditEntry({ action: 'verification_package.signed_off', details: {} }))
+      .toBe('Marked verification package signed off')
   })
 
   it('falls back to the raw action string for an unknown action', () => {

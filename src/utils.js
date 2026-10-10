@@ -395,6 +395,12 @@ export function describeAuditEntry(entry) {
       return `Reported safety incident${d.severity ? ` (${d.severity})` : ''}`
     case 'ingestion_key.regenerated':
       return 'Regenerated telemetry ingestion key'
+    case 'technician.site_assigned':
+      return `Assigned ${d.technician_name || 'a technician'} to site${d.site_name ? ` ${d.site_name}` : ''}`
+    case 'technician.site_unassigned':
+      return `Removed ${d.technician_name || 'a technician'} from site${d.site_name ? ` ${d.site_name}` : ''}`
+    case 'verification_package.signed_off':
+      return `Marked verification package signed off${d.site_name ? ` — ${d.site_name}` : ''}`
     default:
       return entry.action
   }

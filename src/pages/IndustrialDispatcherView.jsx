@@ -471,6 +471,16 @@ export default function IndustrialDispatcherView() {
     const { error } = await supabase.from('technicians').update({ current_site_id: siteId }).eq('id', technicianId)
     setBusyId(null)
     if (error) { alert(`Couldn't update site assignment: ${error.message}`); return }
+    // Found 2026-10-10 while checking today's own new actions against this
+    // console's existing record-keeping convention: DispatcherView's own
+    // assignJob() logs every assignment (and the Records tab exists
+    // specifically to show this history back to the owner) — this action
+    // was missing it entirely until now.
+    const techName = technicians.find(t => t.id === technicianId)?.name || 'Unknown'
+    const siteName = sites.find(s => s.id === siteId)?.name
+    logAudit(siteId ? 'technician.site_assigned' : 'technician.site_unassigned', {
+      entityType: 'technician', entityId: technicianId, details: { technician_name: techName, site_name: siteName },
+    })
     loadAll()
   }
 
@@ -489,6 +499,12 @@ export default function IndustrialDispatcherView() {
     const { error } = await supabase.from('client_verification_packages').update({ signed_off_at: new Date().toISOString() }).eq('id', id)
     setBusyId(null)
     if (error) { alert(`Couldn't mark signed off: ${error.message}`); return }
+    // A signed-off package is a compliance/evidence record — exactly the
+    // kind of action this console's audit log exists for, found missing
+    // the same pass as assignTechnicianToSite's own fix above.
+    const pkg = packages.find(p => p.id === id)
+    const siteName = sites.find(s => s.id === pkg?.site_id)?.name
+    logAudit('verification_package.signed_off', { entityType: 'client_verification_package', entityId: id, details: { site_name: siteName } })
     loadAll()
   }
 
