@@ -243,7 +243,7 @@ function SmsProof() {
     <div ref={ref} className="lp-phone">
       <p style={{ textAlign: 'center', color: '#556', fontSize: 11, letterSpacing: 1, textTransform: 'uppercase', margin: '0 0 16px' }}>What your client receives</p>
       <div className={`lp-sms ${step >= 1 ? 'lp-shown' : ''}`}>
-        Hi Sarah, your <b>Ken Hall Plumbers</b> technician Mike is approximately 15 minutes away.<br /><br />
+        Hi Sarah, your <b>Ken Hall Plumbers</b> technician Mike is approximately 4 minutes away.<br /><br />
         Track them live: <b>minerva-green.vercel.app/track/8f2a1c40</b>
       </div>
       <div className={`lp-sms ${step >= 2 ? 'lp-shown' : ''}`}>Hi Sarah, Mike from <b>Ken Hall Plumbers</b> has completed your job. Thank you for choosing us!</div>

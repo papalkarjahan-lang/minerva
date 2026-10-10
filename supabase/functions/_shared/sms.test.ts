@@ -4,6 +4,7 @@ import {
   buildJobAssignmentMessage,
   buildJobReassignmentMessage,
   buildEtaMessage,
+  etaPhraseFromDistance,
   buildCompletionMessage,
   buildInvoiceMessage,
   buildReviewRequestMessage,
@@ -106,11 +107,38 @@ describe('buildEtaMessage', () => {
       businessName: 'Acme Plumbing',
       techName: 'Sam',
       trackingUrl: 'https://example.com/track/123',
+      distanceKm: 1.5,
     })
     expect(msg).toContain('Jane')
     expect(msg).toContain('Acme Plumbing')
     expect(msg).toContain('Sam')
     expect(msg).toContain('https://example.com/track/123')
+  })
+
+  it('bases the ETA phrase on the real distance, not a fixed number', () => {
+    const near = buildEtaMessage({ clientName: 'Jane', businessName: 'Acme', techName: 'Sam', trackingUrl: 'x', distanceKm: 0.2 })
+    const far = buildEtaMessage({ clientName: 'Jane', businessName: 'Acme', techName: 'Sam', trackingUrl: 'x', distanceKm: 2 })
+    expect(near).not.toBe(far)
+  })
+})
+
+describe('etaPhraseFromDistance', () => {
+  it('converts distance to a proportional minutes estimate', () => {
+    // 2km at the 25km/h local-street assumption = 4.8min, rounds to 5.
+    expect(etaPhraseFromDistance(2)).toBe('is approximately 5 minutes away')
+    // 0.5km = 1.2min, rounds to 1 — exercises the singular "minute" branch.
+    expect(etaPhraseFromDistance(0.5)).toBe('is approximately 1 minute away')
+  })
+
+  it('floors at 1 minute rather than ever showing 0 or a negative number', () => {
+    expect(etaPhraseFromDistance(0)).toBe('is approximately 1 minute away')
+  })
+
+  it('does not claim a specific number when distance is unavailable', () => {
+    expect(etaPhraseFromDistance(null)).toBe('is on the way')
+    expect(etaPhraseFromDistance(undefined)).toBe('is on the way')
+    expect(etaPhraseFromDistance(-1)).toBe('is on the way')
+    expect(etaPhraseFromDistance(NaN)).toBe('is on the way')
   })
 })
 

@@ -763,8 +763,18 @@ export default function TechnicianView() {
     if (smsSendingRef.current) return
     smsSendingRef.current = true
     try {
+      // Same haversineKm the trigger site above already computed to decide
+      // whether to call this function at all — recomputed here rather than
+      // threaded as a parameter so this function's own early-return guards
+      // above stay the single source of truth for "should this run", and so
+      // a future second call site doesn't have to remember to pass it.
+      // Lets send-eta-sms build a real "X minutes away" instead of a
+      // hardcoded one (found 2026-10-10 — see _shared/sms.ts).
+      const distanceKm = currentJob.client_lat != null && currentJob.client_lng != null
+        ? haversineKm(techLat, techLng, currentJob.client_lat, currentJob.client_lng)
+        : null
       const { data: smsData, error: smsError } = await supabase.functions.invoke('send-eta-sms', {
-        body: { jobId: currentJob.id }
+        body: { jobId: currentJob.id, distanceKm }
       })
       if (smsError || smsData?.error) {
         setSyncWarning("The ETA text didn't send — the client won't know you're on the way.")

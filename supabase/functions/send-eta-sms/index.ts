@@ -41,6 +41,17 @@
 // same client twice. Now atomically claims jobs.sms_sent before calling
 // Twilio, same claim-before-notify pattern used across this project's other
 // idempotency fixes.
+//
+// Real ETA added 2026-10-10: the message text ("approximately 15 minutes
+// away") was a hardcoded constant regardless of actual distance — see
+// _shared/sms.ts's etaPhraseFromDistance for the fix. Now accepts an
+// optional distanceKm (TechnicianView.jsx already computes this via
+// haversineKm right before deciding to trigger this function at all, so
+// no new calculation was needed, just passing an already-known value
+// through). Optional and typeof-checked rather than required: a future
+// caller without a real distance on hand still gets an honest non-numeric
+// phrase instead of either a crash or the old disconnected-from-reality
+// number.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
@@ -61,7 +72,7 @@ serve(async (req: Request) => {
       return new Response(JSON.stringify({ success: true, skipped: true, reason: 'disabled via agent_functions.enabled' }), { status: 200, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } })
     }
 
-    const { jobId } = await req.json()
+    const { jobId, distanceKm } = await req.json()
     if (!jobId) throw new Error('jobId is required')
 
     const APP_URL = Deno.env.get('APP_URL')
@@ -125,7 +136,7 @@ serve(async (req: Request) => {
     const trackingUrl = `${APP_URL}/track/${job.id}`
 
     const phone = formatAuPhone(job.client_phone)
-    const message = buildEtaMessage({ clientName: job.client_name, businessName, techName, trackingUrl })
+    const message = buildEtaMessage({ clientName: job.client_name, businessName, techName, trackingUrl, distanceKm: typeof distanceKm === 'number' ? distanceKm : null })
 
     const TWILIO_SID = Deno.env.get('TWILIO_ACCOUNT_SID')
     const TWILIO_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN')

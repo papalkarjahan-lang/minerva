@@ -91,7 +91,7 @@ function PhoneMockup() {
           Hi Sarah, this is Minerva Plumbing — your technician Dave is on the way. Track him live: minerva.link/j8x2 🚐
         </div>
         <div className="minerva-sms-2" style={{ background: '#1D9E75', color: '#fff', padding: '10px 14px', borderRadius: 14, fontSize: 13, marginBottom: 8, maxWidth: '85%' }}>
-          Dave is 12 minutes away.
+          Dave is approximately 4 minutes away.
         </div>
         <div className="minerva-sms-3" style={{ background: '#1D9E75', color: '#fff', padding: '10px 14px', borderRadius: 14, fontSize: 13, maxWidth: '85%' }}>
           Dave has arrived. Job completed at 2:41pm ✅

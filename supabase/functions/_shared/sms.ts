@@ -52,8 +52,32 @@ export function buildJobReassignmentMessage(opts: { techName?: string | null; cl
   return `Hi ${opts.techName || ''}, your job at ${opts.clientAddress || 'the scheduled address'} has been reassigned to someone else. If you're already on the way, contact your dispatcher.`
 }
 
-export function buildEtaMessage(opts: { clientName?: string | null; businessName: string; techName: string; trackingUrl: string }): string {
-  return `Hi ${opts.clientName}, your ${opts.businessName} technician ${opts.techName} is approximately 15 minutes away.\n\nTrack them live: ${opts.trackingUrl}`
+// Last-mile speed assumption for etaPhraseFromDistance below — deliberately
+// separate from optimize-daily-route's own AVG_SPEED_KMH (40). That one
+// estimates travel between a technician's remaining jobs for the day, which
+// can include open/highway-ish stretches; this message only ever fires once
+// a technician is already within SMS_TRIGGER_KM (2km, TechnicianView.jsx) of
+// the client, which in practice is local/residential streets with
+// intersections and turns — slower than an open-road average, not the same
+// number reused for a different situation.
+const ETA_LOCAL_SPEED_KMH = 25
+
+// Found 2026-10-10: this message previously hardcoded "approximately 15
+// minutes away" unconditionally, regardless of the technician's actual
+// distance — the SMS-trigger distance (2km) and a realistic local-street
+// speed put the true range at roughly 1-5 minutes, so the fixed claim was
+// routinely a significant overestimate, in the product's own flagship
+// client-facing feature. distanceKm is optional (not every future caller
+// may have it) — when absent, falls back to an honest, non-numeric phrase
+// rather than reinstating a specific number that isn't backed by anything.
+export function etaPhraseFromDistance(distanceKm?: number | null): string {
+  if (distanceKm == null || distanceKm < 0 || !Number.isFinite(distanceKm)) return 'is on the way'
+  const minutes = Math.max(1, Math.round((distanceKm / ETA_LOCAL_SPEED_KMH) * 60))
+  return `is approximately ${minutes} minute${minutes === 1 ? '' : 's'} away`
+}
+
+export function buildEtaMessage(opts: { clientName?: string | null; businessName: string; techName: string; trackingUrl: string; distanceKm?: number | null }): string {
+  return `Hi ${opts.clientName}, your ${opts.businessName} technician ${opts.techName} ${etaPhraseFromDistance(opts.distanceKm)}.\n\nTrack them live: ${opts.trackingUrl}`
 }
 
 export function buildCompletionMessage(opts: { clientName?: string | null; techName: string; businessName: string }): string {

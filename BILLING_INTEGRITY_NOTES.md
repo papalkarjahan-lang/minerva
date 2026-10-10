@@ -915,3 +915,58 @@ starting point is Stripe's own `invoice.billing_reason` field
 (`subscription_create` on the very first invoice of a subscription,
 `subscription_cycle` on every renewal after) — but not worth guessing
 at blind.
+
+## 2026-10-10 — the flagship client-facing SMS had a hardcoded, almost-always-wrong ETA
+
+Found by generalizing the `voidInvoice` "audit trail" prompt bug from
+earlier the same day into a broader lens: search for every piece of UI
+copy making a specific, checkable claim, then verify each one against
+the real implementation. Most checked out (Xero reconnect-in-same-panel,
+ingestion-key rotation, technician deactivation actually reducing the
+Stripe quantity) — this one didn't.
+
+`send-eta-sms`'s message — the literal text a real client receives,
+arguably the single most client-visible moment this entire product
+produces — hardcoded "is approximately 15 minutes away" unconditionally,
+regardless of the technician's actual distance. The trigger condition
+(`SMS_TRIGGER_KM`, `TechnicianView.jsx`) only ever fires within 2km of
+the client. At any realistic local-street speed, 2km is nowhere near 15
+minutes — the true range is roughly 1-5 minutes. Every single real ETA
+text this product has ever been capable of sending would have overstated
+the wait by a factor of 3-10x, in the one message a client reads to
+decide whether to wait around.
+
+Root cause: `send-eta-sms/index.ts` never received or queried any
+distance/location data at all — only job/business/technician identity
+fields. `TechnicianView.jsx` computes the real distance via `haversineKm`
+to decide whether to fire the trigger in the first place, but never
+passed that number through.
+
+Fixed by threading it through instead of inventing new calculation
+infrastructure: `triggerSMS` now recomputes the same `haversineKm` call
+(same inputs already in scope) and passes `distanceKm` in the function
+body; `send-eta-sms/index.ts` passes it to `buildEtaMessage`; a new
+`etaPhraseFromDistance` (`_shared/sms.ts`) converts it to a real
+estimate. Used a dedicated `ETA_LOCAL_SPEED_KMH = 25` rather than
+reusing `optimize-daily-route`'s `AVG_SPEED_KMH = 40` — that one
+estimates travel between a technician's *remaining jobs for the day*,
+which can include longer, more open stretches; this message only ever
+fires within a 2km radius, almost always local/residential streets,
+genuinely a different, slower situation, not the same number copied
+somewhere it doesn't apply. Floors at 1 minute (never shows 0 or
+negative); falls back to a non-numeric "is on the way" — not the old
+specific wrong number — when distance isn't available at all, so every
+code path is now honest even in the untested edge case.
+
+Also fixed the two marketing/demo mock texts that showed the same
+pattern (`LandingPage.jsx`: "15 minutes", `Demo.jsx`: "12 minutes") —
+both are now factually impossible outputs of the real system (the
+trigger can't fire past 2km, capping the real estimate around 5
+minutes), updated to a realistic "approximately 4 minutes" example.
+
+744/744 tests pass (4 new, covering the distance-to-minutes math,
+singular/plural phrasing, the 1-minute floor, and the no-data fallback).
+All three touched backend/frontend files re-verified with `npx esbuild`.
+Verified live: both updated marketing pages render the new text
+correctly. Not yet deployed — `send-eta-sms` needs a normal function
+redeploy (no SQL delta, no new column).
