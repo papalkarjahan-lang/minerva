@@ -133,6 +133,32 @@ spending effort on it blind today.~~ Revisited same-day instead, once
   mistake than the slowness itself. This needs actual pagination or a
   search/filter UI, not a quick cap, and deserves its own scoped pass
   rather than being rushed alongside the lower-risk fixes above.
+  **Re-verified 2026-10-10** while checking today's own new code
+  (the technician site-tracking and verification-package fixes) against
+  this exact bar before shipping it — independently re-arrived at the
+  same conclusion rather than assuming it still held, and extended the
+  list: `IndustrialDispatcherView.jsx`'s new `technician_incidents`
+  query (today's own addition, "Field reports") has the identical shape
+  and belongs on this list too. Also tried, then reverted, the one fix
+  in this group that looked obviously safe by exact precedent —
+  filtering `industrial_leads` to active statuses only, mirroring
+  `DispatcherView.jsx`'s own `leads` query
+  (`.in('status', ['new','contacted','quoted'])`) exactly, which trade's
+  `leads`/`jobs` tables already do safely. Caught before shipping, by
+  checking every real usage first rather than trusting the precedent
+  alone: unlike trade's lead→job conversion (one atomic action,
+  `convertLead()` creates the job and flips lead status together,
+  confirmed in `DispatcherView.jsx`), industrial's lead→site link is a
+  separate, later, manual step — `addSite`'s own "Linked lead" dropdown
+  reads straight from the same `leads` array, and the single most
+  realistic case (linking a brand-new site to the lead that was *just*
+  converted) is exactly the row a naive active-status filter would hide
+  from that dropdown right when it's needed. Worth remembering as its
+  own lesson: an exact-looking precedent (same table shape, same kind of
+  terminal status) can still fail if a DIFFERENT part of the UI reads the
+  same array for a different purpose than the one the precedent was
+  built for — check every real call site of the data, not just the one
+  you're trying to fix.
 - **`technician_locations` has no retention/pruning cron**, unlike the 3
   tables `supabase_schema_delta_retention_cleanup.sql` already prunes
   (`xero_oauth_states`, `processed_stripe_events`, `processed_call_sids`).
