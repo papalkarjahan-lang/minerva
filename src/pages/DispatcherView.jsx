@@ -1039,6 +1039,14 @@ export default function DispatcherView() {
     }
     const { error: techErr } = await supabase.from('technicians').update({ current_job_id: jobId }).eq('id', techId)
     if (techErr) console.error('technicians.current_job_id update failed (self-heals via reconcile-technician-state)', techErr)
+    // Found 2026-10-10 while auditing this console's record-keeping against
+    // assignJob just above — crew is just as audit-worthy as the primary
+    // assignee (who was actually on a job matters for payroll and
+    // disputes), but this never logged anything since job_assignments
+    // shipped.
+    const crewJob = jobs.find(j => j.id === jobId)
+    const crewTechName = technicians.find(t => t.id === techId)?.name
+    logAudit('crew.added', { entityType: 'job', entityId: jobId, details: { client_name: crewJob?.client_name, technician_name: crewTechName } })
     await loadAll()
   }
 
@@ -1053,6 +1061,12 @@ export default function DispatcherView() {
       const { error: techErr } = await supabase.from('technicians').update({ current_job_id: null }).eq('id', techId)
       if (techErr) console.error('removeCrewMember: failed to clear current_job_id', techErr)
     }
+    // Same record-keeping fix as addCrewMember above. job_id comes off the
+    // already-found jobCrew entry rather than a second lookup — job itself
+    // may be undefined if jobCrew hasn't loaded this job's crew list yet,
+    // same null-safety the existing code above already assumes.
+    const removedJob = job ? jobs.find(j => j.id === job.job_id) : null
+    logAudit('crew.removed', { entityType: 'job', entityId: job?.job_id, details: { client_name: removedJob?.client_name, technician_name: tech?.name } })
     await loadAll()
   }
 
@@ -1384,6 +1398,13 @@ export default function DispatcherView() {
     const { error } = await supabase.from('invoices').update({ status: 'void', voided_at: voidedAt, voided_reason: reason || null }).eq('id', invoiceId)
     setVoidingId(null)
     if (error) { alert(`Couldn't void invoice: ${error.message}`); return }
+    // The prompt above literally tells the dispatcher this reason is "shown
+    // in the audit trail" — found 2026-10-10 that it never actually was,
+    // logAudit was never called here. voided_reason was still saved on the
+    // invoice row itself, so the data wasn't lost, but it never reached the
+    // Records tab the UI's own copy promised.
+    const voidedInvoice = invoices.find(i => i.id === invoiceId)
+    logAudit('invoice.voided', { entityType: 'invoice', entityId: invoiceId, details: { client_name: voidedInvoice?.client_name, reason: reason || null } })
     setInvoices(prev => prev.map(i => i.id === invoiceId ? { ...i, status: 'void', voided_at: voidedAt, voided_reason: reason || null } : i))
   }
 
@@ -1709,6 +1730,10 @@ export default function DispatcherView() {
       })
       if (error || data?.error) throw new Error(data?.error || error.message)
       if (data?.business) setBusiness(data.business)
+      // Real money — found 2026-10-10 alongside voidInvoice's own gap that
+      // this was never logged either, despite being the one action in this
+      // whole file with a direct Stripe charge attached to it.
+      logAudit('addon.enabled', { entityType: 'business', entityId: businessId, details: { addon_name: MAX_ADDONS.find(a => a.key === key)?.name || key } })
     } catch (err) {
       alert(`Couldn't enable add-on: ${err.message}`)
     } finally {
@@ -1721,6 +1746,7 @@ export default function DispatcherView() {
     const { data, error } = await supabase.from('businesses').update(startTrialPatch(business, key)).eq('id', businessId).select().single()
     if (error) { alert(`Couldn't start trial: ${error.message}`); setAddonBusy(null); return }
     if (data) setBusiness(data)
+    logAudit('addon.trial_started', { entityType: 'business', entityId: businessId, details: { addon_name: MAX_ADDONS.find(a => a.key === key)?.name || key } })
     setAddonBusy(null)
   }
 
@@ -1732,6 +1758,7 @@ export default function DispatcherView() {
       })
       if (error || data?.error) throw new Error(data?.error || error.message)
       if (data?.business) setBusiness(data.business)
+      logAudit('addon.disabled', { entityType: 'business', entityId: businessId, details: { addon_name: MAX_ADDONS.find(a => a.key === key)?.name || key } })
     } catch (err) {
       alert(`Couldn't disable add-on: ${err.message}`)
     } finally {

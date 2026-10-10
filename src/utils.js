@@ -367,8 +367,20 @@ export function describeAuditEntry(entry) {
       return `Removed subcontractor ${d.name || 'Unknown'}`
     case 'job.assigned':
       return `Assigned job${d.client_name ? ` for ${d.client_name}` : ''} to ${d.assignee_name || 'Unassigned'}`
+    case 'crew.added':
+      return `Added ${d.technician_name || 'a technician'} as crew${d.client_name ? ` on the job for ${d.client_name}` : ''}`
+    case 'crew.removed':
+      return `Removed ${d.technician_name || 'a technician'} from crew${d.client_name ? ` on the job for ${d.client_name}` : ''}`
     case 'invoice.paid':
       return `Marked invoice paid${d.total != null ? ` ($${Number(d.total).toFixed(2)})` : ''}${d.client_name ? ` — ${d.client_name}` : ''}`
+    case 'invoice.voided':
+      return `Voided invoice${d.client_name ? ` — ${d.client_name}` : ''}${d.reason ? ` (${d.reason})` : ''}`
+    case 'addon.enabled':
+      return `Enabled add-on${d.addon_name ? ` "${d.addon_name}"` : ''}`
+    case 'addon.disabled':
+      return `Disabled add-on${d.addon_name ? ` "${d.addon_name}"` : ''}`
+    case 'addon.trial_started':
+      return `Started free trial of${d.addon_name ? ` "${d.addon_name}"` : ' an add-on'}`
     case 'checklist_template.saved':
       return `Saved ${d.type === 'onboarding' ? 'onboarding' : 'completion'} checklist "${d.name || ''}"`
     case 'credential.added':

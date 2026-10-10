@@ -336,11 +336,40 @@ describe('describeAuditEntry', () => {
       .toBe('Assigned job to Unassigned')
   })
 
+  it('describes crew added/removed, with and without a client name', () => {
+    expect(describeAuditEntry({ action: 'crew.added', details: { technician_name: 'Jane Doe', client_name: 'Bob Smith' } }))
+      .toBe('Added Jane Doe as crew on the job for Bob Smith')
+    expect(describeAuditEntry({ action: 'crew.added', details: {} }))
+      .toBe('Added a technician as crew')
+    expect(describeAuditEntry({ action: 'crew.removed', details: { technician_name: 'Jane Doe', client_name: 'Bob Smith' } }))
+      .toBe('Removed Jane Doe from crew on the job for Bob Smith')
+    expect(describeAuditEntry({ action: 'crew.removed', details: {} }))
+      .toBe('Removed a technician from crew')
+  })
+
   it('describes an invoice payment, formatting the total', () => {
     expect(describeAuditEntry({ action: 'invoice.paid', details: { total: 245.5, client_name: 'Bob Smith' } }))
       .toBe('Marked invoice paid ($245.50) — Bob Smith')
     expect(describeAuditEntry({ action: 'invoice.paid', details: {} }))
       .toBe('Marked invoice paid')
+  })
+
+  it('describes a voided invoice, with and without a reason', () => {
+    expect(describeAuditEntry({ action: 'invoice.voided', details: { client_name: 'Bob Smith', reason: 'duplicate' } }))
+      .toBe('Voided invoice — Bob Smith (duplicate)')
+    expect(describeAuditEntry({ action: 'invoice.voided', details: {} }))
+      .toBe('Voided invoice')
+  })
+
+  it('describes Minerva Max add-on enable/disable/trial actions', () => {
+    expect(describeAuditEntry({ action: 'addon.enabled', details: { addon_name: 'AI Quote Drafting' } }))
+      .toBe('Enabled add-on "AI Quote Drafting"')
+    expect(describeAuditEntry({ action: 'addon.disabled', details: { addon_name: 'AI Quote Drafting' } }))
+      .toBe('Disabled add-on "AI Quote Drafting"')
+    expect(describeAuditEntry({ action: 'addon.trial_started', details: { addon_name: 'AI Quote Drafting' } }))
+      .toBe('Started free trial of "AI Quote Drafting"')
+    expect(describeAuditEntry({ action: 'addon.trial_started', details: {} }))
+      .toBe('Started free trial of an add-on')
   })
 
   it('describes a checklist template save, distinguishing completion vs onboarding', () => {
