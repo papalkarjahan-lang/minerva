@@ -99,6 +99,15 @@ Paste each into the Supabase SQL Editor. None of these depend on each other.
   them — run this before that frontend change reaches production, not
   after. No function redeploy needed, this is a pure schema+RLS change
   paired with a frontend-only commit.
+- `supabase_schema_delta_verification_package_view.sql` — **new
+  2026-10-10**: 1 new anon SELECT policy on
+  `client_verification_packages`, no new column. See its own file and
+  `BILLING_INTEGRITY_NOTES.md`'s matching "follow-on" entry — without
+  this, the new `/verification/:packageId` page
+  (`VerificationPackageView.jsx`, same commit) will correctly render its
+  "invalid link" error state for every real package too, since anon has
+  no read access yet. Run before that frontend change reaches
+  production. No function redeploy needed.
 - `supabase_schema_delta_outreach_prospects_dedup.sql` — **new
   2026-10-10**: 1 unique index on `outreach_prospects.contact_email`, no
   new column. See its own file and `OUTREACH_INTEGRITY_NOTES.md`'s

@@ -23,6 +23,7 @@ const ClientHistoryView = lazy(() => import('./pages/ClientHistoryView'))
 const SuccessPage = lazy(() => import('./pages/SuccessPage'))
 const IntakeAssistant = lazy(() => import('./pages/IntakeAssistant'))
 const DisputeView = lazy(() => import('./pages/DisputeView'))
+const VerificationPackageView = lazy(() => import('./pages/VerificationPackageView'))
 const Login = lazy(() => import('./pages/Login'))
 const AdminConsole = lazy(() => import('./pages/AdminConsole'))
 const TermsOfService = lazy(() => import('./pages/TermsOfService'))
@@ -116,6 +117,14 @@ export default function App() {
             (GPS route, checklist photos, materials, invoice), opened from
             DispatcherView's Recently Completed section. URL: /dispute/:jobId */}
         <Route path="/dispute/:jobId" element={<DisputeView />} />
+
+        {/* Industrial sibling of Dispute Pack — read-only evidence page for
+            a site_projects "client verification package" (check-ins,
+            telemetry, safety log), opened from IndustrialDispatcherView's
+            Verification tab. URL: /verification/:packageId. Added 2026-10-10
+            — this page didn't exist before, so a package could be generated
+            but a client had no way to ever see it. */}
+        <Route path="/verification/:packageId" element={<VerificationPackageView />} />
 
         {/* Personalized ROI one-pager for a big-account sales target
             (multi-van company, FM company, etc.) — generated from the

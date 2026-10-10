@@ -233,6 +233,17 @@ third one on Standard, sector left as the trade default.
       row appears (HUMAN · arrival). This is the one flow that was
       completely unbuilt before today — confirm it end to end, don't
       just spot-check one side.
+- [ ] **Client verification package view (added 2026-10-10 — run the
+      `supabase_schema_delta_verification_package_view.sql` delta first)**:
+      from the Sites tab, click "Generate verification package" on the
+      site you checked into above → switch to the Verification tab → the
+      new package appears → click "Copy client link" → paste the copied
+      URL into a different browser/incognito window (logged out, no
+      session) → confirm the summary, your check-in, and the safety log
+      render correctly with no login prompt → back in the dispatcher,
+      click "Mark signed off" → confirm the badge updates to "signed
+      off" and the public page (refresh it) now shows the signed-off
+      timestamp too.
 
 ## 11. Autonomous layer (only if you ran the pg_cron setup block)
 

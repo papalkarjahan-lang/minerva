@@ -25,6 +25,7 @@ export default function IndustrialDispatcherView() {
   const [technicians, setTechnicians] = useState([])
   const [packages, setPackages] = useState([])
   const [fieldReports, setFieldReports] = useState([])
+  const [copiedPackageId, setCopiedPackageId] = useState(null)
   const [tab, setTab] = useState('overview') // 'overview' | 'leads' | 'sites' | 'assets' | 'inventory' | 'safety' | 'verification'
   const [showAddLead, setShowAddLead] = useState(false)
   const [showAddSite, setShowAddSite] = useState(false)
@@ -471,6 +472,30 @@ export default function IndustrialDispatcherView() {
     setBusyId(null)
     if (error) { alert(`Couldn't update site assignment: ${error.message}`); return }
     loadAll()
+  }
+
+  // Dispatcher-side manual sign-off — the only writer of signed_off_at
+  // anywhere in the codebase (confirmed by grep before adding this; the
+  // column already existed with a badge reading it, but nothing ever set
+  // it). Deliberately not a client self-service action — see
+  // VerificationPackageView.jsx's own header comment for why — this
+  // records that the operator personally obtained sign-off through
+  // whatever real channel (in person, by email, verbally), same spirit as
+  // the outreach "Record a reply or a win" tool.
+  async function markPackageSignedOff(id) {
+    if (busyId === id) return
+    if (!confirm('Mark this verification package as signed off? Only do this once you’ve actually received the client’s sign-off.')) return
+    setBusyId(id)
+    const { error } = await supabase.from('client_verification_packages').update({ signed_off_at: new Date().toISOString() }).eq('id', id)
+    setBusyId(null)
+    if (error) { alert(`Couldn't mark signed off: ${error.message}`); return }
+    loadAll()
+  }
+
+  function copyPackageLink(id) {
+    navigator.clipboard.writeText(`${window.location.origin}/verification/${id}`)
+    setCopiedPackageId(id)
+    setTimeout(() => setCopiedPackageId(null), 2000)
   }
 
   // Corrective-action ticket actions — see corrective_actions load in
@@ -1028,7 +1053,15 @@ export default function IndustrialDispatcherView() {
             {packages.map(p => (
               <div key={p.id} style={styles.row}>
                 <p style={styles.rowDesc}>{p.summary}</p>
-                <span style={styles.statusBadge(p.signed_off_at ? 'signed off' : 'pending sign-off')}>{p.signed_off_at ? 'signed off' : 'pending sign-off'}</span>
+                <div style={styles.rowActions}>
+                  <span style={styles.statusBadge(p.signed_off_at ? 'signed off' : 'pending sign-off')}>{p.signed_off_at ? 'signed off' : 'pending sign-off'}</span>
+                  <button style={styles.smallBtn} onClick={() => copyPackageLink(p.id)}>
+                    {copiedPackageId === p.id ? 'Copied!' : 'Copy client link'}
+                  </button>
+                  {!p.signed_off_at && (
+                    <button style={styles.smallBtn} disabled={busyId === p.id} onClick={() => markPackageSignedOff(p.id)}>Mark signed off</button>
+                  )}
+                </div>
               </div>
             ))}
           </>

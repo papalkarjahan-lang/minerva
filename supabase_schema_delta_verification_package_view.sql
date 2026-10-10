@@ -1,0 +1,61 @@
+-- ============================================================
+-- MINERVA — Delta: let a client actually view a generated verification
+-- package, 2026-10-10. Adds 1 RLS policy, no new column. Run this entire
+-- block once in the Supabase SQL Editor.
+--
+-- What this fixes: `package-client-verification`'s own header comment
+-- (2026-09-01) says it "mirrors the trade sector's Dispute Pack — see
+-- DisputeView.jsx" — a read-only, no-login, shareable-link page. That page
+-- was never actually built for client_verification_packages. Combined
+-- with `rls_scoping_v3.sql` (2026-09-14) correctly closing this table's
+-- original wide-open "anon all" policy down to "owner all" (business owner
+-- only, same tightening applied project-wide that day), the practical
+-- result was: a package could be generated, a Slack message would say
+-- "ready to present for client sign-off" — but there was no page anywhere
+-- a client could open to actually see it, and the `signed_off_at` column
+-- IndustrialDispatcherView.jsx's own badge already displays
+-- ("pending sign-off" / "signed off") was referenced in exactly that one
+-- display line and nowhere else in the whole codebase — nothing, anywhere,
+-- ever wrote it. The badge would have read "pending sign-off" forever, for
+-- every package, permanently. Found while tracing the technician site-
+-- tracking gap (same session, same root family of findings).
+--
+-- Fix: new src/pages/VerificationPackageView.jsx (/verification/:packageId)
+-- mirroring DisputeView.jsx's exact pattern, needs one new anon SELECT
+-- policy, scoped by id only (same unguessable-link trust model already
+-- used for jobs/invoices/quotes — "anyone with this URL can view it", not
+-- a secret, meant to be shared deliberately one-to-one). No anon access to
+-- site_projects/site_checkins/etc. is needed for this: the package's own
+-- `evidence` column is a complete snapshot taken at generation time, so
+-- the view page reads that directly.
+--
+-- Deliberately NOT a client self-service "sign off" action: no other page
+-- in this app lets a client digitally sign/approve anything (checked
+-- before writing this — every "approve" found in the codebase is an
+-- internal operator action on drafts/outreach), so adding one here would
+-- be a new product pattern, not a completion of an existing one. Marking
+-- `signed_off_at` stays a dispatcher-side manual write (new "Mark signed
+-- off" button in IndustrialDispatcherView.jsx, same commit) — already
+-- covered by the EXISTING "owner all client_verification_packages" policy
+-- from rls_scoping_v3.sql, so no additional policy is needed for that
+-- half, only the new anon SELECT below.
+-- ============================================================
+
+create policy "anon select client_verification_packages" on client_verification_packages
+  for select
+  to anon
+  using (true);
+
+-- Verify after running (as the anon key, no login — safe, read-only; use a
+-- real package id from your own test data, generated via "Generate
+-- verification package" on an industrial test site):
+--
+-- curl "https://xiikytqxevivrupkljwc.supabase.co/rest/v1/client_verification_packages?select=id,summary,signed_off_at&id=eq.<a real package id>" \
+--   -H "apikey: YOUR_ANON_KEY" -H "Authorization: Bearer YOUR_ANON_KEY"
+-- Expect: 200, one row.
+--
+-- Then confirm nothing legitimate broke: the business owner's own
+-- IndustrialDispatcherView Verification tab still loads every package for
+-- their business exactly as before (owner policy untouched, this is purely
+-- additive), and /verification/:packageId renders the summary, check-ins,
+-- telemetry, and safety log correctly for that same package.

@@ -772,3 +772,59 @@ Both files re-verified with `npx esbuild --bundle=false` (no Deno/node
 test runner reaches these two directly). Not yet deployed — the SQL
 delta must run before either file's next deploy, same ordering rule as
 every other delta in this file.
+
+### Same day, follow-on: a generated verification package had no way to ever reach a client
+
+Found while the entry above was still fresh, by re-asking its own
+question against the industrial sector's OTHER headline capability.
+`package-client-verification`'s own header comment (2026-09-01) says it
+"mirrors the trade sector's Dispute Pack — see `DisputeView.jsx`" — a
+read-only, no-login, shareable-link page. That page was never actually
+built for `client_verification_packages`. Combined with
+`rls_scoping_v3.sql` correctly closing this table's original wide-open
+anon policy down to owner-only (the same project-wide tightening applied
+to a dozen other tables that day), the result: a package could be
+generated, a Slack message would say "ready to present for client
+sign-off" — but no page anywhere let a client actually see it. Worse,
+`signed_off_at` — the column `IndustrialDispatcherView.jsx`'s own badge
+already displayed ("pending sign-off" / "signed off") — was referenced
+in exactly that one display line and nowhere else in the entire
+codebase. Nothing, anywhere, ever wrote it. Every package, forever,
+would read "pending sign-off" no matter what actually happened.
+
+Checked before building anything: does any other page in this app let a
+CLIENT digitally sign or approve something themselves? No — every
+"approve" in the codebase (outreach drafts, growth drafts, weather
+reschedule drafts) is an internal operator action on their own business's
+own data, never a client-facing one. Building a client self-service
+digital-signature flow here would have been inventing a new product
+pattern with zero precedent, not completing an existing one. Chose the
+narrower, precedent-consistent fix instead:
+
+- New `src/pages/VerificationPackageView.jsx`
+  (`/verification/:packageId`), mirroring `DisputeView.jsx`'s exact
+  shape — summary, check-ins, telemetry, safety log (all read directly
+  from the package's own `evidence` jsonb snapshot, no live re-query
+  needed), print button, no login. Verified live: navigating to a
+  nonexistent package id correctly renders the "invalid link" error
+  state with no crash (the only live check possible without creating
+  real test data — the underlying RLS policy itself still needs a real
+  package id to verify after the delta runs, noted in that file).
+- `supabase_schema_delta_verification_package_view.sql` (not yet run):
+  1 new anon SELECT policy, scoped by id only, same unguessable-link
+  trust model as `/dispute/:jobId`/`/invoice/:invoiceId`. No other new
+  anon access needed — the package's `evidence` snapshot is
+  self-contained.
+- `IndustrialDispatcherView.jsx`: new "Copy client link" and "Mark
+  signed off" buttons per package in the Verification tab.
+  `markPackageSignedOff()` is the only writer of `signed_off_at`
+  anywhere in the codebase — a deliberate, dispatcher-side manual
+  record of a real-world event (the operator personally received
+  sign-off, by whatever channel), same spirit as the outreach "Record a
+  reply or a win" tool built earlier this session, not a stronger
+  digital-signature claim this product has no other precedent for.
+
+737/737 tests still pass. All three touched/new files re-verified with
+`npx esbuild`. Not yet deployed — the new SQL delta must run before
+this frontend change reaches production, same ordering rule as every
+other delta in this file.
