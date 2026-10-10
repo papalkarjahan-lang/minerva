@@ -265,6 +265,32 @@ serve(async (req: Request) => {
               }),
             }).catch(err => console.error('stripe-webhook: welcome email failed', err))
           }
+
+          // Operator alert — found 2026-10-10: every OTHER subscription
+          // lifecycle event in this file alerts the operator (payment
+          // failed, cancelled, disputed, Pro/Industrial mismatch) but a
+          // brand new checkout completing never did. This is the one
+          // event the person running Minerva most needs to see in real
+          // time — a real signup is exactly the moment worth personally
+          // following up on, not something to discover later by happening
+          // to open the Supabase dashboard. Same best-effort, no-op-if-
+          // unconfigured pattern as every alert above; never blocks the
+          // write or the business's own welcome email either way.
+          await notifySlack(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, plan.businessId,
+            `🎉 *${biz?.name || 'A business'}* just completed checkout and started their trial.`)
+
+          const operatorEmail = Deno.env.get('OPERATOR_EMAIL')
+          if (shouldAlertOperator(operatorEmail)) {
+            fetch(`${Deno.env.get('SUPABASE_URL')!}/functions/v1/send-email`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!}` },
+              body: JSON.stringify({
+                to: operatorEmail,
+                subject: `[Minerva] New signup — ${biz?.name || plan.businessId}`,
+                html: `<p><strong>${escapeHtml(biz?.name || 'A business')}</strong> just completed checkout and started their 7-day trial. Worth a personal follow-up.</p>`,
+              }),
+            }).catch(err => console.error('stripe-webhook: new-signup operator alert failed', err))
+          }
         }
         break
       }

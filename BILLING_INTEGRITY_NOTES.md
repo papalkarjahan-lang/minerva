@@ -853,3 +853,39 @@ without rewriting the surrounding pitch. General lesson worth keeping:
 when a product gap gets fixed, it's worth a pass over the sales/outreach
 docs for anything that already assumed the fix — not just the product
 code itself.
+
+## 2026-10-10 — the most important lifecycle event of all had no operator alert
+
+Closing the loop on the subscription-lifecycle communication work from
+earlier today (trial-ending → payment-failed → payment-recovered →
+cancelled, all now proactively emailed to both the business and the
+operator). Checked the one event that chain never actually started
+from: `checkout.session.completed` — a brand new signup completing
+checkout and starting their trial. Every other lifecycle event in
+`stripe-webhook/index.ts` alerts `OPERATOR_EMAIL` (payment failed,
+cancelled, disputed, Pro/Industrial Customer-Portal mismatch) — this
+one, the single most important and most positive event of all, never
+did. The business itself gets a welcome email; the person actually
+running Minerva would have had no way to find out a real signup
+happened except by independently checking the Supabase dashboard.
+
+Found while thinking through what "connect everything to work
+perfectly" (the standing goal's own phrase for the moment a prospect
+actually accepts) literally requires: the operator finding out in real
+time is a precondition for following up personally, which matters most
+of all for an early, low-volume customer base.
+
+Fixed with the exact same pattern every other alert in this file
+already uses: a business-scoped Slack post via the shared
+`notifySlack()` helper, plus an `OPERATOR_EMAIL` email gated on
+`shouldAlertOperator()`, both best-effort and never blocking the
+underlying `businesses` write or the customer's own welcome email.
+Caught and fixed one thing in my own first draft before committing:
+chained a redundant `.catch()` onto `notifySlack()`, which already
+swallows its own errors internally — every other call site in this file
+just `await`s it directly with nothing chained on, confirmed by grepping
+all 4 call sites before finalizing, not assumed from the one I was
+copying from. 737/737 tests pass; `index.ts` re-verified with `npx
+esbuild`. `stripe-webhook` was already in `DEPLOY_RUNBOOK_PENDING.md`'s
+pending-redeploy list from earlier changes today, so no new deploy-order
+entry was needed — this just rides along with that existing redeploy.
