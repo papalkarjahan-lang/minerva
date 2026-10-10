@@ -7,6 +7,7 @@ Disallow: /track/
 Disallow: /invoice/
 Disallow: /quote/
 Disallow: /dispute/
+Disallow: /verification/
 Disallow: /client/
 Disallow: /intake/
 Disallow: /tech
