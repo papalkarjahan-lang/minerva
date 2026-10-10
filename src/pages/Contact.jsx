@@ -13,7 +13,7 @@ import { useDocumentMeta } from '../hooks/useDocumentMeta'
 // scoped to a business yet (that's the point of a marketing-site contact
 // form vs. the in-app support modal).
 export default function Contact() {
-  useDocumentMeta({ title: 'Contact', description: 'Get in touch with the Minerva team — questions about setup, pricing, or your trade business.' })
+  useDocumentMeta({ title: 'Contact', description: 'Get in touch with the Minerva team — questions about setup, pricing, or your business.' })
   const [name, setName] = useState('')
   const [contact, setContact] = useState('')
   const [message, setMessage] = useState('')

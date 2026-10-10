@@ -35,7 +35,7 @@ const PRICING_FAQS = [
 ]
 
 export default function Pricing() {
-  useDocumentMeta({ title: 'Pricing', description: 'Starter, Standard, and Pro plans billed per technician per month — live GPS tracking and automated client SMS for trade businesses.' })
+  useDocumentMeta({ title: 'Pricing', description: 'Starter, Standard, and Pro plans billed per technician per month — live GPS tracking and automated client SMS for trade and industrial businesses.' })
   return (
     <div style={{ fontFamily: 'Arial, sans-serif', background: '#050811', minHeight: '100vh', color: '#fff' }}>
       <SiteNav />
