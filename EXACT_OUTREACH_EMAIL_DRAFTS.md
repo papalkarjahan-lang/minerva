@@ -437,6 +437,18 @@ is a more appropriate first touch here than a cold call — this buyer is
 harder to reach by phone and more likely to forward a credible email
 internally.
 
+**Safe to send as of 2026-10-10 — wasn't before:** both emails below
+promise "check-ins" and "the auto-assembled client verification package"
+as real, working capabilities. Until today's date, neither one actually
+was — `site_checkins` had zero insert paths anywhere in the codebase
+(so a demo pulling up a live check-in log would have shown nothing), and
+no client-facing page existed to view a verification package at all.
+Both are genuinely built and working now (see
+`BILLING_INTEGRITY_NOTES.md`'s matching 2026-10-10 entries), so the
+copy below is accurate as written — flagged here only so it's clear
+these drafts weren't safe to actually send, or demo live if a reply
+came in, before today.
+
 **Email 1 — Day 0**
 Subject: proving what happened on site — [Company Name]
 

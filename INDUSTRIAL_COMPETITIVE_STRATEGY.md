@@ -244,6 +244,11 @@ on. Across all 7 products:
   sign-off artifact. **This is the single clearest gap-to-feature match in
   the entire industrial pitch — say so plainly, but only for what's built
   today (see the honesty note in `supabase_schema_delta_industrial.sql`).**
+  **Correction, 2026-10-10:** "what's built today" needed re-checking
+  against the actual code, not just this doc's own earlier confidence —
+  no page existed anywhere for a client to actually view a package, and
+  the "signed off" status was never written by anything. Genuinely built
+  now (`BILLING_INTEGRITY_NOTES.md`'s matching entry); wasn't before.
 
 ---
 
@@ -275,6 +280,12 @@ hardware demo to run) — until a real telemetry integration is live, the
 honest version of this rule is the live-app demo: pull up the check-in log
 and safety log on the prospect's own phone, in their browser, during the
 call. No download, same as Trade.
+**Correction, 2026-10-10:** this specific demo wasn't actually safe to run
+before today — the check-in log had no way to ever get a real entry into
+it (zero insert paths anywhere in the codebase), so "pull up the check-in
+log" would have shown an empty list no matter what. Genuinely fixed now;
+confirm a demo business actually has at least one real logged check-in
+before relying on this live, the same way you'd seed any other live demo.
 
 **Rule 5, applied here — with a real caveat:** the compounding-data-moat
 pitch from the Trade doc is NOT yet safely portable to Client 9. There's no

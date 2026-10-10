@@ -828,3 +828,28 @@ narrower, precedent-consistent fix instead:
 `npx esbuild`. Not yet deployed — the new SQL delta must run before
 this frontend change reaches production, same ordering rule as every
 other delta in this file.
+
+### Same day, second follow-on: closing the loop on the sales copy that already promised both fixes above
+
+With both gaps above now closed, checked whether anything written for
+the actual outreach campaign had already promised either one as real —
+not a hypothetical concern: `INDUSTRIAL_COMPETITIVE_STRATEGY.md`'s own
+Rule 4 explicitly instructed pulling up the live check-in log on a
+prospect's own phone during a call, and `CLIENT_PITCHES_ADDENDUM.md`
+labeled both capabilities "actually built and honestly sellable today."
+Neither claim was true when written. Since no real outreach has gone
+out yet (confirmed earlier this session), this never actually reached a
+prospect — but had a call happened on this script before today, the
+live demo it explicitly calls for would have shown an empty list where
+the pitch promised a working system.
+
+No copy needed to change — every claim is accurate now that both gaps
+are closed, this was purely about leaving an honest record that it
+wasn't always true. Added a dated correction note at each of the 4
+spots (`CLIENT_PITCHES_ADDENDUM.md`, `INDUSTRIAL_COMPETITIVE_STRATEGY.md`
+×2, `EXACT_OUTREACH_EMAIL_DRAFTS.md`'s Client 9 section header),
+matching this project's existing convention for marking a stale claim
+without rewriting the surrounding pitch. General lesson worth keeping:
+when a product gap gets fixed, it's worth a pass over the sales/outreach
+docs for anything that already assumed the fix — not just the product
+code itself.

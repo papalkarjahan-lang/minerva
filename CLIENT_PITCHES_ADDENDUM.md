@@ -81,14 +81,25 @@ reconstruct it from memory or photos on someone's phone.
 note in `supabase_schema_delta_industrial.sql` before promising anything
 beyond this — there is no real RFID/BLE/drone hardware integration yet,
 only a working ingestion endpoint ready for one):
-- **Site check-in log** — arrival/departure/task-start/task-complete
+
+**Correction, 2026-10-10:** the two bullets below marked with a † were
+NOT actually true when this section was first written — the site
+check-in log had no insert path anywhere in the codebase (every
+reference to `site_checkins` was a read) and no page existed for a
+client to ever view a verification package. Both are genuinely built
+and working as of today (see `BILLING_INTEGRITY_NOTES.md`'s matching
+entries) — this section's description of them was always the right
+target, it just wasn't live yet. Worth remembering generally: "honestly
+sellable" needs the same re-verification discipline as any other
+falsifiable claim in this codebase, not just a one-time label.
+- **† Site check-in log** — arrival/departure/task-start/task-complete
   records per person per site, with a same-zone human/equipment proximity
   flag ("the Warden").
 - **Safety incident log** — warning/hazard severity, acknowledgeable,
   timestamped, per site.
 - **Consumables low-stock alerts** — reorder threshold per item per site,
   alerts once (not every run) until restocked.
-- **Client verification packages** — an auto-assembled evidence snapshot
+- **† Client verification packages** — an auto-assembled evidence snapshot
   (check-ins + safety log + telemetry-to-date) the client signs off on, so
   "prove what happened on site" stops being a manual reconstruction job.
 - **Asset register with engine-hours maintenance alerts** — works today via
