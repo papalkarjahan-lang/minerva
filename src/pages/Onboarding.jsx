@@ -354,7 +354,7 @@ export default function Onboarding() {
               <p style={styles.reviewLine}><strong>Plan:</strong> {TIERS.find(t => t.id === tier).name}</p>
               <div style={styles.divider} />
               <p style={styles.priceCalc}>
-                {techs.filter(t=>t.name.trim()).length} technicians × ${perTechPrice}/month
+                {techs.filter(t=>t.name.trim()).length} {techs.filter(t=>t.name.trim()).length === 1 ? 'technician' : 'technicians'} × ${perTechPrice}/month
               </p>
               <p style={styles.totalPrice}>
                 ${techs.filter(t=>t.name.trim()).length * perTechPrice}/month
