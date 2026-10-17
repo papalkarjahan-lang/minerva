@@ -57,34 +57,53 @@ through to the raw action-string default, plus tests for every new case.
   operates across businesses as the operator, a genuinely different
   context with no established convention to be inconsistent with.
 
+## Fixed 2026-10-18
+
+The "probably worth it" tier below (then unfixed) was resolved in full —
+3 genuinely fixed, 1 found already done:
+
+- **`approveDraft` / `rejectDraft` / `approveWeatherDraft`** — new
+  `marketing_draft.approved`/`marketing_draft.rejected`/
+  `weather_draft.approved` actions, logged right after the real send (or
+  real status flip) succeeds, same placement convention as `job.assigned`.
+  `rejectDraft` only logs on the branch where its own `.eq('status',
+  'pending')` guard actually matched a row — not on the "already actioned
+  elsewhere" branch, consistent with that function's existing concurrency
+  guard (see its own 2026-09-29 comment).
+- **`assignAsset` / `setAssetStatus`** — new `asset.assigned`/
+  `asset.unassigned`/`asset.status_changed` actions.
+- **`syncInvoiceToXero`** — new `invoice.synced_to_xero` action.
+- **`addWorkflow` / `removeWorkflow`** — turned out to be a stale catalog
+  entry, not a real gap: both already call `onLogAudit?.('workflow.added'
+  / 'workflow.removed', ...)` with matching `describeAuditEntry` cases
+  already in `src/utils.js`. Caught by reading the actual function bodies
+  before editing instead of trusting this file's own "not yet fixed"
+  listing — moved to "Checked and found already correct" below. Worth
+  the reminder: this file is a point-in-time record, not live state,
+  same as any other memory/notes doc in this project.
+
+All new cases have matching `describeAuditEntry` entries + tests.
+744/744 tests pass (test count unchanged — new assertions landed inside
+an existing `it()` block, not new ones). `DispatcherView.jsx`/`utils.js`
+re-verified with `npx esbuild`. No SQL delta, ships with `DispatcherView.jsx`'s
+next normal deploy (static frontend, no function redeploy either).
+
+**Left deliberately asymmetric, worth a future look:** `rejectDraft` is
+now logged but its weather-side equivalent, `dismissWeatherDraft`, isn't
+— that asymmetry already existed in the original catalog (only
+`rejectDraft` was listed as "probably worth it", not `dismissWeatherDraft`)
+and wasn't this pass's call to resolve either way, so it was left alone
+rather than unilaterally extending scope beyond what was catalogued.
+
 ## Found, deliberately not fixed yet — needs a scope decision, not a quick patch
 
 A full sweep of every `async function` in `DispatcherView.jsx` found 14
-more mutating actions with zero `logAudit` coverage. Unlike the three
+more mutating actions with zero `logAudit` coverage. Unlike the ones
 fixed above, none of these have the same "the UI explicitly promises
 this" or "real money changes hands" clarity — deciding which deserve a
 permanent audit-trail entry is a real product-scope call (how much
 granularity does the Records tab need to stay useful rather than
-noisy), not a bug fix, so none were added unilaterally. Grouped by how
-strong the case is, for whoever makes that call next:
-
-**Probably worth it, moderate confidence:**
-- `approveDraft` / `rejectDraft` / `approveWeatherDraft` — these approve
-  a real outbound message to a real client (growth marketing SMS,
-  weather-reschedule SMS). `quote.sent` is logged for a comparable
-  reason (a real external communication the dispatcher authorized).
-- `assignAsset` / `setAssetStatus` — trade-side Pro tier's own asset
-  tracking (company vehicles/equipment, distinct from industrial's
-  `industrial_assets`). Knowing who had a company asset and when could
-  matter for loss/liability tracking the same way crew assignment does.
-- `syncInvoiceToXero` — triggers an external accounting-system write;
-  "why didn't this invoice show up in Xero, who triggered the sync" is
-  a reasonable future support question with no trail to answer it from
-  today.
-- `addWorkflow` / `removeWorkflow` — changes what automatically fires on
-  a future event; "why did this client get an unexpected message"
-  could trace back to a workflow someone added or removed with no
-  record of who or when.
+noisy), not a bug fix, so none were added unilaterally.
 
 **Lower priority — routine CRM/profile edits, closer to "normal
 business operation" than "needs a dispute trail":**

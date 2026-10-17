@@ -413,6 +413,20 @@ export function describeAuditEntry(entry) {
       return `Removed ${d.technician_name || 'a technician'} from site${d.site_name ? ` ${d.site_name}` : ''}`
     case 'verification_package.signed_off':
       return `Marked verification package signed off${d.site_name ? ` — ${d.site_name}` : ''}`
+    case 'asset.assigned':
+      return `Assigned asset${d.asset_name ? ` ${d.asset_name}` : ''} to ${d.technician_name || 'a technician'}`
+    case 'asset.unassigned':
+      return `Unassigned asset${d.asset_name ? ` ${d.asset_name}` : ''}`
+    case 'asset.status_changed':
+      return `Changed asset${d.asset_name ? ` ${d.asset_name}` : ''} status to ${d.status || 'unknown'}`
+    case 'weather_draft.approved':
+      return `Approved weather reschedule${d.client_name ? ` for ${d.client_name}` : ''}`
+    case 'marketing_draft.approved':
+      return `Approved ${d.draft_type === 'ad_campaign' ? 'ad campaign' : 'outreach message'}${d.headline ? ` "${d.headline}"` : ''}`
+    case 'marketing_draft.rejected':
+      return `Rejected ${d.draft_type === 'ad_campaign' ? 'ad campaign' : 'outreach message'}${d.headline ? ` "${d.headline}"` : ''}`
+    case 'invoice.synced_to_xero':
+      return `Synced invoice to Xero${d.client_name ? ` — ${d.client_name}` : ''}`
     default:
       return entry.action
   }

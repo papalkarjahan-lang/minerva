@@ -1313,6 +1313,8 @@ export default function DispatcherView() {
     const { error } = await supabase.from('assets').update({ assigned_technician_id: techId || null, status: techId ? 'in_use' : 'available' }).eq('id', assetId)
     if (error) { alert(`Couldn't assign asset: ${error.message}`); return }
     setAssets(prev => prev.map(a => a.id === assetId ? { ...a, assigned_technician_id: techId || null, status: techId ? 'in_use' : 'available' } : a))
+    const assetName = assets.find(a => a.id === assetId)?.name || null
+    logAudit(techId ? 'asset.assigned' : 'asset.unassigned', { entityType: 'asset', entityId: assetId, details: { asset_name: assetName, technician_name: techId ? (technicians.find(t => t.id === techId)?.name || null) : null } })
   }
 
   async function setAssetStatus(assetId, status) {
@@ -1322,6 +1324,8 @@ export default function DispatcherView() {
       const { error } = await supabase.from('assets').update({ status }).eq('id', assetId)
       if (error) { alert(`Couldn't update asset status: ${error.message}`); return }
       setAssets(prev => prev.map(a => a.id === assetId ? { ...a, status } : a))
+      const assetName = assets.find(a => a.id === assetId)?.name || null
+      logAudit('asset.status_changed', { entityType: 'asset', entityId: assetId, details: { asset_name: assetName, status } })
     } finally {
       setBusyAssetId(null)
     }
@@ -1502,6 +1506,7 @@ export default function DispatcherView() {
     try {
       const { data, error } = await supabase.functions.invoke('send-weather-reschedule-sms', { body: { draftId: draft.id } })
       if (error || data?.error) throw new Error(data?.error || error.message)
+      logAudit('weather_draft.approved', { entityType: 'weather_reschedule_draft', entityId: draft.id, details: { client_name: draft.jobs?.client_name || null } })
       await loadAll()
     } catch (err) {
       alert(`Failed to send: ${err.message}`)
@@ -1541,6 +1546,7 @@ export default function DispatcherView() {
       const fn = draft.type === 'ad_campaign' ? 'launch-ad-campaign' : 'send-growth-message'
       const { data, error } = await supabase.functions.invoke(fn, { body: { draftId: draft.id } })
       if (error || data?.error) throw new Error(data?.error || error.message)
+      logAudit('marketing_draft.approved', { entityType: 'marketing_draft', entityId: draft.id, details: { draft_type: draft.type, headline: draft.headline || null, recipient_count: Array.isArray(draft.recipients) ? draft.recipients.length : null } })
       await loadAll()
     } catch (err) {
       alert(`Failed to approve: ${err.message}`)
@@ -1568,6 +1574,10 @@ export default function DispatcherView() {
       .select('id')
     if (error) alert(`Couldn't reject: ${error.message}`)
     else if (!updated || updated.length === 0) alert(`This draft was already actioned (approved or rejected) — refreshing.`)
+    else {
+      const draft = marketingDrafts.find(d => d.id === draftId)
+      logAudit('marketing_draft.rejected', { entityType: 'marketing_draft', entityId: draftId, details: { draft_type: draft?.type || null, headline: draft?.headline || null } })
+    }
     await loadAll()
     setMarketingActionId(null)
   }
@@ -1680,6 +1690,8 @@ export default function DispatcherView() {
       alert(`Xero sync failed: ${data?.error || error.message}`)
       return
     }
+    const invoiceClientName = invoices.find(i => i.id === invoiceId)?.client_name || null
+    logAudit('invoice.synced_to_xero', { entityType: 'invoice', entityId: invoiceId, details: { client_name: invoiceClientName } })
     await loadAll()
   }
 
