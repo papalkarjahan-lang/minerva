@@ -195,3 +195,41 @@ win is what actually gets the annualized number into $200K range, not
 outreach volume alone. Landing 2+ big accounts by Dec 31 is the real
 $200K-by-committed-forecast scenario, but is not something to promise as
 certain — it depends on conversations that haven't started yet.
+
+## 9. Which named targets fit the new fleet-optimization pitch best (2026-10-18)
+
+`optimize-fleet-day` (see `minerva_efficiency_pivot` memory) re-plans a
+whole team's job assignment and route sequencing at once, not just one
+technician's stops — and its value genuinely scales with fleet size: a
+human dispatcher can eyeball a good plan for 5 vans, but not for 30+,
+which is exactly where this earns its keep instead of just being a nice
+extra. Ranked against the real fleet sizes already researched for the 18
+named targets, not re-researched here, just re-read through this specific
+lens:
+
+1. **Ken Hall Plumbers (122 vehicles)** — the single best fit on the
+   entire list. Already "the big swing" per section 7 above; this gives
+   it a sharper, more concrete hook than generic GPS tracking ever could
+   — at this scale, whole-fleet optimization isn't a convenience, it's
+   the difference between a dispatcher guessing and an actual plan.
+2. **Twin Electrics & Plumbing (30 vans)** — already the highest-
+   confidence target for other reasons; 30 vans is comfortably past the
+   point where this pitch is concretely true, not just directionally
+   true.
+3. **Associated Cleaning Services (400+ sites nationwide)** — the
+   biggest scale by far, but section 5's own caveat still applies: this
+   needs a per-region pilot framing, not a whole-company pitch. Worth
+   explicitly offering the pilot as "we'll optimize one region's routes
+   first" rather than claims about the whole national operation at once.
+4. Every other confirmed-fleet target (the 10-30 technician range this
+   file's own section 7 already establishes as the normal ceiling) —
+   the pitch is still honestly true there, just less dramatically
+   differentiated than at Ken Hall's scale. Use the line from
+   `CLIENT_PITCHES_ADDENDUM.md`'s new "Whole-fleet route optimization"
+   entry as-is; no target-specific rewrite needed for this tier.
+
+**Not re-ranking close probability** — nothing above changes the 15-45%
+range `BIG_ACCOUNT_EXECUTION_KIT.md` already gives per target type, since
+no real conversation has tested whether a sharper pitch actually converts
+better. This is a prioritization of WHICH targets this specific angle is
+most honestly true for, not a new forecast.
