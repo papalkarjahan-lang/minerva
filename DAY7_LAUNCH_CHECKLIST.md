@@ -159,13 +159,15 @@ Stop and fix before continuing if any box fails — don't skip ahead.
       returns 0 rows, not the other business's data
 - [ ] Cancel/note this second test subscription the same way as step 1
 
-## 9. Standard tier (added 2026-10-09 — Standard's 6 automations are new;
-##    test this even if you're not specifically selling Standard, since it
-##    also confirms the gate correctly excludes Starter and industrial)
+## 9. Standard tier (added 2026-10-09, extended 2026-10-18 — Standard's 7
+##    automations are new; test this even if you're not specifically
+##    selling Standard, since it also confirms the gate correctly excludes
+##    Starter and industrial)
 
-Standard ($79/tech/mo) and Pro both get 6 proactive automations Starter
+Standard ($79/tech/mo) and Pro both get 7 proactive automations Starter
 doesn't: lead nurture, lead win-back, client retention check-ins, invoice
-reminders, no-show detection, and weather reschedule alerts — but only for
+reminders, no-show detection, weather reschedule alerts, and whole-fleet
+route optimization — but only for
 `sector = 'trade'` businesses (industrial doesn't use the `jobs`/`leads`/
 `invoices` tables these read, so it correctly gets none of this on any
 tier — that's by design, not a bug, see `_shared/tierEligibility.ts`).
@@ -198,6 +200,20 @@ third one on Standard, sector left as the trade default.
       `jobsChecked` includes it (a drafted reschedule only appears if
       tomorrow's forecast is actually risky there — that part depends on
       real weather, not something you can force)
+- [ ] Whole-fleet route optimization — **unlike every other Standard-tier
+      item above, this one is owner-authenticated (same as the "Optimize
+      today's route" button), not a raw cron sweep, so test it through the
+      real dispatcher UI, not Dashboard → Edge Functions → Invoke**: get 2
+      technicians sharing a real, far-apart `current_lat`/`current_lng`
+      (have both open their tracking link from two different real
+      locations, or set it directly in Table Editor), then schedule a job
+      for today near Technician B's position but assign it to Technician A
+      instead — a deliberately wrong assignment. In the dispatcher view,
+      click "⚡ Optimize today's whole fleet" → confirm the result message
+      reports 1 job reassigned and a non-zero km saved, the job's assigned
+      technician is now B not A, and the "~Xkm saved so far" stat appears
+      underneath the button. Click the button again immediately → confirm
+      it now reports nothing worth changing (already optimal).
 - [ ] **Negative test — confirm the gate actually excludes Starter**:
       repeat the chase-unpaid-invoices or retention-checkin case on the
       Starter-tier business from section 1 → confirm it reports scanning/
