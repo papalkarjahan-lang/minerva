@@ -15,4 +15,5 @@
 -- ============================================================
 
 insert into agent_functions (name, agent) values
-  ('incoming-sms-webhook', 'core');
+  ('incoming-sms-webhook', 'core')
+on conflict (name) do nothing;
