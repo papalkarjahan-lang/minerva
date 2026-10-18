@@ -46,6 +46,7 @@ import {
   computeFuelSavings,
   computeMinervaMonthlyCost,
   isEligibleForProposalStageAdvance,
+  shouldComputeFuelSavings,
 } from "./logic.ts"
 import { isAdminCaller, getAuthenticatedCaller } from "../_shared/ownership.ts"
 
@@ -90,7 +91,15 @@ serve(async (req: Request) => {
     }
 
     const monthlyFuelSpend = computeMonthlyFuelSpend(fleetSize, avgMonthlyFuelSpend)
-    const { monthly: estimatedMonthlyFuelSavings, annual: estimatedAnnualFuelSavings } = computeFuelSavings(monthlyFuelSpend)
+    // See logic.ts's shouldComputeFuelSavings header comment — the 15%
+    // benchmark is a route-optimization claim, which has no real
+    // mechanism behind it for industrial (no route-optimization feature,
+    // a fundamentally different fuel-usage pattern). No savings figure is
+    // generated or stored for an industrial proposal rather than applying
+    // a claim that doesn't hold for that sector.
+    const computeSavings = shouldComputeFuelSavings(tradeType)
+    const { monthly: estimatedMonthlyFuelSavings, annual: estimatedAnnualFuelSavings } =
+      computeSavings ? computeFuelSavings(monthlyFuelSpend) : { monthly: null, annual: null }
     const estimatedMinervaMonthlyCost = computeMinervaMonthlyCost(fleetSize)
 
     const { data: proposal, error } = await supabase.from('roi_proposals').insert({

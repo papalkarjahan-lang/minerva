@@ -136,6 +136,13 @@ Paste each into the Supabase SQL Editor. None of these depend on each other.
 - `supabase_schema_delta_fleet_optimization.sql` — **new 2026-10-18**:
   adds `businesses.total_km_saved`. `optimize-fleet-day` (new function,
   Phase 3) depends on this column existing.
+- `supabase_schema_delta_roi_proposals_industrial_savings_nullable.sql` —
+  **new 2026-10-18**: drops `not null` on `roi_proposals`'s two
+  fuel-savings columns. `generate-roi-proposal` (Phase 3) now leaves
+  these null for an industrial proposal rather than applying a
+  route-optimization savings claim that sector has no real feature
+  behind — without this delta, every industrial proposal generation
+  would fail outright on the insert.
 
 ## Phase 2 — SQL: Agent OS registration deltas (after Phase 1, before Phase 3)
 

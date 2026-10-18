@@ -33,6 +33,13 @@ export default function ProposalView() {
   if (!proposal) return <LoadingScreen label="Loading proposal..." />
 
   const fmt = n => Number(n).toLocaleString('en-AU', { maximumFractionDigits: 0 })
+  // estimated_monthly_fuel_savings is null for an industrial proposal (see
+  // generate-roi-proposal/logic.ts's shouldComputeFuelSavings — the 15%
+  // figure is a route-optimization benchmark with no real mechanism
+  // behind it for industrial, since no route-optimization feature exists
+  // for that sector). Title/layout branch on this directly rather than on
+  // trade_type, so it stays correct even if a future sector hits the same gap.
+  const hasFuelSavings = proposal.estimated_monthly_fuel_savings != null
 
   return (
     <div style={styles.screen} className="invoice-screen">
@@ -55,27 +62,29 @@ export default function ProposalView() {
       `}</style>
       <div style={styles.card} className="invoice-print-card">
         <p style={styles.bizName}>Prepared for {proposal.company_name}</p>
-        <h1 style={styles.title}>What Minerva could save your fleet</h1>
+        <h1 style={styles.title}>{hasFuelSavings ? 'What Minerva could save your fleet' : 'What Minerva brings to your sites'}</h1>
         <p style={styles.subtitle}>
           Based on a {proposal.fleet_size}-vehicle fleet{proposal.trade_type ? ` in ${proposal.trade_type}` : ''}
         </p>
 
         <div style={styles.divider} />
 
-        <div style={styles.statRow}>
-          <span style={styles.statLabel}>Estimated monthly fuel spend today</span>
-          <span style={styles.statValue}>${fmt(proposal.avg_monthly_fuel_spend)}</span>
-        </div>
-        <div style={styles.statRow}>
-          <span style={styles.statLabel}>Estimated monthly fuel savings (15%, conservative)</span>
-          <span style={{ ...styles.statValue, color: '#1D9E75' }}>${fmt(proposal.estimated_monthly_fuel_savings)}</span>
-        </div>
-        <div style={styles.statRow}>
-          <span style={styles.statLabel}>Estimated annual fuel savings</span>
-          <span style={{ ...styles.statValue, color: '#1D9E75', fontSize: 22 }}>${fmt(proposal.estimated_annual_fuel_savings)}</span>
-        </div>
+        {hasFuelSavings ? (<>
+          <div style={styles.statRow}>
+            <span style={styles.statLabel}>Estimated monthly fuel spend today</span>
+            <span style={styles.statValue}>${fmt(proposal.avg_monthly_fuel_spend)}</span>
+          </div>
+          <div style={styles.statRow}>
+            <span style={styles.statLabel}>Estimated monthly fuel savings (15%, conservative)</span>
+            <span style={{ ...styles.statValue, color: '#1D9E75' }}>${fmt(proposal.estimated_monthly_fuel_savings)}</span>
+          </div>
+          <div style={styles.statRow}>
+            <span style={styles.statLabel}>Estimated annual fuel savings</span>
+            <span style={{ ...styles.statValue, color: '#1D9E75', fontSize: 22 }}>${fmt(proposal.estimated_annual_fuel_savings)}</span>
+          </div>
 
-        <div style={styles.divider} />
+          <div style={styles.divider} />
+        </>) : null}
 
         <div style={styles.statRow}>
           <span style={styles.statLabel}>Estimated Minerva cost for your fleet</span>
@@ -83,15 +92,9 @@ export default function ProposalView() {
         </div>
 
         <p style={styles.disclaimer}>
-          This is a planning estimate based on published fleet-telematics
-          route-optimization benchmarks (typically 10-25% fuel reduction;
-          this uses a conservative 15%), not a guarantee — actual savings
-          depend on your current routing, vehicle types, and driving
-          patterns. Also included at no extra calculation shown here: live
-          GPS tracking and automated customer SMS updates
-          {proposal.trade_type?.toLowerCase() === 'industrial'
-            ? ', plus the site check-in log, safety incident log, asset register, and auto-assembled client verification package built for Industrial.'
-            : ', plus (on Pro) on-site invoicing, asset tracking, compliance checklists, and technician credential tracking.'}
+          {hasFuelSavings
+            ? 'This is a planning estimate based on published fleet-telematics route-optimization benchmarks (typically 10-25% fuel reduction; this uses a conservative 15%), not a guarantee — actual savings depend on your current routing, vehicle types, and driving patterns. Also included at no extra calculation shown here: live GPS tracking and automated customer SMS updates, plus (on Pro) on-site invoicing, asset tracking, compliance checklists, and technician credential tracking.'
+            : 'The cost above is the only estimate on this page — Minerva doesn’t have a published, cited savings benchmark for multi-site industrial operations the way it does for fleet route optimization, so we’re not putting a number on it. What you do get: live tracking of crews and assets across sites, arrival/departure check-ins for multi-day jobs, the site check-in log, safety incident log, asset register with maintenance alerts, and auto-assembled client verification packages for compliance handoff.'}
         </p>
 
         <Link to="/start" className="no-print" style={styles.ctaBtn}>Start a free 7-day trial</Link>

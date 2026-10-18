@@ -4,6 +4,7 @@ import {
   computeFuelSavings,
   computeMinervaMonthlyCost,
   isEligibleForProposalStageAdvance,
+  shouldComputeFuelSavings,
 } from './logic'
 
 describe('computeMonthlyFuelSpend', () => {
@@ -38,6 +39,24 @@ describe('computeMinervaMonthlyCost', () => {
 
   it('rounds the result', () => {
     expect(computeMinervaMonthlyCost(3)).toBe(267)
+  })
+})
+
+describe('shouldComputeFuelSavings', () => {
+  it('is false for industrial, case-insensitive', () => {
+    expect(shouldComputeFuelSavings('industrial')).toBe(false)
+    expect(shouldComputeFuelSavings('Industrial')).toBe(false)
+    expect(shouldComputeFuelSavings('INDUSTRIAL')).toBe(false)
+  })
+
+  it('is true for trade and any other value', () => {
+    expect(shouldComputeFuelSavings('trade')).toBe(true)
+    expect(shouldComputeFuelSavings('plumbing')).toBe(true)
+  })
+
+  it('is true for null/undefined (defaults to showing the estimate)', () => {
+    expect(shouldComputeFuelSavings(null)).toBe(true)
+    expect(shouldComputeFuelSavings(undefined)).toBe(true)
   })
 })
 

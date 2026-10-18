@@ -25,6 +25,29 @@ export function computeFuelSavings(monthlyFuelSpend: number): { monthly: number;
   return { monthly, annual: monthly * 12 }
 }
 
+// Found 2026-10-18: this 15% figure is specifically a route-optimization
+// benchmark (see index.ts header — "fleet telematics + route optimization
+// typically cuts fuel spend by...") but was being applied to EVERY
+// tradeType with no branching at all, including 'industrial' — which has
+// no route-optimization feature (optimize-fleet-day/optimize-daily-route
+// are both trade-only, see minerva_efficiency_pivot memory) and a
+// fundamentally different fuel-usage pattern (equipment travels to a site
+// and stays for days, not many short point-to-point daily jobs). An
+// industrial prospect was being shown a specific, quantified dollar
+// savings figure with no real mechanism behind it for their sector — the
+// same "sold vs delivered" bug class found repeatedly elsewhere in this
+// project, here on the actual closing document for big-account deals.
+// Deliberately not substituting a different industrial-specific savings
+// number — no cited, real benchmark exists for one (asset-telemetry/
+// safety-compliance value doesn't have a published "cuts cost by X%"
+// figure the way route optimization does), and this file's whole premise
+// is "real, cited... not invented figures." Industrial proposals simply
+// don't show a savings claim; ProposalView.jsx's disclaimer already
+// correctly lists what IS real for them instead.
+export function shouldComputeFuelSavings(tradeType: string | null | undefined): boolean {
+  return tradeType?.toLowerCase() !== 'industrial'
+}
+
 export function computeMinervaMonthlyCost(fleetSize: number): number {
   return Math.round(fleetSize * MINERVA_PER_TECH_MONTHLY_ESTIMATE)
 }
