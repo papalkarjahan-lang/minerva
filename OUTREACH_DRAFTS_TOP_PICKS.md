@@ -34,10 +34,12 @@ bundled enterprise suite, so you're not paying for anything you don't
 need.
 
 Quick question rather than a pitch: with a fleet your size, how are you
-currently tracking where your vans/techs are and keeping compliance
-records (vehicle checks, licence/credential expiry) up to date? If it's
-mostly manual right now, I'd like to show you the actual numbers for a
-fleet your size — no cost, no obligation.
+currently tracking where your vans/techs are, keeping compliance records
+(vehicle checks, licence/credential expiry) up to date, and making sure
+each day's job assignment is actually the most efficient use of 30 vans
+rather than just whoever grabbed it first? If any of that's still manual,
+I'd like to show you the actual numbers for a fleet your size — no cost,
+no obligation.
 
 Do you have 15 minutes this week or next?
 
