@@ -1,7 +1,7 @@
 # Minerva — Setup Instructions
 
 ## What this is
-A live GPS dispatch tracking tool for trade businesses. Technicians share their location via their phone browser (no download required). The dispatcher sees every technician on a live map. Clients get an automatic SMS with a tracking link when the technician is 15 minutes away.
+A live GPS dispatch tracking tool for trade businesses. Technicians share their location via their phone browser (no download required). The dispatcher sees every technician on a live map. Clients get an automatic SMS with a tracking link once the technician is close by (within about 2km).
 
 A separate, additive **industrial sector** also exists for multi-site/heavy-equipment operations — site check-ins instead of a live map, safety incident tracking, asset telemetry. See "Agent Expansion Pack (Track A) + Industrial Sector (Track B)" below for what it is and how to set it up; it isn't a variant of the description above, it's a genuinely different console with its own data model.
 

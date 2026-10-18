@@ -205,7 +205,8 @@ I ask because it's one of the most common gaps I see in smaller
 operations — not because anything's being done wrong, just because
 manually calling every affected customer takes someone's time away from
 the job itself. Minerva automates that specific piece: a live tracking
-link plus an automatic "technician is 15 minutes away" text.
+link plus an automatic "technician is close by" text once they're within
+about 2km.
 
 Happy to show you what this looks like for a business your size — no
 cost, no obligation. Worth a quick call?

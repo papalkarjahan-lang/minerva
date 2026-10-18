@@ -88,8 +88,9 @@ achievement — most plumbing businesses that scale that much also
 outgrow being able to personally track every van by phone call.
 
 I build Minerva: a live map of every van, with an automatic text to the
-client the moment someone's 15 minutes out, so your team isn't fielding
-"where is he" calls all day. 20 minutes to set up, no app download.
+client once their technician is close by (within about 2km), so your
+team isn't fielding "where is he" calls all day. 20 minutes to set up,
+no app download.
 
 See exactly what the client receives, 60 seconds, no signup:
 https://minerva-green.vercel.app/demo

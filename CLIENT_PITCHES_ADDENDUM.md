@@ -20,6 +20,19 @@ these didn't used to need a qualifier, but three of the four now do; see
 `SALES_CLAIMS_ACCURACY_NOTE.md`'s "Safe to say" section for the full,
 current list)**:
 
+**Whole-fleet route optimization** (`optimize-fleet-day`, new 2026-10-18) —
+**Standard tier and up, trade sector only.** Insert into Clients 1, 2, 3,
+4, 5 (any profile with more than a couple of technicians — this is where
+it actually earns its keep; don't use it on Client 7's solo/small pool
+round, that one's single-tech route optimization is already covered on
+Starter): *"Minerva can also re-plan your whole team's day in one click —
+not just one tech's stops, but who should take which job across everyone
+— and it only ever changes anything if it actually beats what you've
+already got, so it'll never shuffle jobs around for no real reason."*
+Good line for Client 8 (competitor-switcher) too — add it to that extra
+line below, since this one genuinely doesn't exist in ServiceM8 or
+Tradify either.
+
 **Dead-lead win-back** (`winback-lost-leads`) — **Standard tier and up**
 (trade sector only, which Clients 1/2/3/5/6/7 all are — fine for this
 list, just don't reuse the line for a Starter-tier conversation or an
@@ -55,11 +68,11 @@ to lose your best tech."*
 *"Every paid invoice can include a referral code for the client to share —
 no extra setup, no separate app."*
 
-**Client 8 (competitor-switcher) — extra line:** *"None of this — the
-dead-lead win-back and weather reschedule (Standard tier up), the weekly
-ad drafts (Pro) — exists in ServiceM8 or Tradify at all. It's not a
-feature gap you're trading up from, it's a category they don't compete
-in."*
+**Client 8 (competitor-switcher) — extra line:** *"None of this — whole-
+fleet route optimization, dead-lead win-back and weather reschedule
+(Standard tier up), the weekly ad drafts (Pro) — exists in ServiceM8 or
+Tradify at all. It's not a feature gap you're trading up from, it's a
+category they don't compete in."*
 
 ---
 

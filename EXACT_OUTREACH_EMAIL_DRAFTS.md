@@ -36,8 +36,8 @@ Subject: quick question about [Business Name]'s ETA calls
 Hi [First name],
 
 I build a tool called Minerva for plumbing businesses — a live map showing
-every van, that automatically texts your client when someone's 15 minutes
-out so your team stops taking "where is he" calls.
+every van, that automatically texts your client once their plumber is
+close by (within about 2km) so your team stops taking "where is he" calls.
 
 I noticed [specific detail — e.g. "a couple of recent Google reviews
 mentioned not knowing when the plumber would arrive"]. That's the exact
@@ -299,8 +299,8 @@ Hi [First name],
 I build Minerva for pest control businesses. The most common scheduling
 problem I hear: clients forgetting their quarterly treatment or not being
 home during the window. Minerva automatically sends a reminder 48 hours
-before the appointment and a live tracking text when your technician is 30
-minutes away — nobody on your team has to do it manually.
+before the appointment and a live tracking text once your technician is
+close by (within about 2km) — nobody on your team has to do it manually.
 
 Worth a 10-minute demo this week?
 

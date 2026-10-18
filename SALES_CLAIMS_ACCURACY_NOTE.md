@@ -48,6 +48,18 @@ read `jobs`/`invoices`/`leads`, tables industrial doesn't use):
   the fourth automation in the same Standard+/trade bundle; wasn't in
   this list before even pre-dating the gate, add it alongside the other
   three now that all four are correctly scoped together
+- "If a technician shows up and nobody's there, Minerva flags it with GPS
+  evidence and offers the client a reschedule automatically." —
+  `detect-wasted-trips`, the fifth function in the same
+  `hasStandardAutomation` bundle; also missing from this list before now,
+  found by re-checking this list against that helper's actual gated-
+  function set rather than assuming the 4 already here were the full set
+- "Minerva can re-plan your whole team's day in one click — who takes
+  which job, not just one person's route — and only changes anything if
+  it actually beats what you've already got." — `optimize-fleet-day`, new
+  2026-10-18, same Standard+/trade gate. See
+  `minerva_efficiency_pivot` memory / `CLIENT_PITCHES_ADDENDUM.md` for
+  the full pitch-ready line.
 
 **True only for Pro tier, trade sector only** (pre-existing gate, just
 never reflected in this specific list before — don't assume something's

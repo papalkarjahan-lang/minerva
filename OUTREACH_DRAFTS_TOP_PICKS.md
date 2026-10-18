@@ -176,8 +176,8 @@ without someone on your team having to call them?
 Most of the trade businesses I talk to solve this reactively — a client
 calls in annoyed, then someone rings the tech, then someone calls the
 client back. Minerva does that automatically: a live tracking link plus an
-auto-text the moment a tech is within 15 minutes, no manual calls needed
-either direction.
+auto-text the moment a tech is close by (within about 2km), no manual
+calls needed either direction.
 
 Given your scale, happy to walk through what that would actually look like
 for one region first, no commitment. Worth 15 minutes?

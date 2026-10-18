@@ -25,8 +25,8 @@ Subject: quick question about [Business Name]'s dispatch
 Hi [First name],
 
 I build a tool called Minerva for trade businesses — it's a live map that shows where
-every van/technician is, and it automatically texts your client when someone's 15
-minutes away so your team stops taking "where is he" calls.
+every van/technician is, and it automatically texts your client once their technician
+is close by (within about 2km) so your team stops taking "where is he" calls.
 
 I noticed [specific detail — e.g. "a couple of your recent Google reviews mentioned
 not knowing when the technician would arrive"]. That's the exact thing this fixes.
