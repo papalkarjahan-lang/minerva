@@ -26,6 +26,22 @@ just keep it truthful to the actual count (see
 Same send-time rule as the base sequence: Tue–Thu, 7:30–8:30am local time.
 Never Monday, never Friday afternoon.
 
+**Fixed 2026-10-18:** Client 8's email claimed "None of this... exists in
+ServiceM8 or Tradify at all... a category they don't compete in" (dead-lead
+win-back, weather reschedule, weekly ad drafts). Live web search found this
+false or unverifiable: ServiceM8 has its own Quote Follow-Up Automation
+(close enough to win-back that "doesn't exist at all" isn't safe), and
+weather-reschedule/ad-drafts weren't confirmed either way. Both ServiceM8
+and Tradify also turned out to already have route optimization (Tradify
+markets it as AI-powered, "30% efficiency" — stronger than Minerva's own
+15% benchmark) — not relevant to this specific email since it never
+mentioned route optimization, but the same pattern that made this line
+wrong. Removed the paragraph rather than replace it with a new unverified
+claim — the email's actual hook (direct reference to their specific public
+complaint) doesn't need it. See `CLIENT_PITCHES_ADDENDUM.md`'s matching
+2026-10-18 correction for the full research and the general lesson: don't
+claim a named, mature competitor lacks a feature without verifying first.
+
 ---
 
 ## Client 1 — Plumbing (3–7 vans)
@@ -405,11 +421,6 @@ hearing the same thing from other tradies. [Pick the matching line:
 "Minerva runs on Android in the browser, no download required." / "I
 answer the phone myself when something goes wrong." / "Your branding
 stays on every client email, not mine."]
-
-None of this — the dead-lead win-back and weather reschedule texts
-(Standard tier up), the weekly ad drafts (Pro) — exists in ServiceM8 or
-Tradify at all. It's not a feature gap you'd be trading up from, it's a
-category they don't compete in.
 
 I'll move your client list and technician setup across for free — one
 session, you do nothing except confirm the details. Want to jump on a

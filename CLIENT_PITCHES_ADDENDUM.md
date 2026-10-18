@@ -29,9 +29,16 @@ Starter): *"Minerva can also re-plan your whole team's day in one click —
 not just one tech's stops, but who should take which job across everyone
 — and it only ever changes anything if it actually beats what you've
 already got, so it'll never shuffle jobs around for no real reason."*
-Good line for Client 8 (competitor-switcher) too — add it to that extra
-line below, since this one genuinely doesn't exist in ServiceM8 or
-Tradify either.
+**Correction 2026-10-18 — do NOT use this against ServiceM8 or Tradify
+by name, verified via live web search, not assumed:** ServiceM8 has a
+one-click "Auto Routing" add-on that optimizes a staff member's daily
+schedule by travel time/fuel; Tradify markets its own AI-powered route
+optimization directly ("boosting contractor efficiency by 30%" per its
+own marketing — a stronger claim than the 15% conservative figure
+`generate-roi-proposal` itself uses). Both are real, shipped, named
+features, not vendor fluff assumed away. Route optimization is NOT a
+category Minerva uniquely occupies vs. these two — see the corrected
+Client 8 entry below for what's safe to say instead.
 
 **Dead-lead win-back** (`winback-lost-leads`) — **Standard tier and up**
 (trade sector only, which Clients 1/2/3/5/6/7 all are — fine for this
@@ -68,11 +75,29 @@ to lose your best tech."*
 *"Every paid invoice can include a referral code for the client to share —
 no extra setup, no separate app."*
 
-**Client 8 (competitor-switcher) — extra line:** *"None of this — whole-
-fleet route optimization, dead-lead win-back and weather reschedule
-(Standard tier up), the weekly ad drafts (Pro) — exists in ServiceM8 or
-Tradify at all. It's not a feature gap you're trading up from, it's a
-category they don't compete in."*
+**Client 8 (competitor-switcher) — extra line, CORRECTED 2026-10-18:**
+the previous version of this line (*"None of this... exists in ServiceM8
+or Tradify at all... a category they don't compete in"*) was wrong, and
+had been sitting in this file unverified since before this correction —
+found while checking whether to add the new route-optimization line
+here too, and live search immediately disproved the premise (see the
+correction note above this section). ServiceM8 also has Quote Follow-Up
+Automation (auto email/SMS on quotes sent) — close enough in spirit to
+`winback-lost-leads` that "doesn't exist at all" isn't a safe claim for
+that one either. Weather-reschedule and the weekly ad drafts weren't
+confirmed either way by this search — don't assume they're safe just
+because route optimization and lead follow-up turned out not to be.
+
+**Do NOT use a "they don't have this" framing against ServiceM8/Tradify
+by name without verifying the SPECIFIC claim first** — both are mature,
+well-funded platforms, and this correction found 2 of 3 claims in the
+old line were wrong on the first real check. If Client 8 needs a
+competitor-switcher line, the safer, already-verified ground is
+Minerva's own pricing model (simple per-technician, no bundled tiers —
+already used correctly in the Twin Electrics/Ken Hall drafts) and, for
+an industrial-adjacent prospect specifically, that Minerva covers
+multi-site/asset-telemetry/safety-compliance in the same product — not
+a claim that a named competitor lacks a specific feature.
 
 ---
 
