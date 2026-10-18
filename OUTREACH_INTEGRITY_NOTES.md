@@ -216,3 +216,41 @@ tool already relies on.
   these three functions still pass. No action taken because none was
   needed — recorded so a future session doesn't re-read the same code
   from scratch assuming it's unverified.
+
+## 2026-10-18 — a false competitive claim, caught and fixed
+
+While deciding whether to add the new whole-fleet route optimization pitch to
+Ken Hall Plumbers' draft (`OUTREACH_DRAFTS_TOP_PICKS.md`), checked whether
+that would be safe given the draft's explicit "complement ServiceTitan, never
+replace it" positioning — route optimization is close enough to core dispatch
+that assuming it's unique to Minerva felt risky rather than obviously safe.
+Verified with live web search instead of guessing:
+
+- **ServiceM8 has a one-click "Auto Routing" add-on** — optimizes a staff
+  member's daily schedule by travel time/fuel, functionally similar to
+  Minerva's own `optimize-daily-route`.
+- **Tradify markets its own AI-powered route optimization**, claiming a 30%
+  contractor-efficiency improvement — a *stronger* claim than the 15%
+  conservative benchmark `generate-roi-proposal` itself uses.
+- **ServiceM8 also has Quote Follow-Up Automation** (auto email/SMS on sent
+  quotes) — close enough in spirit to `winback-lost-leads` that claiming no
+  equivalent "at all" isn't safe either.
+
+This disproved an existing line in `CLIENT_PITCHES_ADDENDUM.md`'s Client 8
+entry AND the real Client 8 email template in
+`EXACT_OUTREACH_EMAIL_DRAFTS.md` — both asserted "none of this exists in
+ServiceM8 or Tradify at all... a category they don't compete in," predating
+this session and apparently never checked against the real products. Fixed
+both (removed the claim from the real email template rather than patch it
+with a new unverified one; left a detailed correction note in the addendum).
+Did NOT add the fleet-optimization line to Ken Hall's draft, since the
+premise that made it seem safe turned out to be wrong.
+
+**The general lesson** (not specific to route optimization): never assert a
+named, mature, well-funded competitor lacks a feature without actually
+checking — "feels unlikely" is not verification, and this was wrong on 2 of 3
+components on the very first real check. `antikythera_minerva_client_pitches.docx`
+(referenced by `OUTREACH_EMAILS.md`'s reply-handling section for the same
+kind of competitive comparison table) is a binary file outside this repo —
+not checkable from a coding session, worth the user's own review given what
+turned up here.
