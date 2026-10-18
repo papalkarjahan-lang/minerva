@@ -204,3 +204,15 @@ tool already relies on.
   not the business. Unrelated to this file's own pipeline, listed here
   only because it came up while checking for the same notification-gap
   pattern across the whole codebase.
+- **2026-10-18, fresh re-read of the actual sending mechanism (not just
+  the drafting/dedup side already covered above) — no new issues found.**
+  `send-outreach-batch`, `followup-outreach`, and `outreach-unsubscribe`
+  read line-by-line against the same bug classes this whole project
+  keeps finding elsewhere (missing auth, double-send races, unescaped
+  HTML, silent no-ops): admin-auth-gated, atomic claim-before-send,
+  `escapeHtml` on every interpolated field, RESEND_API_KEY-unset reverts
+  the claim instead of stranding it, email-wide unsubscribe sweep covers
+  the dedup gap already closed elsewhere. 30/30 existing tests across
+  these three functions still pass. No action taken because none was
+  needed — recorded so a future session doesn't re-read the same code
+  from scratch assuming it's unverified.
