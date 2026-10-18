@@ -1,35 +1,28 @@
-# Minerva — Deploy Runbook (everything queued behind the git push blocker)
+# Minerva — Deploy Runbook (Supabase backend, now the only thing pending)
 
-Generated 2026-10-08, last refreshed 2026-10-10 against a direct
-`git diff origin/main..HEAD` — this is the complete, accurate picture as of
-this file's own commit, not a list reconstructed from memory. 100+ local
-commits are ahead of `origin/main` as of this refresh (check `git log
---oneline origin/main..HEAD | wc -l` for the exact current count — it
-keeps moving every session, don't trust a hardcoded number here), none
-of them live yet: not pushed to GitHub (so Vercel hasn't built any of
-the frontend changes), no SQL delta run, no edge function redeployed.
+Generated 2026-10-08, last refreshed 2026-10-10. **Phase 0 is done as of
+2026-10-18** — `git push origin main` finally succeeded (see
+`minerva_github_push_credential` memory for the fix that unblocked it),
+`origin/main` matches local HEAD exactly, and Vercel has auto-built the
+frontend from it. Everything below is now the only thing still pending.
 
-**How to use this**: once `git push origin main` actually works (see
-`minerva_github_push_credential` memory for the fix — this needs you, in an
-interactive terminal, once), work through the 4 phases below **in order**.
-Phase order matters — some SQL deltas explicitly depend on an earlier phase
-(each file's own header says so; this list just saves you from having to
-open all 25 to figure out the order yourself). Re-generate this list instead
-of trusting it if much more time passes and more commits stack up — it's a
-snapshot, not a live view.
+**The "regenerate this list via `git diff origin/main..HEAD`" instruction
+below is now dead** — that only worked while origin was behind local HEAD,
+which is no longer true. There is no git-based way to tell what's actually
+live on Supabase, because Supabase deploys aren't tracked by git at all.
+To check what's real right now instead:
+- **SQL delta applied?** `curl "https://xiikytqxevivrupkljwc.supabase.co/rest/v1/businesses?select=<new_column>&limit=1" -H "apikey: <anon key>" -H "Authorization: Bearer <anon key>"` — a `"column ... does not exist"` error means it hasn't run yet; the anon key is the same one already shipped in the live site's JS bundle, safe to use this way.
+- **Function deployed?** `curl -s -o /dev/null -w "%{http_code}" -X OPTIONS https://xiikytqxevivrupkljwc.supabase.co/functions/v1/<slug>` — 200 means it's live, 404 means it isn't. No credential needed for either check.
+- As of 2026-10-18, confirmed via these checks: `respond-to-quote` is live; `total_km_saved` doesn't exist yet and none of the other pending functions (`optimize-fleet-day`, `incoming-sms-webhook`, `notify-trial-ending` spot-checked) are deployed.
 
-If this file itself hasn't been pushed yet when you read it, that's fine —
-read it straight from your local checkout.
-
-## Phase 0 — push
-
-```bash
-git push origin main
-```
-
-Vercel auto-deploys the frontend from this on its own — no separate action
-needed for anything in `src/`. Everything below is the backend (Supabase)
-half, which Vercel can't do for you.
+**How to use the rest of this file**: work through Phases 1-4 below **in
+order**. Phase order matters — some SQL deltas explicitly depend on an
+earlier phase (each file's own header says so; this list just saves you
+from having to open all 25+ to figure out the order yourself). The file
+*list* within each phase is still accurate (nothing here goes stale just
+because the git-diff regeneration trick stopped working) — re-derive it
+from scratch only if a lot more time passes and you suspect new deltas or
+functions were added that this file doesn't know about yet.
 
 ## Phase 1 — SQL: base/column-adding deltas (any order, run first)
 
