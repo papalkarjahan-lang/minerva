@@ -67,7 +67,7 @@ const REAL_FEATURES_TRADE = `
 - Automated SMS: job assignment and ETA to the client
 - A missed-call auto-text-back (requires pointing a phone number at Minerva)
 - An embeddable website chat widget that qualifies leads and texts the team
-- Starter $49/tech/month for live dispatch; Standard $79 adds automated lead follow-up, client check-ins and invoice reminders; Pro $119 adds on-site invoicing, asset tracking, compliance checklists and Xero sync
+- Starter $49/tech/month for live dispatch; Standard $79 adds whole-fleet route optimization (one click re-plans the whole team's day to cut driving distance), automated lead follow-up, client check-ins and invoice reminders; Pro $119 adds on-site invoicing, asset tracking, compliance checklists and Xero sync
 - 7-day free trial, ~20 minute setup, no app install
 `.trim()
 

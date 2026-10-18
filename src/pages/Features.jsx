@@ -19,6 +19,18 @@ import '../styles/interactive.css'
 // send-review-request-sms's isAddonActive check — and referral nudges
 // were sitting in the Pro-only Growth section despite send-referral-
 // code-sms having no tier or add-on check at all, base or Pro).
+//
+// Added 2026-10-18: a whole "Automation (Standard)" section didn't exist
+// here at all — Pricing.jsx's own table already listed Standard's 5
+// automation features, but this page (the one meant to show "everything
+// Minerva ships") jumped straight from base features to "Operations
+// (Pro)", silently skipping the entire middle tier. Fixed by adding the
+// section, cross-checked against hasStandardAutomation's actual gate
+// (_shared/tierEligibility.ts) and each function's own header comment,
+// not copied from the pricing page's shorter blurbs. Led with the new
+// optimize-fleet-day capability (whole-fleet route optimization) as the
+// first item — see minerva_efficiency_pivot memory for why that's now
+// the headline Standard-tier feature rather than just one more bullet.
 const SECTIONS = [
   {
     title: 'Dispatch & live tracking',
@@ -35,6 +47,17 @@ const SECTIONS = [
       ['📱', 'Automatic ETA SMS', 'Clients get a text with a live tracking link once their technician is close by (within ~2km) — no app for the client to install either.'],
       ['💬', 'Automatic lead intake', 'A chat widget for your website triages enquiries and texts your team qualified leads, scored by urgency.'],
       ['🔁', 'Referral nudges', 'A single low-pressure referral-code text is sent to happy clients after a paid invoice — not a spam campaign. Included on every plan.'],
+    ],
+  },
+  {
+    title: 'Automation (Standard)',
+    items: [
+      ['⚡', 'Whole-fleet route optimization', 'One click re-plans your whole team\'s day — who goes where, in what order — to cut total driving distance across the board, not just within one person\'s route.'],
+      ['🔁', 'Automated lead nurture & win-back', 'Leads that go quiet get a gentle automatic follow-up, and lost leads get a later win-back text — before they pick a competitor instead.'],
+      ['🤝', 'Automated client retention check-ins', 'Past clients get a friendly check-in a month or two after their job, instead of just hoping they call you again.'],
+      ['💸', 'Automated invoice payment reminders', 'Unpaid invoices get a polite automatic reminder text, so you\'re not the one chasing.'],
+      ['🚫', 'Wasted-trip / no-show detection', 'If a technician shows up and nobody\'s there, it\'s flagged with GPS evidence and the client is automatically offered a reschedule.'],
+      ['⛈️', 'Weather-risk reschedule alerts', 'For weather-sensitive trades, jobs at risk from tomorrow\'s forecast get flagged with a draft reschedule message ready for your approval.'],
     ],
   },
   {
@@ -66,7 +89,7 @@ const SECTIONS = [
 ]
 
 export default function Features() {
-  useDocumentMeta({ title: 'Features', description: 'Live GPS tracking, automatic client ETA texts, dispatch scheduling, and lead intake — every feature Minerva ships, in one place.' })
+  useDocumentMeta({ title: 'Features', description: 'Live GPS tracking, whole-fleet route optimization, automatic client ETA texts, dispatch scheduling, and lead intake — every feature Minerva ships, in one place.' })
   return (
     <div style={{ fontFamily: 'Arial, sans-serif', background: '#050811', minHeight: '100vh', color: '#fff' }}>
       <SiteNav />
