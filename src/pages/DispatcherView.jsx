@@ -50,6 +50,8 @@ export default function DispatcherView() {
   const [leadActivitySummary, setLeadActivitySummary] = useState({}) // leadId -> { count, lastAt }, loaded upfront for every visible lead so the list itself shows engagement momentum without expanding each one
   const [newLeadNote, setNewLeadNote] = useState('')
   const [optimizingTechId, setOptimizingTechId] = useState(null)
+  const [optimizingFleet, setOptimizingFleet] = useState(false)
+  const [fleetOptimizeResult, setFleetOptimizeResult] = useState(null)
   const [generatingPackageForJobId, setGeneratingPackageForJobId] = useState(null)
   const [compliancePackages, setCompliancePackages] = useState({}) // jobId -> compliance_packages[]
   const [assets, setAssets] = useState([]) // Pro tier only
@@ -2062,6 +2064,40 @@ export default function DispatcherView() {
     }
   }
 
+  // Human-click only, whole-business sibling of optimizeTechRoute above —
+  // reassigns + resequences every technician's remaining unstarted jobs
+  // today at once (see optimize-fleet-day's own header for the exact
+  // method and honesty caveats). Only ever applies a plan that's actually
+  // shorter than today's real current assignment; if it isn't, nothing
+  // changes and fleetOptimizeResult reports that rather than a fake win.
+  async function optimizeFleetDay() {
+    setOptimizingFleet(true)
+    setFleetOptimizeResult(null)
+    try {
+      const now = new Date()
+      const localToday = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+      const { data, error } = await supabase.functions.invoke('optimize-fleet-day', { body: { businessId, date: localToday } })
+      if (error) throw error
+      if (data?.error) throw new Error(data.error)
+      if (data?.skipped) {
+        const message = {
+          no_available_technicians: "No technicians are sharing their location right now.",
+          no_geocoded_jobs_today: 'No unstarted jobs today to optimize.',
+          already_near_optimal: "Today's assignments are already close to optimal — nothing worth changing.",
+        }[data.skipped] || 'Nothing to optimize right now.'
+        setFleetOptimizeResult({ message })
+      } else {
+        setFleetOptimizeResult({ message: `Optimized ${data.jobsSequenced} job${data.jobsSequenced === 1 ? '' : 's'} across ${data.techniciansOptimized} technician${data.techniciansOptimized === 1 ? '' : 's'} — ${data.jobsReassigned} reassigned, ~${data.kmSaved}km saved.` })
+        logAudit('fleet.optimized', { entityType: 'business', entityId: businessId, details: { jobs_reassigned: data.jobsReassigned, km_saved: data.kmSaved } })
+        await loadAll()
+      }
+    } catch (err) {
+      alert(`Couldn't optimize fleet: ${err.message}`)
+    } finally {
+      setOptimizingFleet(false)
+    }
+  }
+
   // Human-click only — assembles existing evidence (checklist/photos/
   // materials/credentials/invoice) for one job into a reviewable document.
   // Never sends or files anything itself; see generate-compliance-package's
@@ -2325,6 +2361,22 @@ export default function DispatcherView() {
           <p style={styles.billingNote} title="Billing is based on technicians who have opened their phone link and started tracking at least once, not just how many were added at signup.">
             {technicians.filter(t => t.last_seen).length} of {technicians.length} billed (phone connected)
           </p>
+          {(business?.subscription_tier === 'standard' || business?.subscription_tier === 'pro') && business?.sector === 'trade' && (
+            <div style={{ margin: '8px 0', padding: 10, background: '#0f1420', borderRadius: 8, border: '1px solid #1e293b' }}>
+              <button style={styles.copyLinkBtn} disabled={optimizingFleet} onClick={optimizeFleetDay}
+                title="Reassigns and resequences every technician's remaining unstarted jobs today to minimize total driving distance across the whole team. A heuristic, not a guaranteed-optimal solve — only ever applies if it actually beats today's real current assignment.">
+                {optimizingFleet ? 'Optimizing fleet...' : '⚡ Optimize today’s whole fleet'}
+              </button>
+              {fleetOptimizeResult && (
+                <p style={{ ...styles.techMeta, margin: '6px 0 0' }}>{fleetOptimizeResult.message}</p>
+              )}
+              {business?.total_km_saved > 0 && (
+                <p style={{ ...styles.techMeta, margin: '4px 0 0', color: '#2E7D32' }} title="Running total across every fleet optimization that found a genuine improvement over the current assignment at the time.">
+                  ~{Math.round(business.total_km_saved)}km saved so far via fleet optimization
+                </p>
+              )}
+            </div>
+          )}
           {technicians.map((tech, i) => {
             const job = jobs.find(j => j.id === tech.current_job_id)
             const reliability = computeTechnicianReliability(tech, flaggedPhotoCounts[tech.id])

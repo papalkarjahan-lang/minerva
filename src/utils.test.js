@@ -467,6 +467,12 @@ describe('describeAuditEntry', () => {
       .toBe('Synced invoice to Xero — Bob Smith')
     expect(describeAuditEntry({ action: 'invoice.synced_to_xero', details: {} }))
       .toBe('Synced invoice to Xero')
+    expect(describeAuditEntry({ action: 'fleet.optimized', details: { jobs_reassigned: 3, km_saved: 12.4 } }))
+      .toBe('Optimized fleet routing (3 jobs reassigned, ~12.4km saved)')
+    expect(describeAuditEntry({ action: 'fleet.optimized', details: { jobs_reassigned: 1, km_saved: 2 } }))
+      .toBe('Optimized fleet routing (1 job reassigned, ~2km saved)')
+    expect(describeAuditEntry({ action: 'fleet.optimized', details: {} }))
+      .toBe('Optimized fleet routing')
   })
 
   it('falls back to the raw action string for an unknown action', () => {

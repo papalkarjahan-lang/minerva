@@ -140,6 +140,9 @@ Paste each into the Supabase SQL Editor. None of these depend on each other.
   trial had no ending-soon reminder, unlike Minerva Max add-on trials.
   `notify-trial-ending` (new function, Phase 3) depends on this column
   existing.
+- `supabase_schema_delta_fleet_optimization.sql` — **new 2026-10-18**:
+  adds `businesses.total_km_saved`. `optimize-fleet-day` (new function,
+  Phase 3) depends on this column existing.
 
 ## Phase 2 — SQL: Agent OS registration deltas (after Phase 1, before Phase 3)
 
@@ -158,8 +161,10 @@ Phase 1 before any of these rather than tracking per-family order.
   2026-10-09**
 - `supabase_schema_delta_incoming_sms_webhook_registration.sql` — **new
   2026-10-11**
+- `supabase_schema_delta_fleet_optimization_registration.sql` — **new
+  2026-10-18**
 
-## Phase 3 — Edge functions: redeploy 51
+## Phase 3 — Edge functions: redeploy (count goes stale fast, see below)
 
 **Re-generated 2026-10-10 (again)** from `git diff origin/main..HEAD
 --name-only` — this list has now gone stale three times in two days

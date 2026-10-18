@@ -427,6 +427,12 @@ export function describeAuditEntry(entry) {
       return `Rejected ${d.draft_type === 'ad_campaign' ? 'ad campaign' : 'outreach message'}${d.headline ? ` "${d.headline}"` : ''}`
     case 'invoice.synced_to_xero':
       return `Synced invoice to Xero${d.client_name ? ` — ${d.client_name}` : ''}`
+    case 'fleet.optimized': {
+      const parts = []
+      if (d.jobs_reassigned != null) parts.push(`${d.jobs_reassigned} job${d.jobs_reassigned === 1 ? '' : 's'} reassigned`)
+      if (d.km_saved != null) parts.push(`~${d.km_saved}km saved`)
+      return `Optimized fleet routing${parts.length ? ` (${parts.join(', ')})` : ''}`
+    }
     default:
       return entry.action
   }
