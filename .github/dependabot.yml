@@ -10,6 +10,17 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      # v8 removed the root `react-map-gl` import entirely (only `/mapbox`,
+      # `/maplibre`, `/mapbox-legacy` submodule exports remain) — breaks
+      # the build in DispatcherView/TrackingView/DisputeView, confirmed
+      # 2026-10-18 when Dependabot's own bump PR (7.1.9 -> 8.1.3) failed
+      # its preview build. The live map is this product's single most
+      # important visual feature; a real migration + visual re-verification
+      # can happen deliberately later, not via an unattended major-version
+      # PR. Minor/patch updates for this package still come through fine.
+      - dependency-name: "react-map-gl"
+        update-types: ["version-update:semver-major"]
 
   # Keeps the CI workflow's own actions (actions/checkout, actions/setup-node)
   # current too — these are a separate ecosystem from npm and Dependabot
