@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { SiteNav, SiteFooter } from '../components/SiteChrome'
 import { useDocumentMeta } from '../hooks/useDocumentMeta'
+import FleetOptimizerDemo from '../components/FleetOptimizerDemo'
 
 // Public, no-signup, no-login "watch it work" page. Built 2026-09-15 to
 // close a real gap: dozens of already-written outreach email drafts
@@ -35,7 +36,19 @@ export default function Demo() {
         <PhoneMockup />
       </div>
 
-      <div style={{ maxWidth: 680, margin: '0 auto 80px', padding: '0 24px', textAlign: 'center' }}>
+      <div style={{ maxWidth: 680, margin: '60px auto 0', padding: '0 24px', textAlign: 'center' }}>
+        <h2 style={{ fontSize: 26, fontWeight: 'bold', margin: '0 0 10px' }}>
+          Now watch it plan a whole team's day.
+        </h2>
+        <p style={{ fontSize: 15, color: '#aaa', margin: '0 0 24px', lineHeight: 1.6 }}>
+          This is Minerva's whole-fleet optimizer, running for real against a sample fleet below — not a video, not a mockup.
+        </p>
+      </div>
+      <div style={{ maxWidth: 620, margin: '0 auto 20px', padding: '0 24px' }}>
+        <FleetOptimizerDemo />
+      </div>
+
+      <div style={{ maxWidth: 680, margin: '40px auto 80px', padding: '0 24px', textAlign: 'center' }}>
         <Link to="/start" style={{ display: 'inline-block', background: '#1D9E75', color: '#fff', textDecoration: 'none', padding: '16px 44px', borderRadius: 12, fontSize: 16, fontWeight: 'bold', marginRight: 12 }}>
           Start your free 7-day trial
         </Link>
