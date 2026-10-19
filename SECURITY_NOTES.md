@@ -32,11 +32,20 @@ entirely by possession of an unguessable URL or PIN:
   links, but the same trust tier: it's a secret the business owner pastes
   in from their own Slack workspace (Settings modal). Anyone who obtains
   it can post arbitrary messages to that business's Slack channel. It's
-  scoped to one workspace only (not a Minerva-wide credential). Like every
-  other field on the `businesses` row, it's readable by anyone with the
-  dispatch link (same anon-select-all RLS policy) and pre-fills the
-  Settings modal input when reopened — so it inherits the dispatch link's
-  trust boundary rather than adding a new one.
+  scoped to one workspace only (not a Minerva-wide credential).
+  **Corrected 2026-10-19 — no longer accurate as originally written**:
+  this used to be readable by anyone with the dispatch link, same as
+  every other `businesses` column, under the original blanket anon
+  `using (true)` policy. `supabase_schema_delta_businesses_select_scoping.sql`
+  (2026-10-10, live as of today) narrowed anon's column access to a
+  6-column allowlist that doesn't include this field — confirmed directly,
+  an anon request for `slack_webhook_url` now returns `42501 permission
+  denied`, not the real value. The real owner's own authenticated session
+  still reads it back correctly (that policy branch was untouched), which
+  is what actually lets it pre-fill the Settings modal — so the
+  trust tier described above (same as the dispatch link) is no longer
+  correct; it now inherits the real owner's own login instead, a
+  meaningfully narrower boundary than this section originally described.
   - **Fixed 2026-09-05**: this field (and `meta_access_token`) was
     previously *also* reachable through the four client-facing, no-login
     pages — `TrackingView.jsx`, `InvoiceView.jsx`, `DisputeView.jsx`, and
@@ -678,11 +687,24 @@ any client with sensitive commercial data:
   technicians a real auth session tied to their PIN, or moving background
   agents to `service_role` + scoping their queries in application code
   instead of relying on RLS — a genuine project, not a SQL delta.
-- `businesses` itself is still anon-select-all (any anon-key holder can
+- ~~`businesses` itself is still anon-select-all (any anon-key holder can
   list every business's name/contact/tier) — same reason: too many
   legitimate anonymous readers (public intake widget, post-checkout
   success page, onboarding, background agents) to scope without breaking
-  them.
+  them.~~ **CORRECTION (2026-10-19): resolved, confirmed live, not
+  assumed.** `supabase_schema_delta_businesses_select_scoping.sql`
+  (2026-10-10, see its own dated section below) ran as part of today's
+  Phase 1 SQL batch — anon can now only read `id`/`name`/`trade_type`/
+  `city`/`sector`/`abn`, re-verified directly: `contact_email` and every
+  other non-allowlisted column correctly return `42501 permission
+  denied`, not real data. The "too many legitimate anonymous readers"
+  reasoning this bullet gives is still the right explanation for why
+  `businesses` stays row-open rather than fully RLS-scoped (that part is
+  genuinely unchanged) — it's specifically the "any anon-key holder can
+  list every business's name/contact/tier" claim that's now false; the
+  allowlist closes exactly the column-level exposure this bullet warned
+  about, without needing the harder row-level project this section
+  originally implied was required.
 - Supabase Realtime (the live GPS map) still checks subscribers against
   the SELECT policy on `technician_locations`, which is why that table in
   particular can't be tightened without also solving the technician-auth
@@ -1832,7 +1854,14 @@ on which key is "current." Worth knowing for future live-testing of any
 other function in this bug class: use whichever key that endpoint actually
 returns as current, not an assumed format.
 
-## Anon-readable secrets on `businesses`: ingestion_key, meta_access_token, slack_webhook_url (2026-10-08) — fix written, NOT YET APPLIED LIVE
+## Anon-readable secrets on `businesses`: ingestion_key, meta_access_token, slack_webhook_url (2026-10-08) — CONFIRMED LIVE 2026-10-19
+
+**Update 2026-10-19**: this delta ran as part of the Phase 1 SQL batch once
+the project's long-running git push blocker was finally cleared (see
+`minerva_github_push_credential` memory). Re-verified directly with the
+same unauthenticated REST calls this section's own header used to find
+the gap originally — all 3 columns now correctly return `42501 permission
+denied for table businesses`, not real values. No longer an open gap.
 
 Found live-testing an unrelated feature (the embeddable widget), which led
 to directly verifying what the public anon key can actually read off
@@ -1983,7 +2012,23 @@ Editor, then redeploy `create-checkout-session` (now has a sibling
 `logic.ts` for the first time — deploy picks up the whole function
 directory automatically, no separate step needed for that).
 
-## Residual gap in the 2026-09-14 `businesses` RLS fix: row-scoped, not column-scoped — any logged-in owner could self-upgrade their own tier/add-ons for free (2026-10-09) — fix written, NOT YET APPLIED LIVE
+## Residual gap in the 2026-09-14 `businesses` RLS fix: row-scoped, not column-scoped — any logged-in owner could self-upgrade their own tier/add-ons for free (2026-10-09) — DELTA RUN 2026-10-19, FUNCTIONAL BEHAVIOR NOT YET CONFIRMED
+
+**Update 2026-10-19 — precise about what is and isn't verified here.**
+`supabase_schema_delta_billing_identity_guard.sql` ran as part of the
+Phase 1 SQL batch (confirmed: this file is present in the combined script
+that returned "Success. No rows returned" when run, and several other
+deltas from the same batch — start, middle, and end of the file — were
+independently spot-checked and confirmed correct). What's genuinely NOT
+yet confirmed: this is a trigger blocking a specific UPDATE from an
+AUTHENTICATED non-admin session, which can't be tested with the anon key
+the way a column grant can — PostgREST doesn't expose `pg_trigger`/
+`information_schema.triggers` for a direct existence check either. The
+actual verify query at the bottom of this section (attempting a real
+self-upgrade as a real logged-in non-admin owner) still needs a real
+test, same category as the cross-tenant isolation check already flagged
+for Day 7 testing. Don't read "the delta ran" as "the exploit is
+confirmed closed" — those are different claims.
 
 Found while re-examining today's two "sold vs. delivered" billing fixes
 (see `BILLING_INTEGRITY_NOTES.md`'s 2026-10-09 entries) for a deeper
@@ -2070,7 +2115,22 @@ Editor (the verification query at the bottom of that file confirms it
 live), no function redeploy needed — this is a pure database-trigger
 fix, nothing in the edge functions or frontend changes.
 
-## `businesses` SELECT was never actually scoped by role — any logged-in business owner could read every other business's full row (2026-10-10) — fix written, NOT YET APPLIED LIVE
+## `businesses` SELECT was never actually scoped by role — any logged-in business owner could read every other business's full row (2026-10-10) — CONFIRMED LIVE 2026-10-19
+
+**Update 2026-10-19**: ran as part of the Phase 1 SQL batch and directly
+re-verified afterward with the exact anon-key checks this section's own
+verify block describes — `contact_email` now correctly returns `42501
+permission denied`, while the intended public allowlist (`id`, `name`,
+`trade_type`, `city`, `sector`, `abn`) reads successfully, confirmed
+against real test data in the live table. Also independently re-verified
+the specific real callers this fix was built around
+(`IntakeAssistant.jsx`'s shape, `SuccessPage.jsx`'s shape,
+`InvoiceView.jsx`'s embedded `name`+`abn` join) all still resolve
+correctly post-fix — zero regressions. The one branch not verified from
+here: the authenticated-owner-reading-another-business's-row case
+specifically (the core exploit this fix closes) needs two real business
+owner sessions to test, same as the trigger above — anon-key checks can
+only confirm the anon-facing half of this fix.
 
 Found while re-reading this file's own "Phase 2 priority" section for
 this project's "hundreds of customers" goal, and noticing it contradicted
