@@ -497,3 +497,20 @@ export function neutralizeFormula(value) {
   const str = String(value ?? '')
   return /^\s*[=+\-@]/.test(str) ? `'${str}` : str
 }
+
+// Converts a km figure (e.g. businesses.total_km_saved) into an honest
+// dollar estimate, used to make the fleet-optimization savings tangible
+// in money rather than only distance. Uses the ATO's own 2026-27
+// cents-per-kilometre rate (91c/km) as the per-km cost — an official,
+// all-inclusive figure already covering fuel, maintenance, depreciation
+// and registration for a standard vehicle, rather than a number invented
+// for this product. This is deliberately an ESTIMATE, not a measured
+// figure: a real business's actual per-km cost varies with vehicle type,
+// fuel price, and route. Never present the output as a guaranteed or
+// audited saving — always pair it with "~" and/or an "estimated" label.
+export const ATO_CENTS_PER_KM_2026_27 = 0.91
+
+export function estimateDollarsFromKm(km, ratePerKm = ATO_CENTS_PER_KM_2026_27) {
+  const safeKm = Number(km) || 0
+  return Math.round(safeKm * ratePerKm)
+}

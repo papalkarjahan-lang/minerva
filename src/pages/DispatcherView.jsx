@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import Map, { Marker, NavigationControl, FullscreenControl, ScaleControl, Popup, Source, Layer } from 'react-map-gl'
 import { supabase } from '../supabaseClient'
-import { timeAgo, geocodeAddress, insertTechniciansWithPinRetry, haversineKm, isMapboxTokenConfigured, computeReplayStats, interpolateReplayPosition, describeAuditEntry, computeTechnicianReliability, neutralizeFormula } from '../utils'
+import { timeAgo, geocodeAddress, insertTechniciansWithPinRetry, haversineKm, isMapboxTokenConfigured, computeReplayStats, interpolateReplayPosition, describeAuditEntry, computeTechnicianReliability, neutralizeFormula, estimateDollarsFromKm } from '../utils'
 import ContactSupportModal from '../components/ContactSupportModal'
 import LoadingScreen from '../components/LoadingScreen'
 import { MAX_ADDONS, hasAddon, isTrialing, trialDaysLeft, hasUsedTrial, startTrialPatch, isAddonAvailableForSector } from '../maxAddons'
@@ -2087,7 +2087,7 @@ export default function DispatcherView() {
         }[data.skipped] || 'Nothing to optimize right now.'
         setFleetOptimizeResult({ message })
       } else {
-        setFleetOptimizeResult({ message: `Optimized ${data.jobsSequenced} job${data.jobsSequenced === 1 ? '' : 's'} across ${data.techniciansOptimized} technician${data.techniciansOptimized === 1 ? '' : 's'} — ${data.jobsReassigned} reassigned, ~${data.kmSaved}km saved.` })
+        setFleetOptimizeResult({ message: `Optimized ${data.jobsSequenced} job${data.jobsSequenced === 1 ? '' : 's'} across ${data.techniciansOptimized} technician${data.techniciansOptimized === 1 ? '' : 's'} — ${data.jobsReassigned} reassigned, ~${data.kmSaved}km saved (~$${estimateDollarsFromKm(data.kmSaved)} estimated).` })
         logAudit('fleet.optimized', { entityType: 'business', entityId: businessId, details: { jobs_reassigned: data.jobsReassigned, km_saved: data.kmSaved } })
         await loadAll()
       }
@@ -2371,8 +2371,8 @@ export default function DispatcherView() {
                 <p style={{ ...styles.techMeta, margin: '6px 0 0' }}>{fleetOptimizeResult.message}</p>
               )}
               {business?.total_km_saved > 0 && (
-                <p style={{ ...styles.techMeta, margin: '4px 0 0', color: '#2E7D32' }} title="Running total across every fleet optimization that found a genuine improvement over the current assignment at the time.">
-                  ~{Math.round(business.total_km_saved)}km saved so far via fleet optimization
+                <p style={{ ...styles.techMeta, margin: '4px 0 0', color: '#2E7D32' }} title="Running total across every fleet optimization that found a genuine improvement over the current assignment at the time. Dollar figure is an estimate using the ATO's 2026-27 cents-per-km vehicle running-cost rate (91c/km), not a measured cost for your specific vehicles.">
+                  ~{Math.round(business.total_km_saved)}km saved so far via fleet optimization (~${estimateDollarsFromKm(business.total_km_saved).toLocaleString()} estimated)
                 </p>
               )}
             </div>

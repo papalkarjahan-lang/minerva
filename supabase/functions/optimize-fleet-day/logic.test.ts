@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { haversineKm, greedyAssignJobs, twoOptImprove, chainEtas, currentPlanDistanceKm } from './logic'
+import { haversineKm, greedyAssignJobs, swapImproveAssignment, twoOptImprove, chainEtas, currentPlanDistanceKm } from './logic'
 
 describe('haversineKm', () => {
   it('returns 0 for identical points', () => {
@@ -111,6 +111,95 @@ describe('twoOptImprove', () => {
     const improved = twoOptImprove(start.lat, start.lng, jobs)
     expect(totalDistance(improved)).toBeLessThanOrEqual(totalDistance(jobs) + 1e-9)
     expect(new Set(improved.map(j => j.id))).toEqual(new Set(jobs.map(j => j.id)))
+  })
+})
+
+describe('swapImproveAssignment', () => {
+  it('leaves a 2-job assignment unchanged when no swap could help', () => {
+    const techs = [
+      { id: 't1', current_lat: -33.80, current_lng: 151.21 },
+      { id: 't2', current_lat: -34.50, current_lng: 151.21 },
+    ]
+    const jobs = [
+      { id: 'jobA', client_lat: -34.48, client_lng: 151.21, technician_id: null },
+      { id: 'jobB', client_lat: -33.82, client_lng: 151.21, technician_id: null },
+    ]
+    const assignment = greedyAssignJobs(techs, jobs)
+    const result = swapImproveAssignment(techs, jobs, assignment)
+    expect(result.get('t1')).toEqual(['jobB'])
+    expect(result.get('t2')).toEqual(['jobA'])
+  })
+
+  it('never returns a total cost worse than the greedy assignment it started from', () => {
+    // Fixed fixture (not randomized in the test itself) found by an
+    // offline search specifically because plain greedyAssignJobs locks
+    // in a suboptimal 2-and-2 split here — swapImproveAssignment should
+    // find the one swap that fixes it. Verified offline: greedy totals
+    // ~157.6km, the one-swap fix totals ~150.1km.
+    const techs = [
+      { id: 't1', current_lat: -34.3178, current_lng: 151.3816 },
+      { id: 't2', current_lat: -34.6708, current_lng: 151.6466 },
+    ]
+    const jobs = [
+      { id: 'job1', client_lat: -34.5381, client_lng: 151.0530, technician_id: null },
+      { id: 'job2', client_lat: -34.3205, client_lng: 151.7511, technician_id: null },
+      { id: 'job3', client_lat: -34.2486, client_lng: 151.1469, technician_id: null },
+      { id: 'job4', client_lat: -34.7966, client_lng: 151.3025, technician_id: null },
+    ]
+    const jobsById = new Map(jobs.map(j => [j.id, j]))
+
+    const costOf = (assignment: Map<string, string[]>) => {
+      let total = 0
+      for (const t of techs) {
+        const theirJobs = (assignment.get(t.id) || []).map(id => jobsById.get(id)!)
+        const ordered = twoOptImprove(t.current_lat, t.current_lng, theirJobs)
+        let lat = t.current_lat, lng = t.current_lng
+        for (const j of ordered) {
+          total += haversineKm(lat, lng, j.client_lat, j.client_lng)
+          lat = j.client_lat; lng = j.client_lng
+        }
+      }
+      return total
+    }
+
+    const greedy = greedyAssignJobs(techs, jobs)
+    expect(greedy.get('t1')).toEqual(['job3', 'job1'])
+    expect(greedy.get('t2')).toEqual(['job4', 'job2'])
+    const greedyCost = costOf(greedy)
+    expect(greedyCost).toBeCloseTo(157.640, 1)
+
+    const improved = swapImproveAssignment(techs, jobs, greedy)
+    const improvedCost = costOf(improved)
+
+    // The real guarantee this function exists to provide: strictly
+    // non-worse than greedy, on real input where greedy alone is
+    // measurably suboptimal.
+    expect(improvedCost).toBeLessThanOrEqual(greedyCost + 1e-6)
+    expect(improvedCost).toBeLessThan(greedyCost - 5) // confirms it actually found the real improvement, not a no-op
+    expect(improvedCost).toBeCloseTo(150.095, 1)
+
+    // every job still assigned exactly once across both technicians
+    const allAssigned = [...improved.values()].flat().sort()
+    expect(allAssigned).toEqual(jobs.map(j => j.id).sort())
+  })
+
+  it('never loses or duplicates jobs when technicians have uneven loads', () => {
+    const techs = [
+      { id: 't1', current_lat: -33.80, current_lng: 151.21 },
+      { id: 't2', current_lat: -34.50, current_lng: 151.25 },
+      { id: 't3', current_lat: -33.95, current_lng: 151.05 },
+    ]
+    const jobs = [
+      { id: 'a', client_lat: -33.82, client_lng: 151.20, technician_id: null },
+      { id: 'b', client_lat: -33.90, client_lng: 151.15, technician_id: null },
+      { id: 'c', client_lat: -34.40, client_lng: 151.22, technician_id: null },
+      { id: 'd', client_lat: -34.00, client_lng: 151.00, technician_id: null },
+      { id: 'e', client_lat: -33.78, client_lng: 151.23, technician_id: null },
+    ]
+    const assignment = greedyAssignJobs(techs, jobs)
+    const result = swapImproveAssignment(techs, jobs, assignment)
+    const allAssigned = [...result.values()].flat().sort()
+    expect(allAssigned).toEqual(jobs.map(j => j.id).sort())
   })
 })
 

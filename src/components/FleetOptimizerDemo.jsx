@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { estimateDollarsFromKm } from '../utils'
 
 // Public, no-signup interactive demo of the real optimize-fleet-day
 // mechanism — same algorithm shape as
@@ -91,8 +92,57 @@ function twoOptImprove(startPos, orderedJobs) {
   return route
 }
 
+// Direct port of optimize-fleet-day/logic.ts's swapImproveAssignment —
+// bounded pairwise job-swap local search on top of the greedy
+// assignment. Kept in sync with production so this demo never shows a
+// weaker algorithm than what's actually live.
+function swapImproveAssignment(technicians, jobs, assignment) {
+  const jobsById = new Map(jobs.map(j => [j.id, j]))
+  const techById = new Map(technicians.map(t => [t.id, t]))
+  const current = new Map()
+  for (const [techId, jobIds] of assignment) current.set(techId, [...jobIds])
+
+  const routeCost = (tech, jobIds) => {
+    const theirJobs = jobIds.map(id => jobsById.get(id)).filter(Boolean)
+    return routeDistance(tech, twoOptImprove(tech, theirJobs))
+  }
+
+  const techIds = [...current.keys()]
+  let improved = true, passes = 0
+  while (improved && passes < 10) {
+    improved = false
+    passes++
+    outer:
+    for (let a = 0; a < techIds.length; a++) {
+      for (let b = a + 1; b < techIds.length; b++) {
+        const techA = techById.get(techIds[a])
+        const techB = techById.get(techIds[b])
+        const listA = current.get(techIds[a])
+        const listB = current.get(techIds[b])
+        if (listA.length === 0 || listB.length === 0) continue
+        const baseCost = routeCost(techA, listA) + routeCost(techB, listB)
+        for (let i = 0; i < listA.length; i++) {
+          for (let j = 0; j < listB.length; j++) {
+            const candidateA = listA.slice(); candidateA[i] = listB[j]
+            const candidateB = listB.slice(); candidateB[j] = listA[i]
+            const candidateCost = routeCost(techA, candidateA) + routeCost(techB, candidateB)
+            if (candidateCost < baseCost - 1e-9) {
+              current.set(techIds[a], candidateA)
+              current.set(techIds[b], candidateB)
+              improved = true
+              break outer
+            }
+          }
+        }
+      }
+    }
+  }
+  return current
+}
+
 function computeOptimizedPlan() {
-  const assignment = greedyAssignJobs(TECHNICIANS, JOBS)
+  const greedy = greedyAssignJobs(TECHNICIANS, JOBS)
+  const assignment = swapImproveAssignment(TECHNICIANS, JOBS, greedy)
   const result = new Map()
   let totalKm = 0
   for (const t of TECHNICIANS) {
@@ -199,11 +249,14 @@ export default function FleetOptimizerDemo() {
         <Stat label="Current plan" value={`${before.totalKm.toFixed(0)} km`} dim={optimized} />
         <Stat label="Optimized plan" value={optimized ? `${after.totalKm.toFixed(0)} km` : '—'} highlight={optimized} />
         <Stat label="Saved" value={optimized ? `${kmSaved.toFixed(0)} km (${pctSaved}%)` : '—'} highlight={optimized} accent />
+        <Stat label="≈ est. cost saved" value={optimized ? `$${estimateDollarsFromKm(kmSaved)}` : '—'} highlight={optimized} accent />
       </div>
       <p style={{ fontSize: 12, color: '#555', margin: '16px 0 0', lineHeight: 1.6 }}>
         This is the same reassign-and-reroute logic Minerva runs for real, Standard-tier trade businesses —
         it only ever applies a change when it's a genuine improvement over what you already had. On this
         fixed sample it finds one; on a day that's already well-planned, it would say so and change nothing.
+        Dollar figure is an estimate using the ATO's 2026-27 all-inclusive vehicle running-cost rate
+        (91c/km), not a measured cost for any real fleet.
       </p>
     </div>
   )

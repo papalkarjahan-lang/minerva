@@ -43,7 +43,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
-import { greedyAssignJobs, twoOptImprove, chainEtas, currentPlanDistanceKm, type FleetJob } from "./logic.ts"
+import { greedyAssignJobs, swapImproveAssignment, twoOptImprove, chainEtas, currentPlanDistanceKm, type FleetJob } from "./logic.ts"
 import { isOwnerOfBusiness, getAuthenticatedCaller } from "../_shared/ownership.ts"
 import { hasStandardAutomation } from "../_shared/tierEligibility.ts"
 
@@ -147,7 +147,12 @@ serve(async (req: Request) => {
     const previousTechnicianByJob = new Map(jobs.map(j => [j.id, j.technician_id]))
     const baselineKm = currentPlanDistanceKm(technicians, jobs)
 
-    const assignment = greedyAssignJobs(technicians, jobs)
+    const greedyAssignment = greedyAssignJobs(technicians, jobs)
+    // Local-search pass on top of the greedy assignment — see
+    // swapImproveAssignment's own header for the exact method/guarantee.
+    // Strictly non-worsening, so this can only help, never hurt, the
+    // final comparison against baselineKm below.
+    const assignment = swapImproveAssignment(technicians, jobs, greedyAssignment)
     const jobsById = new Map(jobs.map(j => [j.id, j]))
 
     let proposedKm = 0

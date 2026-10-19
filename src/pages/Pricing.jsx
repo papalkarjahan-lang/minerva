@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { SiteNav, SiteFooter } from '../components/SiteChrome'
 import { useDocumentMeta } from '../hooks/useDocumentMeta'
+import SavingsEstimator from '../components/SavingsEstimator'
 
 // Same 3 real Stripe-backed tiers as LandingPage.jsx's inline pricing block
 // (kept in sync by hand, both are small static arrays) — Starter/Standard/
@@ -72,6 +73,10 @@ export default function Pricing() {
           ))}
         </div>
         <p style={{ color: '#555', fontSize: 13, textAlign: 'center', margin: '24px 0 0' }}>7-day free trial on any tier. First charge after day 7.</p>
+      </div>
+
+      <div style={{ maxWidth: 680, margin: '0 auto 70px', padding: '0 24px' }}>
+        <SavingsEstimator />
 
         <div style={{ marginTop: 32, background: '#0a0f1d', borderRadius: 16, padding: 24, border: '1px solid #1e293b', display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
           <div>

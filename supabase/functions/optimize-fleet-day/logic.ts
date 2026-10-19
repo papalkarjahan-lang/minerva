@@ -156,6 +156,82 @@ export function chainEtas(
   return stops
 }
 
+// HONESTY NOTE on method: a bounded local search on top of
+// greedyAssignJobs's output, not a true assignment solver (a real
+// Hungarian-algorithm/auction solve is the next step up if this stops
+// being enough — see minerva_efficiency_pivot memory). Looks at every
+// pair of technicians and every pair of jobs currently split between
+// them, and asks: if these two jobs swapped owners, would the combined
+// route cost of BOTH technicians go down? Route cost for a candidate is
+// computed with the same twoOptImprove this file already uses, so a
+// swap is judged on the actual reordered route, not the raw job list.
+// Only ever accepts a swap that's a strict improvement (never worse,
+// same guarantee twoOptImprove already makes for route order) — if no
+// swap improves anything, the greedy assignment is returned unchanged.
+// Bounded to MAX_SWAP_PASSES full restarts so a pathological input
+// can't run away; a realistic same-day fleet (a handful of technicians,
+// a couple dozen jobs) converges in far fewer.
+const MAX_SWAP_PASSES = 10
+
+export function swapImproveAssignment(
+  technicians: FleetTechnician[],
+  jobs: FleetJob[],
+  assignment: Map<string, string[]>
+): Map<string, string[]> {
+  const jobsById = new Map(jobs.map(j => [j.id, j]))
+  const techById = new Map(technicians.map(t => [t.id, t]))
+  const current = new Map<string, string[]>()
+  for (const [techId, jobIds] of assignment) current.set(techId, [...jobIds])
+
+  const routeCost = (tech: FleetTechnician, jobIds: string[]): number => {
+    const theirJobs = jobIds.map(id => jobsById.get(id)).filter((j): j is FleetJob => !!j)
+    const ordered = twoOptImprove(tech.current_lat, tech.current_lng, theirJobs)
+    let total = 0
+    let lat = tech.current_lat
+    let lng = tech.current_lng
+    for (const j of ordered) {
+      total += haversineKm(lat, lng, j.client_lat, j.client_lng)
+      lat = j.client_lat
+      lng = j.client_lng
+    }
+    return total
+  }
+
+  const techIds = [...current.keys()]
+  let improved = true
+  let passes = 0
+  while (improved && passes < MAX_SWAP_PASSES) {
+    improved = false
+    passes++
+    outer:
+    for (let a = 0; a < techIds.length; a++) {
+      for (let b = a + 1; b < techIds.length; b++) {
+        const techA = techById.get(techIds[a])
+        const techB = techById.get(techIds[b])
+        if (!techA || !techB) continue
+        const listA = current.get(techIds[a])!
+        const listB = current.get(techIds[b])!
+        if (listA.length === 0 || listB.length === 0) continue
+        const baseCost = routeCost(techA, listA) + routeCost(techB, listB)
+        for (let i = 0; i < listA.length; i++) {
+          for (let j = 0; j < listB.length; j++) {
+            const candidateA = listA.slice(); candidateA[i] = listB[j]
+            const candidateB = listB.slice(); candidateB[j] = listA[i]
+            const candidateCost = routeCost(techA, candidateA) + routeCost(techB, candidateB)
+            if (candidateCost < baseCost - 1e-9) {
+              current.set(techIds[a], candidateA)
+              current.set(techIds[b], candidateB)
+              improved = true
+              break outer
+            }
+          }
+        }
+      }
+    }
+  }
+  return current
+}
+
 // Total distance of a business's CURRENT real assignment+order — the
 // honest baseline optimize-fleet-day compares its proposed plan against
 // (see index.ts: never claim savings against a strawman, only against
