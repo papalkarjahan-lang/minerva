@@ -76,3 +76,23 @@ export function hasStandardAutomation(
 ): boolean {
   return (tier === 'standard' || tier === 'pro') && sector === 'trade'
 }
+
+// Growth-pillar Pro gate (added 2026-10-18) — see BILLING_INTEGRITY_NOTES.md's
+// "Growth pillar's two human-click functions had no server-side tier check"
+// entry. `generate-growth-drafts` only ever writes `marketing_drafts` rows
+// for `subscription_tier === 'pro'` businesses (no sector condition — unlike
+// `hasStandardAutomation`, Growth has never been Standard-tier-eligible, and
+// `isTierAvailableForSector` already keeps 'pro' from being a legitimate
+// value for an industrial business in the first place, so no sector check is
+// needed here either). But the two functions that actually DO something with
+// a draft — `launch-ad-campaign` (spends real ad budget) and
+// `send-growth-message` (sends a real Twilio SMS) — never re-checked that
+// tier themselves; the only gate was `DispatcherView.jsx` hiding their
+// Approve/Launch buttons for non-Pro businesses. Same "UI-only gate, not
+// enforced where the real action happens" bug class as the Pro/Industrial
+// sector mismatch and the Minerva Max add-on sector mismatch above — a
+// Starter/Standard business invoking either function directly (their own
+// valid session, no forged identity needed) would have spent/sent for free.
+export function hasGrowthPillarAccess(tier: string | null | undefined): boolean {
+  return tier === 'pro'
+}

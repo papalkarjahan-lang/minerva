@@ -34,10 +34,21 @@
 // change needed — DispatcherView.jsx already calls this via
 // supabase.functions.invoke(), which attaches the caller's session token
 // automatically.
+//
+// Pro-tier check added 2026-10-18 (see BILLING_INTEGRITY_NOTES.md): the
+// ownership fix above closes "is this caller even allowed to touch this
+// draft" but never checked "is this business's plan allowed to use Growth
+// at all." Growth (ad_campaign/outreach_sms) is marketed and billed as
+// Pro-only — generate-growth-drafts only ever drafts for Pro businesses —
+// but this function itself never re-checked that, so a Starter/Standard
+// business's own real session could still invoke it directly and spend
+// real Meta ad budget, with the Pro gate existing only in DispatcherView.jsx
+// hiding the "Approve & Launch" button.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { isOwnerOfBusiness, getAuthenticatedCaller } from "../_shared/ownership.ts"
+import { hasGrowthPillarAccess } from "../_shared/tierEligibility.ts"
 
 const META_API_VERSION = 'v21.0'
 const META_BASE = `https://graph.facebook.com/${META_API_VERSION}`
@@ -62,7 +73,7 @@ serve(async (req: Request) => {
 
     const { data: draft, error: draftErr } = await supabase
       .from('marketing_drafts')
-      .select('*, businesses(name, meta_access_token, meta_ad_account_id, meta_page_id, owner_user_id, contact_email)')
+      .select('*, businesses(name, meta_access_token, meta_ad_account_id, meta_page_id, owner_user_id, contact_email, subscription_tier)')
       .eq('id', draftId)
       .single()
     if (draftErr || !draft) throw new Error('Draft not found')
@@ -76,6 +87,12 @@ serve(async (req: Request) => {
     }
     if (!isOwnerOfBusiness((draft as any).businesses, caller.id, caller.email)) {
       return new Response(JSON.stringify({ error: 'You do not have access to this business.' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+    if (!hasGrowthPillarAccess((draft as any).businesses?.subscription_tier)) {
+      return new Response(JSON.stringify({ error: 'Ad campaigns require the Pro plan.' }), {
         status: 403,
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
       })

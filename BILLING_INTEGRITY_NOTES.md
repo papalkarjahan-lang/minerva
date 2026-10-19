@@ -1071,3 +1071,45 @@ or similar, ~$8-10/month). Flagged clearly rather than silently
 noted — this is exactly the kind of thing that's easy to fix at the
 code level (just change the email copy to stop promising a reply) but
 the more valuable fix is making the promise true, not quieter.
+
+## 2026-10-18 — Growth pillar's two human-click functions had no server-side tier check
+
+Found by applying this file's own recurring question — "is this gate
+enforced where the real action happens, or only in the UI" — to the
+Growth pillar. `generate-growth-drafts` only ever writes `marketing_drafts`
+rows (`ad_campaign`/`outreach_sms`) for `subscription_tier === 'pro'`
+businesses, and Growth is marketed and billed as Pro-only ($119/tech/mo).
+But the two functions that actually act on a draft — `launch-ad-campaign`
+(spends real Meta ad budget) and `send-growth-message` (sends a real
+Twilio SMS blast) — never checked the tier themselves at all, confirmed by
+grep: zero hits for `subscription_tier` in either file. The only gate was
+`DispatcherView.jsx` hiding the "Approve & Launch"/"Approve & Send" buttons
+for non-Pro businesses — the identical "UI-only gate, not enforced where
+the real action happens" bug class this file already documents twice
+(the Pro/Industrial sector mismatch and the Minerva Max add-on sector
+mismatch entries above). Both functions already had a real caller-identity
+check (the 2026-09-27 ownership fix, see `SECURITY_NOTES.md`) — that closes
+"is this caller who they claim to be," a different question from "is this
+caller's own business entitled to this feature." A Starter or Standard
+business's dispatcher, using their own genuine session (no forged identity
+needed), could invoke either function directly — e.g. via curl with the
+anon key and their own real JWT — and it would run anyway: real ad spend
+through Meta, or a real Twilio SMS blast to their own leads, without ever
+paying the Pro price that pays for either.
+
+Fix: new `hasGrowthPillarAccess(tier)` helper in
+`_shared/tierEligibility.ts`, same pattern as `isTierAvailableForSector`/
+`hasStandardAutomation` above — pure, unit-tested, tier-only (no sector
+condition: `generate-growth-drafts`' own gate is sector-agnostic too, and
+`isTierAvailableForSector` already keeps 'pro' from being a legitimate
+value for an industrial business in the first place, so there's no
+sector-mismatch combination to additionally guard against here). Both
+edge functions now add `subscription_tier` to the `businesses(...)` column
+list they already select as part of their existing draft-ownership query
+(no extra round trip) and reject with a 403 if `hasGrowthPillarAccess`
+returns false, checked right after the existing ownership check and before
+either function's atomic "claim the draft" update — so a non-Pro business
+is turned away before any spend or send, not after.
+
+762/762 tests pass (8 new, covering `hasGrowthPillarAccess`). Both edited
+edge functions re-verified with `npx esbuild`. Not yet deployed.

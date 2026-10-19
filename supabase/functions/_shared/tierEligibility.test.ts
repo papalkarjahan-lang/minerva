@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isTierAvailableForSector, hasStandardAutomation } from './tierEligibility'
+import { isTierAvailableForSector, hasStandardAutomation, hasGrowthPillarAccess } from './tierEligibility'
 
 describe('isTierAvailableForSector', () => {
   it("rejects pro for industrial — none of Pro's 6 marketed features exist for that sector", () => {
@@ -60,5 +60,26 @@ describe('hasStandardAutomation', () => {
     expect(hasStandardAutomation('standard', null)).toBe(false)
     expect(hasStandardAutomation('standard', undefined)).toBe(false)
     expect(hasStandardAutomation('standard', 'not_a_real_sector')).toBe(false)
+  })
+})
+
+describe('hasGrowthPillarAccess', () => {
+  it('allows pro', () => {
+    expect(hasGrowthPillarAccess('pro')).toBe(true)
+  })
+
+  it('rejects starter and standard — Growth has never been available below Pro', () => {
+    expect(hasGrowthPillarAccess('starter')).toBe(false)
+    expect(hasGrowthPillarAccess('standard')).toBe(false)
+  })
+
+  it('rejects cancelled — a lapsed subscription should not keep paid-only features running', () => {
+    expect(hasGrowthPillarAccess('cancelled')).toBe(false)
+  })
+
+  it('rejects null/undefined/unrecognised tier values, failing closed rather than open', () => {
+    expect(hasGrowthPillarAccess(null)).toBe(false)
+    expect(hasGrowthPillarAccess(undefined)).toBe(false)
+    expect(hasGrowthPillarAccess('not_a_real_tier')).toBe(false)
   })
 })
