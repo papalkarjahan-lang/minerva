@@ -166,26 +166,31 @@ Phase 1 before any of these rather than tracking per-family order.
 
 ## Phase 3 — Edge functions: redeploy (count goes stale fast, see below)
 
-**Re-generated 2026-10-10 (again)** from `git diff origin/main..HEAD
---name-only` — this list has now gone stale three times in two days
-(27 → 46 → 49 → 50), each time from real same-day work landing after the
-previous snapshot was written. Don't trust this number either if you're
-reading it much later — regenerate the same way:
-`git diff origin/main..HEAD --name-only -- supabase/functions/ | grep -E
-"/(index|logic)\.ts$" | sed -E 's#supabase/functions/([^/]+)/.*#\1#' |
-sort -u`, plus any function that ONLY imports a changed `_shared/` file
-without its own index.ts changing (check each shared file's own commit
-message/header — e.g. the `_shared/maxAddons.ts` change on 2026-10-09
-only actually affected `update-addon-billing`, the one function that
-calls `isAddonAvailableForSector`; the other 10 importers only call
-`isAddonActive`, unaffected. Same check today for `_shared/sms.ts`'s
-`buildEtaMessage` change: 17 functions import something from that file,
-but only `send-eta-sms` actually calls `buildEtaMessage` — confirmed by
-grepping for the specific call, not just the shared-file import — so it
-alone was the addition this round, already captured by the plain
-`index.ts`-diff count above since its own `index.ts` changed too).
+**Re-generated 2026-10-19 — `deploy_phase3.sh` now has all 65 in one
+runnable script**, generated and committed the same day. `git diff
+origin/main..HEAD` is now DEAD as a regeneration method — origin/main
+caught up to local HEAD on 2026-10-18 (see `minerva_github_push_credential`
+memory), so there's nothing left to diff against that way. Use a known
+pre-session commit as the base instead:
+`git diff 10d4fcabe2d422355aa3ea57776fefe0c0bcb6dd..HEAD --name-only --
+supabase/functions/ | grep -E "/(index|logic)\.ts$" | sed -E
+'s#supabase/functions/([^/]+)/.*#\1#' | sort -u`, plus any function that
+imports a changed `_shared/` file (`git diff <base>..HEAD --name-only --
+supabase/functions/_shared/` to find which ones changed, then `grep -rl`
+each across every function's `index.ts`).
 
-One command per function:
+**2026-10-19 found the prior "~51" count itself was an undercount** — it
+only ever applied the direct-change half of this method, never the
+shared-importer sweep this section has described since 2026-10-10. The 65
+in `deploy_phase3.sh` include every importer of a changed shared file,
+not just the ones confirmed (via grepping for the specific function call,
+the way the old `isAddonAvailableForSector`/`buildEtaMessage` examples
+below did it) to actually be affected — a safe over-inclusion (redeploying
+unchanged behavior costs a few seconds, missing a real change leaves a bug
+live), not the fully minimal set. If precision matters more than speed
+next time, do the per-call-site check this round skipped.
+
+One command per function if not using the script:
 
 ```bash
 npx supabase functions deploy <slug> --project-ref xiikytqxevivrupkljwc
