@@ -59,4 +59,15 @@ export const BLOG_POSTS = [
       'Invoicing from the job itself — while the client can still see the finished work and the price in front of them at the same time — settles the total before any doubt has a chance to set in, and it means there\'s no later disagreement about what the job even was, since both sides looked at the same number on the same day.',
     ],
   },
+  {
+    slug: 'the-hidden-cost-of-good-enough-routing',
+    title: 'The hidden cost of "good enough" routing',
+    date: '2026-10-21',
+    excerpt: 'Assigning each job to whoever\'s free when it comes in feels efficient in the moment. Over a whole day, it rarely is.',
+    paragraphs: [
+      'Most dispatching happens one decision at a time: a job comes in, you glance at who\'s free or who\'s closest, and you assign it. Each individual call is reasonable — it\'s hard to argue with "give it to whoever\'s nearest right now." The problem only shows up later, at the end of the day, when two technicians have driven past each other\'s jobs on their way to someone else\'s.',
+      'That\'s not a dispatcher making bad calls. It\'s what happens when a day gets planned one job at a time instead of as a whole. A sequence of individually sensible decisions can still add up to a lot more driving than the same jobs would need if you\'d seen the whole list at once and matched people to jobs accordingly — the same way the fastest way through a to-do list isn\'t always the order the items arrived in.',
+      'The fix isn\'t smarter dispatching in the moment — it\'s checking the whole team\'s day again periodically, after the morning rush of bookings settles, and only changing anything if a different split of who-goes-where genuinely beats what\'s already been assigned. Most of the time that check finds nothing worth changing. Often enough, it finds a few jobs that would clearly suit someone else\'s route better, and fixing just those is the difference between an average day and an efficient one.',
+    ],
+  },
 ]
