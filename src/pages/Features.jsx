@@ -168,6 +168,9 @@ export default function Features() {
         <Link to="/start" className="lp-cta-ghost lp-cta-sm" style={{ marginRight: 12 }} onMouseMove={magneticMove} onMouseLeave={magneticLeave}>
           Start free trial
         </Link>
+        <Link to="/demo" style={{ display: 'inline-block', color: '#1D9E75', textDecoration: 'none', padding: '16px 12px', fontSize: 14, fontWeight: 'bold' }}>
+          Try the fleet optimizer →
+        </Link>
         <Link to="/enterprise" style={{ display: 'inline-block', color: '#888', textDecoration: 'none', padding: '16px 12px', fontSize: 14 }}>
           Running a fleet? →
         </Link>

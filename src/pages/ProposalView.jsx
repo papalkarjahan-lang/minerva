@@ -98,6 +98,11 @@ export default function ProposalView() {
         </p>
 
         <Link to="/start" className="no-print" style={styles.ctaBtn}>Start a free 7-day trial</Link>
+        {hasFuelSavings && (
+          <Link to="/demo" className="no-print" style={styles.secondaryLink}>
+            See the fleet optimizer run on a sample fleet →
+          </Link>
+        )}
         <button className="no-print" style={styles.printButton} onClick={() => window.print()}>
           🖨️ Print / Save as PDF
         </button>
@@ -120,4 +125,5 @@ const styles = {
   disclaimer: { color: '#555', fontSize: 11, lineHeight: 1.6, marginTop: 20 },
   ctaBtn: { display: 'block', textAlign: 'center', background: '#1D9E75', color: '#fff', textDecoration: 'none', borderRadius: 10, padding: '14px 0', fontSize: 15, fontWeight: 'bold', marginTop: 24 },
   printButton: { display: 'block', width: '100%', textAlign: 'center', background: 'transparent', color: '#8fd0e8', border: '1px solid #1e293b', borderRadius: 10, padding: '11px 0', fontSize: 13, fontWeight: 'bold', cursor: 'pointer', marginTop: 10 },
+  secondaryLink: { display: 'block', textAlign: 'center', color: '#1D9E75', textDecoration: 'none', fontSize: 13, fontWeight: 'bold', marginTop: 10 },
 }
