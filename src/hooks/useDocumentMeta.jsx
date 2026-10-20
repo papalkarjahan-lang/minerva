@@ -3,7 +3,7 @@ import { useEffect } from 'react'
 // This app is a client-rendered SPA with a single static <title>/meta
 // description/og:*/twitter:* set in index.html — every route (blog posts,
 // /pricing, /enterprise, /about, etc.) was showing that same generic
-// "Minerva — Know where every technician is, right now." title and
+// "Minerva — Less driving. More jobs done." title and
 // description in the browser tab, search results, and social-link
 // previews, regardless of which page was actually being viewed or shared.
 // Sharing a specific blog post link, for instance, always previewed as
@@ -19,8 +19,8 @@ import { useEffect } from 'react'
 // Not unit-tested for the same reason src/hooks/useReveal.jsx isn't: this
 // project's vitest config runs in a plain Node environment (no jsdom), so
 // a DOM-mutating hook has nothing meaningful to assert against here.
-const DEFAULT_TITLE = 'Minerva — Know where every technician is, right now.'
-const DEFAULT_DESCRIPTION = 'Live map tracking and automated client SMS for trade businesses. Works on every phone. Set up in 20 minutes.'
+const DEFAULT_TITLE = 'Minerva — Less driving. More jobs done.'
+const DEFAULT_DESCRIPTION = 'Live GPS tracking, automatic client updates, and whole-fleet route optimization for trade and industrial businesses — cut wasted driving, fit in more jobs, and prove what you saved. Works on every phone. Set up in 20 minutes.'
 
 function setMetaContent(selector, content) {
   const el = document.querySelector(selector)

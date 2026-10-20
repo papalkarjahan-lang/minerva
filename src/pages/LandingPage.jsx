@@ -15,9 +15,9 @@ const FAQS = [
 ]
 
 const FEATURES = [
-  ['📍', 'Live map', 'See every technician in real time without making a single call.'],
-  ['📱', 'Client SMS', 'Automatic text with a live tracking link once your tech is close by (within ~2km).'],
-  ['💬', 'Automatic lead intake', 'A chat widget for your website that triages enquiries and texts you qualified leads, scored by urgency.'],
+  ['📍', 'No more status calls', 'Live map means nobody on your team spends time calling around to find out who\'s free or where someone is.'],
+  ['📱', 'Clients stop calling to ask', 'Automatic text with a live tracking link once your tech is close by (within ~2km) — the "how much longer" call never happens.'],
+  ['💬', 'No job lost to a missed call', 'A chat widget for your website triages enquiries and texts your team automatically, scored by urgency.'],
 ]
 
 const PLANS = [
@@ -295,8 +295,8 @@ export default function LandingPage() {
   const [heroGo, setHeroGo] = useState(false)
   useEffect(() => { const id = setTimeout(() => setHeroGo(true), 80); return () => clearTimeout(id) }, [])
 
-  const headline1 = 'Know where every technician is.'
-  const headline2 = 'Right now.'
+  const headline1 = 'Less driving.'
+  const headline2 = 'More jobs done.'
 
   return (
     <div className="lp">
@@ -305,7 +305,7 @@ export default function LandingPage() {
       {/* Hero */}
       <div style={{ maxWidth: 1080, margin: '0 auto', padding: '70px 24px 30px', display: 'grid', gridTemplateColumns: 'minmax(280px, 480px) 1fr', gap: 40, alignItems: 'center' }}>
         <div className={`lp-hero ${heroGo ? 'lp-go' : ''}`}>
-          <span className="lp-pill"><i />LIVE GPS + AUTO CLIENT TEXTS</span>
+          <span className="lp-pill"><i />LEAST COST · MOST JOBS DONE</span>
           <h1 className="lp-h1">
             {headline1.split(' ').map((w, i) => (
               <span key={i} className="lp-hero-word" style={{ transitionDelay: `${i * 60}ms`, marginRight: 10 }}>{w}</span>
@@ -314,7 +314,7 @@ export default function LandingPage() {
             <span className="lp-hero-word lp-grad" style={{ transitionDelay: `${(headline1.split(' ').length) * 60}ms` }}>{headline2}</span>
           </h1>
           <p style={{ fontSize: 18, color: '#aaa', margin: '0 0 10px', lineHeight: 1.6 }}>
-            Live map. Client tracking SMS. Set up in 20 minutes.
+            Live tracking, automatic client updates, and a fleet that plans itself — built to cut wasted time and fuel, not just show you where everyone is.
           </p>
           <p style={{ fontSize: 13, color: '#556', margin: '0 0 32px', letterSpacing: .5 }}>
             Built for plumbers, electricians, HVAC, locksmiths, and cleaning &amp; pest control teams — 2 to 30 technicians.
