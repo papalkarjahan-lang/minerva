@@ -2883,7 +2883,7 @@ export default function DispatcherView() {
                 <button style={styles.tabBtn(leadsViewMode === 'list')} onClick={() => setLeadsViewMode('list')}>List</button>
                 <button style={styles.tabBtn(leadsViewMode === 'board')} onClick={() => setLeadsViewMode('board')}>Board</button>
               </div>
-              {leadAttribution.length > 0 && (
+              {(leadAttribution.length > 0 || invoices.some(i => i.referral_code)) && (
                 <div style={{ marginBottom: 14, padding: 10, background: '#0f1420', borderRadius: 8, border: '1px solid #1e293b' }}>
                   <p style={styles.sectionLabel}>LEAD SOURCES — WHAT'S ACTUALLY CONVERTING</p>
                   {leadAttribution.map(row => (
@@ -2892,6 +2892,17 @@ export default function DispatcherView() {
                       <span>{row.total_leads} lead{row.total_leads === 1 ? '' : 's'} · {row.converted_leads} converted ({row.conversion_rate_pct}%)</span>
                     </div>
                   ))}
+                  {invoices.some(i => i.referral_code) && (() => {
+                    const codesSent = invoices.filter(i => i.referral_code).length
+                    const referralRow = leadAttribution.find(r => r.channel === 'referral')
+                    return (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#1D9E75', padding: '6px 0 2px', borderTop: '1px solid #1e293b', marginTop: 4 }}
+                        title="Every paid invoice automatically texts the client a referral code. This counts how many have gone out, and (below) how many of those actually turned into a new lead so far.">
+                        <span>📨 referral codes sent to clients</span>
+                        <span>{codesSent}{referralRow ? ` · ${referralRow.total_leads} became a lead so far` : ''}</span>
+                      </div>
+                    )
+                  })()}
                 </div>
               )}
               {leads.length > 0 && (
