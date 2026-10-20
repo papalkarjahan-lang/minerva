@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 
 // Public, no-signup savings estimator — lets a cold prospect self-qualify
 // with their own fleet size before ever talking to anyone. Uses the exact
@@ -66,6 +67,9 @@ export default function SavingsEstimator() {
         average fuel spend per vehicle when you don't enter your own. Trade sector only — this feature isn't available for
         Industrial-sector accounts.
       </p>
+      <Link to="/start" style={{ display: 'inline-block', marginTop: 18, background: '#1D9E75', color: '#fff', textDecoration: 'none', padding: '12px 26px', borderRadius: 10, fontSize: 14, fontWeight: 'bold' }}>
+        Start saving — free 7-day trial →
+      </Link>
     </div>
   )
 }
