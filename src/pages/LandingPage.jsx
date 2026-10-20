@@ -369,6 +369,27 @@ export default function LandingPage() {
         ))}
       </div>
 
+      {/* Fleet optimizer — kept separate from the universal FEATURES grid
+          above (which is deliberately tier-neutral) since this is a
+          Standard-plan, trade-sector capability, not something every
+          visitor's plan includes. Reuses the exact vetted pitch line from
+          SALES_CLAIMS_ACCURACY_NOTE.md rather than a new, looser one. */}
+      <Reveal style={{ maxWidth: 820, margin: '0 auto 100px', padding: '0 24px', textAlign: 'center' }}>
+        <p style={{ fontFamily: 'inherit', fontSize: 12, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#1D9E75', fontWeight: 'bold', margin: '0 0 10px' }}>
+          Standard plan · trade businesses
+        </p>
+        <h2 style={{ fontSize: 30, fontWeight: 'bold', margin: '0 0 14px', lineHeight: 1.25 }}>
+          Your whole team's day, replanned in one click.
+        </h2>
+        <p style={{ color: '#999', fontSize: 16, margin: '0 auto 28px', maxWidth: 560, lineHeight: 1.6 }}>
+          Minerva can re-plan your whole team's day — who takes which job, not just one person's route —
+          and only changes anything if it actually beats what you've already got. If it doesn't find a real improvement, it says so and leaves your day alone.
+        </p>
+        <Link to="/demo" style={{ display: 'inline-block', background: 'transparent', color: '#1D9E75', textDecoration: 'none', padding: '14px 32px', borderRadius: 10, fontSize: 15, fontWeight: 'bold', border: '1px solid #1D9E75' }}>
+          Try it on a sample fleet →
+        </Link>
+      </Reveal>
+
       {/* FAQ */}
       <Reveal style={{ maxWidth: 680, margin: '0 auto 100px', padding: '0 24px' }}>
         <h2 style={{ fontSize: 28, fontWeight: 'bold', margin: '0 0 24px', textAlign: 'center' }}>Common questions</h2>
