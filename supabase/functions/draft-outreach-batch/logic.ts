@@ -23,7 +23,11 @@ export interface OutreachProspect {
 // instead of the product itself — the fix here is the same: don't
 // describe a capability or price point to a prospect who could never
 // actually reach it once signed up.
-export function fallbackTemplate(p: OutreachProspect): { subject: string; body: string } {
+// demoUrl defaults to the known production URL so existing callers/tests
+// that don't pass one keep working — index.ts passes the real APP_URL
+// secret through explicitly so this never goes stale if the domain ever
+// migrates (see minerva_setup_progress.md's domain-migration item).
+export function fallbackTemplate(p: OutreachProspect, demoUrl = 'https://minerva-green.vercel.app/demo'): { subject: string; body: string } {
   const name = p.contact_name || 'there'
   const trade = p.trade_type || 'trade'
   const company = p.company_name || 'your business'
@@ -34,7 +38,7 @@ export function fallbackTemplate(p: OutreachProspect): { subject: string; body: 
   const priceLine = isIndustrial ? '$49-$79/tech/month' : '$49-$119/tech/month'
   return {
     subject: `Quick question for ${company}`,
-    body: `Hi ${name},\n\nI help ${trade} businesses in Australia ${pitch} — no app install, about 20 minutes to set up. ${priceLine}, 7-day free trial.\n\nWorth a 10-minute look for ${company}?\n\n(edit this before sending — this is the plain-template fallback, not an AI-personalized draft)`,
+    body: `Hi ${name},\n\nI help ${trade} businesses in Australia ${pitch} — no app install, about 20 minutes to set up. ${priceLine}, 7-day free trial.\n\nWorth a 10-minute look for ${company}? Or see it running on a sample fleet yourself first, no call needed: ${demoUrl}\n\n(edit this before sending — this is the plain-template fallback, not an AI-personalized draft)`,
   }
 }
 

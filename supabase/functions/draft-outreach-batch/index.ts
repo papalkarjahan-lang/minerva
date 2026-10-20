@@ -107,6 +107,8 @@ serve(async (req: Request) => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
   const supabase = createClient(supabaseUrl, serviceRoleKey)
+  const appUrl = Deno.env.get('APP_URL')
+  const demoUrl = `${(appUrl || 'https://minerva-green.vercel.app').replace(/\/$/, '')}/demo`
 
   try {
     const { data: fnState } = await supabase.from('agent_functions').select('enabled').eq('name', 'draft-outreach-batch').maybeSingle()
@@ -153,16 +155,16 @@ serve(async (req: Request) => {
       let usedAi = false
 
       if (anthropicKey) {
-        const draft = await draftEmail(anthropicKey, p)
+        const draft = await draftEmail(anthropicKey, p, demoUrl)
         if (draft) {
           subject = draft.subject
           bodyText = draft.body
           usedAi = true
         } else {
-          ;({ subject, body: bodyText } = fallbackTemplate(p))
+          ;({ subject, body: bodyText } = fallbackTemplate(p, demoUrl))
         }
       } else {
-        ;({ subject, body: bodyText } = fallbackTemplate(p))
+        ;({ subject, body: bodyText } = fallbackTemplate(p, demoUrl))
       }
 
       bodyText = appendUnsubscribeIfMissing(bodyText, UNSUBSCRIBE_LINE)
@@ -195,7 +197,7 @@ serve(async (req: Request) => {
   }
 })
 
-async function draftEmail(apiKey: string, p: any): Promise<{ subject: string; body: string } | null> {
+async function draftEmail(apiKey: string, p: any, demoUrl: string): Promise<{ subject: string; body: string } | null> {
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -217,9 +219,9 @@ City: ${p.city || 'unknown'}
 Source/context: ${p.source || 'unknown'}
 
 ONLY mention these real, currently-shipped Minerva features — do not invent or imply anything else exists:
-${REAL_FEATURES}
+${realFeaturesFor(p.trade_type)}
 
-Rules: under 120 words, no hype/superlatives, one clear ask (a 10-minute call or a free trial), sign off as "The Minerva team". End the body with a line telling them they can reply "unsubscribe" to stop hearing from us. Reply with ONLY valid JSON: {"subject": string, "body": string}. No markdown, no prose outside the JSON.`,
+Rules: under 120 words, no hype/superlatives, offer two asks — a 10-minute call/free trial, OR trying it themselves first with no commitment at ${demoUrl} — sign off as "The Minerva team". End the body with a line telling them they can reply "unsubscribe" to stop hearing from us. Reply with ONLY valid JSON: {"subject": string, "body": string}. No markdown, no prose outside the JSON.`,
         }],
       }),
     })

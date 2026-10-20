@@ -42,6 +42,17 @@ describe('fallbackTemplate', () => {
     expect(body).toContain('Xero')
     expect(body).toContain('$49-$119/tech/month')
   })
+
+  it('offers the self-serve demo link as a no-commitment alternative to the call ask', () => {
+    const { body } = fallbackTemplate({ contact_name: 'Jane', trade_type: 'plumbing', company_name: 'Acme' })
+    expect(body).toContain('https://minerva-green.vercel.app/demo')
+  })
+
+  it('uses a caller-provided demo URL instead of the hardcoded default when given one', () => {
+    const { body } = fallbackTemplate({ contact_name: 'Jane', trade_type: 'plumbing', company_name: 'Acme' }, 'https://minervaops.com.au/demo')
+    expect(body).toContain('https://minervaops.com.au/demo')
+    expect(body).not.toContain('minerva-green.vercel.app')
+  })
 })
 
 describe('appendUnsubscribeIfMissing', () => {
