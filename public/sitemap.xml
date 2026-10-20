@@ -68,4 +68,8 @@
     <loc>https://minerva-green.vercel.app/blog/invoice-the-same-day-and-get-paid-faster</loc>
     <priority>0.4</priority>
   </url>
+  <url>
+    <loc>https://minerva-green.vercel.app/blog/the-hidden-cost-of-good-enough-routing</loc>
+    <priority>0.4</priority>
+  </url>
 </urlset>
