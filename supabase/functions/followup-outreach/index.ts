@@ -43,6 +43,8 @@ serve(async (req: Request) => {
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     const supabase = createClient(supabaseUrl, serviceRoleKey)
     const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY')
+    const appUrl = Deno.env.get('APP_URL')
+    const demoUrl = `${(appUrl || 'https://minerva-green.vercel.app').replace(/\/$/, '')}/demo`
 
     // Was deployed+scheduled without ever being registered in
     // agent_functions — see supabase_schema_delta_followup_outreach_agent_registration.sql
@@ -83,7 +85,7 @@ serve(async (req: Request) => {
     // per prospect that needs a follow-up drafted. Same chunk()-of-20
     // shape as the rest of this round, see SCALE_READINESS_NOTES_ROUND2.md.
     for (const batch of chunk(eligible, PROSPECT_BATCH_SIZE)) {
-      const results = await Promise.all(batch.map(p => processOneProspectFollowup(supabase, anthropicKey, p)))
+      const results = await Promise.all(batch.map(p => processOneProspectFollowup(supabase, anthropicKey, p, demoUrl)))
       for (const r of results) {
         if (r === 'closed_lost') closedLost++
         else if (r === 'drafted') drafted++
@@ -116,7 +118,8 @@ serve(async (req: Request) => {
 async function processOneProspectFollowup(
   supabase: ReturnType<typeof createClient>,
   anthropicKey: string | undefined,
-  p: any
+  p: any,
+  demoUrl: string
 ): Promise<'closed_lost' | 'drafted' | 'none'> {
   const decision = computeFollowupDecision(p, Date.now())
   if (decision.action === 'close_lost') {
@@ -128,11 +131,11 @@ async function processOneProspectFollowup(
   const nextStage = decision.nextStage
   let subject: string, bodyText: string
   if (anthropicKey) {
-    const draft = await draftFollowup(anthropicKey, p, nextStage)
+    const draft = await draftFollowup(anthropicKey, p, nextStage, demoUrl)
     if (draft) { subject = draft.subject; bodyText = draft.body }
-    else ({ subject, body: bodyText } = fallbackFollowup(p, nextStage))
+    else ({ subject, body: bodyText } = fallbackFollowup(p, nextStage, demoUrl))
   } else {
-    ({ subject, body: bodyText } = fallbackFollowup(p, nextStage))
+    ({ subject, body: bodyText } = fallbackFollowup(p, nextStage, demoUrl))
   }
 
   if (!bodyText.includes('unsubscribe')) bodyText += UNSUBSCRIBE_LINE
@@ -155,7 +158,7 @@ async function processOneProspectFollowup(
   return claimed && claimed.length > 0 ? 'drafted' : 'none'
 }
 
-async function draftFollowup(apiKey: string, p: any, stage: number): Promise<{ subject: string; body: string } | null> {
+async function draftFollowup(apiKey: string, p: any, stage: number, demoUrl: string): Promise<{ subject: string; body: string } | null> {
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -165,7 +168,7 @@ async function draftFollowup(apiKey: string, p: any, stage: number): Promise<{ s
         max_tokens: 300,
         messages: [{
           role: 'user',
-          content: `Write a brief, polite follow-up (#${stage} of 3) cold-email follow-up to ${p.company_name} (${p.trade_type || 'trade business'}), referencing that this is a follow-up to a prior unanswered email about Minerva (a GPS dispatch/tracking SaaS). Under 60 words, no guilt-tripping, one soft ask (a 7-day free trial or a quick call), sign off "The Minerva team". End with a line telling them they can reply "unsubscribe" to stop hearing from us. Reply with ONLY valid JSON: {"subject": string, "body": string}.`,
+          content: `Write a brief, polite follow-up (#${stage} of 3) cold-email follow-up to ${p.company_name} (${p.trade_type || 'trade business'}), referencing that this is a follow-up to a prior unanswered email about Minerva (a GPS dispatch/tracking SaaS). Under 60 words, no guilt-tripping, one soft ask — a 7-day free trial, a quick call, or trying it themselves first with no commitment at ${demoUrl} — sign off "The Minerva team". End with a line telling them they can reply "unsubscribe" to stop hearing from us. Reply with ONLY valid JSON: {"subject": string, "body": string}.`,
         }],
       }),
     })

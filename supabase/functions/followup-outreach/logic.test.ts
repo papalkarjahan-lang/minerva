@@ -71,4 +71,14 @@ describe('fallbackFollowup', () => {
     expect(fallbackFollowup({ contact_name: 'Jane', company_name: 'Acme' }, 2).body).toContain('follow-up #2')
     expect(fallbackFollowup({ contact_name: 'Jane', company_name: 'Acme' }, 3).body).toContain('follow-up #3')
   })
+
+  it('offers the self-serve demo link as a no-commitment alternative', () => {
+    expect(fallbackFollowup({ contact_name: 'Jane', company_name: 'Acme' }, 1).body).toContain('https://minerva-green.vercel.app/demo')
+  })
+
+  it('uses a caller-provided demo URL instead of the hardcoded default when given one', () => {
+    const body = fallbackFollowup({ contact_name: 'Jane', company_name: 'Acme' }, 1, 'https://minervaops.com.au/demo').body
+    expect(body).toContain('https://minervaops.com.au/demo')
+    expect(body).not.toContain('minerva-green.vercel.app')
+  })
 })

@@ -36,10 +36,12 @@ export function computeFollowupDecision(p: FollowupProspect, nowMs: number): Fol
   return { action: 'due', nextStage: stage + 1 }
 }
 
-export function fallbackFollowup(p: { contact_name: string | null; company_name: string | null }, stage: number): { subject: string; body: string } {
+// demoUrl default/rationale matches draft-outreach-batch/logic.ts's
+// fallbackTemplate — same reasoning, same known-production-URL fallback.
+export function fallbackFollowup(p: { contact_name: string | null; company_name: string | null }, stage: number, demoUrl = 'https://minerva-green.vercel.app/demo'): { subject: string; body: string } {
   const name = p.contact_name || 'there'
   return {
     subject: `Re: Quick question for ${p.company_name}`,
-    body: `Hi ${name},\n\nJust following up (${stage === 1 ? 'my first note' : `follow-up #${stage}`}) — happy to answer any questions or just send over a link to try it free for 7 days, no pressure either way.\n\n(edit this before sending — this is the plain-template fallback, not an AI-personalized draft)`,
+    body: `Hi ${name},\n\nJust following up (${stage === 1 ? 'my first note' : `follow-up #${stage}`}) — happy to answer any questions, send over a free 7-day trial, or you can see it running yourself first with no commitment: ${demoUrl}\n\n(edit this before sending — this is the plain-template fallback, not an AI-personalized draft)`,
   }
 }
