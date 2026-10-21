@@ -43,7 +43,7 @@
 // welcome email).
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import Stripe from "https://esm.sh/stripe@14?target=deno"
+import Stripe from "https://esm.sh/stripe@22?target=deno"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { escapeHtml } from "../_shared/html.ts"
 import { notifySlack } from "../_shared/notifySlack.ts"
@@ -54,7 +54,7 @@ const TRIAL_REMINDER_WINDOW_DAYS = 3
 const BUSINESS_BATCH_SIZE = 20
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, {
-  apiVersion: '2023-10-16',
+  apiVersion: '2026-07-29.dahlia',
   httpClient: Stripe.createFetchHttpClient(),
 })
 

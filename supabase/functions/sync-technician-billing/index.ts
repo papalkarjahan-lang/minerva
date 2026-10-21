@@ -39,12 +39,12 @@
 // job-scoped `isOwnerOrAssignedTechnician` used elsewhere).
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import Stripe from "https://esm.sh/stripe@14?target=deno"
+import Stripe from "https://esm.sh/stripe@22?target=deno"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { isOwnerOrTechnicianOfBusiness, getAuthenticatedCaller } from "../_shared/ownership.ts"
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, {
-  apiVersion: '2023-10-16',
+  apiVersion: '2026-07-29.dahlia',
   httpClient: Stripe.createFetchHttpClient(),
 })
 
