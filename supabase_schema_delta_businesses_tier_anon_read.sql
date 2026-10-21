@@ -1,0 +1,32 @@
+-- ============================================================
+-- Adds subscription_tier to the anon-readable column set on businesses.
+--
+-- Found 2026-10-21 while fixing SuccessPage.jsx (the first page a new
+-- paying customer sees right after Stripe redirects them back, reached
+-- anonymously via the unguessable business_id query param — same
+-- unguessable-link-as-bearer-token pattern already established for
+-- sector/abn in supabase_schema_delta_businesses_select_scoping.sql,
+-- same justification applies to subscription_tier for the same page):
+-- that page's "a few things worth knowing" tips unconditionally described
+-- Pro-only invoicing and trade-only Xero sync to every tier/sector,
+-- because subscription_tier wasn't anon-readable at all, so the fix
+-- couldn't actually gate on it. Attempting
+-- `.select('sector, subscription_tier')` as anon would not just fail to
+-- read the tier — Postgres fails the ENTIRE query when any requested
+-- column lacks privilege, so it would have also broken the already-
+-- working sector fetch. This closes that gap with the minimal column
+-- addition, not a broader re-opening of the table.
+--
+-- Column-level GRANT is additive, so this is a one-line addition to the
+-- anon grant already established in businesses_select_scoping.sql, not a
+-- revoke-and-redo of it.
+-- ============================================================
+
+grant select (subscription_tier) on businesses to anon;
+
+-- Verify after running (as the anon key, no login — safe, read-only):
+--
+-- curl "https://xiikytqxevivrupkljwc.supabase.co/rest/v1/businesses?select=id,sector,subscription_tier&limit=1" \
+--   -H "apikey: YOUR_ANON_KEY" -H "Authorization: Bearer YOUR_ANON_KEY"
+-- Expect: 200, one row including a real subscription_tier value (not a
+-- permission-denied error).

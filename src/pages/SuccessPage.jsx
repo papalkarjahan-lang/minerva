@@ -8,6 +8,7 @@ export default function SuccessPage() {
   const [copied, setCopied] = useState(false)
   const [snippetCopied, setSnippetCopied] = useState(false)
   const [sector, setSector] = useState('trade')
+  const [tier, setTier] = useState(null)
 
   useEffect(() => {
     if (!businessId) return
@@ -16,16 +17,23 @@ export default function SuccessPage() {
     // business landing here right after a Stripe redirect, hitting a
     // transient fetch error, would otherwise get sent to the wrong
     // console with no indication anything went wrong. (Fixed 2026-09-07.)
+    // Also now fetches subscription_tier — set at business-row creation in
+    // Onboarding.jsx, well before this page ever loads, so it's reliably
+    // available here. Needed because the "worth knowing" tips below used
+    // to describe Pro-only invoicing and trade-only Xero sync
+    // unconditionally to every tier/sector, the same "sold vs. delivered"
+    // bug class found repeatedly elsewhere in this project, this time on
+    // the actual first page a new paying customer sees.
     let cancelled = false
-    async function loadSector() {
+    async function loadBizInfo() {
       for (let attempt = 0; attempt < 2; attempt++) {
-        const { data, error } = await supabase.from('businesses').select('sector').eq('id', businessId).single()
+        const { data, error } = await supabase.from('businesses').select('sector, subscription_tier').eq('id', businessId).single()
         if (cancelled) return
-        if (!error && data?.sector) { setSector(data.sector); return }
+        if (!error && data?.sector) { setSector(data.sector); setTier(data.subscription_tier || null); return }
         if (attempt === 0) await new Promise(r => setTimeout(r, 800))
       }
     }
-    loadSector()
+    loadBizInfo()
     return () => { cancelled = true }
   }, [businessId])
 
@@ -98,8 +106,12 @@ export default function SuccessPage() {
             <ul style={{ color: '#888', fontSize: 13, margin: 0, paddingLeft: 18, lineHeight: 1.7 }}>
               <li>Missed-call auto-text-back only fires for calls to a Minerva-managed number — to use your existing business number, ask your carrier to forward it "on no answer" to the number in your Twilio setup, rather than replacing it.</li>
               <li>Technician tracking runs in the browser, not a native app — ask techs to keep the tracking page open and their screen on; locking the phone pauses GPS updates.</li>
-              <li>Xero sync (Pro/Max add-on) is a one-click "Connect Xero" in Settings — no setup on your end beyond logging into your own Xero account.</li>
-              <li>Minerva generates invoices and can optionally take card payment right on the invoice page (a "Pay now" button next to your usual EFTPOS/cash/bank transfer) — nothing changes about how you collect payment unless a client chooses that option themselves.</li>
+              {sector === 'trade' && (
+                <li>Xero sync is a separate Minerva Max add-on (not included in any base plan) — once purchased, it's a one-click "Connect Xero" in Settings, no setup on your end beyond logging into your own Xero account.</li>
+              )}
+              {tier === 'pro' && (
+                <li>Minerva generates invoices and can optionally take card payment right on the invoice page (a "Pay now" button next to your usual EFTPOS/cash/bank transfer) — nothing changes about how you collect payment unless a client chooses that option themselves.</li>
+              )}
             </ul>
           </div>
         )}
