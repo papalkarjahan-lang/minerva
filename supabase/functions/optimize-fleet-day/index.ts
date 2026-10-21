@@ -43,7 +43,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
-import { greedyAssignJobs, swapImproveAssignment, twoOptImprove, chainEtas, currentPlanDistanceKm, type FleetJob } from "./logic.ts"
+import { greedyAssignJobs, swapImproveAssignment, relocateImproveAssignment, twoOptImprove, chainEtas, currentPlanDistanceKm, type FleetJob } from "./logic.ts"
 import { isOwnerOfBusiness, getAuthenticatedCaller } from "../_shared/ownership.ts"
 import { hasStandardAutomation } from "../_shared/tierEligibility.ts"
 
@@ -148,11 +148,13 @@ serve(async (req: Request) => {
     const baselineKm = currentPlanDistanceKm(technicians, jobs)
 
     const greedyAssignment = greedyAssignJobs(technicians, jobs)
-    // Local-search pass on top of the greedy assignment — see
-    // swapImproveAssignment's own header for the exact method/guarantee.
-    // Strictly non-worsening, so this can only help, never hurt, the
+    // Two local-search passes on top of the greedy assignment — see
+    // swapImproveAssignment's and relocateImproveAssignment's own headers
+    // for the exact method/guarantee of each. Both are strictly
+    // non-worsening, so chaining them can only help, never hurt, the
     // final comparison against baselineKm below.
-    const assignment = swapImproveAssignment(technicians, jobs, greedyAssignment)
+    const swapped = swapImproveAssignment(technicians, jobs, greedyAssignment)
+    const assignment = relocateImproveAssignment(technicians, jobs, swapped)
     const jobsById = new Map(jobs.map(j => [j.id, j]))
 
     let proposedKm = 0

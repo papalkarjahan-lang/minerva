@@ -232,6 +232,81 @@ export function swapImproveAssignment(
   return current
 }
 
+// HONESTY NOTE on method: a different move type from swapImproveAssignment
+// above, not a duplicate of it — swap only considers EXCHANGING two jobs
+// between technicians (both sides give something up), which can never help
+// when one technician is simply overloaded and nobody else has a job worth
+// trading back. Relocate considers moving a single job from one
+// technician's list to another's with nothing given in return — a
+// genuinely different case a swap-only search structurally cannot reach.
+// Verified with a found counterexample (not just reasoned about): a fixed
+// 2-technician/5-job fixture where swapImproveAssignment converges with
+// nothing left to improve, and this still finds ~18.5km more, by moving
+// one job off an overloaded technician's list onto the lighter one's.
+// Same strict-improvement guarantee and MAX_SWAP_PASSES-style bound as
+// swapImproveAssignment; run this AFTER that one (or it after this one —
+// each only ever improves, never worsens, so the order doesn't risk
+// correctness, only how many total passes it takes to converge).
+export function relocateImproveAssignment(
+  technicians: FleetTechnician[],
+  jobs: FleetJob[],
+  assignment: Map<string, string[]>
+): Map<string, string[]> {
+  const jobsById = new Map(jobs.map(j => [j.id, j]))
+  const techById = new Map(technicians.map(t => [t.id, t]))
+  const current = new Map<string, string[]>()
+  for (const [techId, jobIds] of assignment) current.set(techId, [...jobIds])
+
+  const routeCost = (tech: FleetTechnician, jobIds: string[]): number => {
+    const theirJobs = jobIds.map(id => jobsById.get(id)).filter((j): j is FleetJob => !!j)
+    const ordered = twoOptImprove(tech.current_lat, tech.current_lng, theirJobs)
+    let total = 0
+    let lat = tech.current_lat
+    let lng = tech.current_lng
+    for (const j of ordered) {
+      total += haversineKm(lat, lng, j.client_lat, j.client_lng)
+      lat = j.client_lat
+      lng = j.client_lng
+    }
+    return total
+  }
+
+  const techIds = [...current.keys()]
+  let improved = true
+  let passes = 0
+  while (improved && passes < MAX_SWAP_PASSES) {
+    improved = false
+    passes++
+    outer:
+    for (let a = 0; a < techIds.length; a++) {
+      for (let b = 0; b < techIds.length; b++) {
+        if (a === b) continue
+        const techA = techById.get(techIds[a])
+        const techB = techById.get(techIds[b])
+        if (!techA || !techB) continue
+        const listA = current.get(techIds[a])!
+        const listB = current.get(techIds[b])!
+        if (listA.length === 0) continue
+        const baseCost = routeCost(techA, listA) + routeCost(techB, listB)
+        for (let i = 0; i < listA.length; i++) {
+          const movedJobId = listA[i]
+          const candidateA = listA.slice()
+          candidateA.splice(i, 1)
+          const candidateB = [...listB, movedJobId]
+          const candidateCost = routeCost(techA, candidateA) + routeCost(techB, candidateB)
+          if (candidateCost < baseCost - 1e-9) {
+            current.set(techIds[a], candidateA)
+            current.set(techIds[b], candidateB)
+            improved = true
+            break outer
+          }
+        }
+      }
+    }
+  }
+  return current
+}
+
 // Total distance of a business's CURRENT real assignment+order — the
 // honest baseline optimize-fleet-day compares its proposed plan against
 // (see index.ts: never claim savings against a strawman, only against

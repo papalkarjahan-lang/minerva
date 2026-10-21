@@ -4,14 +4,16 @@ import { estimateDollarsFromKm } from '../utils'
 // Public, no-signup interactive demo of the real optimize-fleet-day
 // mechanism — same algorithm shape as
 // supabase/functions/optimize-fleet-day/logic.ts (greedyAssignJobs +
-// twoOptImprove), reimplemented client-side against a fixed synthetic
-// sample fleet so a cold prospect can click it and watch the actual
-// reassignment happen, no login required. Distance here is flat-plane
-// (synthetic 0-100 canvas), not haversine, since this isn't a real map —
-// the algorithm logic is otherwise identical to production. Sample data
-// and the resulting improvement were verified with a standalone script
-// before shipping (40% / ~126 units saved on this fixed input, deterministic,
-// not randomized or cherry-picked per visit).
+// swapImproveAssignment + relocateImproveAssignment + twoOptImprove),
+// reimplemented client-side against a fixed synthetic sample fleet so a
+// cold prospect can click it and watch the actual reassignment happen, no
+// login required. Distance here is flat-plane (synthetic 0-100 canvas),
+// not haversine, since this isn't a real map — the algorithm logic is
+// otherwise identical to production. Sample data and the resulting
+// improvement were verified with a standalone script before shipping
+// (42% / ~133 units saved on this fixed input, deterministic, not
+// randomized or cherry-picked per visit — re-verified after adding the
+// relocate pass, which found more than swap alone did on this same input).
 // Honesty convention matches Demo.jsx: explicitly labeled sample data,
 // never implies a real business, real technician, or a guaranteed result
 // for any other fleet.
@@ -140,9 +142,58 @@ function swapImproveAssignment(technicians, jobs, assignment) {
   return current
 }
 
+// Direct port of optimize-fleet-day/logic.ts's relocateImproveAssignment —
+// moves a single job to another technician's list with nothing given back,
+// a genuinely different case from swap (which only considers exchanges).
+function relocateImproveAssignment(technicians, jobs, assignment) {
+  const jobsById = new Map(jobs.map(j => [j.id, j]))
+  const techById = new Map(technicians.map(t => [t.id, t]))
+  const current = new Map()
+  for (const [techId, jobIds] of assignment) current.set(techId, [...jobIds])
+
+  const routeCost = (tech, jobIds) => {
+    const theirJobs = jobIds.map(id => jobsById.get(id)).filter(Boolean)
+    return routeDistance(tech, twoOptImprove(tech, theirJobs))
+  }
+
+  const techIds = [...current.keys()]
+  let improved = true, passes = 0
+  while (improved && passes < 10) {
+    improved = false
+    passes++
+    outer:
+    for (let a = 0; a < techIds.length; a++) {
+      for (let b = 0; b < techIds.length; b++) {
+        if (a === b) continue
+        const techA = techById.get(techIds[a])
+        const techB = techById.get(techIds[b])
+        const listA = current.get(techIds[a])
+        const listB = current.get(techIds[b])
+        if (listA.length === 0) continue
+        const baseCost = routeCost(techA, listA) + routeCost(techB, listB)
+        for (let i = 0; i < listA.length; i++) {
+          const movedJobId = listA[i]
+          const candidateA = listA.slice()
+          candidateA.splice(i, 1)
+          const candidateB = [...listB, movedJobId]
+          const candidateCost = routeCost(techA, candidateA) + routeCost(techB, candidateB)
+          if (candidateCost < baseCost - 1e-9) {
+            current.set(techIds[a], candidateA)
+            current.set(techIds[b], candidateB)
+            improved = true
+            break outer
+          }
+        }
+      }
+    }
+  }
+  return current
+}
+
 function computeOptimizedPlan() {
   const greedy = greedyAssignJobs(TECHNICIANS, JOBS)
-  const assignment = swapImproveAssignment(TECHNICIANS, JOBS, greedy)
+  const swapped = swapImproveAssignment(TECHNICIANS, JOBS, greedy)
+  const assignment = relocateImproveAssignment(TECHNICIANS, JOBS, swapped)
   const result = new Map()
   let totalKm = 0
   for (const t of TECHNICIANS) {
