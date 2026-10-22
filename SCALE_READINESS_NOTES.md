@@ -14,8 +14,9 @@ verified against the actual code before fixing, not taken on the audit's
 word alone.
 
 - **2 missing indexes** (`supabase_schema_delta_scale_readiness_indexes.sql`,
-  not yet applied live — needs the Supabase SQL Editor, same as every
-  pending delta this project): `detect-wasted-trips`' every-15-minute
+  CONFIRMED LIVE 2026-10-23 — run directly in the SQL Editor, "Success. No
+  rows returned", found sitting unconfirmed during a sweep of every "not
+  yet applied" marker across this project's tracking docs): `detect-wasted-trips`' every-15-minute
   platform-wide scan of `jobs` filtered on `status = 'scheduled'` (the single
   most common job status for any business with upcoming work) had no
   supporting index; `DispatcherView.jsx`'s payroll-hours query against

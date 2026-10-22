@@ -95,7 +95,15 @@ Two-part fix:
    addition to the row the link was keyed to, matching the admin tool's
    already-correct behavior exactly.
 2. New unique index (`supabase_schema_delta_outreach_prospects_dedup.sql`,
-   not yet applied live) on `contact_email` (case-sensitive — see that
+   CONFIRMED LIVE 2026-10-23 — found sitting unconfirmed during a sweep of
+   every "not yet applied" marker across this project's tracking docs;
+   both `AdminConsole.jsx:250` and `parse-prospect-text/index.ts:101`
+   already depended on this exact index for their `onConflict:
+   'contact_email'` upserts to work at all, so until this ran, both CSV
+   import and AI-paste prospect extraction would have failed outright,
+   not just risked a duplicate — run directly in the SQL Editor,
+   confirmed "Success. No rows returned") on `contact_email`
+   (case-sensitive — see that
    file's own header for why case-insensitive wasn't worth the added
    upsert complexity, given the unsubscribe sweep above is the layer
    that actually has to be case-insensitive for compliance, and is).
