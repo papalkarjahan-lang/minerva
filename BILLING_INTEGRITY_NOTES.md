@@ -1219,3 +1219,32 @@ edge functions re-verified with `npx esbuild`. Not yet deployed.
 
   797/797 tests pass (11 new). New edge function and all 4 edited pages
   re-verified with `npx esbuild`. Not yet deployed.
+
+- **`track-consumables` (industrial reorder alerts) had zero gating of any
+  kind, sitting right next to two paywalled siblings in the same file.**
+  Found by a background audit re-verifying `Enterprise.jsx`'s "Consumables
+  reorder alerts" claim against its backend. `detect-idle-assets` and
+  `predict-asset-maintenance` — the asset_intelligence add-on's other two
+  functions, in the exact same domain (`industrial_assets`/
+  `consumables_items`, both industrial-only) — both check
+  `isAddonActive(biz, 'asset_intelligence')` before acting; `track-
+  consumables` had no tier check, no add-on check, nothing. Every
+  industrial business got real reorder alerts for free while paying
+  customers were charged $39/mo for its two siblings. Raised with the
+  user: fold it into the existing add-on, gate it with
+  `hasStandardAutomationIndustrial` instead, or leave it free. They chose
+  to fold it into Asset Intelligence — same paywall as its siblings, no
+  new pricing mechanism.
+
+  Fix: `track-consumables/index.ts` now filters candidates through the
+  same `isAddonActive(biz, 'asset_intelligence')` check as
+  `detect-idle-assets`, fetching `businesses(max_addons, max_addon_trials)`
+  the same way. `src/maxAddons.js`'s `asset_intelligence` description
+  updated to mention consumables reorder alerts; `requiresSector` already
+  correctly `'industrial'` (consumables_items is industrial-only, read
+  only by `IndustrialDispatcherView.jsx`), so no change needed there.
+
+  797/797 tests pass (unchanged — a pure gating-logic change, no new pure
+  function to unit test; `isAddonActive` is already covered by
+  `maxAddons.test.ts`). Edited edge function re-verified with
+  `npx esbuild`. Not yet deployed.

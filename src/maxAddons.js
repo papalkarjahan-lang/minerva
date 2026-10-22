@@ -90,7 +90,7 @@ export const MAX_ADDONS = [
     name: 'Asset Intelligence',
     price: 39,
     tagline: 'Catch failing gear and idle assets before they cost you',
-    description: 'Predictive maintenance flags based on each asset\'s own telemetry trend, plus idle-asset alerts after 14+ days of no activity. Not cross-fleet ML.',
+    description: 'Predictive maintenance flags based on each asset\'s own telemetry trend, idle-asset alerts after 14+ days of no activity, plus consumables reorder alerts. Not cross-fleet ML.',
     // Added 2026-10-08: its entire backend (detect-idle-assets,
     // predict-asset-maintenance) reads exclusively from
     // industrial_assets — a trade-sector business has no rows there at
@@ -100,6 +100,14 @@ export const MAX_ADDONS = [
     // structurally guaranteed to never do anything. See
     // isAddonAvailableForSector() below and BILLING_INTEGRITY_NOTES.md's
     // matching dated entry.
+    //
+    // Consumables reorder alerts (track-consumables) folded in 2026-10-23
+    // — it had no gating of any kind until a background audit found it
+    // sitting ungated right next to its two paywalled siblings above,
+    // both reading the same industrial-only data domain. Also
+    // industrial-only (consumables_items is defined in the industrial
+    // schema delta, read only by IndustrialDispatcherView.jsx), so no
+    // change to requiresSector was needed.
     requiresSector: 'industrial',
   },
   {

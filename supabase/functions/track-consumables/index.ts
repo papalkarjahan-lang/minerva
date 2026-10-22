@@ -7,9 +7,20 @@
 // elsewhere in Minerva). Clearing reorder_requested_at (e.g. after
 // restocking) re-arms the alert for next time it drops low again.
 // Deploy with: supabase functions deploy track-consumables
+//
+// Minerva Max gate added 2026-10-23: this had no gating of any kind — free
+// for every business, any tier — while its two closest siblings in the
+// same domain (detect-idle-assets, predict-asset-maintenance) are both
+// paywalled behind the asset_intelligence add-on. Found by a background
+// audit while re-verifying Enterprise.jsx's "Consumables reorder alerts"
+// claim. Raised with the user; they chose to fold this into the existing
+// $39/mo add-on rather than a new paywall or leaving it free — see
+// BILLING_INTEGRITY_NOTES.md's matching entry and src/maxAddons.js's
+// asset_intelligence description, now updated to mention this too.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { isAddonActive } from "../_shared/maxAddons.ts"
 import { chunk } from "../_shared/batch.ts"
 
 const CONSUMABLES_BATCH_SIZE = 20
@@ -34,6 +45,17 @@ serve(async (req: Request) => {
       .select('id, business_id, site_id, name, quantity_on_hand, reorder_threshold, unit')
     if (err2) throw err2
 
+    // Minerva Max: this is the same paid add-on (asset_intelligence) that
+    // gates detect-idle-assets/predict-asset-maintenance — only flag items
+    // belonging to a business that has it enabled or is trialing it. See
+    // src/maxAddons.js for the frontend equivalent.
+    const { data: businesses } = await supabase.from('businesses').select('id, max_addons, max_addon_trials')
+    const addonActive = (bizId: string) => {
+      const biz = (businesses || []).find((b: any) => b.id === bizId)
+      return isAddonActive(biz, 'asset_intelligence')
+    }
+    const eligibleItems = (lowItems || []).filter(item => addonActive((item as any).business_id))
+
     let flagged = 0
     // Bounded-concurrency batching (added 2026-10-08) — consumables_items
     // is fetched with NO filter above (every item for every business on
@@ -43,13 +65,13 @@ serve(async (req: Request) => {
     // this runs hourly, so a slow run risks overlapping the next tick.
     // Same chunk()-of-20 shape as reconcile-billing/daily-digest/etc, see
     // SCALE_READINESS_NOTES.md.
-    for (const batch of chunk(lowItems || [], CONSUMABLES_BATCH_SIZE)) {
+    for (const batch of chunk(eligibleItems, CONSUMABLES_BATCH_SIZE)) {
       const results = await Promise.all(batch.map(item => checkOneConsumable(supabase, supabaseUrl, supabaseServiceKey, item)))
       for (const didFlag of results) if (didFlag) flagged++
     }
 
     supabase.rpc('record_agent_run', { fn_name: 'track-consumables', status: 'ok' }).then(() => {}, () => {})
-    return new Response(JSON.stringify({ success: true, evaluated: (lowItems || []).length, flagged }), {
+    return new Response(JSON.stringify({ success: true, evaluated: eligibleItems.length, flagged }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     })
