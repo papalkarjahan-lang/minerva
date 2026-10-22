@@ -55,7 +55,7 @@ const SECTIONS = [
       ['⚡', 'Whole-fleet route optimization', 'One click re-plans your whole team\'s day — who goes where, in what order — to cut total driving distance across the board, not just within one person\'s route.'],
       ['🔁', 'Automated lead nurture & win-back', 'Leads that go quiet get a gentle automatic follow-up, and lost leads get a later win-back text — before they pick a competitor instead.'],
       ['🤝', 'Automated client retention check-ins', 'Past clients get a friendly check-in a month or two after their job, instead of just hoping they call you again.'],
-      ['💸', 'Automated invoice payment reminders', 'Unpaid invoices get a polite automatic reminder text, so you\'re not the one chasing.'],
+      ['📅', 'Automated appointment reminder SMS', 'Clients get a reminder text the day before their job, cutting down missed appointments and last-minute no-shows.'],
       ['🚫', 'Wasted-trip / no-show detection', 'If a technician shows up and nobody\'s there, it\'s flagged with GPS evidence and the client is automatically offered a reschedule.'],
       ['⛈️', 'Weather-risk reschedule alerts', 'For weather-sensitive trades, jobs at risk from tomorrow\'s forecast get flagged with a draft reschedule message ready for your approval.'],
     ],

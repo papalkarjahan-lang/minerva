@@ -114,3 +114,13 @@ export function buildJobRescheduledTechMessage(opts: { techName?: string | null;
   const movedPhrase = opts.previousWhen ? `moved from ${opts.previousWhen} to ${opts.when}` : `rescheduled to ${opts.when}`
   return `Hi ${opts.techName || ''}, the job at ${opts.clientAddress || 'the scheduled address'} has been ${movedPhrase}.`.trim()
 }
+
+// Used by send-appointment-reminder-sms — see BILLING_INTEGRITY_NOTES.md's
+// "Standard tier had no real differentiator from Starter" follow-up entry
+// (2026-10-23): "invoice reminders" was marketed as one of Standard's 6
+// automations, but on-site invoicing is Pro-exclusive, so a Standard
+// business never has an invoice to chase. This replaces that slot with a
+// feature actually reachable from the `jobs` table every tier has.
+export function buildAppointmentReminderMessage(opts: { clientName?: string | null; businessName: string; clientAddress?: string | null; when: string }): string {
+  return `Hi ${opts.clientName || 'there'}, just a reminder — ${opts.businessName} has you scheduled for ${opts.when}${opts.clientAddress ? ` at ${opts.clientAddress}` : ''}. Reply here if you need to reschedule.`
+}

@@ -23,8 +23,9 @@ const FEATURE_PRIORITIES_INDUSTRIAL = [
 
 // Base per-technician monthly price for each tier.
 // blurbIndustrial (added 2026-10-23): Standard's base blurb described 6
-// trade-only features (invoice reminders, no-show detection, etc. — all
-// read the invoices/jobs tables industrial never touches), but was shown
+// trade-only features (appointment reminders, no-show detection, etc. —
+// all read the jobs/leads tables in a trade-specific shape industrial
+// never touches), but was shown
 // unconditionally to industrial signups too — see hasStandardAutomation's
 // vs. hasStandardAutomationIndustrial's own headers in
 // _shared/tierEligibility.ts for the full trace. Falls back to the trade
@@ -35,7 +36,7 @@ const TIERS = [
   { id: 'starter', name: 'Starter', price: 49, blurb: 'Live GPS map, client ETA SMS, job start/complete, dispatch board, intake chat & lead scoring, job scheduling' },
   {
     id: 'standard', name: 'Standard', price: 79,
-    blurb: 'Everything in Starter + whole-fleet route optimization, automated lead nurture & win-back, client retention check-ins, invoice reminders, no-show detection, weather reschedule alerts',
+    blurb: 'Everything in Starter + whole-fleet route optimization, automated lead nurture & win-back, client retention check-ins, appointment reminder SMS, no-show detection, weather reschedule alerts',
     blurbIndustrial: 'Everything in Starter + automated lead-enrichment nudges, human/automation handoff tracking, and asset-to-site route suggestions',
   },
   { id: 'pro', name: 'Pro', price: 119, blurb: 'Everything in Standard + on-site invoicing, asset tracking, compliance checklists' },

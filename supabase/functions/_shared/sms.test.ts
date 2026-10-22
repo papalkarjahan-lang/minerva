@@ -13,6 +13,7 @@ import {
   buildJobCancelledTechMessage,
   buildJobRescheduledMessage,
   buildJobRescheduledTechMessage,
+  buildAppointmentReminderMessage,
 } from './sms'
 
 describe('formatAuPhone', () => {
@@ -243,5 +244,22 @@ describe('buildJobRescheduledTechMessage', () => {
   it('states the move from the previous time to the new time when previousWhen is provided', () => {
     const msg = buildJobRescheduledTechMessage({ techName: 'Sam', clientAddress: '1 Main St', when: 'Mon, 10am', previousWhen: 'Fri, 2pm' })
     expect(msg).toBe('Hi Sam, the job at 1 Main St has been moved from Fri, 2pm to Mon, 10am.')
+  })
+})
+
+describe('buildAppointmentReminderMessage', () => {
+  it('includes the client address and the scheduled time', () => {
+    const msg = buildAppointmentReminderMessage({ clientName: 'Jane', businessName: 'Acme Plumbing', clientAddress: '1 Main St', when: 'tomorrow, 10am' })
+    expect(msg).toBe('Hi Jane, just a reminder — Acme Plumbing has you scheduled for tomorrow, 10am at 1 Main St. Reply here if you need to reschedule.')
+  })
+
+  it('omits the address clause when clientAddress is missing', () => {
+    const msg = buildAppointmentReminderMessage({ clientName: 'Jane', businessName: 'Acme Plumbing', when: 'tomorrow, 10am' })
+    expect(msg).toBe('Hi Jane, just a reminder — Acme Plumbing has you scheduled for tomorrow, 10am. Reply here if you need to reschedule.')
+  })
+
+  it('falls back to a generic greeting when clientName is missing', () => {
+    const msg = buildAppointmentReminderMessage({ businessName: 'Acme Plumbing', when: 'tomorrow, 10am' })
+    expect(msg).toContain('Hi there, just a reminder')
   })
 })

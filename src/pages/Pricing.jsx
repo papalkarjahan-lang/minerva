@@ -10,7 +10,7 @@ import SavingsEstimator from '../components/SavingsEstimator'
 // the same Starter tier at a technician count of 1, not a separate price.
 const TIERS = [
   ['Starter', '$49', 'per tech/month', ['Live GPS map', 'Client ETA SMS', 'Job start/complete', 'Dispatch board & job scheduling', 'Automatic intake chat & lead scoring', 'Works on any phone']],
-  ['Standard', '$79', 'per tech/month', ['Everything in Starter', 'Whole-fleet route optimization', 'Automated lead nurture & win-back', 'Automated client retention check-ins', 'Automated invoice payment reminders', 'Wasted-trip / no-show detection', 'Weather-risk reschedule alerts'], true],
+  ['Standard', '$79', 'per tech/month', ['Everything in Starter', 'Whole-fleet route optimization', 'Automated lead nurture & win-back', 'Automated client retention check-ins', 'Automated appointment reminder SMS', 'Wasted-trip / no-show detection', 'Weather-risk reschedule alerts'], true],
   ['Pro', '$119', 'per tech/month', ['Everything in Standard', 'On-site invoicing', 'Asset tracking', 'Compliance & onboarding checklists', 'Materials & inventory tracking', 'Technician credential tracking', 'Automated growth marketing suggestions']],
 ]
 

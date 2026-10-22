@@ -1175,3 +1175,47 @@ edge functions re-verified with `npx esbuild`. Not yet deployed.
   786/786 tests pass (5 new, covering `hasStandardAutomationIndustrial`).
   All 3 edited edge functions and both edited pages re-verified with
   `npx esbuild`. Not yet deployed.
+
+- **Standard tier's own trade-side differentiator had the exact same bug
+  this file just spent two entries fixing for Industrial — found by a
+  dedicated audit applying the same question one more time.** "Automated
+  invoice payment reminders" is one of Standard's 6 marketed automations
+  (`Onboarding.jsx`, `Pricing.jsx`, `LandingPage.jsx`, `Features.jsx`),
+  reused via `chase-unpaid-invoices` and gated by `hasStandardAutomation`.
+  But on-site invoicing is Pro-exclusive — `TechnicianView.jsx`'s
+  `showInvoiceBuilder` only renders `if (subscription_tier === 'pro')`,
+  and `DispatcherView.jsx` only loads the `invoices` state for Pro too.
+  A Standard-tier trade business therefore never has an `invoices` row,
+  ever — `chase-unpaid-invoices`'s candidate query always returns empty
+  for the exact tier it was sold to. Identical root cause and shape to
+  the referral-code bug fixed earlier this session (an invoice-paid-only
+  trigger, Pro-exclusive invoicing), just never caught when the original
+  "Standard tier had no differentiator" fix picked its 6 reused
+  functions — that fix checked sector-reachability (does the table this
+  function reads even apply to this sector) but never checked
+  tier-reachability (does Standard itself ever populate the table this
+  function reads). Same blind spot, different axis. Found by a background
+  audit specifically tasked with finding more instances of this bug class
+  after the Industrial fix above; raised with the user, who asked for a
+  new, same-level function to fill the slot rather than dropping the
+  claim or building Standard its own invoicing (which would have blurred
+  why Pro costs more).
+
+  Fix: `send-appointment-reminder-sms`, a new autonomous cron agent (daily,
+  7:30am UTC — offset from `chase-unpaid-invoices`/`check-weather-risk` to
+  avoid stacking) that texts the client a reminder the day before their
+  scheduled job. Reachable from the `jobs` table every tier already has,
+  gated by the same `hasStandardAutomation` as the other 5 Standard
+  automations it now sits alongside. Uses the same "tomorrow in the
+  business's local calendar day" window `check-weather-risk` already
+  solved (its `addLocalDays`/`localOffsetMinutes`/`localMidnightUTC`
+  duplicated into this function's own `logic.ts` rather than imported
+  across function directories — no precedent for that in this repo), the
+  same claim-before-send idempotency pattern as `chase-unpaid-invoices`/
+  `send-completion-sms`, and a new `buildAppointmentReminderMessage` in
+  `_shared/sms.ts` alongside this codebase's other message builders. New
+  column: `jobs.appointment_reminder_sent`. All 4 marketing surfaces that
+  named "invoice reminders" now describe the real feature instead.
+
+  797/797 tests pass (11 new). New edge function and all 4 edited pages
+  re-verified with `npx esbuild`. Not yet deployed.
