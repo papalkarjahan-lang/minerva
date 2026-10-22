@@ -10,6 +10,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { chunk } from "../_shared/batch.ts"
+import { hasStandardAutomationIndustrial } from "../_shared/tierEligibility.ts"
 
 // Completions are processed in bounded-concurrency batches, not fully
 // sequentially — same fix shape as reconcile-billing/update-technician-
@@ -38,12 +39,16 @@ serve(async (req: Request) => {
 
     const hourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
     const { data: completions, error } = await supabase.from('site_checkins')
-      .select('id, site_id, business_id, person_name, detail, created_at, site_projects(name)')
+      .select('id, site_id, business_id, person_name, detail, created_at, site_projects(name), businesses(subscription_tier, sector)')
       .eq('role', 'automated_process')
       .eq('checkin_type', 'task_complete')
       .is('handoff_nudged_at', null)
       .gte('created_at', hourAgo)
     if (error) throw error
+
+    // Standard-tier automation gate (added 2026-10-23) — see
+    // _shared/tierEligibility.ts's hasStandardAutomationIndustrial header.
+    const eligibleCompletions = (completions || []).filter(c => hasStandardAutomationIndustrial((c as any).businesses?.subscription_tier, (c as any).businesses?.sector))
 
     let nudged = 0
 
@@ -82,7 +87,7 @@ serve(async (req: Request) => {
       return true
     }
 
-    for (const batch of chunk(completions || [], HANDOFF_BATCH_SIZE)) {
+    for (const batch of chunk(eligibleCompletions, HANDOFF_BATCH_SIZE)) {
       const results = await Promise.all(batch.map(c => checkOneCompletion(c as any)))
       nudged += results.filter(Boolean).length
     }

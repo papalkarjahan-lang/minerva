@@ -22,6 +22,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { findNearestAsset } from "./logic.ts"
 import { chunk } from "../_shared/batch.ts"
+import { hasStandardAutomationIndustrial } from "../_shared/tierEligibility.ts"
 
 const ROUTE_SUGGEST_SUPPRESS_HOURS = 24 // don't re-suggest the same still-unassigned site every 30 min
 const SITE_BATCH_SIZE = 20
@@ -42,9 +43,14 @@ serve(async (req: Request) => {
     }
 
     const { data: sites, error } = await supabase.from('site_projects')
-      .select('id, business_id, name, site_lat, site_lng, route_suggested_at')
+      .select('id, business_id, name, site_lat, site_lng, route_suggested_at, businesses(subscription_tier, sector)')
       .eq('status', 'active')
     if (error) throw error
+
+    // Standard-tier automation gate (added 2026-10-23) — industrial's
+    // counterpart to hasStandardAutomation/optimize-fleet-day, see
+    // _shared/tierEligibility.ts's hasStandardAutomationIndustrial header.
+    const eligibleSites = (sites || []).filter(site => hasStandardAutomationIndustrial((site as any).businesses?.subscription_tier, (site as any).businesses?.sector))
 
     const suppressSince = new Date(Date.now() - ROUTE_SUGGEST_SUPPRESS_HOURS * 60 * 60 * 1000).toISOString()
 
@@ -53,7 +59,7 @@ serve(async (req: Request) => {
     // site_project platform-wide, each costing 2-3 round trips, runs
     // every 30 minutes. Same chunk()-of-20 shape as the rest of this
     // round, see SCALE_READINESS_NOTES_ROUND2.md.
-    for (const batch of chunk(sites || [], SITE_BATCH_SIZE)) {
+    for (const batch of chunk(eligibleSites, SITE_BATCH_SIZE)) {
       const results = await Promise.all(batch.map(site =>
         suggestAssetForOneSite(supabase, supabaseUrl, supabaseServiceKey, suppressSince, site)
       ))

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isTierAvailableForSector, hasStandardAutomation, hasGrowthPillarAccess } from './tierEligibility'
+import { isTierAvailableForSector, hasStandardAutomation, hasGrowthPillarAccess, hasStandardAutomationIndustrial } from './tierEligibility'
 
 describe('isTierAvailableForSector', () => {
   it("rejects pro for industrial — none of Pro's 6 marketed features exist for that sector", () => {
@@ -60,6 +60,33 @@ describe('hasStandardAutomation', () => {
     expect(hasStandardAutomation('standard', null)).toBe(false)
     expect(hasStandardAutomation('standard', undefined)).toBe(false)
     expect(hasStandardAutomation('standard', 'not_a_real_sector')).toBe(false)
+  })
+})
+
+describe('hasStandardAutomationIndustrial', () => {
+  it('allows standard and pro, for industrial sector', () => {
+    expect(hasStandardAutomationIndustrial('standard', 'industrial')).toBe(true)
+    expect(hasStandardAutomationIndustrial('pro', 'industrial')).toBe(true)
+  })
+
+  it('rejects starter, even for industrial', () => {
+    expect(hasStandardAutomationIndustrial('starter', 'industrial')).toBe(false)
+  })
+
+  it('rejects trade sector even with an otherwise-eligible tier — this is the industrial-only counterpart', () => {
+    expect(hasStandardAutomationIndustrial('standard', 'trade')).toBe(false)
+    expect(hasStandardAutomationIndustrial('pro', 'trade')).toBe(false)
+  })
+
+  it('rejects cancelled — a lapsed subscription should not keep paid automation running', () => {
+    expect(hasStandardAutomationIndustrial('cancelled', 'industrial')).toBe(false)
+  })
+
+  it('rejects null/undefined/unrecognised tier or sector values, failing closed rather than open', () => {
+    expect(hasStandardAutomationIndustrial(null, 'industrial')).toBe(false)
+    expect(hasStandardAutomationIndustrial(undefined, 'industrial')).toBe(false)
+    expect(hasStandardAutomationIndustrial('standard', null)).toBe(false)
+    expect(hasStandardAutomationIndustrial('standard', undefined)).toBe(false)
   })
 })
 

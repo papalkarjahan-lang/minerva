@@ -41,6 +41,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { chunk } from "../_shared/batch.ts"
+import { hasStandardAutomationIndustrial } from "../_shared/tierEligibility.ts"
 
 const BUSINESS_BATCH_SIZE = 20
 
@@ -105,16 +106,22 @@ serve(async (req: Request) => {
       }
     }
 
-    // Cron sweep: nudge on leads still blocked on enrichment.
+    // Cron sweep: nudge on leads still blocked on enrichment. Standard-tier
+    // automation gate (added 2026-10-23) — this is the proactive-nudge half
+    // of this function; the direct-invocation branch above (recording
+    // enrichment data a human already has) stays ungated at every tier,
+    // same as every other data-entry endpoint in this codebase. See
+    // _shared/tierEligibility.ts's hasStandardAutomationIndustrial header.
     const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-    const { data: businesses } = await supabase.from('businesses').select('id, name').eq('sector', 'industrial')
+    const { data: businesses } = await supabase.from('businesses').select('id, name, subscription_tier, sector').eq('sector', 'industrial')
+    const eligibleBusinesses = (businesses || []).filter(biz => hasStandardAutomationIndustrial(biz.subscription_tier, biz.sector))
 
     let nudged = 0
     // Bounded-concurrency batching (added 2026-10-08) — every industrial-
     // sector business platform-wide, each costing a nested leads query
     // plus a conditional claim and Slack notify. Same chunk()-of-20 shape
     // as the rest of this round, see SCALE_READINESS_NOTES_ROUND2.md.
-    for (const batch of chunk(businesses || [], BUSINESS_BATCH_SIZE)) {
+    for (const batch of chunk(eligibleBusinesses, BUSINESS_BATCH_SIZE)) {
       const results = await Promise.all(batch.map(biz => nudgeOneBusinessEnrichment(supabase, supabaseUrl, supabaseServiceKey, dayAgo, biz)))
       for (const wasNudged of results) if (wasNudged) nudged++
     }

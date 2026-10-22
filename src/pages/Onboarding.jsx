@@ -22,9 +22,22 @@ const FEATURE_PRIORITIES_INDUSTRIAL = [
 ]
 
 // Base per-technician monthly price for each tier.
+// blurbIndustrial (added 2026-10-23): Standard's base blurb described 6
+// trade-only features (invoice reminders, no-show detection, etc. — all
+// read the invoices/jobs tables industrial never touches), but was shown
+// unconditionally to industrial signups too — see hasStandardAutomation's
+// vs. hasStandardAutomationIndustrial's own headers in
+// _shared/tierEligibility.ts for the full trace. Falls back to the trade
+// blurb for any tier with no industrial-specific copy (Starter/Pro, whose
+// base blurbs are already sector-neutral or industrial-inapplicable via
+// the Pro-filter below).
 const TIERS = [
   { id: 'starter', name: 'Starter', price: 49, blurb: 'Live GPS map, client ETA SMS, job start/complete, dispatch board, intake chat & lead scoring, job scheduling' },
-  { id: 'standard', name: 'Standard', price: 79, blurb: 'Everything in Starter + whole-fleet route optimization, automated lead nurture & win-back, client retention check-ins, invoice reminders, no-show detection, weather reschedule alerts' },
+  {
+    id: 'standard', name: 'Standard', price: 79,
+    blurb: 'Everything in Starter + whole-fleet route optimization, automated lead nurture & win-back, client retention check-ins, invoice reminders, no-show detection, weather reschedule alerts',
+    blurbIndustrial: 'Everything in Starter + automated lead-enrichment nudges, human/automation handoff tracking, and asset-to-site route suggestions',
+  },
   { id: 'pro', name: 'Pro', price: 119, blurb: 'Everything in Standard + on-site invoicing, asset tracking, compliance checklists' },
 ]
 
@@ -312,8 +325,8 @@ export default function Onboarding() {
               <p style={{ fontSize: 12.5, color: '#777', lineHeight: 1.5, margin: '-4px 0 10px' }}>
                 Pro is not yet available for Industrial — its extra features (invoicing, asset
                 tracking, compliance checklists) are built for the Trade console specifically.
-                Starter and Standard both include everything Industrial already has: asset
-                telemetry, site check-ins, and safety tracking.
+                Asset telemetry, site check-ins, and safety tracking are included at every tier;
+                Standard adds the proactive automation layer on top (see below).
               </p>
             )}
             <div style={styles.tierGrid} role="radiogroup" aria-label="Choose your plan">
@@ -325,7 +338,7 @@ export default function Onboarding() {
                   style={{ ...styles.tierCard, ...(tier === t.id ? styles.tierCardActive : {}) }}>
                   <p style={styles.tierName}>{t.name}</p>
                   <p style={styles.tierPrice}>${t.price}<span style={styles.tierPriceUnit}>/tech/mo</span></p>
-                  <p style={styles.tierBlurb}>{t.blurb}</p>
+                  <p style={styles.tierBlurb}>{sector === 'industrial' ? (t.blurbIndustrial || t.blurb) : t.blurb}</p>
                 </div>
               ))}
             </div>

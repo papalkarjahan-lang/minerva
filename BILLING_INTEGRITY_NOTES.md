@@ -1113,3 +1113,65 @@ is turned away before any spend or send, not after.
 
 762/762 tests pass (8 new, covering `hasGrowthPillarAccess`). Both edited
 edge functions re-verified with `npx esbuild`. Not yet deployed.
+
+- **Standard tier had no real differentiator from Starter for Industrial
+  either — the exact same bug this file's own "Standard tier had no real
+  differentiator from Starter" entry fixed for trade, just never extended
+  to the other sector.** That entry's own correction explicitly flagged
+  this as an open question rather than something to decide unilaterally:
+  "should Industrial ever have its own paid tier differentiation, and on
+  what? ... rather than something to decide unilaterally." Raised with the
+  user directly (2026-10-23) while auditing `Pricing.jsx`'s "Multi-site /
+  fleet" size-guide row (itself found to be wrong — it claimed "Any tier +
+  Industrial sector at signup," but `isTierAvailableForSector` and
+  `Onboarding.jsx`'s own `TIERS.filter` have blocked Pro for Industrial
+  since the original fix above). The user chose to build a real
+  differentiator rather than leave it ungated or just soften the copy.
+  Confirmed by grep: none of `harvest-industrial-leads`,
+  `enrich-industrial-leads`, `industrial-conductor`,
+  `monitor-asset-telemetry`, `detect-safety-hazards`, `sequence-handoffs`,
+  `optimize-industrial-routes`, `verify-industrial-compliance`, or
+  `package-client-verification` checked `subscription_tier` at all — every
+  industrial business got 100% of the built automation at Starter price,
+  same "paying more for nothing reachable" shape as the trade bug, just
+  never audited for this sector.
+
+  Fix: new `hasStandardAutomationIndustrial(tier, sector)` in
+  `_shared/tierEligibility.ts`, same shape as `hasStandardAutomation`
+  (standard/pro + sector==='industrial'). Gated only the 3 functions that
+  are genuine proactive "falls through the cracks" automation, applying
+  the same test `hasStandardAutomation`'s own header uses: `sequence-
+  handoffs` (handoff-tracking sweep) and `optimize-industrial-routes`
+  (asset-to-site suggestion sweep — industrial's direct analog of trade's
+  `optimize-fleet-day`, which Standard already gates) gate their entire
+  cron sweep; `enrich-industrial-leads` gates only its daily nudge-sweep
+  branch, leaving its direct-invocation branch (recording enrichment data
+  a human already sourced) ungated, same reasoning as every other
+  data-entry endpoint in this codebase. Deliberately left ungated:
+  `monitor-asset-telemetry`/`harvest-industrial-leads` (ingestion
+  endpoints, not proactive saves — gating them would block a business
+  from getting its own data into Minerva at all, same reasoning that kept
+  `daily-digest` ungated for trade); `industrial-conductor` (the direct
+  analog of trade's `auto-assign-technician`, itself ungated at every
+  tier); `detect-safety-hazards`/`verify-industrial-compliance` (active
+  physical-safety hazard detection/escalation — paywalling that is a real
+  liability question, not a pricing one, same "safety concern, not a
+  growth feature" principle already established for weather-risk
+  reschedule alerts elsewhere in this codebase, so left free at every
+  tier rather than decided unilaterally here); `package-client-
+  verification` (human-click evidence packaging at job close-out, a core
+  console action, not an autonomous save).
+
+  `Onboarding.jsx`'s `TIERS` Standard blurb gained a sector-aware
+  `blurbIndustrial` variant describing the real new features (it
+  previously showed industrial signups the trade-only blurb verbatim —
+  "invoice reminders, no-show detection, weather reschedule alerts" — none
+  of which exist for industrial). Its own industrial note, which
+  previously claimed "Starter and Standard both include everything
+  Industrial already has" (true before this fix, false after), updated to
+  match. `Pricing.jsx`'s "Multi-site / fleet" row corrected on both counts
+  (the Pro/Industrial claim and the new Standard differentiator).
+
+  786/786 tests pass (5 new, covering `hasStandardAutomationIndustrial`).
+  All 3 edited edge functions and both edited pages re-verified with
+  `npx esbuild`. Not yet deployed.

@@ -96,3 +96,45 @@ export function hasStandardAutomation(
 export function hasGrowthPillarAccess(tier: string | null | undefined): boolean {
   return tier === 'pro'
 }
+
+// Industrial-sector counterpart to hasStandardAutomation (added 2026-10-23).
+// hasStandardAutomation's own header documents that it was deliberately
+// restricted to sector==='trade' because the 6 functions it gates read
+// invoices/leads/jobs, tables an industrial business never touches — but
+// that correction only closed the gap for trade, leaving the exact same
+// underlying bug (Standard priced at $79/tech with nothing reachable above
+// Starter's $49/tech) sitting unfixed for industrial. Confirmed by grep:
+// none of harvest-industrial-leads, enrich-industrial-leads, industrial-
+// conductor, monitor-asset-telemetry, detect-safety-hazards, sequence-
+// handoffs, optimize-industrial-routes, verify-industrial-compliance, or
+// package-client-verification checked subscription_tier at all — every
+// industrial business got 100% of the built automation at Starter price.
+//
+// Gates only the 3 that are genuine "proactive automation that keeps
+// something from falling through the cracks once there's more volume than
+// one person can track by hand" (the same test hasStandardAutomation's own
+// header applies): enrich-industrial-leads' daily nudge sweep, sequence-
+// handoffs' handoff-tracking sweep, and optimize-industrial-routes'
+// asset-to-site suggestion sweep (industrial's direct analog to trade's
+// optimize-fleet-day, which Standard already gates). Deliberately NOT
+// gated: monitor-asset-telemetry and harvest-industrial-leads are
+// ingestion/data-entry endpoints, not proactive saves — gating them would
+// block an industrial business from getting its own data into Minerva at
+// all, the same reasoning that kept daily-digest ungated for trade.
+// industrial-conductor is the direct analog of trade's auto-assign-
+// technician, itself ungated at every tier, so this keeps both sectors'
+// core dispatch-suggestion engine consistent. detect-safety-hazards and
+// verify-industrial-compliance are left ungated on purpose — they detect
+// and escalate active physical-safety hazards (human/automated-process
+// proximity conflicts), not a growth or efficiency feature, the same
+// "safety concern, not a growth feature" principle already established for
+// weather-risk reschedule alerts elsewhere in this codebase. Paywalling
+// hazard detection a business is otherwise fully capable of running is a
+// real liability question, not a pricing one, so it stays free at every
+// tier rather than being decided unilaterally here.
+export function hasStandardAutomationIndustrial(
+  tier: string | null | undefined,
+  sector: string | null | undefined
+): boolean {
+  return (tier === 'standard' || tier === 'pro') && sector === 'industrial'
+}
