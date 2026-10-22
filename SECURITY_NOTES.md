@@ -1943,7 +1943,23 @@ project's one existing row (`[TEST] Theoretical Co` — no real customer
 data exists yet, which is the only reason this isn't more urgent than it
 reads).
 
-## Residual gap in the 2026-09-27 checkout-hijack fix: the null-stripe_customer_id window is unbounded, not momentary (2026-10-08)
+## Residual gap in the 2026-09-27 checkout-hijack fix: the null-stripe_customer_id window is unbounded, not momentary (2026-10-08) — CONFIRMED LIVE 2026-10-23
+
+**Update 2026-10-23.** Found this still marked "not yet applied live" while
+re-auditing this file for unresolved items (same pass that caught the
+billing-identity-guard trigger below in the same ambiguous state). Rather
+than ask the user to blindly re-run `alter table businesses add column
+checkout_token text` — NOT idempotent, unlike the trigger delta, so a
+second run would error if it had already succeeded — verified live state
+directly with two read-only anon-key requests instead:
+`?select=checkout_token` alone returns `42501 permission denied for table
+businesses`, while `?select=sector` and `?select=id` alone both return
+`200` with real data. Postgres/PostgREST's actual error for a column that
+doesn't exist at all is a distinct `42703 column ... does not exist`, not
+a permission error — so this result is only possible if the column
+exists AND its anon SELECT grant has already been revoked, i.e. both
+statements in this delta already ran successfully. Confirmed closed; no
+action needed.
 
 Re-examined the "Cross-tenant Stripe checkout hijack via
 create-checkout-session's unchecked businessId" fix above after asking a

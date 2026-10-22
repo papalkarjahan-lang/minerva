@@ -425,7 +425,13 @@ Fix, same 3-layer shape as the `asset_intelligence` fix it corrects:
     other 10 functions importing this shared file only call
     `isAddonActive`, never `isAddonAvailableForSector`, so they're
     unaffected and don't need redeploying for this specific fix).
-  - `supabase_schema_delta_addon_sector_guard.sql` (new) — generalizes
+  - `supabase_schema_delta_addon_sector_guard.sql` (new, CONFIRMED LIVE
+    2026-10-23 — found untracked/unconfirmed anywhere in this file,
+    SECURITY_NOTES.md, or DEPLOYMENT_CHECKLIST_PENDING.md while
+    re-auditing for exactly this kind of gap, same pass that caught the
+    billing-identity-guard and checkout-hijack triggers; re-ran it fresh,
+    since it's fully idempotent, and it returned "Success. No rows
+    returned") — generalizes
     the old single-purpose `enforce_asset_intelligence_sector` trigger
     (never deployed; deleted) into one `enforce_addon_sector_restrictions`
     trigger that loops over all 9 addon-key → required-sector pairs from
