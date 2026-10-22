@@ -1134,6 +1134,14 @@ export default function TechnicianView() {
     supabase.functions.invoke('run-custom-workflows', {
       body: { businessId: currentJob.business_id, event: 'job.completed', payload: { trade_type: currentJob.trade_type, client_address: currentJob.client_address } },
     }).catch(() => {})
+    // Referral loop for tiers with no on-site invoicing (Starter/Standard) —
+    // their only trigger otherwise would be markInvoicePaid, which they can
+    // never reach. The function itself skips Pro tier server-side (it
+    // already gets this via invoice-paid), so this is safe to fire
+    // unconditionally for every tier. See send-job-referral-code-sms.
+    supabase.functions.invoke('send-job-referral-code-sms', {
+      body: { jobId: currentJob.id },
+    }).catch(() => {})
     setStatus('job_done')
   }
 

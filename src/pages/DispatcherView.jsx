@@ -56,6 +56,13 @@ export default function DispatcherView() {
   const [compliancePackages, setCompliancePackages] = useState({}) // jobId -> compliance_packages[]
   const [assets, setAssets] = useState([]) // Pro tier only
   const [invoices, setInvoices] = useState([]) // Pro tier only
+  // Starter/Standard referral codes live on jobs.referral_code (see
+  // supabase_schema_delta_job_referral_code.sql) rather than
+  // invoices.referral_code, since those tiers have no invoices rows at
+  // all — Pro's count comes straight from the already-loaded `invoices`
+  // array below, but completed jobs aren't kept in `jobs` state (which
+  // only holds scheduled/active ones), so this needs its own count query.
+  const [jobReferralCodesCount, setJobReferralCodesCount] = useState(0)
   const [carbonEstimates, setCarbonEstimates] = useState([]) // Pro tier only — see estimate-job-carbon
   const [subcontractors, setSubcontractors] = useState([])
   const [showAddSubcontractor, setShowAddSubcontractor] = useState(false)
@@ -359,6 +366,16 @@ export default function DispatcherView() {
       .in('status', ['scheduled', 'active'])
       .order('scheduled_time', { ascending: true })
     setJobs(jobList || [])
+
+    // See jobReferralCodesCount's declaration above — completed jobs with a
+    // referral code aren't in jobList (status filter above excludes them),
+    // so this is a separate count rather than a client-side filter.
+    const { count: jobReferralCount } = await supabase
+      .from('jobs')
+      .select('id', { count: 'exact', head: true })
+      .eq('business_id', businessId)
+      .not('referral_code', 'is', null)
+    setJobReferralCodesCount(jobReferralCount || 0)
 
     const { data: leadList } = await supabase
       .from('leads')
@@ -2923,7 +2940,7 @@ export default function DispatcherView() {
                 <button style={styles.tabBtn(leadsViewMode === 'list')} onClick={() => setLeadsViewMode('list')}>List</button>
                 <button style={styles.tabBtn(leadsViewMode === 'board')} onClick={() => setLeadsViewMode('board')}>Board</button>
               </div>
-              {(leadAttribution.length > 0 || invoices.some(i => i.referral_code)) && (
+              {(leadAttribution.length > 0 || invoices.some(i => i.referral_code) || jobReferralCodesCount > 0) && (
                 <div style={{ marginBottom: 14, padding: 10, background: '#0f1420', borderRadius: 8, border: '1px solid #1e293b' }}>
                   <p style={styles.sectionLabel}>LEAD SOURCES — WHAT'S ACTUALLY CONVERTING</p>
                   {leadAttribution.map(row => (
@@ -2932,12 +2949,12 @@ export default function DispatcherView() {
                       <span>{row.total_leads} lead{row.total_leads === 1 ? '' : 's'} · {row.converted_leads} converted ({row.conversion_rate_pct}%)</span>
                     </div>
                   ))}
-                  {invoices.some(i => i.referral_code) && (() => {
-                    const codesSent = invoices.filter(i => i.referral_code).length
+                  {(invoices.some(i => i.referral_code) || jobReferralCodesCount > 0) && (() => {
+                    const codesSent = invoices.filter(i => i.referral_code).length + jobReferralCodesCount
                     const referralRow = leadAttribution.find(r => r.channel === 'referral')
                     return (
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#1D9E75', padding: '6px 0 2px', borderTop: '1px solid #1e293b', marginTop: 4 }}
-                        title="Every paid invoice automatically texts the client a referral code. This counts how many have gone out, and (below) how many of those actually turned into a new lead so far.">
+                        title="A paid invoice (Pro) or a completed job (Starter/Standard) automatically texts the client a referral code. This counts how many have gone out, and (below) how many of those actually turned into a new lead so far.">
                         <span>📨 referral codes sent to clients</span>
                         <span>{codesSent}{referralRow ? ` · ${referralRow.total_leads} became a lead so far` : ''}</span>
                       </div>
