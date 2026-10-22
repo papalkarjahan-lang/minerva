@@ -2377,6 +2377,46 @@ export default function DispatcherView() {
               )}
             </div>
           )}
+          {(() => {
+            // Tomorrow's workload preview — deliberately NOT a new
+            // optimization feature (that's a materially bigger, separately-
+            // scoped lift, flagged but not attempted here). Purely
+            // read-only visibility into imbalance BEFORE the day starts,
+            // using jobs/technicians already loaded into state (the jobs
+            // query above has no date filter, so tomorrow's rows are
+            // already here — no new query needed). Lets a dispatcher
+            // notice "Dave has 6 jobs tomorrow, Priya has 1" tonight,
+            // while there's still time to rebalance manually, rather than
+            // discovering it mid-morning.
+            const tomorrow = new Date()
+            tomorrow.setDate(tomorrow.getDate() + 1)
+            const tomorrowStr = tomorrow.toDateString()
+            const tomorrowJobs = jobs.filter(j => j.scheduled_time && new Date(j.scheduled_time).toDateString() === tomorrowStr)
+            if (tomorrowJobs.length === 0) return null
+            const countByTech = {}
+            let unassignedCount = 0
+            for (const j of tomorrowJobs) {
+              if (j.technician_id) countByTech[j.technician_id] = (countByTech[j.technician_id] || 0) + 1
+              else unassignedCount++
+            }
+            return (
+              <div style={{ margin: '8px 0', padding: 10, background: '#0f1420', borderRadius: 8, border: '1px solid #1e293b' }}>
+                <p style={styles.sectionLabel}>TOMORROW'S WORKLOAD ({tomorrowJobs.length} job{tomorrowJobs.length === 1 ? '' : 's'} already booked)</p>
+                {technicians.filter(t => countByTech[t.id]).map(t => (
+                  <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#9aa5b1', padding: '2px 0' }}>
+                    <span>{t.name}</span>
+                    <span>{countByTech[t.id]} job{countByTech[t.id] === 1 ? '' : 's'}</span>
+                  </div>
+                ))}
+                {unassignedCount > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#E8A33D', padding: '2px 0' }}>
+                    <span>Not yet assigned to anyone</span>
+                    <span>{unassignedCount} job{unassignedCount === 1 ? '' : 's'}</span>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
           {technicians.map((tech, i) => {
             const job = jobs.find(j => j.id === tech.current_job_id)
             const reliability = computeTechnicianReliability(tech, flaggedPhotoCounts[tech.id])
