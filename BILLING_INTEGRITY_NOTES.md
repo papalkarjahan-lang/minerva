@@ -126,7 +126,10 @@ single mistake" becoming an explicit bar.
   matter, since a hidden button alone has never been treated as a real
   boundary anywhere else in this codebase either.
   **Trigger, for defense in depth** — `supabase_schema_delta_asset_
-  intelligence_sector_guard.sql`, not yet applied live: covers
+  intelligence_sector_guard.sql` (later superseded before ever being run
+  by `supabase_schema_delta_addon_sector_guard.sql`, generalized to all
+  9 add-ons — see that entry further down, CONFIRMED LIVE 2026-10-23):
+  covers
   `startMaxAddonTrial`'s direct-from-browser write, the one path with no
   edge function at all to add a check to. Deliberately compares OLD vs.
   NEW rather than rejecting on current state alone — `businesses` is
@@ -142,10 +145,16 @@ single mistake" becoming an explicit bar.
   function it now calls). Lint clean on every touched file (pre-existing,
   unrelated warnings in `DispatcherView.jsx` confirmed via `git stash` to
   predate this change — that file has 39 of them already, none from this
-  edit). **Not yet applied live** — same reason as every schema change
-  this session: run `supabase_schema_delta_asset_intelligence_sector_
-  guard.sql` in the Supabase SQL Editor, then redeploy
-  `update-addon-billing`.
+  edit). **Superseded before ever being run** by `supabase_schema_delta_
+  addon_sector_guard.sql` (generalized to all 9 add-ons, trigger
+  CONFIRMED LIVE 2026-10-23 — see that entry further down) — don't run
+  this one. Unlike the trigger, whether `update-addon-billing` has
+  actually been redeployed with the 9-add-on `ADDON_REQUIRED_SECTOR` map
+  is NOT independently confirmed anywhere in this file — found no
+  record of that redeploy while fixing this stale reference. Worth
+  checking directly (e.g. the Supabase Dashboard's function deploy
+  timestamp, or just redeploying it — redeploying is always safe/
+  idempotent) rather than assuming it happened.
   **Deliberately not attempted here**: building a trade-sector
   equivalent of asset telemetry/idle-detection so the add-on could
   actually work for trade too. Trade's `assets` table has no

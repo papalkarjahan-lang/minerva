@@ -1925,23 +1925,15 @@ breaking `IntakeAssistant.jsx`/`SuccessPage.jsx`/`Onboarding.jsx`'s
 anonymous reads of the OTHER ~25 columns on this row. A separate, larger
 project; not bundled into this narrower column-level fix.
 
-**NOT yet applied live** — unlike every other entry in this file, this
-fix has not been run against the real database or verified via
-`pg_policies`/`information_schema`/a live REST call. Doing that requires
-a Supabase credential (Management API PAT or direct DB connection) this
-session is not authorized to use itself — see
-`minerva_supabase_function_deploy_method.md` in memory. **Action needed
-from you**: open the Supabase SQL Editor for this project and run
-`supabase_schema_delta_businesses_secret_columns.sql` — it's one line
-plus a verification query in the same file's trailing comment. 654/654
-tests still passing and lint/build clean for the `Onboarding.jsx` change
-(no `logic.ts` involved — pure Supabase call-shape change, nothing to
-unit-test). Until that SQL is run, the exposure described above is
-still live: confirmed by the same `?select=*` call that found it, which
-as of this writing still returns all three columns' real values for the
-project's one existing row (`[TEST] Theoretical Co` — no real customer
-data exists yet, which is the only reason this isn't more urgent than it
-reads).
+**CONFIRMED LIVE 2026-10-23** — found still marked "NOT yet applied" during
+a sweep of every such marker across this project's tracking docs.
+Verified directly with 2 safe, read-only anon-key requests (same method
+used to confirm the checkout_token column below): `?select=ingestion_key`
+and `?select=meta_access_token` each return `42501 permission denied for
+table businesses`, not real data — confirming the revoke is live. Not
+re-tested for `slack_webhook_url` specifically, but all 3 columns were
+revoked in the same single statement, so there is no code path by which
+one could be live and the others not.
 
 ## Residual gap in the 2026-09-27 checkout-hijack fix: the null-stripe_customer_id window is unbounded, not momentary (2026-10-08) — CONFIRMED LIVE 2026-10-23
 
@@ -2263,13 +2255,14 @@ tracking." That's a separate, already-reasoned-through tradeoff this
 delta doesn't attempt to touch, noted here only so it isn't mistaken for
 the same bug once this one's fixed.
 
-**Not yet applied live** — this session is not authorized to run
-Supabase SQL itself. **Action needed from you**: run
-`supabase_schema_delta_businesses_select_scoping.sql` in the Supabase
-SQL Editor (verification queries at the bottom of that file), then spot
-check: your own test business's dispatcher login, a technician's PIN
-login (specifically the Pro-tier checklist/invoicing flow if that test
-business is on Pro — the exact path that would have silently broken
+**Confirmed live 2026-10-19** (see this section's own header and the
+update above) — this paragraph is left over from before that
+confirmation was added and is stale; kept only as the original action
+item for context. The anon-facing half is independently re-verified as
+of 2026-10-19. Still worth a spot check some day: your own test
+business's dispatcher login, a technician's PIN login (specifically the
+Pro-tier checklist/invoicing flow if that test business is on Pro — the
+exact path that would have silently broken
 without the technician branch), the admin console's business list, and
 a public invoice link all still load correctly. No function redeploy
 strictly needed for the SQL half; the `TechnicianView.jsx` frontend
