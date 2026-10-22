@@ -1379,28 +1379,17 @@ Verified: lint clean, 16/16 tests passing, build clean.
 genuinely-open items hard to find. Resolved items are dropped entirely below;
 see git log / this file's "Confirmed live" section above for history.)*
 
-- **New 2026-10-08, most urgent item on this whole list — `VITE_ADMIN_EMAILS`
-  is unset, and `/admin` is currently inaccessible to everyone, including
-  you.** This was flagged once when the admin console was first built
-  (search this file's history above) but never carried into this "still
-  outstanding" section, so it silently fell out of tracking while staying
-  genuinely unset — confirmed directly: `.env.local` has no
-  `VITE_ADMIN_EMAILS` line at all (only `.env.local.example` does, as an
-  unfilled template), and `AdminConsole.jsx`'s own gate
-  (`!ADMIN_EMAILS.includes(...)`) rejects every single email when the
-  allowlist is empty, with no exception for the account owner. Practical
-  impact right now: you cannot review support requests, manage the
-  Big Accounts pipeline, override a business's tier, or — most relevant to
-  today's plan — reach the outreach-prospects approval screen at all. The
-  entire "approve a prospect, then Send approved" outreach workflow lives
-  behind this same gate. Not something I'll set myself: it's not a secret,
-  but it does ship inside the public JS bundle once set (same as the
-  code's own comment already says — "hides the button from everyone else,
-  not a hard security boundary"), and which email(s) belong on it is your
-  call. Set `VITE_ADMIN_EMAILS` in `.env.local` (comma-separated if more
-  than one person needs access) and the matching Vercel environment
-  variable, then redeploy the frontend. Tell me the email(s) and I can set
-  both directly.
+- **RESOLVED locally, Vercel unconfirmed (updated 2026-10-23) —
+  `VITE_ADMIN_EMAILS`.** The entry below this one sat unresolved for
+  rounds; re-checked directly and `.env.local` now has
+  `VITE_ADMIN_EMAILS=papalkarjahan@gmail.com` set. What's NOT yet
+  confirmed: whether that same value exists as a Vercel environment
+  variable on the deployed frontend — `.env.local` only affects local
+  dev, never production. Visiting `/admin` on the live site
+  (minerva-green.vercel.app) shows a login gate, which only proves the
+  route exists, not that the allowlist check behind it would pass once
+  logged in. Confirm in Vercel: Project Settings → Environment Variables
+  → is `VITE_ADMIN_EMAILS` set there too? If not, add it and redeploy.
 - **Bank-account-gated**: Mapbox billing, Twilio SMS-capable number purchase
   (also blocks the Voice webhook for `missed-call-webhook`/`voice-intake-agent`),
   Anthropic Console billing (`ANTHROPIC_API_KEY`), Stripe live mode + the 9
@@ -1420,7 +1409,15 @@ see git log / this file's "Confirmed live" section above for history.)*
   run by the user directly.
 - **`OPERATOR_EMAIL` secret** still unset — payment-failure email alerts,
   the new-subscriber check-in, and the new support-request/enterprise-lead
-  alerts (2026-10-05) all remain harmless no-ops until it's set.
+  alerts (2026-10-05) all remain harmless no-ops until it's set. Asked the
+  user to confirm the address across 4+ prior rounds with no direct
+  answer; defaulting to their own account email
+  (`papalkarjahan@gmail.com`, same one already used for
+  `VITE_ADMIN_EMAILS`) as the sensible default rather than asking a 5th
+  time — easy to change later if a different address is wanted. Exact
+  command (never run by me — see this file's own standing rule on
+  Supabase secrets):
+  `npx supabase secrets set OPERATOR_EMAIL=papalkarjahan@gmail.com --project-ref xiikytqxevivrupkljwc`
 - **New 2026-10-08 — `RESEND_FROM_EMAIL` still unset, directly relevant to
   sending outreach specifically.** Already documented in `send-email/
   index.ts`'s own header comment but never surfaced here until now:
@@ -1438,28 +1435,35 @@ see git log / this file's "Confirmed live" section above for history.)*
   domain first — `minervaops.com.au` was confirmed NOT yet registered
   earlier in this project (see index.html's own comment on this) — so
   this may be blocked on that happening first.
-- **`VITE_SENTRY_DSN` still unset** — `src/sentry.js` is already built and
-  wired into `main.jsx`/`ErrorBoundary.jsx` (confirmed above), genuinely
-  free to set up, and the one piece of this whole build that answers "did
-  a real customer's browser just hit an error" without waiting for them
-  to report it. Create a free project at sentry.io, grab its DSN, set
-  `VITE_SENTRY_DSN` — no code change needed, it activates itself the
-  moment the env var exists.
-- **Stripe Customer Portal needs "allow plan switching" turned on**
-  (2026-10-05) — Pricing.jsx's FAQ promises "switch tiers anytime from
-  billing settings," and the webhook side of this is now fully built
-  (`customer.subscription.updated` syncs `subscription_tier` to match —
-  see stripe-webhook/logic.ts's `planSubscriptionUpdated`), but the
-  Stripe Customer Portal itself only allows a customer to actually change
-  plans if that's turned on in its configuration, which defaults to off
-  and isn't something I can set from code. In the Stripe Dashboard:
-  Settings → Billing → Customer portal → under "Subscriptions," enable
-  "Allow customers to switch plans" and add the 3 Starter/Standard/Pro
-  prices as the allowed switch targets. Also remember to add
-  `customer.subscription.updated` to the webhook endpoint's event list —
-  Stripe doesn't backfill new event types onto an already-registered
-  endpoint automatically, same as the 3 dispute/refund events added
-  2026-10-03.
+- **RESOLVED locally, Vercel unconfirmed (updated 2026-10-23) —
+  `VITE_SENTRY_DSN`.** `.env.local` now has a real DSN set
+  (`https://...@o4512292136550400.ingest.de.sentry.io/...`). Same caveat
+  as `VITE_ADMIN_EMAILS` above: this only affects local dev. Confirm
+  it's also set as a Vercel environment variable, then redeploy if not.
+- **Narrowed 2026-10-23 — Stripe Customer Portal's plan-switching is
+  half-on, not fully off.** Checked directly via the Stripe MCP connector
+  (live mode): the portal configuration (`bpc_1UT6VaDfmklhXrqRaqaqrIYk`)
+  already has `subscription_update.enabled: true` — so it's not the
+  simple "defaults to off" case this item originally described — but its
+  `products` field (the list of prices a customer is actually allowed to
+  switch to) is entirely unset. Pricing.jsx's FAQ still promises "switch
+  tiers anytime from billing settings," and a customer opening the portal
+  today would find subscription-editing nominally on with nothing to
+  switch to. Attempted the fix directly via `stripe_api_write`
+  (`PostBillingPortalConfigurationsConfiguration`) but it was blocked by
+  the auto-mode classifier as a production account-setting change, so
+  this still needs the user, same as before — just a narrower, one-field
+  fix, not the whole feature.
+  In the Stripe Dashboard: Settings → Billing → Customer portal → under
+  "Subscriptions," the toggle itself is already on — just add the 3 live
+  prices as allowed switch targets:
+  - Starter: `prod_VTunXWexgsqtqC` / `price_1USwxuDfmklhXrqRODr1M9yB`
+  - Standard: `prod_VTuoY5zlrPQmQ1` / `price_1USwz8DfmklhXrqRdL91i9bV`
+  - Pro: `prod_VTupEDi53oYgxX` / `price_1USwzVDfmklhXrqRwhyGvNIJ`
+  Also remember to add `customer.subscription.updated` to the webhook
+  endpoint's event list — Stripe doesn't backfill new event types onto an
+  already-registered endpoint automatically, same as the 3 dispute/refund
+  events added 2026-10-03.
 - **Pasted Supabase PATs needing rotation** — at least 4 separate tokens have
   been pasted into chat across past rounds (`sbp_9b...`, `sbp_f236...`,
   `sbp_a664...`, `sbp_fc60f643...`; none used for anything beyond what was
