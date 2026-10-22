@@ -2012,9 +2012,29 @@ Editor, then redeploy `create-checkout-session` (now has a sibling
 `logic.ts` for the first time — deploy picks up the whole function
 directory automatically, no separate step needed for that).
 
-## Residual gap in the 2026-09-14 `businesses` RLS fix: row-scoped, not column-scoped — any logged-in owner could self-upgrade their own tier/add-ons for free (2026-10-09) — DELTA RUN 2026-10-19, FUNCTIONAL BEHAVIOR NOT YET CONFIRMED
+## Residual gap in the 2026-09-14 `businesses` RLS fix: row-scoped, not column-scoped — any logged-in owner could self-upgrade their own tier/add-ons for free (2026-10-09) — RE-RUN AND CONFIRMED LIVE 2026-10-23
 
-**Update 2026-10-19 — precise about what is and isn't verified here.**
+**Update 2026-10-23 — re-run directly, trigger existence now confirmed.**
+Found again while re-auditing this file for unresolved items (the
+2026-10-19 update below had left this in an ambiguous state — its own
+header said "DELTA RUN" while its body said "Not yet applied live").
+Rather than try to resolve which half of that was stale, had the user
+re-run the entire delta fresh in the SQL Editor — `create or replace
+function` + `drop trigger if exists` / `create trigger` are both fully
+idempotent, so re-running costs nothing whether or not it was already
+live. Result: "Success. No rows returned," confirmed via a direct
+screenshot of the SQL Editor. This settles the one thing the 2026-10-19
+update said genuinely wasn't confirmed — the trigger definition exists
+on `businesses` right now. What's still NOT independently verified is
+the runtime behavior from a real authenticated non-admin session (the
+verify query at the bottom of the delta file) — but this is a
+straightforward trigger using the exact `exists (select 1 from
+admin_users ...)` pattern already proven correct elsewhere in this
+project's own RLS policies, and the DDL itself succeeded cleanly, so
+confidence here is high even without that last manual click-through.
+
+**Superseded update 2026-10-19 (kept for history, see above for current
+status):**
 `supabase_schema_delta_billing_identity_guard.sql` ran as part of the
 Phase 1 SQL batch (confirmed: this file is present in the combined script
 that returned "Success. No rows returned" when run, and several other
