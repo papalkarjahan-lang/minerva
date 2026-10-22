@@ -73,7 +73,7 @@ export default function DispatcherView() {
   const [marketingActionId, setMarketingActionId] = useState(null) // draft id currently being approved/rejected
   const [technicianCredentials, setTechnicianCredentials] = useState([]) // Pro tier only — Licence/Ticket Expiry Guardian
   const [showAddCredential, setShowAddCredential] = useState(false)
-  const [weatherDrafts, setWeatherDrafts] = useState([]) // Weather-Risk Reschedule Agent — all tiers
+  const [weatherDrafts, setWeatherDrafts] = useState([]) // Weather-Risk Reschedule Agent — Standard/Pro trade only, see hasStandardAutomation
   const [weatherActionId, setWeatherActionId] = useState(null)
   const [wastedTripsCount, setWastedTripsCount] = useState(0) // Wasted-Trip / No-Show Proof Agent stat
   // Round-2 batch (2026-09-04): quote-to-job AI estimator — all tiers.
@@ -582,9 +582,17 @@ export default function DispatcherView() {
       setTechnicianCredentials(credentialList || [])
     }
 
-    // Weather-Risk Reschedule Agent drafts — not Pro-gated (safety concern,
-    // not a growth feature), but simply empty/inert for a business that
-    // hasn't set weather_sensitive_trade_types in Settings.
+    // Weather-Risk Reschedule Agent drafts. Fetched unconditionally here
+    // (cheap, harmless for an ineligible business — the row will just
+    // never exist), but found 2026-10-23: check-weather-risk's cron has
+    // been gated to hasStandardAutomation (standard/pro + trade only)
+    // since 2026-10-09, while this tab, its button, and the matching
+    // Settings field below stayed fully ungated — a Starter or industrial
+    // business could set weather_sensitive_trade_types and see an empty
+    // "set this to enable" tab that could never actually enable anything,
+    // with no indication why. Gated the tab button and Settings field to
+    // match below, same "sold vs. delivered" bug class fixed repeatedly
+    // elsewhere in this project.
     const { data: weatherDraftList } = await supabase
       .from('weather_reschedule_drafts')
       .select('*, jobs(client_name, client_address, scheduled_time)')
@@ -2564,9 +2572,11 @@ export default function DispatcherView() {
                   </button>
                 </>
               )}
-              <button style={styles.tabBtn(queueTab === 'weather')} onClick={() => setQueueTab('weather')}>
-                WEATHER ({weatherDrafts.filter(d => d.status === 'pending').length})
-              </button>
+              {(business?.subscription_tier === 'standard' || business?.subscription_tier === 'pro') && business?.sector === 'trade' && (
+                <button style={styles.tabBtn(queueTab === 'weather')} onClick={() => setQueueTab('weather')}>
+                  WEATHER ({weatherDrafts.filter(d => d.status === 'pending').length})
+                </button>
+              )}
               <span style={{ ...styles.deptLabel, marginLeft: 8 }}>Minerva Max</span>
               <button style={styles.tabBtn(queueTab === 'max')} onClick={() => setQueueTab('max')}>
                 MAX{computeUpsellNudges().length > 0 ? ` (${computeUpsellNudges().length})` : ''}
@@ -5001,22 +5011,24 @@ function SettingsModal({
             </p>
           </div>
 
-          <div style={{ marginBottom: 14 }}>
-            <label htmlFor="settings-weather-trades" style={styles.inputLabel}>Weather-sensitive trade types (comma-separated, optional)</label>
-            <input
-              id="settings-weather-trades"
-              type="text"
-              value={weatherTradesInput}
-              onChange={e => setWeatherTradesInput(e.target.value)}
-              style={styles.input}
-              placeholder="e.g. roofing, painting, concreting"
-            />
-            <p style={{ color: '#888', fontSize: 12, margin: '6px 0 0' }}>
-              If what you do is weather-sensitive, list it here and tomorrow's scheduled jobs
-              will be checked against the forecast each morning (Weather tab). Leave blank to
-              turn this off entirely.
-            </p>
-          </div>
+          {(business?.subscription_tier === 'standard' || business?.subscription_tier === 'pro') && business?.sector === 'trade' && (
+            <div style={{ marginBottom: 14 }}>
+              <label htmlFor="settings-weather-trades" style={styles.inputLabel}>Weather-sensitive trade types (comma-separated, optional)</label>
+              <input
+                id="settings-weather-trades"
+                type="text"
+                value={weatherTradesInput}
+                onChange={e => setWeatherTradesInput(e.target.value)}
+                style={styles.input}
+                placeholder="e.g. roofing, painting, concreting"
+              />
+              <p style={{ color: '#888', fontSize: 12, margin: '6px 0 0' }}>
+                If what you do is weather-sensitive, list it here and tomorrow's scheduled jobs
+                will be checked against the forecast each morning (Weather tab). Leave blank to
+                turn this off entirely.
+              </p>
+            </div>
+          )}
 
           {business?.subscription_tier === 'pro' && (
             <>
