@@ -361,6 +361,8 @@ export function describeAuditEntry(entry) {
   switch (entry.action) {
     case 'technician.removed':
       return `Removed technician ${d.name || 'Unknown'}`
+    case 'technician.added':
+      return `Added technician ${d.name || 'Unknown'}`
     case 'subcontractor.added':
       return `Added subcontractor ${d.name || 'Unknown'}`
     case 'subcontractor.removed':
@@ -404,7 +406,13 @@ export function describeAuditEntry(entry) {
     case 'item.added':
       return `Added inventory item ${d.name || 'Unknown'}`
     case 'incident.reported':
-      return `Reported safety incident${d.severity ? ` (${d.severity})` : ''}`
+      return `Reported safety incident${(d.severity || d.category) ? ` (${d.severity || d.category})` : ''}${d.client_name ? ` — ${d.client_name}` : ''}`
+    case 'corrective_action.assigned':
+      return `Assigned corrective action to ${d.technician_name || 'a technician'}`
+    case 'corrective_action.unassigned':
+      return 'Unassigned corrective action'
+    case 'corrective_action.closed':
+      return 'Closed corrective action'
     case 'ingestion_key.regenerated':
       return 'Regenerated telemetry ingestion key'
     case 'technician.site_assigned':
@@ -421,6 +429,8 @@ export function describeAuditEntry(entry) {
       return `Changed asset${d.asset_name ? ` ${d.asset_name}` : ''} status to ${d.status || 'unknown'}`
     case 'weather_draft.approved':
       return `Approved weather reschedule${d.client_name ? ` for ${d.client_name}` : ''}`
+    case 'weather_draft.dismissed':
+      return `Dismissed weather reschedule${d.client_name ? ` for ${d.client_name}` : ''}`
     case 'marketing_draft.approved':
       return `Approved ${d.draft_type === 'ad_campaign' ? 'ad campaign' : 'outreach message'}${d.headline ? ` "${d.headline}"` : ''}`
     case 'marketing_draft.rejected':
@@ -433,6 +443,14 @@ export function describeAuditEntry(entry) {
       if (d.km_saved != null) parts.push(`~${d.km_saved}km saved`)
       return `Optimized fleet routing${parts.length ? ` (${parts.join(', ')})` : ''}`
     }
+    case 'route.optimized':
+      return `Optimized route for ${d.technician_name || 'a technician'}${d.jobs_ordered != null ? ` (${d.jobs_ordered} job${d.jobs_ordered === 1 ? '' : 's'} sequenced)` : ''}`
+    case 'agent_function.enabled':
+      return `Enabled automation${d.name ? ` "${d.name}"` : ''}`
+    case 'agent_function.disabled':
+      return `Disabled automation${d.name ? ` "${d.name}"` : ''}`
+    case 'compliance_package.sent':
+      return `Sent compliance package${d.sent_to ? ` — ${d.sent_to}` : ''}`
     default:
       return entry.action
   }

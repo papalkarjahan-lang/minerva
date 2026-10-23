@@ -120,3 +120,89 @@ entry: one `logAudit('domain.verb', { entityType, entityId, details })`
 call right after the write succeeds, one matching `case` in
 `describeAuditEntry` (`src/utils.js`), and matching tests in
 `src/utils.test.js`'s existing `describeAuditEntry` block.
+
+## Fixed 2026-10-23
+
+Acted on the list above, re-enumerated rather than trusted at face value
+— the 6 "lower priority" items were named explicitly and left alone
+exactly as scoped (deliberately not re-litigated: `markLeadStatus`,
+`convertLeadToJob`, `assignLead`, `updateInventoryQty`, `updateTechSkills`,
+`resendReferralSms` stay unlogged). The original "14" count wasn't
+re-derived exactly — this pass's own sweep, applying the same
+money/consequential-state-or-explicit-UI-promise test, surfaced 10
+distinct gaps worth fixing rather than the 8 the arithmetic implied;
+worth the honesty rather than forcing a match to a number from a prior,
+less-documented sweep.
+
+- **`addIncident` (trade sector's own safety-incident reporting, writes
+  `technician_incidents`) had no logging at all**, despite the
+  industrial-sector equivalent (`incident.reported`, used by
+  `IndustrialDispatcherView.jsx`) already existing. Reused the same
+  action name rather than inventing a parallel one — `audit_log` is
+  always scoped to a single business, which is either trade or
+  industrial, never both, so there's no cross-sector collision risk.
+  Extended the existing `describeAuditEntry` case to also show a trade
+  incident's `category` (industrial incidents carry `severity` instead)
+  and an optional `client_name` — backward compatible, both existing
+  tests for this case still pass unchanged.
+- **`assignCorrectiveAction` / `closeCorrectiveAction`** (safety-incident
+  follow-up tickets — who's fixing it, and confirmation it's actually
+  resolved) — new `corrective_action.assigned`/`.unassigned`/`.closed`
+  actions. `setCorrectiveActionDueDate` left alone — a due-date tweak is
+  closer to the routine-edit tier already deferred above than to
+  assignment or closure.
+- **`toggleAgentFunction`** (the platform automation kill-switch in the
+  Agent Ops tab) — logged nothing despite being exactly as consequential
+  as `addon.enabled`/`addon.disabled` (an owner turning off real
+  automated customer communication, not a cosmetic toggle). New
+  `agent_function.enabled`/`.disabled` actions.
+- **`dismissWeatherDraft`** — the specific asymmetry the 2026-10-18 entry
+  flagged as "worth a future look" (its sibling `rejectDraft` was already
+  logged). New `weather_draft.dismissed` action, same claim-scoped-to-
+  'pending' placement as `rejectDraft`'s own fix.
+- **`markCompliancePackageSent`** — its own UI is a `prompt()` literally
+  asking "Who was this sent to?" for a compliance/safety handoff record;
+  same "explicit UI promise" shape as `voidInvoice`'s fix on 2026-10-10,
+  just a prompt instead of static copy. New `compliance_package.sent`
+  action, with the prompt's answer as the logged detail.
+- **`optimizeTechRoute`** — the single-technician route optimizer had no
+  logging while its fleet-wide sibling (`optimizeFleetDay` →
+  `fleet.optimized`) already did. New `route.optimized` action.
+- **`AddTechnicianModal` / `AddAssetModal` / `AddInventoryItemModal`**
+  (the 3 "Add X" modals reachable from the dispatcher's own + buttons) —
+  all 3 insert real rows (`technicians`, `assets`, `inventory_items`)
+  with zero logging and no `onSaved`/`onLogAudit` prop even wired up,
+  unlike their sibling `AddCredentialModal` (already logged via
+  `onSaved`). Creating a technician in particular is consequential —
+  they get billed once their phone connects. Wired the same `onSaved?.()`
+  callback pattern `AddCredentialModal` already established: each modal
+  now reports back what it created, the parent logs it. New
+  `technician.added` action; `asset.added`/`item.added` already existed
+  (reused from the industrial-sector build-out, same backward-compatible
+  reuse as `incident.reported` above) — no new `describeAuditEntry` case
+  needed for those two.
+
+**Left alone, deliberately, beyond the already-deferred 6:**
+- `dismissNudge` (dismissing a usage-triggered upsell suggestion) — not
+  money, not dispute-relevant, closer to a UI preference than a record.
+- `generateCompliancePackage` (the generation step) — the package's
+  existence isn't itself a disputable event; its `sent_at`/`sent_to` is
+  (now logged via `markCompliancePackageSent` above).
+- `markLeadDuplicate`, `updateLeadPipelineStage`, `updateLeadDealValue`,
+  `updateLeadNextAction`, `toggleLeadActivity`, `logLeadActivity` — all
+  lead-pipeline management, the same bucket as the 3 lead actions already
+  explicitly deferred (`markLeadStatus`/`convertLeadToJob`/`assignLead`).
+  Not re-litigated — that classification was already made deliberately.
+- `resendTechSMS` — re-sending an already-sent setup text, same
+  "re-send, not a new action" reasoning already applied to
+  `resendReferralSms`.
+- `generatePayrollHours` — read-only (computes rows for on-screen
+  display); `savePayrollRun`, the function that actually persists a
+  payroll run, was already logged on 2026-10-10.
+
+797/797 tests pass (0 new — every new assertion landed inside the
+existing `describeAuditEntry` `it()` block, same test-count-unchanged
+shape as the 2026-10-18 entry). `DispatcherView.jsx`/`utils.js`
+re-verified with `npx esbuild`. No SQL delta — `audit_log` already
+accepts any `action` string; ships with `DispatcherView.jsx`'s/
+`utils.js`'s next normal deploy (static frontend, no function redeploy).

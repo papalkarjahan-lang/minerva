@@ -685,6 +685,7 @@ export default function DispatcherView() {
       .single()
     if (error) { console.error('addIncident failed', error); return }
     setJobIncidents(prev => ({ ...prev, [job.id]: [data, ...(prev[job.id] || [])] }))
+    logAudit('incident.reported', { entityType: 'technician_incident', entityId: data.id, details: { category: incidentDraft.category, client_name: job.client_name || null } })
     setIncidentDraft({ category: 'note', description: '' })
   }
 
@@ -700,6 +701,7 @@ export default function DispatcherView() {
       ...prev,
       [jobId]: (prev[jobId] || []).map(a => a.id === actionId ? { ...a, assigned_to_technician_id: technicianId || null, status: technicianId ? 'in_progress' : 'open' } : a),
     }))
+    logAudit(technicianId ? 'corrective_action.assigned' : 'corrective_action.unassigned', { entityType: 'corrective_action', entityId: actionId, details: { technician_name: technicianId ? (technicians.find(t => t.id === technicianId)?.name || null) : null } })
   }
 
   async function setCorrectiveActionDueDate(jobId, actionId, dueDate) {
@@ -719,6 +721,7 @@ export default function DispatcherView() {
       ...prev,
       [jobId]: (prev[jobId] || []).map(a => a.id === actionId ? { ...a, status: 'closed', closed_at: closedAt } : a),
     }))
+    logAudit('corrective_action.closed', { entityType: 'corrective_action', entityId: actionId })
   }
 
   // Records tab (audit_log) — lazy-loads the same way, only the first time
@@ -869,6 +872,7 @@ export default function DispatcherView() {
       .eq('id', fn.id)
     if (error) { console.error('agent_functions toggle failed', error); return }
     setAgentFunctions(prev => prev.map(f => f.id === fn.id ? { ...f, enabled: !f.enabled } : f))
+    logAudit(fn.enabled ? 'agent_function.disabled' : 'agent_function.enabled', { entityType: 'agent_function', entityId: fn.id, details: { name: fn.name } })
   }
 
   async function setMapCenter(city) {
@@ -1559,6 +1563,10 @@ export default function DispatcherView() {
       .select('id')
     if (error) alert(`Couldn't dismiss: ${error.message}`)
     else if (!updated || updated.length === 0) alert(`This draft was already actioned (approved or dismissed) — refreshing.`)
+    else {
+      const draft = weatherDrafts.find(d => d.id === draftId)
+      logAudit('weather_draft.dismissed', { entityType: 'weather_reschedule_draft', entityId: draftId, details: { client_name: draft?.jobs?.client_name || null } })
+    }
     await loadAll()
     setWeatherActionId(null)
   }
@@ -2080,6 +2088,7 @@ export default function DispatcherView() {
       if (data?.skipped) {
         alert(data.skipped === 'no_technician_position' ? "Can't optimize yet — this technician hasn't shared their location today." : 'No remaining jobs today to sequence.')
       } else {
+        logAudit('route.optimized', { entityType: 'technician', entityId: techId, details: { technician_name: technicians.find(t => t.id === techId)?.name || null, jobs_ordered: data?.ordered ?? null } })
         await loadAll()
       }
     } catch (err) {
@@ -2152,6 +2161,7 @@ export default function DispatcherView() {
     if (sentTo === null) return // cancelled
     const { error } = await supabase.from('compliance_packages').update({ sent_at: new Date().toISOString(), sent_to: sentTo || null }).eq('id', pkgId)
     if (error) { alert(`Couldn't update: ${error.message}`); return }
+    logAudit('compliance_package.sent', { entityType: 'compliance_package', entityId: pkgId, details: { sent_to: sentTo || null } })
     await loadCompliancePackages(jobId)
   }
 
@@ -4167,6 +4177,7 @@ export default function DispatcherView() {
         <AddTechnicianModal
           businessId={businessId}
           businessName={business?.name}
+          onSaved={(techId, name) => logAudit('technician.added', { entityType: 'technician', entityId: techId, details: { name } })}
           onClose={() => { setShowAddTech(false); loadAll() }}
         />
       )}
@@ -4175,6 +4186,7 @@ export default function DispatcherView() {
       {showAddAsset && (
         <AddAssetModal
           businessId={businessId}
+          onSaved={(assetId, name) => logAudit('asset.added', { entityType: 'asset', entityId: assetId, details: { name } })}
           onClose={() => { setShowAddAsset(false); loadAll() }}
         />
       )}
@@ -4183,6 +4195,7 @@ export default function DispatcherView() {
       {showAddInventory && (
         <AddInventoryItemModal
           businessId={businessId}
+          onSaved={(itemId, name) => logAudit('item.added', { entityType: 'inventory_item', entityId: itemId, details: { name } })}
           onClose={() => { setShowAddInventory(false); loadAll() }}
         />
       )}
@@ -4273,7 +4286,7 @@ export default function DispatcherView() {
 // a PIN, texts the setup link, and — since this technician will eventually
 // open that link and start tracking — the new hire flows into billing
 // automatically via sync-technician-billing once their phone connects.
-function AddTechnicianModal({ businessId, businessName, onClose }) {
+function AddTechnicianModal({ businessId, businessName, onSaved, onClose }) {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [loading, setLoading] = useState(false)
@@ -4295,6 +4308,7 @@ function AddTechnicianModal({ businessId, businessName, onClose }) {
       if (smsError || smsData?.error) {
         alert(`${name.trim()} was added, but the setup text didn't send. Use "Copy setup link" next to their name in the technician list to send it yourself.`)
       }
+      onSaved?.(inserted[0].id, name.trim())
       onClose()
     } catch (err) {
       setError(err.message)
@@ -4469,7 +4483,7 @@ function AddJobModal({ businessId, technicianCredentials, technicians, onClose }
 // ── ADD ASSET MODAL ────────────────────────────────────────
 // Pro-tier asset tracking: equipment, vehicles, or tools the business wants
 // to keep tabs on and optionally assign to a technician.
-function AddAssetModal({ businessId, onClose }) {
+function AddAssetModal({ businessId, onSaved, onClose }) {
   const [form, setForm] = useState({ name: '', category: '', serial_number: '' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -4478,14 +4492,15 @@ function AddAssetModal({ businessId, onClose }) {
     e.preventDefault()
     setLoading(true)
     setError(null)
-    const { error: insertErr } = await supabase.from('assets').insert({
+    const { data: inserted, error: insertErr } = await supabase.from('assets').insert({
       business_id: businessId,
       name: form.name.trim(),
       category: form.category.trim() || null,
       serial_number: form.serial_number.trim() || null,
       status: 'available'
-    })
+    }).select().single()
     if (insertErr) { setError(insertErr.message); setLoading(false); return }
+    onSaved?.(inserted.id, inserted.name)
     onClose()
   }
 
@@ -4520,7 +4535,7 @@ function AddAssetModal({ businessId, onClose }) {
 }
 
 // ── ADD INVENTORY ITEM MODAL ───────────────────────────────
-function AddInventoryItemModal({ businessId, onClose }) {
+function AddInventoryItemModal({ businessId, onSaved, onClose }) {
   const [form, setForm] = useState({ name: '', quantity: '0', unit: 'units', reorder_threshold: '0', supplier_name: '' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -4529,15 +4544,16 @@ function AddInventoryItemModal({ businessId, onClose }) {
     e.preventDefault()
     setLoading(true)
     setError(null)
-    const { error: insertErr } = await supabase.from('inventory_items').insert({
+    const { data: inserted, error: insertErr } = await supabase.from('inventory_items').insert({
       business_id: businessId,
       name: form.name.trim(),
       quantity: Number(form.quantity) || 0,
       unit: form.unit.trim() || 'units',
       reorder_threshold: Number(form.reorder_threshold) || 0,
       supplier_name: form.supplier_name.trim() || null
-    })
+    }).select().single()
     if (insertErr) { setError(insertErr.message); setLoading(false); return }
+    onSaved?.(inserted.id, inserted.name)
     onClose()
   }
 
