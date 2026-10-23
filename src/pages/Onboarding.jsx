@@ -2,6 +2,14 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
 import { insertTechniciansWithPinRetry } from '../utils'
+// Only for .lp-input:focus — the signup form's own `input` style sets
+// `outline: 'none'` with nothing replacing it, so every field here had
+// zero visible keyboard-focus indicator (WCAG 2.4.7) until this import.
+// This stylesheet is otherwise only pulled in by About/Features/Enterprise/
+// LandingPage.jsx — Vite code-splits per route, so a visitor landing
+// directly on /start (the common case, e.g. from an ad or "Start free
+// trial" link) would never have loaded it without this.
+import '../styles/interactive.css'
 
 const TRADE_TYPES = ['Plumber','Electrician','HVAC / Refrigeration','Locksmith','Pest Control','Commercial Cleaning','Pool Service','Courier / Delivery','Security Patrol','Automotive Mobile Service','Mobile Veterinary','Other']
 const CITIES = ['Sydney','Melbourne','Brisbane','Perth','Adelaide','Canberra','Newcastle','Wollongong','Geelong','Townsville','Toowoomba','Other']
@@ -246,14 +254,14 @@ export default function Onboarding() {
               <div key={field} style={styles.fieldGroup}>
                 <label htmlFor={`onboarding-${field}`} style={styles.label}>{label}</label>
                 <input id={`onboarding-${field}`} type={type} value={biz[field]} onChange={updateBiz(field)}
-                  required style={styles.input} />
+                  required className="lp-input" style={styles.input} />
               </div>
             ))}
             <div style={styles.fieldGroup}>
               <label htmlFor="onboarding-trade_type" style={styles.label}>{sector === 'industrial' ? 'Primary equipment / service focus' : 'Trade type'}</label>
               {sector === 'industrial' ? (
                 <input id="onboarding-trade_type" type="text" placeholder="e.g. Crane hire, earthmoving, industrial electrical"
-                  value={biz.trade_type} onChange={updateBiz('trade_type')} style={styles.input} />
+                  value={biz.trade_type} onChange={updateBiz('trade_type')} className="lp-input" style={styles.input} />
               ) : (
                 <select id="onboarding-trade_type" value={biz.trade_type} onChange={updateBiz('trade_type')} style={styles.select}>
                   <option value="">Select...</option>
@@ -272,7 +280,7 @@ export default function Onboarding() {
             <div style={styles.fieldGroup}>
               <label htmlFor="onboarding-abn" style={styles.label}>ABN <span style={styles.labelOptional}>(optional)</span></label>
               <input id="onboarding-abn" type="text" placeholder="11 digits, e.g. 51 824 753 556"
-                value={biz.abn} onChange={updateBiz('abn')} style={styles.input} />
+                value={biz.abn} onChange={updateBiz('abn')} className="lp-input" style={styles.input} />
               <p style={styles.fieldHint}>
                 Add it now or later in Settings — either way, your invoices only say
                 "Tax Invoice" once it's set. Without one, clients get a plain invoice, which
@@ -310,9 +318,9 @@ export default function Onboarding() {
             {techs.map((tech, i) => (
               <div key={i} style={styles.techInputRow}>
                 <input aria-label={`Technician ${i + 1} name`} placeholder="Name" value={tech.name} onChange={updateTech(i, 'name')}
-                  style={{ ...styles.input, flex: 1 }} />
+                  className="lp-input" style={{ ...styles.input, flex: 1 }} />
                 <input aria-label={`Technician ${i + 1} mobile number`} placeholder="Mobile (04xx...)" value={tech.phone} onChange={updateTech(i, 'phone')}
-                  type="tel" style={{ ...styles.input, flex: 1 }} />
+                  type="tel" className="lp-input" style={{ ...styles.input, flex: 1 }} />
                 {techs.length > 1 && (
                   <button aria-label={`Remove technician ${i + 1}`} onClick={() => removeTech(i)} style={styles.removeBtn}>✕</button>
                 )}
