@@ -2789,7 +2789,9 @@ export default function DispatcherView() {
                   <p style={styles.sectionLabel}>RECENTLY COMPLETED</p>
                   {completedJobs.map(job => (
                     <div key={job.id} style={styles.jobRow}>
-                      <div style={{ cursor: 'pointer' }} onClick={() => toggleJobDetails(job.id)}>
+                      <div style={{ cursor: 'pointer' }} onClick={() => toggleJobDetails(job.id)}
+                        onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), toggleJobDetails(job.id))}
+                        role="button" tabIndex={0}>
                         <p style={styles.jobClient}>{job.client_name}</p>
                         <p style={styles.jobAddr}>{job.client_address}</p>
                         <p style={{ ...styles.jobAddr, color: '#1D9E75' }}>

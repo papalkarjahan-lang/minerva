@@ -905,7 +905,9 @@ export default function IndustrialDispatcherView() {
             {assets.length === 0 && <p style={styles.emptyText}>No assets registered yet.</p>}
             {assets.map(a => (
               <div key={a.id} style={styles.row}>
-                <div style={{ cursor: 'pointer' }} onClick={() => toggleAssetDetails(a.id)}>
+                <div style={{ cursor: 'pointer' }} onClick={() => toggleAssetDetails(a.id)}
+                  onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), toggleAssetDetails(a.id))}
+                  role="button" tabIndex={0}>
                   <p style={styles.rowTitle}>{a.name}</p>
                   <p style={styles.rowMeta}>{a.asset_type} · {a.tag_id ? `tag ${a.tag_id}` : 'no tag id'} · {a.engine_hours || 0} engine hrs</p>
                   <p style={{ ...styles.rowMeta, color: a.last_telemetry_at ? '#666' : '#e07a7a' }}>

@@ -978,7 +978,9 @@ function ProspectCard({ prospect: p, onSaveDraft, onApprove, onReject, savingId,
       </p>
 
       {!expanded && (
-        <div onClick={onToggleExpand} style={{ cursor: 'pointer', background: '#0a0f1d', border: '1px solid #1e293b', borderRadius: 6, padding: 10 }}>
+        <div onClick={onToggleExpand} onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), onToggleExpand())}
+          role="button" tabIndex={0}
+          style={{ cursor: 'pointer', background: '#0a0f1d', border: '1px solid #1e293b', borderRadius: 6, padding: 10 }}>
           <p style={{ color: '#fff', fontSize: 13, margin: '0 0 4px', fontWeight: 'bold' }}>{subject || '(no subject)'}</p>
           <p style={{ color: '#666', fontSize: 12, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {(body || '(no body)').replace(/\s+/g, ' ')}
