@@ -22,11 +22,24 @@
 // same underlying data, just organized like a standup report each
 // department is giving the owner, matching the rest of the agent-domain
 // naming used across the system (2026-09-01).
+//
+// Weekly savings recap (added 2026-10-23): once a week (Sydney-local
+// Monday, see logic.ts's isWeeklySavingsDay), adds a short fleet-optimizer
+// ROI callout for any business with real total_km_saved — the same
+// lifetime figure DispatcherView.jsx already shows live, just proactively
+// surfaced here instead of waiting for someone to open the console and
+// notice it. Reusing an existing, already-paid-for distribution channel
+// (this digest) rather than standing up a separate weekly cron — the
+// point is reinforcing that a Standard+/trade subscription is visibly
+// paying for itself, not adding another notification stream. Keeps an
+// otherwise-quiet Monday from being skipped (see isQuietDay's
+// hasWeeklySavings parameter) — going silent on the one day meant to
+// prove the product is working would undercut the point of adding it.
 // Deploy with: supabase functions deploy daily-digest
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
-import { computeInvoiceStats, isQuietDay } from "./logic.ts"
+import { computeInvoiceStats, isQuietDay, estimateDollarsFromKm, isWeeklySavingsDay } from "./logic.ts"
 import { rankSuburbsByJobCount } from "../_shared/suburbs.ts"
 import { chunk } from "../_shared/batch.ts"
 
@@ -44,6 +57,7 @@ import { chunk } from "../_shared/batch.ts"
 // would have silently aborted the digest for every business sorted after
 // it that day too, not just that one.
 const DIGEST_BATCH_SIZE = 20
+const BUSINESS_TIMEZONE = 'Australia/Sydney'
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -62,11 +76,16 @@ serve(async (req: Request) => {
 
     const { data: businesses, error } = await supabase
       .from('businesses')
-      .select('id, name, slack_webhook_url')
+      .select('id, name, slack_webhook_url, total_km_saved')
       .not('slack_webhook_url', 'is', null)
     if (error) throw error
 
     const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+    // Computed once per run, not per business — same instant, same answer
+    // for everyone this cron tick processes. See logic.ts's own header for
+    // why this needs to be a real Sydney-local weekday check, not a bare
+    // `new Date().getUTCDay()`.
+    const weeklySavingsDay = isWeeklySavingsDay(new Date(), BUSINESS_TIMEZONE)
     let posted = 0
 
     // Extracted so it can run inside Promise.all per batch below. Returns
@@ -75,7 +94,7 @@ serve(async (req: Request) => {
     // not why not. Wrapped in its own try/catch (new — see header
     // comment) so one business's failure can't take down the rest of
     // that day's digest.
-    async function postDigestForBusiness(biz: { id: string; name: string; slack_webhook_url: string }): Promise<boolean> {
+    async function postDigestForBusiness(biz: { id: string; name: string; slack_webhook_url: string; total_km_saved: number | null }): Promise<boolean> {
       try {
         const [
           { data: completedJobs },
@@ -110,8 +129,15 @@ serve(async (req: Request) => {
         const silentLeadsCount = silentLeads?.length || 0
         const stuckInvoicesCount = stuckInvoices?.length || 0
 
+        // Weekly savings recap — once a week (Sydney-local Monday), for a
+        // business that's actually accrued real fleet-optimizer savings.
+        // Computed before the quiet-day check since its presence can be
+        // the one thing that keeps an otherwise-silent Monday from being
+        // skipped — see isQuietDay's own header for why.
+        const includeWeeklySavings = weeklySavingsDay && (biz.total_km_saved || 0) > 0
+
         // Skip a genuinely quiet day — no point pinging an empty digest.
-        if (isQuietDay({ jobsDone, leadsIn, invoiced, pendingDraftsCount, lowStockCount, silentLeadsCount, stuckInvoicesCount })) return false
+        if (isQuietDay({ jobsDone, leadsIn, invoiced, pendingDraftsCount, lowStockCount, silentLeadsCount, stuckInvoicesCount }, includeWeeklySavings)) return false
 
         // "Morning Meeting" format: grouped like reports from named departments
         // instead of one flat block, so it reads as a standup, not a log dump.
@@ -124,6 +150,12 @@ serve(async (req: Request) => {
           `• Jobs completed: ${jobsDone}${topSuburb ? ` (top suburb: ${topSuburb[0]}, ${topSuburb[1]} job${topSuburb[1] === 1 ? '' : 's'})` : ''}\n\n` +
           `*Ledger* (invoicing & finance)\n` +
           `• Invoiced: $${invoiced.toFixed(2)}${avgInvoice > 0 ? ` (avg $${avgInvoice.toFixed(2)}/invoice)` : ''}${unpaid > 0 ? ` — $${unpaid.toFixed(2)} still unpaid` : ''}`
+
+        if (includeWeeklySavings) {
+          const kmSaved = Math.round(biz.total_km_saved || 0)
+          text += `\n\n*This week in the fleet optimizer*\n` +
+            `• ${kmSaved}km saved all-time so far — roughly $${estimateDollarsFromKm(biz.total_km_saved).toLocaleString()} in driving costs, using the ATO's own cents-per-km rate. Open your dispatch board and hit "Optimize today's whole fleet" to keep it climbing.`
+        }
 
         const waitingOn: string[] = []
         if (pendingDraftsCount > 0) waitingOn.push(`${pendingDraftsCount} marketing draft${pendingDraftsCount === 1 ? '' : 's'} awaiting your review`)
