@@ -293,7 +293,7 @@ const styles = {
   screen: { minHeight: '100vh', background: '#050811', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Arial, sans-serif', padding: 24 },
   errorCard: { background: '#FAEAEA', borderRadius: 12, padding: 20, maxWidth: 340, textAlign: 'center' },
   card: { background: '#0a0f1d', border: '1px solid #1e293b', borderRadius: 20, padding: 32, maxWidth: 420, width: '100%' },
-  bizName: { color: '#555', fontSize: 12, letterSpacing: 2, textTransform: 'uppercase', margin: '0 0 4px' },
+  bizName: { color: '#888', fontSize: 12, letterSpacing: 2, textTransform: 'uppercase', margin: '0 0 4px' },
   abnLine: { color: '#666', fontSize: 11, margin: '4px 0 0' },
   title: { color: '#fff', fontSize: 24, fontWeight: 'bold', margin: 0 },
   statusBadge: (status) => {
@@ -311,7 +311,7 @@ const styles = {
   subValue: { color: '#888', fontSize: 13 },
   totalLabel: { color: '#fff', fontSize: 17, fontWeight: 'bold' },
   totalValue: { color: '#1D9E75', fontSize: 17, fontWeight: 'bold' },
-  footerNote: { color: '#555', fontSize: 12, textAlign: 'center', marginTop: 24 },
+  footerNote: { color: '#888', fontSize: 12, textAlign: 'center', marginTop: 24 },
   payButton: { width: '100%', marginTop: 20, padding: '13px 0', background: '#1D9E75', color: '#fff', border: 'none', borderRadius: 10, fontSize: 15, fontWeight: 'bold', cursor: 'pointer' },
   printButton: { width: '100%', marginTop: 10, padding: '11px 0', background: 'transparent', color: '#8fd0e8', border: '1px solid #1e293b', borderRadius: 10, fontSize: 13, fontWeight: 'bold', cursor: 'pointer' }
 }

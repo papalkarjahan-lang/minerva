@@ -22,7 +22,7 @@ export default function BlogPost() {
         ) : (
           <>
             <Link to="/blog" style={{ color: '#666', textDecoration: 'none', fontSize: 13 }}>← Back to blog</Link>
-            <p style={{ color: '#555', fontSize: 12, margin: '20px 0 8px' }}>{new Date(post.date).toLocaleDateString('en-AU', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+            <p style={{ color: '#888', fontSize: 12, margin: '20px 0 8px' }}>{new Date(post.date).toLocaleDateString('en-AU', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
             <h1 style={{ fontSize: 34, fontWeight: 'bold', margin: '0 0 28px', lineHeight: 1.3 }}>{post.title}</h1>
             {post.paragraphs.map((p, i) => (
               <p key={i} style={{ color: '#ccc', fontSize: 16, lineHeight: 1.8, margin: '0 0 20px' }}>{p}</p>

@@ -64,7 +64,7 @@ export default function Login() {
           </form>
         )}
         <p style={{ marginTop: 24 }}>
-          <Link to="/" style={{ color: '#555', fontSize: 13, textDecoration: 'none' }}>← Back to home</Link>
+          <Link to="/" style={{ color: '#888', fontSize: 13, textDecoration: 'none' }}>← Back to home</Link>
         </p>
       </div>
     </div>

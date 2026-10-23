@@ -851,7 +851,7 @@ export default function IndustrialDispatcherView() {
                           </span>
                           {' '}{c.person_name || 'unknown'} — {(c.checkin_type || 'unknown').replace('_', ' ')}
                           {c.detail ? ` (${c.detail})` : ''}
-                          <span style={{ color: '#444' }}> · {timeAgo(c.created_at)}</span>
+                          <span style={{ color: '#888' }}> · {timeAgo(c.created_at)}</span>
                         </p>
                       ))
                     ) : (
@@ -925,7 +925,7 @@ export default function IndustrialDispatcherView() {
                             {ev.event_type.replace('_', ' ').toUpperCase()}
                           </span>
                           {' '}{ev.detail || ''}
-                          <span style={{ color: '#444' }}> · {timeAgo(ev.created_at)}</span>
+                          <span style={{ color: '#888' }}> · {timeAgo(ev.created_at)}</span>
                         </p>
                       ))
                     ) : (
@@ -1095,7 +1095,7 @@ export default function IndustrialDispatcherView() {
             {auditLog.map(entry => (
               <div key={entry.id} style={styles.row}>
                 <p style={styles.rowDesc}>{describeAuditEntry(entry)}</p>
-                <span style={{ color: '#555', fontSize: 11 }}>{new Date(entry.created_at).toLocaleString('en-AU')}</span>
+                <span style={{ color: '#888', fontSize: 11 }}>{new Date(entry.created_at).toLocaleString('en-AU')}</span>
               </div>
             ))}
           </>
@@ -1235,7 +1235,7 @@ export default function IndustrialDispatcherView() {
 const styles = {
   screen: { minHeight: '100vh', background: '#050811', fontFamily: 'Arial, sans-serif' },
   header: { padding: '20px 28px', borderBottom: '1px solid #1e293b' },
-  bizLabel: { color: '#555', fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', margin: '0 0 4px' },
+  bizLabel: { color: '#888', fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', margin: '0 0 4px' },
   title: { color: '#fff', fontSize: 24, fontWeight: 'bold', margin: '0 0 16px' },
   subscriptionCancelledBanner: { background: '#2A0F0F', border: '1px solid #8A2525', borderRadius: 8, padding: '8px 10px', margin: '0 0 12px', maxWidth: 480 },
   subscriptionCancelledTitle: { color: '#e05555', fontSize: 12, fontWeight: 'bold', margin: '0 0 4px' },
@@ -1245,7 +1245,7 @@ const styles = {
   tabCount: { background: '#8A2525', color: '#fff', borderRadius: 10, padding: '0 6px', fontSize: 10, marginLeft: 4 },
   body: { padding: '20px 28px', maxWidth: 720 },
   sectionHead: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  sectionLabel: { color: '#555', fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', margin: '0 0 12px' },
+  sectionLabel: { color: '#888', fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', margin: '0 0 12px' },
   emptyText: { color: '#666', fontSize: 13, lineHeight: 1.5 },
   addBtn: { background: '#2D5FA8', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 'bold', cursor: 'pointer' },
   row: { background: '#0a0f1d', border: '1px solid #1e293b', borderRadius: 12, padding: '14px 16px', marginBottom: 10 },
@@ -1272,5 +1272,5 @@ const styles = {
   overviewCard: { background: '#0a0f1d', border: '1px solid #1e293b', borderRadius: 12, padding: '14px 16px', minWidth: 150, flex: '1 1 150px', cursor: 'pointer', textAlign: 'left', display: 'block', font: 'inherit' },
   overviewCardValue: (color) => ({ color: color || '#fff', fontSize: 24, fontWeight: 'bold', margin: '0 0 2px' }),
   overviewCardLabel: { color: '#8899a6', fontSize: 11, letterSpacing: 0.5, textTransform: 'uppercase', margin: '0 0 2px' },
-  overviewCardSub: { color: '#555', fontSize: 11, margin: 0 },
+  overviewCardSub: { color: '#888', fontSize: 11, margin: 0 },
 }

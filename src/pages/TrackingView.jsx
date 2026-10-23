@@ -356,7 +356,7 @@ const styles = {
   errorCard: { background: '#FAEAEA', borderRadius: 12, padding: 20, maxWidth: 340, textAlign: 'center' },
   completeCard: { background: '#fff', borderRadius: 16, padding: 32, maxWidth: 300, textAlign: 'center', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' },
   header: { background: '#0a0f1d', padding: '16px 20px', borderBottom: '1px solid #1e293b' },
-  bizName: { color: '#555', fontSize: 12, letterSpacing: 2, textTransform: 'uppercase', margin: '0 0 4px' },
+  bizName: { color: '#888', fontSize: 12, letterSpacing: 2, textTransform: 'uppercase', margin: '0 0 4px' },
   heading: { color: '#fff', fontSize: 18, fontWeight: 'bold', margin: '0 0 8px' },
   liveBadge: { display: 'inline-flex', alignItems: 'center', background: '#1D9E7522', border: '1px solid #1D9E75', borderRadius: 20, padding: '3px 10px', color: '#1D9E75', fontSize: 11, fontWeight: 'bold', letterSpacing: 2 },
   liveDot: { width: 7, height: 7, borderRadius: '50%', background: '#1D9E75', marginRight: 6 },

@@ -80,7 +80,7 @@ export default function RequireBusinessAuth({ children }) {
           </Link>
           {session && (
             <p style={{ marginTop: 20 }}>
-              <button onClick={() => supabase.auth.signOut()} style={{ background: 'none', border: 'none', color: '#555', fontSize: 13, cursor: 'pointer', textDecoration: 'underline' }}>
+              <button onClick={() => supabase.auth.signOut()} style={{ background: 'none', border: 'none', color: '#888', fontSize: 13, cursor: 'pointer', textDecoration: 'underline' }}>
                 Log out ({session.user.email})
               </button>
             </p>

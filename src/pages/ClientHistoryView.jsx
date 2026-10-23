@@ -107,7 +107,7 @@ const styles = {
   screen: { minHeight: '100vh', background: '#050811', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Arial, sans-serif', padding: 24 },
   errorCard: { background: '#FAEAEA', borderRadius: 12, padding: 20, maxWidth: 340, textAlign: 'center' },
   card: { background: '#0a0f1d', border: '1px solid #1e293b', borderRadius: 20, padding: 32, maxWidth: 420, width: '100%' },
-  bizName: { color: '#555', fontSize: 12, letterSpacing: 2, textTransform: 'uppercase', margin: '0 0 4px' },
+  bizName: { color: '#888', fontSize: 12, letterSpacing: 2, textTransform: 'uppercase', margin: '0 0 4px' },
   title: { color: '#fff', fontSize: 22, fontWeight: 'bold', margin: '0 0 20px' },
   sectionLabel: { color: '#666', fontSize: 11, letterSpacing: 1, fontWeight: 'bold', margin: '0 0 10px' },
   row: { borderBottom: '1px solid #1e293b', padding: '10px 0' },

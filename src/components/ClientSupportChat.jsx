@@ -74,7 +74,7 @@ const styles = {
   headerText: { color: '#fff', fontSize: 13, fontWeight: 'bold' },
   closeBtn: { background: 'transparent', border: 'none', color: '#888', cursor: 'pointer', fontSize: 16, padding: '8px 10px', lineHeight: 1 },
   messages: { flex: 1, overflowY: 'auto', padding: 10, display: 'flex', flexDirection: 'column', gap: 6, minHeight: 120 },
-  placeholder: { color: '#555', fontSize: 12, margin: 0 },
+  placeholder: { color: '#888', fontSize: 12, margin: 0 },
   userBubble: { alignSelf: 'flex-end', background: '#2D5FA8', color: '#fff', borderRadius: 10, padding: '6px 10px', fontSize: 13, maxWidth: '85%' },
   assistantBubble: { alignSelf: 'flex-start', background: '#1e293b', color: '#ccc', borderRadius: 10, padding: '6px 10px', fontSize: 13, maxWidth: '85%' },
   inputRow: { display: 'flex', gap: 6, padding: 10, borderTop: '1px solid #1e293b' },

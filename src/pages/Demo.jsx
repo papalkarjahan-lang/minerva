@@ -27,7 +27,7 @@ export default function Demo() {
         <p style={{ fontSize: 17, color: '#aaa', margin: '0 0 6px', lineHeight: 1.6 }}>
           This is what your client sees the moment your technician is on the way.
         </p>
-        <p style={{ fontSize: 13, color: '#555', margin: 0 }}>
+        <p style={{ fontSize: 13, color: '#888', margin: 0 }}>
           Sample demonstration with simulated data — not a real job, technician, or customer.
         </p>
       </div>

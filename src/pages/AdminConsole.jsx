@@ -806,7 +806,7 @@ export default function AdminConsole() {
                     </button>
                   </>
                 )}
-                <span style={{ color: '#555', fontSize: 11, marginLeft: 'auto' }}>
+                <span style={{ color: '#888', fontSize: 11, marginLeft: 'auto' }}>
                   Tip: skim each collapsed card below, expand only the ones you want to edit, then check the ones that look good and approve as a batch.
                 </span>
               </div>
@@ -834,7 +834,7 @@ export default function AdminConsole() {
               />
             ))}
 
-            <p style={{ color: '#555', fontSize: 12, marginTop: 24 }}>
+            <p style={{ color: '#888', fontSize: 12, marginTop: 24 }}>
               {prospects.filter(p => p.status === 'sent').length} sent · {prospects.filter(p => p.status === 'replied' || p.replied_at).length} replied · {prospects.filter(p => p.status === 'closed_won').length} closed won · {prospects.filter(p => p.status === 'closed_lost').length} closed lost · {prospects.filter(p => p.unsubscribed_at).length} unsubscribed
             </p>
 
@@ -924,7 +924,7 @@ export default function AdminConsole() {
               />
             ))}
 
-            <p style={{ color: '#555', fontSize: 12, marginTop: 24 }}>
+            <p style={{ color: '#888', fontSize: 12, marginTop: 24 }}>
               {bigAccounts.filter(t => t.stage === 'closed_won').length} closed won · {bigAccounts.filter(t => t.stage === 'closed_lost').length} closed lost
             </p>
           </div>
@@ -939,7 +939,7 @@ function StatChip({ label, value, detail, color = '#8fd0e8' }) {
     <div style={{ background: '#0a0f1d', border: '1px solid #1e293b', borderRadius: 12, padding: '14px 16px' }}>
       <p style={{ color: '#666', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, margin: '0 0 4px' }}>{label}</p>
       <p style={{ color, fontSize: 22, fontWeight: 'bold', margin: '0 0 2px' }}>{value}</p>
-      {detail && <p style={{ color: '#555', fontSize: 11, margin: 0 }}>{detail}</p>}
+      {detail && <p style={{ color: '#888', fontSize: 11, margin: 0 }}>{detail}</p>}
     </div>
   )
 }

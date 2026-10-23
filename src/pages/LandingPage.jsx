@@ -323,7 +323,7 @@ export default function LandingPage() {
             <Link to="/start" className="lp-cta-primary" onMouseMove={magneticMove} onMouseLeave={magneticLeave}>Start your free trial →</Link>
             <Link to="/demo" className="lp-cta-ghost" onMouseMove={magneticMove} onMouseLeave={magneticLeave}>Watch 60-sec demo</Link>
           </div>
-          <p style={{ color: '#555', fontSize: 13, margin: 0 }}>7-day free trial. Set up on the call. First charge after day 7.</p>
+          <p style={{ color: '#888', fontSize: 13, margin: 0 }}>7-day free trial. Set up on the call. First charge after day 7.</p>
         </div>
 
         <div className="lp-hero-glow" onMouseMove={spotlightMove}>

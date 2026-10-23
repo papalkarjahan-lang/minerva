@@ -119,7 +119,7 @@ const styles = {
   errorCard: { background: '#FAEAEA', borderRadius: 12, padding: 20, maxWidth: 340, textAlign: 'center' },
   widget: { width: '100%', maxWidth: 420, height: '85vh', maxHeight: 640, background: '#0a0f1d', borderRadius: 16, border: '1px solid #1e293b', display: 'flex', flexDirection: 'column', overflow: 'hidden' },
   header: { padding: '16px 20px', borderBottom: '1px solid #1e293b' },
-  bizName: { color: '#555', fontSize: 12, letterSpacing: 2, textTransform: 'uppercase', margin: '0 0 4px' },
+  bizName: { color: '#888', fontSize: 12, letterSpacing: 2, textTransform: 'uppercase', margin: '0 0 4px' },
   heading: { color: '#fff', fontSize: 18, fontWeight: 'bold', margin: 0 },
   messageList: { flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 10 },
   bubbleRow: { display: 'flex' },

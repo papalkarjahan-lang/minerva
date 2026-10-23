@@ -18,7 +18,7 @@ export default function Blog() {
         {BLOG_POSTS.slice().reverse().map(post => (
           <Link key={post.slug} to={`/blog/${post.slug}`} style={{ textDecoration: 'none' }}>
             <div style={{ background: '#0a0f1d', borderRadius: 16, padding: 24, border: '1px solid #1e293b' }}>
-              <p style={{ color: '#555', fontSize: 12, margin: '0 0 8px' }}>{new Date(post.date).toLocaleDateString('en-AU', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+              <p style={{ color: '#888', fontSize: 12, margin: '0 0 8px' }}>{new Date(post.date).toLocaleDateString('en-AU', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
               <p style={{ color: '#fff', fontWeight: 'bold', fontSize: 19, margin: '0 0 10px' }}>{post.title}</p>
               <p style={{ color: '#888', fontSize: 14, margin: 0, lineHeight: 1.6 }}>{post.excerpt}</p>
             </div>

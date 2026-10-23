@@ -152,6 +152,6 @@ const containerStyle = { maxWidth: 760, margin: '0 auto', padding: '48px 24px 80
 const backLink = { color: '#8fd0e8', textDecoration: 'none', fontSize: 14 }
 const h1Style = { color: '#fff', fontSize: 32, margin: '24px 0 4px' }
 const h2Style = { color: '#fff', fontSize: 18, margin: '0 0 10px' }
-const updatedStyle = { color: '#555', fontSize: 13, margin: '0 0 32px' }
+const updatedStyle = { color: '#888', fontSize: 13, margin: '0 0 32px' }
 const ulStyle = { paddingLeft: 20, lineHeight: 1.7 }
 const inlineLink = { color: '#8fd0e8' }

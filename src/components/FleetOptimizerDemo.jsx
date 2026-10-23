@@ -302,7 +302,7 @@ export default function FleetOptimizerDemo() {
         <Stat label="Saved" value={optimized ? `${kmSaved.toFixed(0)} km (${pctSaved}%)` : '—'} highlight={optimized} accent />
         <Stat label="≈ est. cost saved" value={optimized ? `$${estimateDollarsFromKm(kmSaved)}` : '—'} highlight={optimized} accent />
       </div>
-      <p style={{ fontSize: 12, color: '#555', margin: '16px 0 0', lineHeight: 1.6 }}>
+      <p style={{ fontSize: 12, color: '#888', margin: '16px 0 0', lineHeight: 1.6 }}>
         This is the same reassign-and-reroute logic Minerva runs for real, Standard-tier trade businesses —
         it only ever applies a change when it's a genuine improvement over what you already had. On this
         fixed sample it finds one; on a day that's already well-planned, it would say so and change nothing.

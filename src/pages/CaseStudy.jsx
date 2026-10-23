@@ -31,15 +31,15 @@ export default function CaseStudy() {
 
         <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', margin: '0 0 40px', padding: '20px 24px', background: '#0a0f1d', borderRadius: 16, border: '1px solid #1e293b' }}>
           <div>
-            <p style={{ color: '#555', fontSize: 12, textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 4px' }}>Trade</p>
+            <p style={{ color: '#888', fontSize: 12, textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 4px' }}>Trade</p>
             <p style={{ color: '#fff', fontSize: 15, margin: 0 }}>[Plumbing / Electrical / HVAC / etc.]</p>
           </div>
           <div>
-            <p style={{ color: '#555', fontSize: 12, textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 4px' }}>Team size</p>
+            <p style={{ color: '#888', fontSize: 12, textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 4px' }}>Team size</p>
             <p style={{ color: '#fff', fontSize: 15, margin: 0 }}>[N] technicians</p>
           </div>
           <div>
-            <p style={{ color: '#555', fontSize: 12, textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 4px' }}>Location</p>
+            <p style={{ color: '#888', fontSize: 12, textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 4px' }}>Location</p>
             <p style={{ color: '#fff', fontSize: 15, margin: 0 }}>[Suburb/region]</p>
           </div>
         </div>
@@ -89,7 +89,7 @@ export default function CaseStudy() {
         </Link>
       </div>
 
-      <footer style={{ borderTop: '1px solid #1e293b', padding: '24px 40px', textAlign: 'center', color: '#444', fontSize: 13 }}>
+      <footer style={{ borderTop: '1px solid #1e293b', padding: '24px 40px', textAlign: 'center', color: '#888', fontSize: 13 }}>
         <Link to="/" style={{ color: '#666', textDecoration: 'none' }}>← Back to Minerva</Link>
       </footer>
     </div>

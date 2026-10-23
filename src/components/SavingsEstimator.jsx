@@ -62,7 +62,7 @@ export default function SavingsEstimator() {
           <div style={{ fontSize: 24, fontWeight: 'bold', color: '#1D9E75' }}>${annualSavings.toLocaleString()}</div>
         </div>
       </div>
-      <p style={{ fontSize: 11, color: '#555', margin: '16px 0 0', lineHeight: 1.6 }}>
+      <p style={{ fontSize: 11, color: '#888', margin: '16px 0 0', lineHeight: 1.6 }}>
         Based on a conservative 15% fuel-savings benchmark cited for route optimization, applied to an estimated $1,200/month
         average fuel spend per vehicle when you don't enter your own. Trade sector only — this feature isn't available for
         Industrial-sector accounts.

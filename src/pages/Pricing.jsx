@@ -64,7 +64,7 @@ export default function Pricing() {
             <div key={name} style={{ background: highlight ? '#2D5FA8' : '#0a0f1d', borderRadius: 16, padding: 24, border: `1px solid ${highlight ? '#2D5FA8' : '#1e293b'}` }}>
               <p style={{ color: highlight ? '#fff' : '#888', fontSize: 13, margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: 1 }}>{name}</p>
               <p style={{ color: '#fff', fontSize: 32, fontWeight: 'bold', margin: '0 0 2px' }}>{price}</p>
-              <p style={{ color: highlight ? '#b8d4ff' : '#555', fontSize: 12, margin: '0 0 20px' }}>{period}</p>
+              <p style={{ color: highlight ? '#b8d4ff' : '#888', fontSize: 12, margin: '0 0 20px' }}>{period}</p>
               {features.map(f => <p key={f} style={{ color: highlight ? '#dde8ff' : '#666', fontSize: 13, margin: '0 0 8px', textAlign: 'left' }}>✓ {f}</p>)}
               <Link to="/start" style={{ display: 'block', textAlign: 'center', background: highlight ? '#fff' : '#1D9E75', color: highlight ? '#2D5FA8' : '#fff', textDecoration: 'none', padding: '12px 0', borderRadius: 10, fontSize: 14, fontWeight: 'bold', marginTop: 16 }}>
                 Start free trial
@@ -72,7 +72,7 @@ export default function Pricing() {
             </div>
           ))}
         </div>
-        <p style={{ color: '#555', fontSize: 13, textAlign: 'center', margin: '24px 0 0' }}>7-day free trial on any tier. First charge after day 7.</p>
+        <p style={{ color: '#888', fontSize: 13, textAlign: 'center', margin: '24px 0 0' }}>7-day free trial on any tier. First charge after day 7.</p>
       </div>
 
       <div style={{ maxWidth: 680, margin: '0 auto 70px', padding: '0 24px' }}>

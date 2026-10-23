@@ -2681,7 +2681,7 @@ export default function DispatcherView() {
                   )}
                 </div>
               ))}
-              {quotes.length === 0 && <p style={{ color: '#444', fontSize: 13 }}>No quotes yet</p>}
+              {quotes.length === 0 && <p style={{ color: '#888', fontSize: 13 }}>No quotes yet</p>}
             </>
           )}
 
@@ -2780,7 +2780,7 @@ export default function DispatcherView() {
                   )}
                 </div>
               ))}
-              {jobs.length === 0 && <p style={{ color: '#444', fontSize: 13 }}>No active jobs</p>}
+              {jobs.length === 0 && <p style={{ color: '#888', fontSize: 13 }}>No active jobs</p>}
 
               {/* Recently completed jobs — checklist photo evidence + materials
                   used, for warranty/damage/"did they actually do it" disputes. */}
@@ -2828,7 +2828,7 @@ export default function DispatcherView() {
                               })}
                             </div>
                           ) : (
-                            <p style={{ color: '#444', fontSize: 11, margin: '0 0 8px' }}>No checklist photos attached</p>
+                            <p style={{ color: '#888', fontSize: 11, margin: '0 0 8px' }}>No checklist photos attached</p>
                           )}
                           {(jobCorrectiveActions[job.id] || []).length > 0 && (
                             <div style={{ marginBottom: 8 }}>
@@ -2867,7 +2867,7 @@ export default function DispatcherView() {
                             </div>
                           )}
                           {jobDetailsLoading[job.id] ? (
-                            <p style={{ color: '#444', fontSize: 11 }}>Loading materials…</p>
+                            <p style={{ color: '#888', fontSize: 11 }}>Loading materials…</p>
                           ) : (jobMaterials[job.id] || []).length > 0 ? (
                             (jobMaterials[job.id]).map(m => (
                               <p key={m.id} style={{ color: '#8899a6', fontSize: 12, margin: '0 0 2px' }}>
@@ -2875,22 +2875,22 @@ export default function DispatcherView() {
                               </p>
                             ))
                           ) : (
-                            <p style={{ color: '#444', fontSize: 11 }}>No materials recorded</p>
+                            <p style={{ color: '#888', fontSize: 11 }}>No materials recorded</p>
                           )}
                           <div style={{ marginTop: 10, borderTop: '1px solid #1e293b', paddingTop: 8 }}>
-                            <p style={{ color: '#555', fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', margin: '0 0 6px' }}>Incident Log</p>
+                            <p style={{ color: '#888', fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', margin: '0 0 6px' }}>Incident Log</p>
                             {jobDetailsLoading[job.id] ? (
-                              <p style={{ color: '#444', fontSize: 11, margin: '0 0 6px' }}>Loading incidents…</p>
+                              <p style={{ color: '#888', fontSize: 11, margin: '0 0 6px' }}>Loading incidents…</p>
                             ) : (jobIncidents[job.id] || []).length > 0 ? (
                               jobIncidents[job.id].map(inc => (
                                 <p key={inc.id} style={{ color: '#8899a6', fontSize: 12, margin: '0 0 4px' }}>
                                   <span style={styles.incidentBadge(inc.category)}>{(inc.category || 'note').toUpperCase()}</span>
                                   {' '}{inc.description}
-                                  <span style={{ color: '#444' }}> · {inc.reported_by || 'dispatcher'} · {new Date(inc.created_at).toLocaleDateString('en-AU')}</span>
+                                  <span style={{ color: '#888' }}> · {inc.reported_by || 'dispatcher'} · {new Date(inc.created_at).toLocaleDateString('en-AU')}</span>
                                 </p>
                               ))
                             ) : (
-                              <p style={{ color: '#444', fontSize: 11, margin: '0 0 6px' }}>No incidents logged</p>
+                              <p style={{ color: '#888', fontSize: 11, margin: '0 0 6px' }}>No incidents logged</p>
                             )}
                             <div style={{ display: 'flex', gap: 6, marginTop: 6 }} onClick={(e) => e.stopPropagation()}>
                               <select
@@ -2950,7 +2950,7 @@ export default function DispatcherView() {
                   <button style={styles.leadActionSecondary} onClick={() => removeSubcontractor(sub.id)}>Remove</button>
                 </div>
               ))}
-              {subcontractors.length === 0 && <p style={{ color: '#444', fontSize: 13 }}>No subcontractors added yet</p>}
+              {subcontractors.length === 0 && <p style={{ color: '#888', fontSize: 13 }}>No subcontractors added yet</p>}
             </>
           )}
 
@@ -3026,7 +3026,7 @@ export default function DispatcherView() {
                   <p style={styles.leadDesc}>{lead.job_description}</p>
                   {lead.score_reason && <p style={styles.leadReason}>{lead.score_reason}</p>}
                   {leadActivitySummary[lead.id] ? (
-                    <p style={{ color: '#555', fontSize: 11, margin: '2px 0 0' }}>
+                    <p style={{ color: '#888', fontSize: 11, margin: '2px 0 0' }}>
                       {leadActivitySummary[lead.id].count} note{leadActivitySummary[lead.id].count === 1 ? '' : 's'}
                       {' · last activity '}{timeAgo(leadActivitySummary[lead.id].lastAt)}
                     </p>
@@ -3038,7 +3038,7 @@ export default function DispatcherView() {
                       see whether a stale lead had already been auto-nurtured
                       before deciding to chase it manually themselves. */}
                   {lead.nurture_sent_at && (
-                    <p style={{ color: '#555', fontSize: 11, margin: '2px 0 0' }}>
+                    <p style={{ color: '#888', fontSize: 11, margin: '2px 0 0' }}>
                       ✓ Auto-nurture SMS sent {timeAgo(lead.nurture_sent_at)}
                       {lead.second_nurture_sent_at && ` · 2nd touch sent ${timeAgo(lead.second_nurture_sent_at)}`}
                     </p>
@@ -3122,12 +3122,12 @@ export default function DispatcherView() {
                         <button style={{ ...styles.leadActionSecondary, flex: 1 }} onClick={() => logLeadEmail(lead.id)}>✉ Log email</button>
                       </div>
                       {(leadActivities[lead.id] || []).length === 0 && (
-                        <p style={{ color: '#444', fontSize: 12 }}>No activity logged yet</p>
+                        <p style={{ color: '#888', fontSize: 12 }}>No activity logged yet</p>
                       )}
                       {(leadActivities[lead.id] || []).map(a => (
                         <div key={a.id} style={{ padding: '4px 0', borderBottom: '1px solid #1e293b' }}>
                           <p style={{ color: '#9aa5b1', fontSize: 12, margin: 0 }}>{activityIcon(a.activity_type)} {a.body}</p>
-                          <p style={{ color: '#444', fontSize: 10, margin: 0 }}>{a.created_by} · {timeAgo(a.created_at)}</p>
+                          <p style={{ color: '#888', fontSize: 10, margin: 0 }}>{a.created_by} · {timeAgo(a.created_at)}</p>
                         </div>
                       ))}
                     </div>
@@ -3181,7 +3181,7 @@ export default function DispatcherView() {
                   })}
                 </div>
               )}
-              {leadsViewMode === 'list' && leads.length === 0 && <p style={{ color: '#444', fontSize: 13 }}>No open leads</p>}
+              {leadsViewMode === 'list' && leads.length === 0 && <p style={{ color: '#888', fontSize: 13 }}>No open leads</p>}
 
               {lostLeads.length > 0 && (
                 <div style={{ marginTop: 16 }}>
@@ -3227,7 +3227,7 @@ export default function DispatcherView() {
                   </div>
                 </div>
               ))}
-              {assets.length === 0 && <p style={{ color: '#444', fontSize: 13 }}>No assets tracked yet</p>}
+              {assets.length === 0 && <p style={{ color: '#888', fontSize: 13 }}>No assets tracked yet</p>}
             </>
           )}
 
@@ -3257,7 +3257,7 @@ export default function DispatcherView() {
                   <p style={styles.jobAddr}>{c.distance_km} km · {c.vehicle_type} · {new Date(c.created_at).toLocaleDateString('en-AU')}</p>
                 </div>
               ))}
-              {carbonEstimates.length === 0 && <p style={{ color: '#444', fontSize: 13 }}>No carbon estimates yet — generated daily once technicians have completed 2+ jobs in a day.</p>}
+              {carbonEstimates.length === 0 && <p style={{ color: '#888', fontSize: 13 }}>No carbon estimates yet — generated daily once technicians have completed 2+ jobs in a day.</p>}
             </>
           )}
 
@@ -3381,7 +3381,7 @@ export default function DispatcherView() {
                       {(compliancePackages[inv.job_id] || []).map(pkg => (
                         <div key={pkg.id} style={{ marginTop: 6, padding: 8, background: '#0f1420', borderRadius: 8, border: '1px solid #1e293b' }}>
                           <p style={{ color: '#9aa5b1', fontSize: 12, margin: '0 0 4px' }}>{pkg.summary}</p>
-                          <p style={{ color: '#444', fontSize: 11, margin: 0 }}>
+                          <p style={{ color: '#888', fontSize: 11, margin: 0 }}>
                             Generated {new Date(pkg.created_at).toLocaleString('en-AU')}
                             {pkg.sent_at ? ` · Sent ${new Date(pkg.sent_at).toLocaleDateString('en-AU')}${pkg.sent_to ? ` (${pkg.sent_to})` : ''}` : ''}
                           </p>
@@ -3396,7 +3396,7 @@ export default function DispatcherView() {
                   )}
                 </div>
               ))}
-              {invoices.length === 0 && <p style={{ color: '#444', fontSize: 13 }}>No invoices yet</p>}
+              {invoices.length === 0 && <p style={{ color: '#888', fontSize: 13 }}>No invoices yet</p>}
             </>
           )}
 
@@ -3427,7 +3427,7 @@ export default function DispatcherView() {
                   </div>
                 )
               })}
-              {inventory.length === 0 && <p style={{ color: '#444', fontSize: 13 }}>No inventory items tracked yet</p>}
+              {inventory.length === 0 && <p style={{ color: '#888', fontSize: 13 }}>No inventory items tracked yet</p>}
             </>
           )}
 
@@ -3487,7 +3487,7 @@ export default function DispatcherView() {
                   )}
                 </div>
               ))}
-              {marketingDrafts.length === 0 && <p style={{ color: '#444', fontSize: 13 }}>No marketing drafts yet — checked weekly</p>}
+              {marketingDrafts.length === 0 && <p style={{ color: '#888', fontSize: 13 }}>No marketing drafts yet — checked weekly</p>}
             </>
           )}
 
@@ -3537,8 +3537,8 @@ export default function DispatcherView() {
                   <p style={styles.jobAddr}>{row.daysActive} day{row.daysActive === 1 ? '' : 's'} with GPS activity in period</p>
                 </div>
               ))}
-              {payrollRows && payrollRows.length === 0 && <p style={{ color: '#444', fontSize: 13 }}>No active technicians</p>}
-              {!payrollRows && !payrollLoading && <p style={{ color: '#444', fontSize: 13 }}>Choose a period and click Generate</p>}
+              {payrollRows && payrollRows.length === 0 && <p style={{ color: '#888', fontSize: 13 }}>No active technicians</p>}
+              {!payrollRows && !payrollLoading && <p style={{ color: '#888', fontSize: 13 }}>Choose a period and click Generate</p>}
 
               {payrollRuns.length > 0 && (
                 <>
@@ -3589,7 +3589,7 @@ export default function DispatcherView() {
                   </div>
                 )
               })}
-              {technicianCredentials.length === 0 && <p style={{ color: '#444', fontSize: 13 }}>No credentials tracked yet</p>}
+              {technicianCredentials.length === 0 && <p style={{ color: '#888', fontSize: 13 }}>No credentials tracked yet</p>}
             </>
           )}
 
@@ -3610,7 +3610,7 @@ export default function DispatcherView() {
                   <p style={styles.jobAddr}>{new Date(entry.created_at).toLocaleString('en-AU')}</p>
                 </div>
               ))}
-              {auditLog.length === 0 && <p style={{ color: '#444', fontSize: 13 }}>No recorded actions yet</p>}
+              {auditLog.length === 0 && <p style={{ color: '#888', fontSize: 13 }}>No recorded actions yet</p>}
             </>
           )}
 
@@ -3648,7 +3648,7 @@ export default function DispatcherView() {
                   )}
                 </div>
               ))}
-              {weatherDrafts.length === 0 && <p style={{ color: '#444', fontSize: 13 }}>No weather-risk jobs flagged — set weather-sensitive trade types in Settings to enable this</p>}
+              {weatherDrafts.length === 0 && <p style={{ color: '#888', fontSize: 13 }}>No weather-risk jobs flagged — set weather-sensitive trade types in Settings to enable this</p>}
             </>
           )}
 
@@ -3801,7 +3801,7 @@ export default function DispatcherView() {
                   )}
                 </div>
               ))}
-              {agentFunctions.length === 0 && <p style={{ color: '#444', fontSize: 13 }}>No agent functions recorded yet</p>}
+              {agentFunctions.length === 0 && <p style={{ color: '#888', fontSize: 13 }}>No agent functions recorded yet</p>}
 
               {/* Recent cross-agent insights feed */}
               <p style={{ ...styles.sectionLabel, marginTop: 16 }}>
@@ -3812,13 +3812,13 @@ export default function DispatcherView() {
                 <div key={insight.id} style={styles.jobRow}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <span style={styles.agentBadge}>{insight.agent}</span>
-                    <p style={{ color: '#555', fontSize: 11, margin: 0 }}>{timeAgo(insight.created_at)}</p>
+                    <p style={{ color: '#888', fontSize: 11, margin: 0 }}>{timeAgo(insight.created_at)}</p>
                   </div>
                   <p style={{ ...styles.leadDesc, margin: '4px 0 2px' }}>{insight.summary}</p>
-                  <p style={{ color: '#555', fontSize: 11, margin: 0, fontStyle: 'italic' }}>{insight.insight_type}</p>
+                  <p style={{ color: '#888', fontSize: 11, margin: 0, fontStyle: 'italic' }}>{insight.insight_type}</p>
                 </div>
               ))}
-              {agentInsights.length === 0 && <p style={{ color: '#444', fontSize: 13 }}>No insights in the last 7 days</p>}
+              {agentInsights.length === 0 && <p style={{ color: '#888', fontSize: 13 }}>No insights in the last 7 days</p>}
 
               {/* Weekly Agent Council report — most recent row, if any */}
               <p style={{ ...styles.sectionLabel, marginTop: 16 }}>WEEKLY AGENT COUNCIL REPORT</p>
@@ -3835,7 +3835,7 @@ export default function DispatcherView() {
                   </p>
                 </div>
               ) : (
-                <p style={{ color: '#444', fontSize: 13 }}>No report yet — first one lands {nextMondayLabel()}</p>
+                <p style={{ color: '#888', fontSize: 13 }}>No report yet — first one lands {nextMondayLabel()}</p>
               )}
             </>
           )}
@@ -3992,7 +3992,7 @@ export default function DispatcherView() {
                 <p style={{ fontWeight: 'bold', margin: '0 0 4px', fontSize: 15 }}>{selected.name}</p>
                 {jobs.find(j => j.id === selected.current_job_id) && (
                   <>
-                    <p style={{ margin: '0 0 2px', fontSize: 13, color: '#555' }}>
+                    <p style={{ margin: '0 0 2px', fontSize: 13, color: '#888' }}>
                       {jobs.find(j => j.id === selected.current_job_id).client_name}
                     </p>
                     <p style={{ margin: 0, fontSize: 12, color: '#888' }}>
@@ -5335,19 +5335,19 @@ function CustomWorkflowsPanel({ businessId, onLogAudit }) {
 const styles = {
   sidebar: { width: 280, background: '#0a0f1d', borderRight: '1px solid #1e293b', display: 'flex', flexDirection: 'column', overflow: 'hidden' },
   sidebarHeader: { padding: '20px 16px 12px', borderBottom: '1px solid #1e293b' },
-  bizLabel: { color: '#555', fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', margin: '0 0 4px' },
+  bizLabel: { color: '#888', fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', margin: '0 0 4px' },
   sidebarTitle: { color: '#fff', fontSize: 22, margin: '0 0 10px', fontWeight: 'bold' },
   copyLinkBtn: { background: 'transparent', border: '1px solid #1e293b', color: '#8fd0e8', borderRadius: 8, padding: '5px 10px', fontSize: 11, cursor: 'pointer', width: '100%', textAlign: 'left' },
   subscriptionCancelledBanner: { background: '#2A0F0F', border: '1px solid #8A2525', borderRadius: 8, padding: '8px 10px', margin: '0 0 10px' },
   subscriptionCancelledTitle: { color: '#e05555', fontSize: 12, fontWeight: 'bold', margin: '0 0 4px' },
   subscriptionCancelledLine: { color: '#ccc', fontSize: 11, lineHeight: 1.4, margin: 0 },
   section: { padding: '12px 16px', borderBottom: '1px solid #1e293b', overflowY: 'auto', maxHeight: '50vh' },
-  sectionLabel: { color: '#555', fontSize: 10, letterSpacing: 2, textTransform: 'uppercase', margin: '0 0 10px' },
+  sectionLabel: { color: '#888', fontSize: 10, letterSpacing: 2, textTransform: 'uppercase', margin: '0 0 10px' },
   billingNote: { color: '#666', fontSize: 11, margin: '-4px 0 10px', cursor: 'default' },
   techRow: { padding: '10px 10px 10px 12px', background: '#050811', borderRadius: 10, marginBottom: 8, cursor: 'pointer' },
   techName: { color: '#fff', fontSize: 14, fontWeight: 'bold', margin: '0 0 3px' },
   techMeta: { color: '#666', fontSize: 12, margin: '0 0 2px' },
-  techRemoveBtn: { background: 'none', border: 'none', color: '#444', fontSize: 13, cursor: 'pointer', padding: '2px 4px' },
+  techRemoveBtn: { background: 'none', border: 'none', color: '#888', fontSize: 13, cursor: 'pointer', padding: '2px 4px' },
   techLinkBtn: { background: '#132030', border: '1px solid #1e293b', color: '#8899a6', fontSize: 11, cursor: 'pointer', padding: '4px 8px', borderRadius: 6 },
   jobRow: { padding: '10px 12px', background: '#050811', borderRadius: 10, marginBottom: 8 },
   jobClient: { color: '#fff', fontSize: 14, fontWeight: 'bold', margin: '0 0 3px' },
@@ -5359,7 +5359,7 @@ const styles = {
   deptLabel: { color: '#3a4a63', fontSize: 9, letterSpacing: 1.5, textTransform: 'uppercase', fontWeight: 'bold' },
   leadRow: { padding: '10px 12px', background: '#050811', borderRadius: 10, marginBottom: 8 },
   leadDesc: { color: '#8899a6', fontSize: 12, margin: '0 0 4px', lineHeight: 1.4 },
-  leadReason: { color: '#555', fontSize: 11, fontStyle: 'italic', margin: '0 0 2px' },
+  leadReason: { color: '#888', fontSize: 11, fontStyle: 'italic', margin: '0 0 2px' },
   scoreBadge: (score) => ({ fontSize: 12, fontWeight: 'bold', color: '#fff', background: score >= 70 ? '#8A2525' : score >= 40 ? '#A87C16' : '#2D5FA8', borderRadius: 12, padding: '1px 8px', minWidth: 20, textAlign: 'center' }),
   urgencyBadge: (urgency) => ({ fontSize: 10, fontWeight: 'bold', letterSpacing: 1, padding: '2px 6px', borderRadius: 6, color: urgency === 'emergency' ? '#fff' : '#1D9E75', background: urgency === 'emergency' ? '#8A2525' : '#1D9E7522' }),
   repeatBadge: { fontSize: 10, fontWeight: 'bold', letterSpacing: 1, padding: '2px 6px', borderRadius: 6, color: '#534AB7', background: '#534AB722' },
@@ -5413,7 +5413,7 @@ const styles = {
   overviewCard: { background: '#050811', border: '1px solid #1e293b', borderRadius: 10, padding: '12px 16px', minWidth: 150, flex: '1 1 150px', cursor: 'pointer', textAlign: 'left', display: 'block', font: 'inherit' },
   overviewCardValue: (color) => ({ color: color || '#fff', fontSize: 24, fontWeight: 'bold', margin: '0 0 2px' }),
   overviewCardLabel: { color: '#8899a6', fontSize: 11, letterSpacing: 0.5, textTransform: 'uppercase', margin: '0 0 2px' },
-  overviewCardSub: { color: '#555', fontSize: 11, margin: 0 },
+  overviewCardSub: { color: '#888', fontSize: 11, margin: 0 },
   watchtowerDot: (status) => ({
     position: 'absolute',
     top: 2,

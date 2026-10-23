@@ -67,7 +67,7 @@ export function SiteNav() {
 
 export function SiteFooter() {
   return (
-    <footer style={{ borderTop: '1px solid #1e293b', padding: '24px 40px', textAlign: 'center', color: '#444', fontSize: 13 }}>
+    <footer style={{ borderTop: '1px solid #1e293b', padding: '24px 40px', textAlign: 'center', color: '#888', fontSize: 13 }}>
       <p style={{ margin: '0 0 10px' }}>
         Minerva | An Antikythera / Krios AI product{CONTACT_PARTS.length > 0 ? ` | ${CONTACT_PARTS.join(' | ')}` : ''}
       </p>
