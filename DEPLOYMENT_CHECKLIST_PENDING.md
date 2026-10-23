@@ -1379,17 +1379,36 @@ Verified: lint clean, 16/16 tests passing, build clean.
 genuinely-open items hard to find. Resolved items are dropped entirely below;
 see git log / this file's "Confirmed live" section above for history.)*
 
-- **RESOLVED locally, Vercel unconfirmed (updated 2026-10-23) —
-  `VITE_ADMIN_EMAILS`.** The entry below this one sat unresolved for
-  rounds; re-checked directly and `.env.local` now has
-  `VITE_ADMIN_EMAILS=papalkarjahan@gmail.com` set. What's NOT yet
-  confirmed: whether that same value exists as a Vercel environment
-  variable on the deployed frontend — `.env.local` only affects local
-  dev, never production. Visiting `/admin` on the live site
-  (minerva-green.vercel.app) shows a login gate, which only proves the
-  route exists, not that the allowlist check behind it would pass once
-  logged in. Confirm in Vercel: Project Settings → Environment Variables
-  → is `VITE_ADMIN_EMAILS` set there too? If not, add it and redeploy.
+- **CONFIRMED MISSING from Vercel production (updated 2026-10-23) —
+  `VITE_ADMIN_EMAILS`.** Set locally in `.env.local`, but genuinely not
+  reaching production: fetched the live `AdminConsole-*.js` chunk
+  directly (`curl` the deployed bundle — Vite inlines
+  `import.meta.env.VITE_*` as a literal string at build time, so a set
+  value would appear verbatim in the compiled output) and found neither
+  `papalkarjahan@gmail.com` nor `VITE_ADMIN_EMAILS` anywhere in it —
+  `ADMIN_EMAILS` resolves to `''` at runtime, so `/admin` rejects every
+  email, including the account owner's, exactly as this item originally
+  warned. Not something I can set myself (ships in the public bundle,
+  and which email belongs on it is your call, same reasoning as
+  before). **Action needed**: Vercel → Project Settings → Environment
+  Variables → add `VITE_ADMIN_EMAILS=papalkarjahan@gmail.com` → redeploy
+  (a new deploy is required; Vercel doesn't retroactively inject env
+  vars into an already-built bundle).
+- **CONFIRMED MISSING from Vercel production (updated 2026-10-23) —
+  `VITE_SENTRY_DSN`.** Same situation and same verification method:
+  `initSentry()` in `src/sentry.js` does `if (!dsn) return` before
+  calling `Sentry.init()` — fetched the live main bundle
+  (`index-*.js`) directly and found no trace of the DSN's project id
+  (`4512292136550400`) or host (`ingest.de.sentry.io`) anywhere in
+  421KB of code; if the env var had been set, that literal string would
+  be unavoidably present (Vite can't strip a value it doesn't have, and
+  a minifier can't fold away a real string the way it apparently folded
+  away the dead `Sentry.init()` call reachable only when `dsn` is
+  `undefined`). Sentry is currently a complete no-op on the live site —
+  no error from a real customer's browser would ever be visible without
+  this. **Action needed**: Vercel → Project Settings → Environment
+  Variables → add `VITE_SENTRY_DSN` (the value already in `.env.local`)
+  → redeploy.
 - **Bank-account-gated**: Mapbox billing, Twilio SMS-capable number purchase
   (also blocks the Voice webhook for `missed-call-webhook`/`voice-intake-agent`),
   Anthropic Console billing (`ANTHROPIC_API_KEY`), Stripe live mode + the 9
