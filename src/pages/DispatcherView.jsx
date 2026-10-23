@@ -2336,9 +2336,9 @@ export default function DispatcherView() {
             <div style={styles.subscriptionCancelledBanner}>
               <p style={styles.subscriptionCancelledTitle}>⚠️ Subscription ended</p>
               <p style={styles.subscriptionCancelledLine}>
-                Your Stripe subscription was cancelled — Pro features (invoicing, checklists,
-                Watchtower, Marketing) are no longer available. Reopen billing below to
-                resubscribe, or contact us to reactivate.
+                Your Stripe subscription was cancelled — the automated features your plan
+                included are no longer running. Reopen billing below to resubscribe, or
+                contact us to reactivate.
               </p>
             </div>
           )}
