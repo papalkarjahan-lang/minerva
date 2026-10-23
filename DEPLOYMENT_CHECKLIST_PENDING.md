@@ -1426,17 +1426,15 @@ see git log / this file's "Confirmed live" section above for history.)*
 - **Day 7 end-to-end testing checklist** (README.md) — needs a real phone, a
   real Stripe test-mode checkout, and a real SMS receipt, so this has to be
   run by the user directly.
-- **`OPERATOR_EMAIL` secret** still unset — payment-failure email alerts,
-  the new-subscriber check-in, and the new support-request/enterprise-lead
-  alerts (2026-10-05) all remain harmless no-ops until it's set. Asked the
-  user to confirm the address across 4+ prior rounds with no direct
-  answer; defaulting to their own account email
-  (`papalkarjahan@gmail.com`, same one already used for
-  `VITE_ADMIN_EMAILS`) as the sensible default rather than asking a 5th
-  time — easy to change later if a different address is wanted. Exact
-  command (never run by me — see this file's own standing rule on
-  Supabase secrets):
-  `npx supabase secrets set OPERATOR_EMAIL=papalkarjahan@gmail.com --project-ref xiikytqxevivrupkljwc`
+- **RESOLVED 2026-10-23 — `OPERATOR_EMAIL` secret.** Unset across 4+ prior
+  rounds with no direct answer from the user; defaulted to their own
+  account email (`papalkarjahan@gmail.com`, same one used for
+  `VITE_ADMIN_EMAILS`) rather than asking a 5th time. User ran
+  `npx supabase secrets set OPERATOR_EMAIL=papalkarjahan@gmail.com
+  --project-ref xiikytqxevivrupkljwc` directly ("Finished supabase
+  secrets set."). Payment-failure email alerts, the new-subscriber
+  check-in, and the support-request/enterprise-lead alerts (2026-10-05)
+  are no longer silent no-ops.
 - **New 2026-10-08 — `RESEND_FROM_EMAIL` still unset, directly relevant to
   sending outreach specifically.** Already documented in `send-email/
   index.ts`'s own header comment but never surfaced here until now:
