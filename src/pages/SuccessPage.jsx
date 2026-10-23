@@ -77,7 +77,7 @@ export default function SuccessPage() {
               Add this to your website's "Contact Us" button, your Google Business profile, or your SMS auto-replies. Visitors chat through a guided intake flow that triages the job and texts you the qualified leads.
             </p>
             <div style={{ display: 'flex', gap: 8 }}>
-              <input readOnly value={intakeUrl} onClick={e => e.target.select()}
+              <input aria-label="Intake chat link" readOnly value={intakeUrl} onClick={e => e.target.select()}
                 style={{ flex: 1, background: '#0a0f1d', border: '1px solid #1e293b', borderRadius: 8, color: '#c9d8de', padding: '8px 10px', fontSize: 12, fontFamily: 'monospace' }} />
               <button onClick={copyLink} style={{ background: copied ? '#1D9E75' : '#2D5FA8', color: '#fff', border: 'none', borderRadius: 8, padding: '0 14px', fontSize: 12, fontWeight: 'bold', cursor: 'pointer', whiteSpace: 'nowrap' }}>
                 {copied ? 'Copied!' : 'Copy link'}
@@ -92,7 +92,7 @@ export default function SuccessPage() {
               Prefer a chat bubble on your own site instead of a link? Paste this one line before your site's closing &lt;/body&gt; tag (works on Wix, Squarespace, WordPress, or any custom site that lets you add HTML/embed code).
             </p>
             <div style={{ display: 'flex', gap: 8 }}>
-              <input readOnly value={embedSnippet} onClick={e => e.target.select()}
+              <input aria-label="Embed code snippet" readOnly value={embedSnippet} onClick={e => e.target.select()}
                 style={{ flex: 1, background: '#0a0f1d', border: '1px solid #1e293b', borderRadius: 8, color: '#c9d8de', padding: '8px 10px', fontSize: 11, fontFamily: 'monospace' }} />
               <button onClick={copySnippet} style={{ background: snippetCopied ? '#1D9E75' : '#2D5FA8', color: '#fff', border: 'none', borderRadius: 8, padding: '0 14px', fontSize: 12, fontWeight: 'bold', cursor: 'pointer', whiteSpace: 'nowrap' }}>
                 {snippetCopied ? 'Copied!' : 'Copy code'}

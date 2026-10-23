@@ -99,6 +99,7 @@ export default function IntakeAssistant() {
 
         <div style={styles.inputRow}>
           <textarea
+            aria-label="Type a message"
             style={styles.input}
             value={input}
             onChange={e => setInput(e.target.value)}

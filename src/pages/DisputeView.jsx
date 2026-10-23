@@ -262,6 +262,7 @@ export default function DisputeView() {
                     {replaying ? '⏸ Pause' : '▶ Replay route'}
                   </button>
                   <input
+                    aria-label="Replay position"
                     type="range"
                     min={0}
                     max={locations.length - 1}

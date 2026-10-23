@@ -55,6 +55,7 @@ export default function ClientSupportChat({ jobId, invoiceId, businessName }) {
       </div>
       <div style={styles.inputRow}>
         <input
+          aria-label="Type a question"
           style={styles.input}
           value={input}
           onChange={e => setInput(e.target.value)}

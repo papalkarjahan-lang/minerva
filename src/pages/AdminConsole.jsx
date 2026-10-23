@@ -992,11 +992,13 @@ function ProspectCard({ prospect: p, onSaveDraft, onApprove, onReject, savingId,
       {expanded && (
         <>
           <input
+            aria-label="Draft subject"
             value={subject}
             onChange={e => setSubject(e.target.value)}
             style={{ width: '100%', background: '#0a0f1d', color: '#fff', border: '1px solid #1e293b', borderRadius: 6, padding: 8, marginBottom: 8, fontSize: 13 }}
           />
           <textarea
+            aria-label="Draft body"
             value={body}
             onChange={e => setBody(e.target.value)}
             style={{ width: '100%', minHeight: 120, background: '#0a0f1d', color: '#ccc', border: '1px solid #1e293b', borderRadius: 6, padding: 8, fontSize: 13, whiteSpace: 'pre-wrap' }}

@@ -67,11 +67,11 @@ export default function ContactSupportModal({ businessId, defaultName = '', defa
           </>
         ) : (
           <form onSubmit={handleSubmit}>
-            <input placeholder="Your name" value={name} onChange={e => setName(e.target.value)}
+            <input aria-label="Your name" placeholder="Your name" value={name} onChange={e => setName(e.target.value)}
               style={{ width: '100%', boxSizing: 'border-box', background: '#050811', border: '1px solid #1e293b', borderRadius: 8, color: '#fff', padding: '10px 12px', fontSize: 14, marginBottom: 10 }} />
-            <input placeholder="Email or phone (so we can reply)" value={contact} onChange={e => setContact(e.target.value)}
+            <input aria-label="Email or phone" placeholder="Email or phone (so we can reply)" value={contact} onChange={e => setContact(e.target.value)}
               style={{ width: '100%', boxSizing: 'border-box', background: '#050811', border: '1px solid #1e293b', borderRadius: 8, color: '#fff', padding: '10px 12px', fontSize: 14, marginBottom: 10 }} />
-            <textarea required placeholder="What's up?" rows={4} value={message} onChange={e => setMessage(e.target.value)}
+            <textarea aria-label="What's up" required placeholder="What's up?" rows={4} value={message} onChange={e => setMessage(e.target.value)}
               style={{ width: '100%', boxSizing: 'border-box', background: '#050811', border: '1px solid #1e293b', borderRadius: 8, color: '#fff', padding: '10px 12px', fontSize: 14, marginBottom: 12, fontFamily: 'inherit', resize: 'vertical' }} />
             {error && <p style={{ color: '#e07a7a', fontSize: 13, marginBottom: 12 }}>{error}</p>}
             <div style={{ display: 'flex', gap: 10 }}>

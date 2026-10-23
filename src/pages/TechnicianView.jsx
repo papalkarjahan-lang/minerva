@@ -1600,6 +1600,7 @@ export default function TechnicianView() {
           {materialLines.map((line, i) => (
             <div key={i} style={styles.invoiceRow}>
               <select
+                aria-label={`Material/part for line ${i + 1}`}
                 value={line.inventory_item_id}
                 onChange={(e) => updateMaterialLine(i, 'inventory_item_id', e.target.value)}
                 style={styles.materialSelect}
@@ -1612,6 +1613,7 @@ export default function TechnicianView() {
                 ))}
               </select>
               <input
+                aria-label={`Quantity used for line ${i + 1}`}
                 type="number"
                 min="0"
                 step="any"
@@ -1640,6 +1642,7 @@ export default function TechnicianView() {
           {invoiceItems.map((item, i) => (
             <div key={i} style={styles.invoiceRow}>
               <input
+                aria-label={`Invoice line ${i + 1} description`}
                 type="text"
                 placeholder="Description"
                 value={item.description}
@@ -1647,6 +1650,7 @@ export default function TechnicianView() {
                 style={styles.invoiceDescInput}
               />
               <input
+                aria-label={`Invoice line ${i + 1} amount`}
                 type="number"
                 placeholder="$"
                 value={item.amount}
@@ -1768,6 +1772,7 @@ export default function TechnicianView() {
                   Log a dispute, near-miss/hazard, or general note{currentJob ? ' for this job' : ''}. Your dispatcher sees this on the job's incident log.
                 </p>
                 <select
+                  aria-label="Incident category"
                   value={incidentCategory}
                   onChange={e => setIncidentCategory(e.target.value)}
                   style={{ width: '100%', boxSizing: 'border-box', background: '#050811', border: '1px solid #1e293b', borderRadius: 8, color: '#fff', padding: '10px 12px', fontSize: 14, marginBottom: 10 }}
@@ -1778,6 +1783,7 @@ export default function TechnicianView() {
                   <option value="commendation">Commendation</option>
                 </select>
                 <textarea
+                  aria-label="What happened"
                   required
                   placeholder="What happened?"
                   rows={4}

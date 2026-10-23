@@ -2510,6 +2510,7 @@ export default function DispatcherView() {
                   </div>
                 )}
                 <input
+                  aria-label={`${tech.name || 'Technician'} skills`}
                   defaultValue={(tech.skills || []).join(', ')}
                   placeholder="Skills (comma-separated, e.g. confined_space)"
                   onClick={(e) => e.stopPropagation()}
@@ -2714,6 +2715,7 @@ export default function DispatcherView() {
                   <p style={styles.jobStatus(job.status)}>{job.status.toUpperCase()}</p>
                   <div style={{ display: 'flex', gap: 6, marginBottom: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                     <input
+                      aria-label="Reschedule this job"
                       type="datetime-local" defaultValue={job.scheduled_time ? job.scheduled_time.slice(0, 16) : ''}
                       title="Reschedule this job"
                       onBlur={e => e.target.value && rescheduleJob(job.id, new Date(e.target.value).toISOString())}
@@ -2725,7 +2727,7 @@ export default function DispatcherView() {
                     </button>
                   </div>
                   {job.status === 'scheduled' && !job.technician_id && !job.assigned_subcontractor_id && (
-                    <select style={styles.assignSelect} disabled={assigningJobIds.has(job.id)}
+                    <select aria-label="Assign technician" style={styles.assignSelect} disabled={assigningJobIds.has(job.id)}
                       onChange={(e) => e.target.value && assignJob(job.id, e.target.value)}>
                       <option value="">Assign tech...</option>
                       {technicians.map(t => (
@@ -2734,7 +2736,7 @@ export default function DispatcherView() {
                     </select>
                   )}
                   {hasAddon(business, 'subcontractor_pool') && job.status === 'scheduled' && !job.technician_id && !job.assigned_subcontractor_id && subcontractors.length > 0 && (
-                    <select style={{ ...styles.assignSelect, marginTop: 4 }} disabled={assigningJobIds.has(job.id)}
+                    <select aria-label="Assign subcontractor" style={{ ...styles.assignSelect, marginTop: 4 }} disabled={assigningJobIds.has(job.id)}
                       onChange={(e) => e.target.value && assignJobSubcontractor(job.id, e.target.value)}>
                       <option value="">Assign subcontractor...</option>
                       {subcontractors.map(s => (
@@ -2770,7 +2772,7 @@ export default function DispatcherView() {
                   )}
                   {job.technician_id && hasAddon(business, 'crew_splitting') &&
                     technicians.filter(t => t.id !== job.technician_id && !(jobCrew[job.id] || []).some(a => a.technician_id === t.id)).length > 0 && (
-                    <select style={{ ...styles.assignSelect, marginTop: 4 }}
+                    <select aria-label="Add crew member" style={{ ...styles.assignSelect, marginTop: 4 }}
                       onChange={(e) => { if (e.target.value) addCrewMember(job.id, e.target.value); e.target.value = '' }}>
                       <option value="">+ Add crew member...</option>
                       {technicians.filter(t => t.id !== job.technician_id && !(jobCrew[job.id] || []).some(a => a.technician_id === t.id)).map(t => (
@@ -2845,6 +2847,7 @@ export default function DispatcherView() {
                                   {action.status !== 'closed' && (
                                     <div style={{ display: 'flex', gap: 6 }} onClick={(e) => e.stopPropagation()}>
                                       <select
+                                        aria-label={`Assign corrective action: ${action.title}`}
                                         defaultValue={action.assigned_to_technician_id || ''}
                                         onChange={e => assignCorrectiveAction(job.id, action.id, e.target.value)}
                                         style={styles.incidentSelect}>
@@ -2852,6 +2855,7 @@ export default function DispatcherView() {
                                         {technicians.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                                       </select>
                                       <input
+                                        aria-label={`Due date for: ${action.title}`}
                                         type="date"
                                         defaultValue={action.due_date || ''}
                                         onChange={e => setCorrectiveActionDueDate(job.id, action.id, e.target.value)}
@@ -2896,6 +2900,7 @@ export default function DispatcherView() {
                             )}
                             <div style={{ display: 'flex', gap: 6, marginTop: 6 }} onClick={(e) => e.stopPropagation()}>
                               <select
+                                aria-label="Incident category"
                                 value={incidentDraft.category}
                                 onChange={e => setIncidentDraft(prev => ({ ...prev, category: e.target.value }))}
                                 style={styles.incidentSelect}>
@@ -2905,6 +2910,7 @@ export default function DispatcherView() {
                                 <option value="commendation">Commendation</option>
                               </select>
                               <input
+                                aria-label="Incident note"
                                 type="text"
                                 placeholder="Add a note..."
                                 value={incidentDraft.description}
@@ -2933,13 +2939,13 @@ export default function DispatcherView() {
               </p>
               {showAddSubcontractor && (
                 <div style={{ ...styles.jobRow, marginBottom: 10 }}>
-                  <input style={styles.input} placeholder="Name" value={newSubcontractor.name}
+                  <input aria-label="Subcontractor name" style={styles.input} placeholder="Name" value={newSubcontractor.name}
                     onChange={(e) => setNewSubcontractor(prev => ({ ...prev, name: e.target.value }))} />
-                  <input style={{ ...styles.input, marginTop: 6 }} placeholder="Phone" value={newSubcontractor.phone}
+                  <input aria-label="Subcontractor phone" style={{ ...styles.input, marginTop: 6 }} placeholder="Phone" value={newSubcontractor.phone}
                     onChange={(e) => setNewSubcontractor(prev => ({ ...prev, phone: e.target.value }))} />
-                  <input style={{ ...styles.input, marginTop: 6 }} placeholder="Skills (comma-separated)" value={newSubcontractor.skills}
+                  <input aria-label="Subcontractor skills" style={{ ...styles.input, marginTop: 6 }} placeholder="Skills (comma-separated)" value={newSubcontractor.skills}
                     onChange={(e) => setNewSubcontractor(prev => ({ ...prev, skills: e.target.value }))} />
-                  <input style={{ ...styles.input, marginTop: 6 }} type="number" placeholder="Hourly rate ($)" value={newSubcontractor.hourly_rate}
+                  <input aria-label="Subcontractor hourly rate" style={{ ...styles.input, marginTop: 6 }} type="number" placeholder="Hourly rate ($)" value={newSubcontractor.hourly_rate}
                     onChange={(e) => setNewSubcontractor(prev => ({ ...prev, hourly_rate: e.target.value }))} />
                   <button style={{ ...styles.leadActionPrimary, marginTop: 8 }} disabled={savingSubcontractor} onClick={addSubcontractor}>{savingSubcontractor ? 'Saving...' : 'Save'}</button>
                 </div>
@@ -3050,6 +3056,7 @@ export default function DispatcherView() {
                       see supabase_schema_delta_lead_crm_pipeline.sql */}
                   <div style={{ display: 'flex', gap: 6, marginTop: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                     <select
+                      aria-label={`Pipeline stage for ${lead.client_name || 'lead'}`}
                       value={lead.pipeline_stage || 'new'}
                       onChange={e => updateLeadPipelineStage(lead.id, e.target.value)}
                       style={styles.pipelineStageSelect}
@@ -3063,11 +3070,13 @@ export default function DispatcherView() {
                       <option value="lost">Lost</option>
                     </select>
                     <input
+                      aria-label="Estimated deal value, low end"
                       type="number" placeholder="Est. $ low" defaultValue={lead.deal_value_estimate_low ?? ''}
                       onBlur={e => updateLeadDealValue(lead.id, e.target.value, lead.deal_value_estimate_high ?? '')}
                       style={styles.dealValueInput}
                     />
                     <input
+                      aria-label="Estimated deal value, high end"
                       type="number" placeholder="Est. $ high" defaultValue={lead.deal_value_estimate_high ?? ''}
                       onBlur={e => updateLeadDealValue(lead.id, lead.deal_value_estimate_low ?? '', e.target.value)}
                       style={styles.dealValueInput}
@@ -3075,6 +3084,7 @@ export default function DispatcherView() {
                     {/* Lead owner — who's chasing this, not an access gate.
                         See supabase_schema_delta_lead_assignment.sql. */}
                     <select
+                      aria-label={`Assigned technician for ${lead.client_name || 'lead'}`}
                       value={lead.assigned_to_technician_id || ''}
                       onChange={e => assignLead(lead.id, e.target.value)}
                       style={styles.pipelineStageSelect}
@@ -3087,11 +3097,13 @@ export default function DispatcherView() {
                   </div>
                   <div style={{ display: 'flex', gap: 6, marginTop: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                     <input
+                      aria-label="Next action date and time"
                       type="datetime-local" defaultValue={lead.next_action_at ? lead.next_action_at.slice(0, 16) : ''}
                       onBlur={e => updateLeadNextAction(lead.id, e.target.value ? new Date(e.target.value).toISOString() : null, lead.next_action_note ?? '')}
                       style={styles.dealValueInput}
                     />
                     <input
+                      aria-label="Next action note"
                       type="text" placeholder="Next action note, e.g. 'call back Thursday'" defaultValue={lead.next_action_note ?? ''}
                       onBlur={e => updateLeadNextAction(lead.id, lead.next_action_at ?? null, e.target.value)}
                       style={{ ...styles.dealValueInput, flex: 1, minWidth: 160 }}
@@ -3113,6 +3125,7 @@ export default function DispatcherView() {
                     <div style={{ marginTop: 8, padding: 10, background: '#0f1420', borderRadius: 8, border: '1px solid #1e293b' }}>
                       <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
                         <input
+                          aria-label="Log a note or call"
                           type="text" placeholder="Log a note or call..." value={newLeadNote}
                           onChange={e => setNewLeadNote(e.target.value)}
                           style={{ ...styles.dealValueInput, flex: 1 }}
@@ -3213,7 +3226,7 @@ export default function DispatcherView() {
                     <span style={styles.assetStatusBadge(asset.status)}>{(asset.status || 'available').replace('_', ' ').toUpperCase()}</span>
                   </div>
                   <p style={styles.jobAddr}>{asset.category}{asset.serial_number ? ` · ${asset.serial_number}` : ''}</p>
-                  <select style={styles.assignSelect} value={asset.assigned_technician_id || ''}
+                  <select aria-label={`Assign technician to ${asset.name}`} style={styles.assignSelect} value={asset.assigned_technician_id || ''}
                     onChange={(e) => assignAsset(asset.id, e.target.value)}>
                     <option value="">Unassigned</option>
                     {technicians.map(t => (
@@ -3417,6 +3430,7 @@ export default function DispatcherView() {
                     </p>
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 6 }}>
                       <input
+                        aria-label={`Quantity on hand for ${item.name || 'item'}`}
                         type="number"
                         min="0"
                         step="any"
@@ -4016,6 +4030,7 @@ export default function DispatcherView() {
                 </p>
                 <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 8 }}>
                   <input
+                    aria-label="GPS trail date"
                     type="date" value={trailDate} max={today}
                     onChange={e => setTrailDate(e.target.value)}
                     style={{ fontSize: 12, padding: '3px 4px', border: '1px solid #ccc', borderRadius: 4 }}
@@ -4052,6 +4067,7 @@ export default function DispatcherView() {
                         {replayPlaying ? '⏸ Pause' : replayElapsedMs >= replayDurationMs ? '↺ Replay' : '▶ Play'}
                       </button>
                       <select
+                        aria-label="Replay speed"
                         value={replaySpeed}
                         onChange={e => setReplaySpeed(Number(e.target.value))}
                         style={{ fontSize: 12, padding: '3px 4px', border: '1px solid #ccc', borderRadius: 4 }}
@@ -4063,6 +4079,7 @@ export default function DispatcherView() {
                       </select>
                     </div>
                     <input
+                      aria-label="Replay position"
                       type="range" min={0} max={Math.max(replayDurationMs, 1)} value={Math.min(replayElapsedMs, replayDurationMs)}
                       onChange={e => { setReplayPlaying(false); setReplayElapsedMs(Number(e.target.value)) }}
                       style={{ width: '100%', marginTop: 6 }}
@@ -4749,6 +4766,7 @@ function ChecklistModal({ businessId, template, type = 'completion', onSaved, on
           {items.map((item, i) => (
             <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
               <input
+                aria-label={`Checklist item ${i + 1}`}
                 type="text"
                 value={item}
                 onChange={e => updateItem(i, e.target.value)}
