@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { classifyTwilioAccountStatus, shouldAlert } from './logic'
+import { classifyTwilioAccountStatus, describePhoneNumberGap, shouldAlert } from './logic'
 
 describe('classifyTwilioAccountStatus', () => {
   it('is healthy when the API call succeeded and the account is active', () => {
@@ -29,6 +29,31 @@ describe('classifyTwilioAccountStatus', () => {
   it('treats a missing status string as unhealthy rather than assuming active', () => {
     const result = classifyTwilioAccountStatus(true, null)
     expect(result.healthy).toBe(false)
+  })
+})
+
+describe('describePhoneNumberGap', () => {
+  it('tells the user to fix the account first when it is not healthy', () => {
+    const detail = describePhoneNumberGap(false, [])
+    expect(detail).toContain('no "From" number')
+    expect(detail).not.toContain('already has')
+  })
+
+  it('says to buy a number when the account is healthy but none exist', () => {
+    const detail = describePhoneNumberGap(true, [])
+    expect(detail).toContain('no phone number is purchased')
+  })
+
+  it('names the existing number(s) when the account already has one, so the fix is "set the secret" not "buy a number"', () => {
+    const detail = describePhoneNumberGap(true, ['+61412345678'])
+    expect(detail).toContain('+61412345678')
+    expect(detail).toContain('already has a real number purchased')
+    expect(detail).not.toContain('no phone number is purchased')
+  })
+
+  it('truncates a long list of numbers rather than dumping all of them', () => {
+    const detail = describePhoneNumberGap(true, ['+1', '+2', '+3', '+4', '+5'])
+    expect(detail).toContain('+2 more')
   })
 })
 

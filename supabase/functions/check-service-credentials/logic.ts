@@ -26,6 +26,23 @@ export function classifyTwilioAccountStatus(httpOk: boolean, accountStatus: stri
   return { service: 'twilio', healthy: true, detail: 'Twilio account is active.' }
 }
 
+// Builds the TWILIO_PHONE_NUMBER alert detail — and, when the Twilio
+// account is itself healthy, looks up whether a real number is already
+// sitting purchased on the account (via a free, read-only call to
+// /IncomingPhoneNumbers.json) so the alert can say "set it to +61..."
+// instead of just "go buy one" when a number may already exist and
+// simply never got wired into Supabase secrets.
+export function describePhoneNumberGap(twilioAccountHealthy: boolean, existingNumbers: string[]): string {
+  if (!twilioAccountHealthy) {
+    return 'TWILIO_PHONE_NUMBER not set — even a fully working Twilio account has no "From" number to send with.'
+  }
+  if (existingNumbers.length === 0) {
+    return 'TWILIO_PHONE_NUMBER not set, and no phone number is purchased on this Twilio account yet — buy one in the Twilio Console, then set the secret to it.'
+  }
+  const list = existingNumbers.slice(0, 3).join(', ') + (existingNumbers.length > 3 ? `, +${existingNumbers.length - 3} more` : '')
+  return `TWILIO_PHONE_NUMBER not set, but this Twilio account already has a real number purchased (${list}) — just set the secret to it, no need to buy a new one.`
+}
+
 // Only alert on a TRANSITION into an unhealthy state (including the very
 // first check ever, if it's already unhealthy) — not on every subsequent
 // daily run for an already-known, not-yet-fixed problem. The whole point

@@ -37,7 +37,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
-import { classifyTwilioAccountStatus, shouldAlert, type ServiceCheckResult } from "./logic.ts"
+import { classifyTwilioAccountStatus, describePhoneNumberGap, shouldAlert, type ServiceCheckResult } from "./logic.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -59,6 +59,7 @@ serve(async (req: Request) => {
     // --- Twilio: real account-status check, not just presence ---
     const twilioSid = Deno.env.get('TWILIO_ACCOUNT_SID')
     const twilioToken = Deno.env.get('TWILIO_AUTH_TOKEN')
+    let twilioAccountHealthy = false
     if (!twilioSid || !twilioToken) {
       results.push({ service: 'twilio', healthy: false, detail: 'TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN not set — SMS is a complete no-op.' })
     } else {
@@ -66,10 +67,25 @@ serve(async (req: Request) => {
         headers: { 'Authorization': 'Basic ' + btoa(`${twilioSid}:${twilioToken}`) },
       }).catch(() => null)
       const body = res ? await res.json().catch(() => ({})) : {}
-      results.push(classifyTwilioAccountStatus(!!res && res.ok, (body as any).status || null))
+      const twilioResult = classifyTwilioAccountStatus(!!res && res.ok, (body as any).status || null)
+      twilioAccountHealthy = twilioResult.healthy
+      results.push(twilioResult)
     }
     if (!Deno.env.get('TWILIO_PHONE_NUMBER')) {
-      results.push({ service: 'twilio_phone_number', healthy: false, detail: 'TWILIO_PHONE_NUMBER not set — even a fully working Twilio account has no "From" number to send with.' })
+      // When the account itself is healthy, check whether a real number is
+      // already purchased and just never got wired into Supabase secrets —
+      // a free, read-only call, so the alert can say exactly which number
+      // to use instead of just "go buy one." See logic.ts's
+      // describePhoneNumberGap for the full reasoning.
+      let existingNumbers: string[] = []
+      if (twilioAccountHealthy && twilioSid && twilioToken) {
+        const numRes = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/IncomingPhoneNumbers.json?PageSize=5`, {
+          headers: { 'Authorization': 'Basic ' + btoa(`${twilioSid}:${twilioToken}`) },
+        }).catch(() => null)
+        const numBody = numRes && numRes.ok ? await numRes.json().catch(() => ({})) : {}
+        existingNumbers = ((numBody as any).incoming_phone_numbers || []).map((n: any) => n.phone_number).filter(Boolean)
+      }
+      results.push({ service: 'twilio_phone_number', healthy: false, detail: describePhoneNumberGap(twilioAccountHealthy, existingNumbers) })
     }
 
     // --- Presence-only checks (see header for why no live API call) ---
