@@ -104,6 +104,11 @@ const CADENCE_MINUTES: Record<string, number> = {
   'agent-council-report': 7 * 24 * 60,
   'lead-followup-reminder': 15,
   'notify-addon-trial-ending': 24 * 60,
+  // Added 2026-10-24, same reasoning as the 2026-09-29 pair above —
+  // check-service-credentials has a known daily cadence, so its own
+  // staleness is worth catching too (the one thing checking everyone
+  // else's health shouldn't itself be invisible if it goes silent).
+  'check-service-credentials': 24 * 60,
 }
 
 serve(async (req: Request) => {
