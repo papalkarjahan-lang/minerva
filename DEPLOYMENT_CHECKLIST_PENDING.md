@@ -1452,6 +1452,32 @@ see git log / this file's "Confirmed live" section above for history.)*
   domain first — `minervaops.com.au` was confirmed NOT yet registered
   earlier in this project (see index.html's own comment on this) — so
   this may be blocked on that happening first.
+  **Updated 2026-10-24 — re-confirmed still unregistered** (direct `dig`/
+  `host` lookup: NXDOMAIN), but found via 2 unread inbox notifications
+  that ImprovMX and Vercel are both already pre-configured and just
+  waiting on the domain to exist, so registering it is now genuinely the
+  only remaining step before all of the below can be finished in one
+  sitting:
+  1. **Register `minervaops.com.au`** at any registrar (e.g. VentraIP,
+     Crazy Domains — `.com.au` needs an ABN or a registered business
+     name; see this file's ABN-related entries elsewhere if that's not
+     sorted yet).
+  2. **Point it at Vercel**: Vercel already has this domain added to the
+     `minerva` project (flagged as "misconfigured" in a 2026-10-10
+     notification, since nothing resolved yet) — add whatever A/CNAME
+     records Vercel's own domain settings page shows
+     (vercel.com/papalkarjahan-lang/minerva/settings/domains), standard
+     Vercel pattern is an A record to `76.76.21.21` for the apex domain.
+  3. **Point it at ImprovMX for email forwarding** — exact records from
+     ImprovMX's own 2026-10-20 reminder email:
+     ```
+     Host: @   Value: mx1.improvmx.com   Priority: 10
+     Host: @   Value: mx2.improvmx.com   Priority: 20
+     ```
+     Verify propagation at https://inspector.improvmx.com/minervaops.com.au
+  4. **Then** verify the domain in Resend (adds its own SPF/DKIM TXT
+     records, separate from steps 2-3 above) and set `RESEND_FROM_EMAIL`
+     as already described above.
 - **RESOLVED locally, Vercel unconfirmed (updated 2026-10-23) —
   `VITE_SENTRY_DSN`.** `.env.local` now has a real DSN set
   (`https://...@o4512292136550400.ingest.de.sentry.io/...`). Same caveat
