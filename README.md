@@ -7,6 +7,40 @@ A separate, additive **industrial sector** also exists for multi-site/heavy-equi
 
 ---
 
+## Standing convention, effective 2026-10-30: every new table needs explicit grants in the same delta
+
+Found 2026-10-24 via a Supabase platform notice sitting unread in the
+account owner's inbox (`noreply@supabase.com`, "Final notice: new tables
+in 'public' need grants from October 30") — surfaced here so it isn't
+missed by a future session that only reads project files, not email.
+
+**What changes, and when:** from 2026-10-30 onward, Supabase stops
+auto-granting Data API access (supabase-js/PostgREST/GraphQL) to any
+*newly created* table in the `public` schema. Every `create table`
+statement written after that date needs its own `grant` statements in
+the **same** delta file, or the table silently returns "permission
+denied" to every caller — including `service_role`, per Supabase's own
+notice, so this isn't just an anon/authenticated concern this time.
+**Existing tables are explicitly unaffected** — confirmed directly from
+Supabase's notice ("Your existing tables are not affected. They keep
+their current grants") — so nothing already in `supabase_schema.sql` or
+any already-applied delta needs touching retroactively.
+
+Template for any new table from now on:
+```sql
+create table public.your_table (...);
+
+grant select on public.your_table to anon;              -- only if a public/client page needs anon read
+grant select, insert, update, delete on public.your_table to authenticated;
+grant select, insert, update, delete on public.your_table to service_role;
+```
+Narrow the `anon`/`authenticated` grants to match this project's existing
+RLS-plus-column-grant conventions (see `SECURITY_NOTES.md`) — the
+`service_role` grant is the one this notice makes newly mandatory;
+everything else about scoping access correctly is unchanged.
+
+---
+
 ## Day 1: Set up accounts (do these first)
 
 ### 1. Supabase (database + backend)
