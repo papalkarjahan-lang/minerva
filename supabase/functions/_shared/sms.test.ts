@@ -14,6 +14,10 @@ import {
   buildJobRescheduledMessage,
   buildJobRescheduledTechMessage,
   buildAppointmentReminderMessage,
+  isStopKeyword,
+  isStartKeyword,
+  buildOptOutConfirmationMessage,
+  buildOptInConfirmationMessage,
 } from './sms'
 
 describe('formatAuPhone', () => {
@@ -261,5 +265,60 @@ describe('buildAppointmentReminderMessage', () => {
   it('falls back to a generic greeting when clientName is missing', () => {
     const msg = buildAppointmentReminderMessage({ businessName: 'Acme Plumbing', when: 'tomorrow, 10am' })
     expect(msg).toContain('Hi there, just a reminder')
+  })
+})
+
+describe('isStopKeyword', () => {
+  it('recognizes every standard carrier opt-out keyword, case-insensitively', () => {
+    expect(isStopKeyword('STOP')).toBe(true)
+    expect(isStopKeyword('stop')).toBe(true)
+    expect(isStopKeyword('Stop')).toBe(true)
+    expect(isStopKeyword('StopAll')).toBe(true)
+    expect(isStopKeyword('unsubscribe')).toBe(true)
+    expect(isStopKeyword('cancel')).toBe(true)
+    expect(isStopKeyword('end')).toBe(true)
+    expect(isStopKeyword('quit')).toBe(true)
+  })
+
+  it('tolerates surrounding whitespace and trailing punctuation', () => {
+    expect(isStopKeyword('  stop  ')).toBe(true)
+    expect(isStopKeyword('Stop!')).toBe(true)
+    expect(isStopKeyword('stop.')).toBe(true)
+  })
+
+  it('does not match a keyword embedded in an ordinary sentence', () => {
+    expect(isStopKeyword("don't stop the quote")).toBe(false)
+    expect(isStopKeyword('please cancel my 3pm booking instead')).toBe(false)
+  })
+
+  it('does not match an empty or unrelated reply', () => {
+    expect(isStopKeyword('')).toBe(false)
+    expect(isStopKeyword('running late, 10 min')).toBe(false)
+  })
+})
+
+describe('isStartKeyword', () => {
+  it('recognizes the standard opt-in keywords, case-insensitively', () => {
+    expect(isStartKeyword('START')).toBe(true)
+    expect(isStartKeyword('start')).toBe(true)
+    expect(isStartKeyword('unstop')).toBe(true)
+    expect(isStartKeyword('YES')).toBe(true)
+  })
+
+  it('does not match an unrelated reply', () => {
+    expect(isStartKeyword('started the job')).toBe(false)
+    expect(isStartKeyword('')).toBe(false)
+  })
+})
+
+describe('buildOptOutConfirmationMessage / buildOptInConfirmationMessage', () => {
+  it('names the business and explains how to resubscribe', () => {
+    const msg = buildOptOutConfirmationMessage('Acme Plumbing')
+    expect(msg).toContain('Acme Plumbing')
+    expect(msg).toContain('START')
+  })
+
+  it('confirms resubscription by name', () => {
+    expect(buildOptInConfirmationMessage('Acme Plumbing')).toBe("You're resubscribed to Acme Plumbing text messages.")
   })
 })

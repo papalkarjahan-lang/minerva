@@ -57,6 +57,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { formatAuPhone, buildEtaMessage } from "../_shared/sms.ts"
 import { isOwnerOrAssignedTechnician, getAuthenticatedCaller } from "../_shared/ownership.ts"
+import { isOptedOutOfSms } from "../_shared/smsOptOut.ts"
 
 serve(async (req: Request) => {
   // CORS
@@ -111,6 +112,16 @@ serve(async (req: Request) => {
 
     if (job.sms_sent) {
       return new Response(JSON.stringify({ success: true, skipped: 'already_sent' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+
+    // Respect a client's own STOP reply (see supabase_schema_delta_sms_opt_out.sql)
+    // before claiming/sending — a claimed-but-skipped send would otherwise
+    // never be retriable even if the client later opts back in.
+    if (await isOptedOutOfSms(supabase, job.business_id, formatAuPhone(job.client_phone))) {
+      return new Response(JSON.stringify({ success: true, skipped: 'opted_out' }), {
         status: 200,
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
       })

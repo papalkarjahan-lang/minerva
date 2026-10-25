@@ -26,6 +26,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { formatAuPhone } from "../_shared/sms.ts"
 import { isOwnerOfBusiness, getAuthenticatedCaller } from "../_shared/ownership.ts"
+import { isOptedOutOfSms } from "../_shared/smsOptOut.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -79,6 +80,17 @@ serve(async (req: Request) => {
 
     if (!job.client_phone) throw new Error('This job has no client phone number on file')
     if (!TWILIO_SID || !TWILIO_TOKEN || !TWILIO_FROM) throw new Error('Twilio secrets not configured')
+
+    // Respect a client's own STOP reply (see supabase_schema_delta_sms_opt_out.sql)
+    // — checked before the draft is claimed into 'sending' so an opted-out
+    // client's draft doesn't get stuck there.
+    if (await isOptedOutOfSms(supabase, job.business_id, formatAuPhone(job.client_phone))) {
+      await supabase.from('weather_reschedule_drafts').update({ status: 'opted_out' }).eq('id', draftId).then(() => {}, () => {})
+      return new Response(JSON.stringify({ success: true, skipped: 'opted_out' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
 
     // Atomically claim the draft before sending any real SMS — the status
     // check above alone is a time-of-check/time-of-use race (two rapid

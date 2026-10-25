@@ -39,6 +39,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { formatAuPhone } from "../_shared/sms.ts"
 import { generateReferralCode } from "./logic.ts"
 import { isOwnerOfBusiness, getAuthenticatedCaller } from "../_shared/ownership.ts"
+import { isOptedOutOfSms } from "../_shared/smsOptOut.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -127,6 +128,18 @@ serve(async (req: Request) => {
     if (!invoice.client_phone) {
       await supabase.from('invoices').update({ referral_sms_failed: true }).eq('id', invoiceId)
       return new Response(JSON.stringify({ success: true, skipped: true, reason: 'no client phone on file' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+
+    // Respect a client's own STOP reply (see supabase_schema_delta_sms_opt_out.sql).
+    // Not a failure — referral_sms_failed is explicitly cleared so an
+    // opted-out client doesn't sit on DispatcherView's "needs resend" list
+    // forever for something that was never going to send.
+    if (await isOptedOutOfSms(supabase, invoice.business_id, formatAuPhone(invoice.client_phone))) {
+      await supabase.from('invoices').update({ referral_sms_failed: false }).eq('id', invoiceId)
+      return new Response(JSON.stringify({ success: true, skipped: true, reason: 'opted_out' }), {
         status: 200,
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
       })

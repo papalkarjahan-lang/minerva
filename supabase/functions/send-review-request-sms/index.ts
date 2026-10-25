@@ -34,6 +34,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { formatAuPhone, buildReviewRequestMessage } from "../_shared/sms.ts"
 import { isAddonActive } from "../_shared/maxAddons.ts"
 import { isOwnerOfBusiness, getAuthenticatedCaller } from "../_shared/ownership.ts"
+import { isOptedOutOfSms } from "../_shared/smsOptOut.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -97,6 +98,18 @@ serve(async (req: Request) => {
     const TWILIO_FROM = Deno.env.get('TWILIO_PHONE_NUMBER')
     if (!TWILIO_SID || !TWILIO_TOKEN || !TWILIO_FROM) {
       throw new Error('Twilio credentials not configured in Supabase secrets')
+    }
+
+    // Respect a client's own STOP reply (see supabase_schema_delta_sms_opt_out.sql)
+    // — this is the most marketing-like of this project's client SMS (a
+    // dispatcher deliberately asking for a review), so opt-out matters most
+    // here. Checked before the review_requests insert so an opted-out
+    // client's invoice isn't permanently marked "already requested".
+    if (await isOptedOutOfSms(supabase, invoice.business_id, formatAuPhone(invoice.client_phone))) {
+      return new Response(JSON.stringify({ success: true, skipped: 'opted_out' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
     }
 
     // The insert itself is the atomic claim (see supabase_schema_delta_

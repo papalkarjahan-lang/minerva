@@ -16,6 +16,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { formatAuPhone, buildJobCancelledMessage, buildJobCancelledTechMessage } from "../_shared/sms.ts"
 import { isOwnerOfBusiness, getAuthenticatedCaller } from "../_shared/ownership.ts"
+import { isOptedOutOfSms } from "../_shared/smsOptOut.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -36,7 +37,7 @@ serve(async (req: Request) => {
     if (!jobId) throw new Error('jobId is required')
 
     const { data: job, error: jobErr } = await supabase.from('jobs')
-      .select('id, client_name, client_phone, client_address, technician_id, businesses(name, owner_user_id, contact_email)')
+      .select('id, business_id, client_name, client_phone, client_address, technician_id, businesses(name, owner_user_id, contact_email)')
       .eq('id', jobId).maybeSingle()
     if (jobErr || !job) throw new Error('job not found')
 
@@ -101,12 +102,19 @@ serve(async (req: Request) => {
     const results: Record<string, string> = {}
 
     if (job.client_phone) {
-      try {
-        await sendSms(formatAuPhone(job.client_phone), buildJobCancelledMessage({ clientName: job.client_name, businessName: bizName }))
-        results.client = 'sent'
-      } catch (err) {
-        console.error('send-job-cancelled-sms: client send failed', err)
-        results.client = 'failed'
+      // Respect a client's own STOP reply (see supabase_schema_delta_sms_opt_out.sql).
+      // Only gates the client leg — a business's own technician can't opt
+      // out of being told about their own job.
+      if (await isOptedOutOfSms(supabase, job.business_id, formatAuPhone(job.client_phone))) {
+        results.client = 'opted_out'
+      } else {
+        try {
+          await sendSms(formatAuPhone(job.client_phone), buildJobCancelledMessage({ clientName: job.client_name, businessName: bizName }))
+          results.client = 'sent'
+        } catch (err) {
+          console.error('send-job-cancelled-sms: client send failed', err)
+          results.client = 'failed'
+        }
       }
     } else {
       results.client = 'no_phone'

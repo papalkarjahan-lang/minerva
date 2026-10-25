@@ -86,7 +86,10 @@ everything else about scoping access correctly is unchanged.
    business lookup — no extra setup if you already did step 4. A matched
    reply gets appended to that client's active job notes and posted to
    Slack (if configured); an unmatched one still posts to Slack with the
-   raw number.
+   raw number. A client who replies STOP/UNSUBSCRIBE/CANCEL/END/QUIT is
+   opted out of that business's future SMS instead (see
+   `SMS_COMPLIANCE_NOTES.md`) and gets a one-time confirmation text back;
+   START/UNSTOP/YES opts them back in.
 
 ### 4. Stripe (billing)
 1. Go to https://stripe.com/au → Sign up with your ABN

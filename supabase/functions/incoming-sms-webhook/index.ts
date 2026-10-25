@@ -38,14 +38,37 @@
 // same claim-first pattern already fixed into missed-call-webhook
 // (2026-09-29) rather than repeating that TOCTOU gap in new code.
 //
-// Deliberately does NOT send an automatic reply — an empty TwiML response
-// means Twilio does nothing further. Auto-replying to an unknown, possibly
-// urgent message ("running late, come at 3 instead?") with a generic text
-// could read as dismissive; better to just make sure a human sees it.
+// Deliberately does NOT auto-reply to an ordinary message — an empty TwiML
+// response means Twilio does nothing further. Auto-replying to an unknown,
+// possibly urgent message ("running late, come at 3 instead?") with a
+// generic text could read as dismissive; better to just make sure a human
+// sees it.
+//
+// STOP/START are the one exception (added 2026-10-25, see
+// supabase_schema_delta_sms_opt_out.sql): every client-facing SMS this
+// product sends either invites a reply or is the kind of notification a
+// client would reasonably reply to, and send-appointment-reminder-sms in
+// particular texts the same client again for every future job. Nothing
+// previously recognized "STOP" as anything other than ordinary text to
+// log and Slack — a real opt-out request would silently do nothing, and
+// every future send would still go out. Twilio doesn't reliably enforce
+// this itself for a standard AU long code outside its paid Advanced
+// Opt-Out add-on, so it's handled here instead, before the generic
+// note/Slack branch, and WITH a confirmation send (the one deliberate
+// exception to "no auto-reply" above — this is the one case where
+// silence is the wrong default: a client needs to know the stop/restart
+// actually took effect).
+//
+// Required Supabase secrets, now also: TWILIO_ACCOUNT_SID (the
+// confirmation send's "From" is just `to` — the same number the client
+// already texted, whether that's the business's own twilio_number or the
+// shared platform fallback, so no new From-number secret is needed) —
+// this function sends one confirmation SMS now, where previously it
+// never sent anything.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
-import { formatAuPhone } from "../_shared/sms.ts"
+import { formatAuPhone, isStopKeyword, isStartKeyword, buildOptOutConfirmationMessage, buildOptInConfirmationMessage } from "../_shared/sms.ts"
 
 const supabaseAdmin = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -108,7 +131,10 @@ serve(async (req: Request) => {
       // Look up the business by its Twilio number — same lookup shape as
       // missed-call-webhook. A business on the shared platform fallback
       // number (no twilio_number set) can't be resolved this way; the
-      // reply is still worth logging, just without a business to Slack.
+      // reply is still worth logging, just without a business to Slack —
+      // and, for STOP/START below, an opt-out can't be scoped to a
+      // business we couldn't identify, so it's skipped in that case too
+      // (same inherent limitation, not a new one this introduces).
       let businessId: string | null = null
       let businessName = 'a client'
       if (to) {
@@ -118,6 +144,37 @@ serve(async (req: Request) => {
           .eq('twilio_number', to)
           .maybeSingle()
         if (biz?.id) { businessId = biz.id; businessName = biz.name || businessName }
+      }
+
+      const normalizedFromForOptOut = formatAuPhone(from)
+      const twilioSid = Deno.env.get('TWILIO_ACCOUNT_SID')
+      const twilioToken = Deno.env.get('TWILIO_AUTH_TOKEN')
+      async function sendConfirmation(message: string) {
+        if (!twilioSid || !twilioToken || !to) return
+        await fetch(`https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`, {
+          method: 'POST',
+          headers: { 'Authorization': 'Basic ' + btoa(`${twilioSid}:${twilioToken}`), 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({ To: from, From: to, Body: message }).toString(),
+        }).catch(err => console.error('incoming-sms-webhook: opt-out confirmation send failed', err))
+      }
+
+      if (businessId && isStopKeyword(body)) {
+        await supabaseAdmin.from('sms_opt_outs').upsert({ business_id: businessId, phone: normalizedFromForOptOut }).then(() => {}, () => {})
+        await sendConfirmation(buildOptOutConfirmationMessage(businessName))
+        await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/notify-slack`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}` },
+          body: JSON.stringify({ businessId, text: `🔇 ${from} replied STOP and has been unsubscribed from ${businessName}'s text messages.` }),
+        }).catch(() => {})
+        await supabaseAdmin.rpc('record_agent_run', { fn_name: 'incoming-sms-webhook', status: 'ok' }).then(() => {}, () => {})
+        return new Response(`<?xml version="1.0" encoding="UTF-8"?><Response></Response>`, { status: 200, headers: { 'Content-Type': 'text/xml' } })
+      }
+
+      if (businessId && isStartKeyword(body)) {
+        await supabaseAdmin.from('sms_opt_outs').delete().eq('business_id', businessId).eq('phone', normalizedFromForOptOut).then(() => {}, () => {})
+        await sendConfirmation(buildOptInConfirmationMessage(businessName))
+        await supabaseAdmin.rpc('record_agent_run', { fn_name: 'incoming-sms-webhook', status: 'ok' }).then(() => {}, () => {})
+        return new Response(`<?xml version="1.0" encoding="UTF-8"?><Response></Response>`, { status: 200, headers: { 'Content-Type': 'text/xml' } })
       }
 
       if (businessId) {

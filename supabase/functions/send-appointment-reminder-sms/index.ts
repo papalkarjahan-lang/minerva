@@ -27,7 +27,8 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { addLocalDays, localMidnightUTC } from "./logic.ts"
 import { sendTwilioSms } from "../_shared/twilioSms.ts"
-import { buildAppointmentReminderMessage } from "../_shared/sms.ts"
+import { buildAppointmentReminderMessage, formatAuPhone } from "../_shared/sms.ts"
+import { isOptedOutOfSms } from "../_shared/smsOptOut.ts"
 import { chunk } from "../_shared/batch.ts"
 import { hasStandardAutomation } from "../_shared/tierEligibility.ts"
 
@@ -132,6 +133,16 @@ async function processOneJob(
     .select('id')
   if (claimErr) { console.error('send-appointment-reminder-sms: claim failed:', claimErr.message); return false }
   if (!claimed || claimed.length === 0) return false // already claimed, or no longer scheduled
+
+  // Respect a client's own STOP reply (see supabase_schema_delta_sms_opt_out.sql)
+  // — this is the one client SMS in this codebase that repeats for every
+  // future job, so it's the single most important place to check. Keeps
+  // the claim (this job's reminder genuinely isn't going out, same as a
+  // successful send) and skips Twilio entirely rather than reverting it
+  // and counting it as a failure to the operator.
+  if (await isOptedOutOfSms(supabase, job.business_id, formatAuPhone(job.client_phone))) {
+    return false
+  }
 
   const bizName = job.businesses?.name || 'us'
   const when = new Date(job.scheduled_time).toLocaleString('en-AU', {

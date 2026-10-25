@@ -25,6 +25,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { formatAuPhone } from "../_shared/sms.ts"
 import { isAddonActive } from "../_shared/maxAddons.ts"
 import { isOwnerOfBusiness, getAuthenticatedCaller } from "../_shared/ownership.ts"
+import { isOptedOutOfSms } from "../_shared/smsOptOut.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -83,6 +84,16 @@ serve(async (req: Request) => {
     const APP_URL = Deno.env.get('APP_URL') || ''
     if (!TWILIO_SID || !TWILIO_TOKEN || !TWILIO_FROM) {
       throw new Error('Twilio credentials not configured in Supabase secrets')
+    }
+
+    // Respect a client's own STOP reply (see supabase_schema_delta_sms_opt_out.sql)
+    // — checked before the quote is claimed into 'sending' so an opted-out
+    // client's quote doesn't get stuck there.
+    if (await isOptedOutOfSms(supabase, quote.business_id, formatAuPhone(quote.client_phone))) {
+      return new Response(JSON.stringify({ success: true, skipped: 'opted_out' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
     }
 
     // Atomically claim the quote before sending any real SMS — the status

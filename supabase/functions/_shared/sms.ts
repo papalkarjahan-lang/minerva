@@ -124,3 +124,38 @@ export function buildJobRescheduledTechMessage(opts: { techName?: string | null;
 export function buildAppointmentReminderMessage(opts: { clientName?: string | null; businessName: string; clientAddress?: string | null; when: string }): string {
   return `Hi ${opts.clientName || 'there'}, just a reminder — ${opts.businessName} has you scheduled for ${opts.when}${opts.clientAddress ? ` at ${opts.clientAddress}` : ''}. Reply here if you need to reschedule.`
 }
+
+// Found 2026-10-25: every client-facing message this file builds ends
+// with "Reply here" (or is a bare notification a client would reasonably
+// reply to), and send-appointment-reminder-sms sends the same client the
+// same kind of text repeatedly, job after job — but nothing anywhere
+// recognized a reply of "STOP" as anything other than ordinary text to
+// log and Slack (incoming-sms-webhook). Twilio doesn't reliably enforce
+// this itself for a standard AU long code outside its paid Advanced
+// Opt-Out add-on, so a client who texts STOP expecting it to work would
+// silently keep receiving every future SMS. These are the standard
+// keyword lists carriers/Twilio themselves treat as universal opt-out/
+// opt-in (case-insensitive, matched on the whole trimmed body so "stop"
+// works but "don't stop the quote" doesn't).
+const STOP_KEYWORDS = ['stop', 'stopall', 'unsubscribe', 'cancel', 'end', 'quit']
+const START_KEYWORDS = ['start', 'unstop', 'yes']
+
+function normalizeKeyword(body: string): string {
+  return body.trim().toLowerCase().replace(/[.!?]+$/, '')
+}
+
+export function isStopKeyword(body: string): boolean {
+  return STOP_KEYWORDS.includes(normalizeKeyword(body))
+}
+
+export function isStartKeyword(body: string): boolean {
+  return START_KEYWORDS.includes(normalizeKeyword(body))
+}
+
+export function buildOptOutConfirmationMessage(businessName: string): string {
+  return `You've been unsubscribed from ${businessName} text messages and won't receive any more. Reply START to resubscribe.`
+}
+
+export function buildOptInConfirmationMessage(businessName: string): string {
+  return `You're resubscribed to ${businessName} text messages.`
+}

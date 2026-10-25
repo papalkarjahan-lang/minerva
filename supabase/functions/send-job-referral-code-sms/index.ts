@@ -29,8 +29,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { sendTwilioSms } from "../_shared/twilioSms.ts"
+import { formatAuPhone } from "../_shared/sms.ts"
 import { generateReferralCode, shouldSkipForTier } from "./logic.ts"
 import { isOwnerOrAssignedTechnician, getAuthenticatedCaller } from "../_shared/ownership.ts"
+import { isOptedOutOfSms } from "../_shared/smsOptOut.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -121,6 +123,17 @@ serve(async (req: Request) => {
     if (!job.client_phone) {
       await supabase.from('jobs').update({ referral_sms_failed: true }).eq('id', jobId)
       return new Response(JSON.stringify({ success: true, skipped: true, reason: 'no client phone on file' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      })
+    }
+
+    // Respect a client's own STOP reply (see supabase_schema_delta_sms_opt_out.sql).
+    // Not a failure — cleared explicitly so an opted-out client doesn't sit
+    // on the "needs resend" list for something that was never going to send.
+    if (await isOptedOutOfSms(supabase, job.business_id, formatAuPhone(job.client_phone))) {
+      await supabase.from('jobs').update({ referral_sms_failed: false }).eq('id', jobId)
+      return new Response(JSON.stringify({ success: true, skipped: true, reason: 'opted_out' }), {
         status: 200,
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
       })
