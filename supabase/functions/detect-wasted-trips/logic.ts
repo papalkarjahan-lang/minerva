@@ -44,6 +44,22 @@ export interface TechDateGroup {
   count: number
 }
 
+// Sydney-local calendar date for an ISO instant — NOT instant.slice(0, 10)
+// (UTC date). Found 2026-10-25: scheduled_time is a genuinely
+// timezone-aware timestamptz (DispatcherView.jsx's own job-creation code
+// converts the dispatcher's local input to true UTC), so a raw UTC-date
+// slice silently splits a technician's real same-day jobs across two
+// buckets whenever any of them fall before ~11am Sydney time (UTC
+// midnight) — undercounting both buckets and making the overload
+// heuristic below systematically less likely to catch a genuinely
+// overloaded day. Same bug class as the route-optimization date-window
+// fix (optimize-daily-route/optimize-fleet-day) and the payroll
+// daysActive fix (DispatcherView.jsx), just affecting an informational
+// signal here rather than a query window or an exported record.
+function toLocalDateString(iso: string): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Australia/Sydney', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(iso))
+}
+
 // Buckets jobs by (technician, calendar date) — the same-day job-overload
 // heuristic's input. Jobs are expected to already be filtered to ones with
 // both technician_id and scheduled_time set (there's no date to bucket a
@@ -52,7 +68,7 @@ export function groupJobsByTechnicianDate(jobs: ScheduledJob[]): TechDateGroup[]
   const byTechDate: Record<string, TechDateGroup> = {}
   for (const j of jobs) {
     if (!j.scheduled_time || !j.technician_id) continue
-    const date = j.scheduled_time.slice(0, 10)
+    const date = toLocalDateString(j.scheduled_time)
     const key = `${j.technician_id}|${date}`
     if (!byTechDate[key]) byTechDate[key] = { businessId: j.business_id, technicianId: j.technician_id, date, count: 0 }
     byTechDate[key].count++
