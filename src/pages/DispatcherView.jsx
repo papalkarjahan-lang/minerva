@@ -1981,7 +1981,24 @@ export default function DispatcherView() {
 
     const byTech = {}
     for (const loc of locations || []) {
-      const day = loc.recorded_at.slice(0, 10)
+      // Sydney-local calendar date, NOT loc.recorded_at.slice(0, 10) (UTC
+      // date) — found 2026-10-25: this function's own header comment says
+      // it buckets "the same way update-technician-workload does," but
+      // that function's UTC-date bucketing is explicitly scoped in its own
+      // comment as "approximate, this is a signal not a timesheet" (an
+      // internal dispatch-fairness heuristic, never shown to a user). This
+      // function is the opposite: daysActive is shown directly in the UI,
+      // exported to CSV, and saved permanently in payroll_runs — a real
+      // record for the owner's own accountant/payroll software. Sydney is
+      // UTC+10/+11, so UTC midnight falls at 10-11am local time — squarely
+      // mid-shift for a normal trade business — meaning a UTC-date split
+      // silently counted almost every real single-day shift as 2 "days
+      // active" instead of 1, in literally every normal payroll run. The
+      // hours total itself isn't meaningfully affected (summing (max-min)
+      // per bucket over a date split loses only the gap between the last
+      // ping before midnight and the first after — one GPS tick, ~15s,
+      // while actively tracked) — this is specifically a daysActive fix.
+      const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'Australia/Sydney', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(loc.recorded_at))
       const t = new Date(loc.recorded_at).getTime()
       if (!byTech[loc.technician_id]) byTech[loc.technician_id] = {}
       const days = byTech[loc.technician_id]
