@@ -241,7 +241,20 @@ serve(async (req: Request) => {
     // Hard-exclude technicians lacking a currently-valid required credential —
     // see header comment. No requirement set = no filtering, same as before.
     if (job.required_credential_name && free.length > 0) {
-      const today = new Date().toISOString().slice(0, 10)
+      // Sydney-local date, NOT new Date().toISOString().slice(0, 10) (UTC
+      // date) — found 2026-10-25, same bug class as the route-optimization
+      // and payroll timezone fixes. This function fires at an arbitrary
+      // moment (whenever a new job is inserted), unlike
+      // check-credential-expiry's own identical-looking UTC-date call,
+      // which is safe only because it's always invoked by a fixed 6am UTC
+      // (4-5pm Sydney) cron, well clear of the UTC/Sydney boundary.
+      // expiry_date is a plain `date` column (no time component), so the
+      // only question is which calendar date counts as "today" for the
+      // >= comparison — during the ~10-11 hour window where Sydney's
+      // date has already advanced but UTC's hasn't, this would compare
+      // against YESTERDAY's date, letting a credential that expired at
+      // the start of Sydney's actual today still pass as valid.
+      const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Australia/Sydney', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
       const { data: validCreds } = await supabase
         .from('technician_credentials')
         .select('technician_id')
