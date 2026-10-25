@@ -185,3 +185,25 @@ lesson worth carrying forward: *self-clearing* and *bounded* are
 different properties, and a query needs to actually have an upper bound
 (or a fixed-width window) to be safe against a cron-execution-gap
 backlog — a flag column alone only protects steady state.
+
+## Found later, a different class of growth entirely (2026-10-25) — `agent_insights` itself has no retention
+
+Everything above audited whether each cron function's own QUERIES stay
+bounded as customer count grows — a different question from whether the
+TABLE they write to (`agent_insights`) stays bounded over TIME. It
+doesn't: every agent that writes an informational/alert row there (now
+including `check-service-credentials`, built 2026-10-24) adds a
+permanent row with no cleanup path, several on a 15-minute or hourly
+cadence, same unbounded-growth shape this project already fixed once for
+`processed_stripe_events`/`processed_call_sids`/`xero_oauth_states`
+(`supabase_schema_delta_retention_cleanup.sql`, 2026-09-25) — just not
+extended to this table at the time, since it wasn't in that original
+table-by-table audit's scope.
+
+Fixed the same way: `supabase_schema_delta_agent_insights_retention.sql`,
+a daily pg_cron DELETE for rows older than 180 days — chosen as a 2x
+safety margin over the longest actual read dependency found by grepping
+every `.from('agent_insights')` read in this codebase (90 days, in
+`generate-growth-drafts`' own suburb-opportunity dedup; everything else
+looks back 6-14 days). Not an edge function, matching the 2026-09-25
+file's own reasoning: pure janitorial work, nothing to kill-switch.
