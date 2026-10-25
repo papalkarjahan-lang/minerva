@@ -20,6 +20,14 @@ export default function Contact() {
   const [sending, setSending] = useState(false)
   const [sent, setSent] = useState(false)
   const [error, setError] = useState(null)
+  // Honeypot (added 2026-10-25, same reasoning as Enterprise.jsx's own):
+  // support_requests' anon INSERT policy is `with check (true)` — fully
+  // unrestricted — so nothing stops a bot from flooding the admin Support
+  // tab with junk rows. A real visitor never sees or fills this field; a
+  // bot that blindly fills every input will. Silently "succeeds" without
+  // inserting anything rather than erroring, so a bot gets no signal to
+  // adapt to.
+  const [website, setWebsite] = useState('')
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -27,6 +35,7 @@ export default function Contact() {
     // a double-click or double-Enter before the disabled attribute
     // re-renders would otherwise insert a duplicate support_requests row.
     if (sending) return
+    if (website) { setSent(true); return } // honeypot tripped — silently drop
     setSending(true)
     setError(null)
     const { error: insertErr } = await supabase.from('support_requests').insert({
@@ -57,6 +66,11 @@ export default function Contact() {
           </div>
         ) : (
           <form onSubmit={handleSubmit} style={{ background: '#0a0f1d', border: '1px solid #1e293b', borderRadius: 16, padding: 28 }}>
+            {/* Honeypot — see the state comment above. Off-screen, not display:none,
+                so a bot that specifically skips hidden fields still can't tell. */}
+            <input type="text" name="website" value={website} onChange={e => setWebsite(e.target.value)}
+              tabIndex={-1} autoComplete="off" aria-hidden="true"
+              style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, opacity: 0 }} />
             <input aria-label="Your name" placeholder="Your name" value={name} onChange={e => setName(e.target.value)}
               style={{ width: '100%', boxSizing: 'border-box', background: '#050811', border: '1px solid #1e293b', borderRadius: 8, color: '#fff', padding: '12px 14px', fontSize: 14, marginBottom: 12 }} />
             <input aria-label="Email or phone" placeholder="Email or phone (so we can reply)" value={contact} onChange={e => setContact(e.target.value)}

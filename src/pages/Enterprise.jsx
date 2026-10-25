@@ -66,6 +66,17 @@ export default function Enterprise() {
   const [sending, setSending] = useState(false)
   const [sent, setSent] = useState(false)
   const [error, setError] = useState(null)
+  // Honeypot (added 2026-10-25): this form inserts directly into
+  // big_account_targets from the browser with the anon key — the RLS
+  // policy (supabase_schema_delta_enterprise_inbound.sql) constrains
+  // WHICH columns can be set, but nothing stops a bot from submitting the
+  // form thousands of times with garbage data, each one firing a real
+  // Slack ping via notify-new-enterprise-lead. A real visitor never sees
+  // or fills this field (visually hidden, aria-hidden, unreachable by
+  // Tab); a bot that blindly fills every input on the page will. Silently
+  // "succeeds" without inserting anything, rather than erroring, so a bot
+  // has no signal to adapt to.
+  const [website, setWebsite] = useState('')
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -74,6 +85,7 @@ export default function Enterprise() {
     // otherwise insert a duplicate big_account_targets row into the
     // sales pipeline.
     if (sending) return
+    if (website) { setSent(true); return } // honeypot tripped — silently drop
     setSending(true)
     setError(null)
     // id generated client-side (crypto.randomUUID(), same approach already
@@ -143,6 +155,11 @@ export default function Enterprise() {
           </div>
         ) : (
           <form onSubmit={handleSubmit} style={{ background: '#0a0f1d', border: '1px solid #1e293b', borderRadius: 16, padding: 28 }}>
+            {/* Honeypot — see the state comment above. Off-screen, not display:none,
+                so a bot that specifically skips hidden fields still can't tell. */}
+            <input type="text" name="website" value={website} onChange={e => setWebsite(e.target.value)}
+              tabIndex={-1} autoComplete="off" aria-hidden="true"
+              style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, opacity: 0 }} />
             <input aria-label="Company name" required placeholder="Company name" value={companyName} onChange={e => setCompanyName(e.target.value)} className="lp-input"
               style={{ width: '100%', boxSizing: 'border-box', background: '#050811', border: '1px solid #1e293b', borderRadius: 8, color: '#fff', padding: '12px 14px', fontSize: 14, marginBottom: 12 }} />
             <select aria-label="Company type" value={companyType} onChange={e => setCompanyType(e.target.value)} className="lp-input"
