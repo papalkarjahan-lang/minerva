@@ -161,16 +161,38 @@ serve(async (req: Request) => {
         }).eq('id', cred.id)
       }
 
+      // li.amount is GST-EXCLUSIVE (confirmed against src/utils.js's own
+      // computeGst(subtotal) — subtotal is the sum of these line amounts,
+      // and GST is computed as 10% on top of that, matching invoices.gst/
+      // invoices.subtotal/invoices.total shown on InvoiceView.jsx). Found
+      // 2026-10-25: this payload previously sent no TaxType/LineAmountTypes
+      // at all, leaving GST treatment entirely to whatever account code
+      // '200' happens to default to in each business's own Xero chart of
+      // accounts — LineAmountTypes would default to 'Exclusive' (correct,
+      // by luck), but TaxType defaulting correctly to 10% GST-on-income
+      // isn't guaranteed for every org, only for Xero's own unmodified
+      // default chart of accounts. Every invoice this app creates is
+      // uniformly 10% GST (no GST-free line items exist anywhere in this
+      // codebase), so OUTPUT (Xero's standard AU code for GST on sales) is
+      // unambiguously correct here, not a guess. Still DRAFT-only, so a
+      // human reviews it in Xero either way — this just makes a synced
+      // invoice's GST correct by default instead of needing a manual fix
+      // on every single one. Not live-tested against a real Xero org (no
+      // business has connected Xero yet, see TAX_GST_NOTES.md) — grounded
+      // in Xero's own documented API behaviour, flagged honestly as
+      // unverified rather than claimed as tested.
       const lineItems = Array.isArray(invoice.line_items) ? invoice.line_items : []
       const xeroInvoice = {
         Type: 'ACCREC',
         Contact: { Name: invoice.client_name || 'Client' },
+        LineAmountTypes: 'Exclusive',
         LineItems: lineItems.map((li: any) => ({
           Description: li.description,
           Quantity: 1,
           UnitAmount: li.amount,
           AccountCode: '200', // default Xero chart-of-accounts sales code — the business should
                                // remap this in Xero if they use a different code, see header note
+          TaxType: 'OUTPUT', // Xero's standard AU code for 10% GST on sales — see comment above
         })),
         Status: 'DRAFT',
       }
