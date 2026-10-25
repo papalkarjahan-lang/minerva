@@ -2333,9 +2333,24 @@ dependencies, not copied from a generic template):
   header. Once `VITE_SENTRY_DSN` is live, Sentry can also collect CSP
   reports directly (`report-to` pointed at Sentry's security endpoint) —
   worth revisiting then instead of building a bespoke collector.
-- **Not yet done, deliberately left for next time**: actually clicking
-  through those flows in a real browser and confirming zero Report-Only
-  violations fire for legitimate usage. This was written from reading
-  the code's real dependencies, not from an end-to-end browser test —
-  state that honestly rather than claim a verification that didn't
-  happen.
+**Actually tested in a real browser, same day** (not left deferred after
+all — checked `/`, `/demo`, and `/tech` via the live Report-Only header):
+found one real gap the code-reading pass missed — `index.html`'s
+unconditional `<link rel="stylesheet" href="https://api.mapbox.com/...">`
+violated `style-src`, because that directive only listed `'self'
+unsafe-inline'`, not `api.mapbox.com` itself (the `img-src`/`connect-src`
+entries for Mapbox don't cover a `<link>` stylesheet). Fixed by adding
+`https://api.mapbox.com` to `style-src`. This is exactly the kind of
+miss Report-Only mode exists to catch before enforcement — confirmed by
+doing it once, not just asserted.
+
+**Still not tested**: `/tech` and `/dispatch/:businessId` only reach
+Mapbox GL JS's actual runtime (tiles, workers, glyphs — the parts
+`worker-src blob:`/`img-src blob:` exist for) once a real technician PIN
+or dispatcher session loads a live map; a bare, unauthenticated hit on
+`/tech` shows "No PIN provided" before the map ever mounts, and
+fabricating a real PIN/session isn't something to do against production
+data. The `InvoiceView.jsx` Stripe Elements flow is similarly untested
+(needs a real invoice). Both are reasoned-through from Mapbox's own
+documented CSP requirements and `@stripe/stripe-js`'s known domains, not
+yet confirmed live the same way the stylesheet fix above was.
