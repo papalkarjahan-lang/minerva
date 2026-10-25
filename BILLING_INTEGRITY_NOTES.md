@@ -1263,3 +1263,46 @@ edge functions re-verified with `npx esbuild`. Not yet deployed.
   function to unit test; `isAddonActive` is already covered by
   `maxAddons.test.ts`). Edited edge function re-verified with
   `npx esbuild`. Not yet deployed.
+
+## Flagged, deliberately NOT fixed (2026-10-25): no public/webhook-triggered function checks subscription status at all
+
+Found while auditing SMS opt-out coverage: `missed-call-webhook` and
+`voice-intake-agent` both auto-text a caller and (for the voice one) run
+a real Anthropic-backed conversation with zero check of whether the
+business they're acting for has an active subscription. Widened the
+check and found this is universal, not isolated to those two —
+`ai-intake-chat`, `client-support-chat`, `incoming-sms-webhook`,
+`track-review-click`, and `calendar-feed` all have zero
+`subscription_tier` references either. A business whose subscription is
+cancelled (or whose Twilio number/widget stays configured after they
+stop paying) would keep generating real Twilio/Anthropic spend on the
+Minerva operator's own account, indefinitely, with zero revenue
+attached — a real cost-leak shape, not a security issue.
+
+**Why not fixed outright**: this isn't a pure bug with one obviously
+correct fix, the way the SMS opt-out gaps were — it's a product/billing
+policy decision with real tradeoffs the code can't resolve on its own:
+- Stripe's own dunning retries a failed payment over several days before
+  the subscription actually becomes `cancelled` — cutting a business off
+  the instant a card declines (rather than on actual cancellation) would
+  be harsher than how `hasStandardAutomation`/the rest of this codebase
+  already treats a `past_due`-but-not-yet-`cancelled` business elsewhere.
+- Most SaaS products let a cancelled customer keep service through the
+  period they already paid for, not an instant hard cutoff — whether
+  Minerva should match that norm here is a call for the business owner,
+  not something to decide unilaterally in code.
+- Fixing this properly touches at least 7 functions consistently (not
+  just the 2 found first), and genuinely can't be tested against a real
+  cancelled-business scenario right now — there are zero live
+  subscriptions on this account yet (confirmed via the Stripe API,
+  2026-10-25), so any fix here would ship unverified against the one
+  scenario that matters.
+
+**Not urgent today**: zero live customers means zero current cost
+exposure — this is worth deciding and building before outreach starts
+converting real signups, not before then. Worth revisiting once there's
+an actual cancellation policy to encode, or ask the user directly: does
+a cancelled business's Twilio number/widget simply stop generating cost
+because the Twilio number itself gets reassigned/removed on
+cancellation (a billing-ops question, not a code one), making this
+moot?
