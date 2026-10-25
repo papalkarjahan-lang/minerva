@@ -72,6 +72,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { formatAuPhone } from "../_shared/sms.ts"
+import { isOptedOutOfSms } from "../_shared/smsOptOut.ts"
 import { runTemplateVoiceIntake, applyRepeatClientBoost, clampScore, type IntakeResult } from "./logic.ts"
 
 const supabaseAdmin = createClient(
@@ -262,7 +263,11 @@ serve(async (req: Request) => {
     // the caller forever.
     if (!speechResult) {
       if (noInputRetries > MAX_NO_INPUT_RETRIES) {
-        if (from && to) await sendFallbackSms(from, to, businessName)
+        // Respect a caller's own STOP reply (see supabase_schema_delta_sms_opt_out.sql)
+        // — same client-facing fallback SMS as missed-call-webhook's own,
+        // just reached from a call that started but never finished.
+        const callerOptedOut = !!(businessId && from && await isOptedOutOfSms(supabaseAdmin, businessId, formatAuPhone(from)))
+        if (from && to && !callerOptedOut) await sendFallbackSms(from, to, businessName)
         return new Response(sayAndHangupTwiml(`Sorry, I'm having trouble hearing you. We'll text you a link to book instead.`), {
           status: 200, headers: { 'Content-Type': 'text/xml' },
         })

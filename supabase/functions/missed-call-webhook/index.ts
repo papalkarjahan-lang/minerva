@@ -56,7 +56,8 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
-import { buildMissedCallSmsMessage } from "../_shared/sms.ts"
+import { buildMissedCallSmsMessage, formatAuPhone } from "../_shared/sms.ts"
+import { isOptedOutOfSms } from "../_shared/smsOptOut.ts"
 
 const supabaseAdmin = createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -163,7 +164,15 @@ serve(async (req: Request) => {
     // A failure here shouldn't stop us returning valid TwiML to Twilio.
     // Skipped entirely if this CallSid was already processed (a Twilio
     // retry of the same call) — the caller still hears the same TwiML below.
-    if (from && smsEnabled && !alreadyProcessed) {
+    // Respect a caller's own STOP reply (see supabase_schema_delta_sms_opt_out.sql)
+    // — this is a real client-facing SMS (the "we missed you, call us back"
+    // auto-text), not an internal alert. Only checked when businessId was
+    // resolved; a business on the shared platform fallback number has the
+    // same inherent "can't scope an opt-out to an unknown business" limit
+    // already accepted elsewhere (incoming-sms-webhook).
+    const callerOptedOut = !!(businessId && from && await isOptedOutOfSms(supabaseAdmin, businessId, formatAuPhone(from)))
+
+    if (from && smsEnabled && !alreadyProcessed && !callerOptedOut) {
       try {
         const TWILIO_SID = Deno.env.get('TWILIO_ACCOUNT_SID')
         const TWILIO_TOKEN = Deno.env.get('TWILIO_AUTH_TOKEN')

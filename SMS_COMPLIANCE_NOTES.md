@@ -41,6 +41,29 @@ both looked client-facing from naming alone and weren't, while
 `winback-lost-leads`/`nurture-stale-leads`/etc. were missed despite
 being unambiguously client-facing once actually read.
 
+## Fixed a 3rd time the same day: the two inline-fetch voice-call fallback SMS
+
+The comprehensive-looking sweep above still missed 2 more — because both
+send via a direct inline `fetch` to Twilio's API with non-standard
+variable names (`from`/`toPhone` instead of `client_phone`), not via
+`sendTwilioSms` or a `client_phone` column, so neither the grep-for-
+`sendTwilioSms` pass nor the grep-for-`client_phone` pass from the
+original sweep would ever have found them. Found only by grepping for
+every caller of `Messages.json` directly, combined with `sendTwilioSms`,
+and reading each one: `missed-call-webhook` (the "we missed you, call us
+back" auto-text after an unanswered call) and `voice-intake-agent`'s
+`sendFallbackSms` (the same message, reached when a call connects but
+the caller's speech never comes through) both text the CALLER directly
+— genuinely client-facing, not an internal alert — and neither checked
+opt-out.
+
+**The actual lesson, updated**: "grep for the known patterns" isn't
+enough on its own when the codebase has more than one way to send an
+SMS (`sendTwilioSms`, inline `fetch` with `client_phone`, inline `fetch`
+with call-leg `From`/`To`). The only reliable method is grepping for the
+one thing every path shares — `Messages.json`, the actual Twilio API
+call — and reading every result.
+
 ## Fixed 2026-10-25: no way for a client to opt out of a business's SMS
 
 Every client-facing SMS this product sends either explicitly invites a
