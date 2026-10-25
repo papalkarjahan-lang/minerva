@@ -2267,3 +2267,75 @@ without the technician branch), the admin console's business list, and
 a public invoice link all still load correctly. No function redeploy
 strictly needed for the SQL half; the `TechnicianView.jsx` frontend
 change ships with the next normal Vercel deploy once pushed.
+
+## Content-Security-Policy — shipped in Report-Only mode, not enforced (2026-10-25)
+
+An earlier round (2026-10-23) added baseline security headers to
+`vercel.json` (`X-Content-Type-Options`, `Referrer-Policy`,
+`Permissions-Policy`, path-scoped `X-Frame-Options`) but explicitly
+skipped CSP — "too risky to get right without being able to thoroughly
+test every page/flow" (Mapbox tiles, Stripe Elements/Checkout redirect,
+Supabase REST/Realtime). That reasoning was correct for an *enforcing*
+CSP, but it doesn't apply to `Content-Security-Policy-Report-Only`: that
+header mode is incapable of blocking anything, by spec — a browser only
+logs what WOULD have been blocked, to the console and (if configured) a
+report endpoint. There's no scenario where shipping it breaks a real
+user's page. Added now as the safe first step toward the eventually-
+enforced CSP this project still owes itself, rather than leaving the
+whole idea deferred indefinitely.
+
+Policy value (global, all paths — Report-Only can't break the
+`/intake/:businessId` embeddable widget's iframe-ability either, so no
+path-scoping needed here unlike `X-Frame-Options`):
+```
+default-src 'self';
+script-src 'self' https://js.stripe.com;
+style-src 'self' 'unsafe-inline';
+img-src 'self' data: blob: https://*.mapbox.com;
+font-src 'self' data:;
+connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.mapbox.com https://events.mapbox.com https://api.stripe.com;
+frame-src https://js.stripe.com https://hooks.stripe.com;
+worker-src 'self' blob:;
+base-uri 'self';
+form-action 'self'
+```
+
+**How each piece was decided** (checked against this codebase's actual
+dependencies, not copied from a generic template):
+- `script-src`/`frame-src`/`connect-src` include `js.stripe.com`/
+  `hooks.stripe.com`/`api.stripe.com` because `InvoiceView.jsx` is the
+  one real client-side user of `@stripe/stripe-js`/`@stripe/react-stripe-js`
+  (on-site invoice card payment) — grepped the whole `src/` tree for
+  both packages to confirm it's the only call site before deciding the
+  policy needs them at all.
+- `img-src`/`connect-src` include `*.mapbox.com` and `events.mapbox.com`
+  (map tiles + Mapbox's own telemetry) and `worker-src`/`img-src`
+  include `blob:` — matches Mapbox GL JS's own documented CSP
+  requirements, since `mapbox-gl`/`react-map-gl` are real, live
+  dependencies (the dispatcher map, live tracking, every GPS feature).
+- `style-src 'unsafe-inline'` is a deliberate, known compromise, not an
+  oversight: this codebase renders virtually every component via inline
+  `style={{...}}` props (confirmed throughout `DispatcherView.jsx` and
+  every other page read this session) — a strict `style-src` without it
+  would flag effectively the entire UI. Inline-style injection is a much
+  weaker attack primitive than inline-script injection, which is why
+  `script-src` has no such exception.
+- `connect-src` includes `*.supabase.co` (REST + Realtime websocket,
+  `wss://`) since every page depends on `@supabase/supabase-js`.
+- No `report-uri`/`report-to` yet — there's no live endpoint to send
+  reports to (Sentry's `VITE_SENTRY_DSN` is still unset in production;
+  see `DEPLOYMENT_CHECKLIST_PENDING.md`). Violations are still visible
+  per-browser in DevTools → Console/Network while this is Report-Only,
+  which is enough to manually click through the app's main flows
+  (signup, dispatcher map, client tracking, on-site invoice payment) and
+  see whether the policy above actually covers everything in practice,
+  before ever switching it to an enforcing `Content-Security-Policy`
+  header. Once `VITE_SENTRY_DSN` is live, Sentry can also collect CSP
+  reports directly (`report-to` pointed at Sentry's security endpoint) —
+  worth revisiting then instead of building a bespoke collector.
+- **Not yet done, deliberately left for next time**: actually clicking
+  through those flows in a real browser and confirming zero Report-Only
+  violations fire for legitimate usage. This was written from reading
+  the code's real dependencies, not from an end-to-end browser test —
+  state that honestly rather than claim a verification that didn't
+  happen.

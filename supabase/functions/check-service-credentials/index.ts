@@ -38,6 +38,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { classifyTwilioAccountStatus, describePhoneNumberGap, shouldAlert, type ServiceCheckResult } from "./logic.ts"
+import { escapeHtml } from "../_shared/html.ts"
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -128,7 +129,7 @@ serve(async (req: Request) => {
           body: JSON.stringify({
             to: operatorEmail,
             subject: `[Minerva] ${result.service} isn't working`,
-            html: `<p>${result.detail}</p><p>This checks the real external service, not just whether the secret is set — see check-service-credentials' own header for why that distinction matters. This alert won't repeat for the same unresolved problem; it'll fire again once this is fixed and later breaks again.</p>`,
+            html: `<p>${escapeHtml(result.detail)}</p><p>This checks the real external service, not just whether the secret is set — see check-service-credentials' own header for why that distinction matters. This alert won't repeat for the same unresolved problem; it'll fire again once this is fixed and later breaks again.</p>`,
           }),
         }).catch(err => console.error('check-service-credentials: operator email failed', err))
       }
