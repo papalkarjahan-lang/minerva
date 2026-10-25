@@ -31,6 +31,8 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { isPlainDraftUsable } from "../_shared/smsDraft.ts"
 import { sendTwilioSms } from "../_shared/twilioSms.ts"
+import { formatAuPhone } from "../_shared/sms.ts"
+import { isOptedOutOfSms } from "../_shared/smsOptOut.ts"
 import { notifySlack } from "../_shared/notifySlack.ts"
 import { draftSmsWithClaude } from "../_shared/claudeDraft.ts"
 import { chunk } from "../_shared/batch.ts"
@@ -143,6 +145,11 @@ async function processOneLostLead(
   if (!claimed || claimed.length === 0) return false // already claimed by a concurrent run
 
   if (!lead.client_phone) return false // claimed above so it won't be re-evaluated; nothing more to do
+
+  // Respect a client's own STOP reply (see supabase_schema_delta_sms_opt_out.sql)
+  // — this is the one SMS this function ever sends to a given lead, so the
+  // claim above already stands in for "handled"; no retry logic needed.
+  if (await isOptedOutOfSms(supabase, lead.business_id, formatAuPhone(lead.client_phone))) return false
 
   const bizName = lead.businesses?.name || 'the business'
   const fallbackMessage = `Hi ${lead.client_name || ''}, it's ${bizName} — just checking whether you're still after the work you enquired about a couple of weeks back. No worries either way, just reply if you'd like a quote.`.trim()

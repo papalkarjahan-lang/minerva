@@ -28,6 +28,8 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { isPlainDraftUsable } from "../_shared/smsDraft.ts"
 import { sendTwilioSms } from "../_shared/twilioSms.ts"
+import { formatAuPhone } from "../_shared/sms.ts"
+import { isOptedOutOfSms } from "../_shared/smsOptOut.ts"
 import { draftSmsWithClaude } from "../_shared/claudeDraft.ts"
 import { chunk } from "../_shared/batch.ts"
 import { hasStandardAutomation } from "../_shared/tierEligibility.ts"
@@ -155,6 +157,9 @@ async function processOneRetentionCandidate(
     .eq('client_phone', job.client_phone)
     .gt('created_at', job.completed_at)
   if ((newerJobs ?? 0) > 0) return false
+
+  // Respect a client's own STOP reply (see supabase_schema_delta_sms_opt_out.sql).
+  if (await isOptedOutOfSms(supabase, job.business_id, formatAuPhone(job.client_phone))) return false
 
   const bizName = job.businesses?.name || 'us'
   const fallbackMessage = `Hi ${job.client_name || ''}, it's been a little while since ${bizName} last helped you out — just checking in, let us know if you need anything.`.trim()

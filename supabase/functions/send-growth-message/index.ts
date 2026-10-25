@@ -49,6 +49,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { sendTwilioSms } from "../_shared/twilioSms.ts"
+import { formatAuPhone } from "../_shared/sms.ts"
+import { isOptedOutOfSms } from "../_shared/smsOptOut.ts"
 import { isOwnerOfBusiness, getAuthenticatedCaller } from "../_shared/ownership.ts"
 import { hasGrowthPillarAccess } from "../_shared/tierEligibility.ts"
 
@@ -123,6 +125,7 @@ serve(async (req: Request) => {
     const recipients: { leadId?: string; name?: string; phone?: string }[] = draft.recipients || []
     let sent = 0
     let failed = 0
+    let optedOut = 0
     const sentLeadIds: string[] = []
 
     try {
@@ -130,6 +133,12 @@ serve(async (req: Request) => {
         const twilio = { sid: TWILIO_SID, token: TWILIO_TOKEN, from: TWILIO_FROM }
         for (const r of recipients) {
           if (!r.phone) { failed++; continue }
+          // Respect a client's own STOP reply (see
+          // supabase_schema_delta_sms_opt_out.sql) — this is the most
+          // marketing-like send in this codebase (an explicit batch
+          // blast to leads), so opt-out matters most here. Counted
+          // separately from `failed` — this isn't a delivery problem.
+          if (await isOptedOutOfSms(supabase, draft.business_id, formatAuPhone(r.phone))) { optedOut++; continue }
           const smsOk = await sendTwilioSms(twilio, r.phone, draft.body_text, 'send-growth-message')
           if (smsOk) {
             sent++
@@ -163,13 +172,13 @@ serve(async (req: Request) => {
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
       body: JSON.stringify({
         businessId: draft.business_id,
-        text: `📣 Growth outreach sent: ${sent}/${recipients.length} messages delivered.`,
+        text: `📣 Growth outreach sent: ${sent}/${recipients.length} messages delivered.${optedOut > 0 ? ` (${optedOut} skipped — opted out.)` : ''}`,
       }),
     }).catch(() => {})
 
     supabase.rpc('record_agent_run', { fn_name: 'send-growth-message', status: 'ok' }).then(() => {}, () => {})
 
-    return new Response(JSON.stringify({ success: true, sent, failed, total: recipients.length }), {
+    return new Response(JSON.stringify({ success: true, sent, failed, optedOut, total: recipients.length }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     })

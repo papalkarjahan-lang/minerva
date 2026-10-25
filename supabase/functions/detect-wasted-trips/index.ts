@@ -29,6 +29,8 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { wasOnSite, groupJobsByTechnicianDate, findOverloadedGroups } from "./logic.ts"
 import { sendTwilioSms } from "../_shared/twilioSms.ts"
+import { formatAuPhone } from "../_shared/sms.ts"
+import { isOptedOutOfSms } from "../_shared/smsOptOut.ts"
 import { notifySlack } from "../_shared/notifySlack.ts"
 import { chunk } from "../_shared/batch.ts"
 import { hasStandardAutomation } from "../_shared/tierEligibility.ts"
@@ -243,7 +245,9 @@ async function processOneJobCandidate(
   if (!claimed || claimed.length === 0) return false // already claimed by a concurrent/prior run
 
   const bizName = job.businesses?.name || 'the business'
-  if (job.client_phone) {
+  // Respect a client's own STOP reply (see supabase_schema_delta_sms_opt_out.sql)
+  // — only gates this client leg; the technician nudge below is staff-facing.
+  if (job.client_phone && !(await isOptedOutOfSms(supabase, job.business_id, formatAuPhone(job.client_phone)))) {
     const message = `Hi ${job.client_name || ''}, this is ${bizName} — our technician was on-site for your job but we weren't able to get it started. No charge for the trip. Reply here or call us to reschedule at a time that works.`.trim()
     const smsOk = await sendTwilioSms(twilio, job.client_phone, message, 'detect-wasted-trips')
     if (smsOk) await supabase.from('jobs').update({ no_show_reschedule_sms_sent_at: detectedAt }).eq('id', job.id)

@@ -39,6 +39,8 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { isPlainDraftUsable } from "../_shared/smsDraft.ts"
 import { sendTwilioSms } from "../_shared/twilioSms.ts"
+import { formatAuPhone } from "../_shared/sms.ts"
+import { isOptedOutOfSms } from "../_shared/smsOptOut.ts"
 import { notifySlack } from "../_shared/notifySlack.ts"
 import { draftSmsWithClaude } from "../_shared/claudeDraft.ts"
 import { chunk } from "../_shared/batch.ts"
@@ -167,6 +169,9 @@ async function processOneFirstTouchLead(
 ): Promise<boolean> {
   if (!lead.client_phone) return false
 
+  // Respect a client's own STOP reply (see supabase_schema_delta_sms_opt_out.sql).
+  if (await isOptedOutOfSms(supabase, lead.business_id, formatAuPhone(lead.client_phone))) return false
+
   // Atomically claim this lead before sending any real SMS — this cron
   // runs hourly, so an overlapping run (a slow prior invocation still
   // going, or a manual retry) racing the next hourly trigger could
@@ -217,6 +222,9 @@ async function processOneSecondTouchLead(
   lead: any
 ): Promise<boolean> {
   if (!lead.client_phone) return false
+
+  // Respect a client's own STOP reply (see supabase_schema_delta_sms_opt_out.sql).
+  if (await isOptedOutOfSms(supabase, lead.business_id, formatAuPhone(lead.client_phone))) return false
 
   // Same atomic claim-before-send pattern as the 1st touch above.
   const { data: claimed2, error: claimErr2 } = await supabase

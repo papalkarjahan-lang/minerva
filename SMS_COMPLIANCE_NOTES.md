@@ -11,6 +11,36 @@ appointment reminder, review request). Not the outreach/prospecting pipeline
 fixed on 2026-10-10. This is the other half: a Minerva *customer's own
 client*, not a prospect Minerva itself is courting.
 
+## Fixed later the same day: 6 client-facing senders were missed on the first pass
+
+The original sweep below checked every caller of `sendTwilioSms` that
+looked "client-facing" by inspection, but only actually patched 2 of the
+11 real callers at the time (`send-appointment-reminder-sms`,
+`send-job-referral-code-sms`) — an incomplete first pass, not a
+deliberate scope decision. Re-audited every caller of
+`_shared/twilioSms.ts`'s `sendTwilioSms` by reading each function in
+full rather than trusting the earlier list, and found 6 more that
+genuinely text a client/lead and were missing the check:
+`winback-lost-leads`, `nurture-stale-leads` (both its 1st and 2nd
+touch), `chase-unpaid-invoices`, `retention-checkin`,
+`detect-wasted-trips` (client leg only — its technician nudge is
+staff-facing and correctly excluded), and `send-growth-message` (the
+most marketing-like send in this codebase — an explicit human-approved
+batch blast to leads, now tracked with its own `optedOut` count
+separate from `failed` since a skip isn't a delivery problem).
+
+Also checked and confirmed correctly excluded: `notify-rebooking-request`
+and `respond-to-quote` both text `businesses.contact_phone` — the
+business owner, not the client — despite superficially looking like
+client-facing sends from their file names.
+
+**Lesson for next time**: when auditing "every caller of X," read each
+one in full rather than trusting an earlier list or a quick guess from
+the function name — `notify-rebooking-request` and `respond-to-quote`
+both looked client-facing from naming alone and weren't, while
+`winback-lost-leads`/`nurture-stale-leads`/etc. were missed despite
+being unambiguously client-facing once actually read.
+
 ## Fixed 2026-10-25: no way for a client to opt out of a business's SMS
 
 Every client-facing SMS this product sends either explicitly invites a

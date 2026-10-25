@@ -35,6 +35,8 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { computeDaysOverdue, summarizeJobDescription, selectTonePrompt, isDraftUsable } from "./logic.ts"
 import { sendTwilioSms } from "../_shared/twilioSms.ts"
+import { formatAuPhone } from "../_shared/sms.ts"
+import { isOptedOutOfSms } from "../_shared/smsOptOut.ts"
 import { draftSmsWithClaude } from "../_shared/claudeDraft.ts"
 import { chunk } from "../_shared/batch.ts"
 import { hasStandardAutomation } from "../_shared/tierEligibility.ts"
@@ -157,6 +159,12 @@ async function processOneInvoice(
   const { data: claimed, error: claimErr } = await claimQuery.select('id')
   if (claimErr) { console.error('chase-unpaid-invoices: claim failed:', claimErr.message); return false }
   if (!claimed || claimed.length === 0) return false // already claimed by a concurrent run
+
+  // Respect a client's own STOP reply (see supabase_schema_delta_sms_opt_out.sql)
+  // — checked after the claim, same as the throttle itself, so this
+  // re-checks on the next 3-day cycle too (in case the client un-opts
+  // later) rather than needing a separate "never remind again" flag.
+  if (await isOptedOutOfSms(supabase, inv.business_id, formatAuPhone(inv.client_phone))) return false
 
   const bizName = inv.businesses?.name || 'the business'
   const link = `${APP_URL}/invoice/${inv.id}`
