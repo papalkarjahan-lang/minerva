@@ -2089,14 +2089,13 @@ export default function DispatcherView() {
   async function optimizeTechRoute(techId) {
     setOptimizingTechId(techId)
     try {
-      // optimize-daily-route defaults its `date` to a UTC calendar date
-      // when omitted (see that function's own comment) — wrong for any
-      // dispatcher outside UTC. For roughly 10-11 hours a day (local
-      // midnight until UTC midnight, e.g. Sydney's whole morning), that
-      // default resolves to YESTERDAY's date, silently sequencing/
-      // filtering by the wrong day. Pass today's date computed from this
-      // browser's own local calendar fields (not toISOString, which is
-      // UTC) so the dispatcher always gets their own "today".
+      // optimize-daily-route's own default (when `date` is omitted) and
+      // its query-window construction are both now fixed server-side too
+      // (2026-10-25, see that function's logic.ts) — this explicit pass
+      // is no longer the only thing standing between a dispatcher and the
+      // wrong day, just a harmless belt-and-suspenders duplicate using
+      // this browser's own local calendar fields (not toISOString, which
+      // is UTC).
       const now = new Date()
       const localToday = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
       const { data, error } = await supabase.functions.invoke('optimize-daily-route', { body: { technicianId: techId, date: localToday } })

@@ -43,7 +43,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
-import { greedyAssignJobs, swapImproveAssignment, relocateImproveAssignment, twoOptImprove, chainEtas, currentPlanDistanceKm, type FleetJob } from "./logic.ts"
+import { greedyAssignJobs, swapImproveAssignment, relocateImproveAssignment, twoOptImprove, chainEtas, currentPlanDistanceKm, localMidnightUTC, addLocalDays, type FleetJob } from "./logic.ts"
 import { isOwnerOfBusiness, getAuthenticatedCaller } from "../_shared/ownership.ts"
 import { hasStandardAutomation } from "../_shared/tierEligibility.ts"
 
@@ -122,9 +122,24 @@ serve(async (req: Request) => {
       })
     }
 
-    const targetDate = date || new Date().toISOString().slice(0, 10)
-    const dayStart = `${targetDate}T00:00:00`
-    const dayEnd = `${targetDate}T23:59:59`
+    // Found 2026-10-25: jobs.scheduled_time is a genuinely timezone-aware
+    // timestamptz (DispatcherView.jsx's own job-creation code converts the
+    // dispatcher's local input to true UTC), so a naive
+    // `${targetDate}T00:00:00` string — interpreted in the DB session's
+    // UTC timezone — does NOT line up with a Sydney calendar day. Sydney
+    // is UTC+10/+11, so this previously shifted the query window by most
+    // of a day for anyone using this before ~11am local time — the single
+    // most natural time to plan today's route. DispatcherView.jsx's
+    // optimizeFleetDay already works around half of this (computing
+    // `date` from the browser's own local calendar fields), but that only
+    // fixed which DATE STRING gets sent — the window built from it was
+    // still off regardless. Both halves fixed now: a real Sydney-local
+    // default below, and a true-UTC-instant window via localMidnightUTC
+    // instead of a naive timestamp string.
+    const BUSINESS_TIMEZONE = 'Australia/Sydney'
+    const targetDate = date || new Intl.DateTimeFormat('en-CA', { timeZone: BUSINESS_TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
+    const dayStart = localMidnightUTC(targetDate, BUSINESS_TIMEZONE).toISOString()
+    const dayEnd = localMidnightUTC(addLocalDays(targetDate, 1), BUSINESS_TIMEZONE).toISOString()
 
     const { data: jobsRaw, error: jobsErr } = await supabase
       .from('jobs')
@@ -132,7 +147,7 @@ serve(async (req: Request) => {
       .eq('business_id', businessId)
       .eq('status', 'scheduled')
       .gte('scheduled_time', dayStart)
-      .lte('scheduled_time', dayEnd)
+      .lt('scheduled_time', dayEnd)
     if (jobsErr) throw jobsErr
 
     const jobs: FleetJob[] = (jobsRaw || []).filter(j => j.client_lat != null && j.client_lng != null)

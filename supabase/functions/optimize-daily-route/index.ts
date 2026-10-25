@@ -55,7 +55,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
-import { planRoute } from "./logic.ts"
+import { planRoute, localMidnightUTC, addLocalDays } from "./logic.ts"
 import { isOwnerOrAssignedTechnician, getAuthenticatedCaller } from "../_shared/ownership.ts"
 
 // Assumed average travel speed for chained ETA estimates — a deliberately
@@ -120,11 +120,26 @@ serve(async (req: Request) => {
       })
     }
 
-    // Default to today (UTC date boundary — acceptable for a same-day
-    // dispatcher tool where "today" is unambiguous from local usage).
-    const targetDate = date || new Date().toISOString().slice(0, 10)
-    const dayStart = `${targetDate}T00:00:00`
-    const dayEnd = `${targetDate}T23:59:59`
+    // Found 2026-10-25: the previous comment here claimed a naive UTC day
+    // boundary was "acceptable... where today is unambiguous from local
+    // usage" — wrong. jobs.scheduled_time is a genuinely timezone-aware
+    // timestamptz (DispatcherView.jsx's own job-creation code already
+    // converts the dispatcher's local input to true UTC), so a naive
+    // `${targetDate}T00:00:00` string — interpreted in the DB session's
+    // UTC timezone — does NOT line up with a Sydney calendar day.
+    // DispatcherView.jsx's optimizeTechRoute already works around half of
+    // this (computing `date` from the browser's own local calendar fields
+    // rather than trusting this function's default), but that only fixes
+    // which DATE STRING is sent — the window built from it was still off
+    // by Sydney's 10-11 hour UTC offset regardless of which date string
+    // came in. Both halves fixed now: the default below uses a real
+    // Sydney-local "today" (not just whatever date string a caller
+    // happens to pass), and the window itself is built from true UTC
+    // instants via localMidnightUTC, not a naive timestamp string.
+    const BUSINESS_TIMEZONE = 'Australia/Sydney'
+    const targetDate = date || new Intl.DateTimeFormat('en-CA', { timeZone: BUSINESS_TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
+    const dayStart = localMidnightUTC(targetDate, BUSINESS_TIMEZONE).toISOString()
+    const dayEnd = localMidnightUTC(addLocalDays(targetDate, 1), BUSINESS_TIMEZONE).toISOString()
 
     const { data: jobs, error: jobsErr } = await supabase
       .from('jobs')
@@ -132,7 +147,7 @@ serve(async (req: Request) => {
       .eq('technician_id', technicianId)
       .in('status', ['scheduled', 'en_route', 'in_progress'])
       .gte('scheduled_time', dayStart)
-      .lte('scheduled_time', dayEnd)
+      .lt('scheduled_time', dayEnd)
 
     if (jobsErr) throw jobsErr
 

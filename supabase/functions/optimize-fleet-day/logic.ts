@@ -337,3 +337,47 @@ export function currentPlanDistanceKm(
   }
   return total
 }
+
+// Local-day-boundary helpers — duplicated from check-weather-risk/logic.ts
+// (same tradeoff send-appointment-reminder-sms/logic.ts already made for
+// its own copy: small, stable, dependency-free timezone arithmetic, no
+// precedent in this repo for a cross-function-directory import outside
+// _shared/).
+//
+// Found 2026-10-25: index.ts previously defaulted `targetDate` to
+// `new Date().toISOString().slice(0, 10)` (the server's own UTC date) and
+// built `dayStart`/`dayEnd` as naive `${targetDate}T00:00:00` strings — no
+// timezone suffix, so Postgres interprets them in the DB session's
+// timezone (UTC) when comparing against `jobs.scheduled_time`, which is a
+// genuine, correctly-timezone-aware `timestamptz` (DispatcherView.jsx's
+// own job-creation code already converts the dispatcher's local
+// datetime-local input to true UTC via `new Date(...).toISOString()` — see
+// its own comment on this exact class of bug). Sydney is UTC+10/+11, so
+// UTC midnight falls at 10-11am local time — squarely mid-morning for a
+// trade business — meaning a dispatcher clicking "Optimize Fleet" anytime
+// before ~11am Sydney time got a query window shifted most of a day
+// early: roughly yesterday-afternoon-through-this-morning instead of
+// today, for the single most natural time of day to use a "plan today's
+// whole-fleet route" tool — this product's own flagship feature.
+export function addLocalDays(ymd: string, days: number): string {
+  const [y, m, d] = ymd.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10)
+}
+
+export function localOffsetMinutes(date: Date, timeZone: string): number {
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone, hourCycle: 'h23',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  })
+  const parts: Record<string, string> = {}
+  for (const p of dtf.formatToParts(date)) parts[p.type] = p.value
+  const asUtc = Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour, +parts.minute, +parts.second)
+  return Math.round((asUtc - date.getTime()) / 60000)
+}
+
+export function localMidnightUTC(ymd: string, timeZone: string): Date {
+  const guess = new Date(`${ymd}T00:00:00Z`)
+  const offsetMin = localOffsetMinutes(guess, timeZone)
+  return new Date(guess.getTime() - offsetMin * 60000)
+}
