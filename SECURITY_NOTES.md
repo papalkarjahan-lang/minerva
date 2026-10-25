@@ -2354,3 +2354,67 @@ data. The `InvoiceView.jsx` Stripe Elements flow is similarly untested
 (needs a real invoice). Both are reasoned-through from Mapbox's own
 documented CSP requirements and `@stripe/stripe-js`'s known domains, not
 yet confirmed live the same way the stylesheet fix above was.
+
+## Found while testing the above: Vercel's custom headers (ALL of them, not just CSP) are silently absent on 304 responses (2026-10-25)
+
+While chasing why the `style-src` fix above didn't seem to take effect
+in a real browser even after the new deploy confirmed live via `curl`,
+traced it to something that affects every header this project has ever
+shipped via `vercel.json`'s `headers` array — not something specific to
+CSP or to this round's changes.
+
+**Reproduction** (confirmed against the live site, both `/` and
+`/tech`):
+```
+curl -sI https://minerva-green.vercel.app/            # fresh 200 — has every custom header
+ETAG=$(curl -sI .../ | grep -i etag | ...)
+curl -sI -H "If-None-Match: $ETAG" https://minerva-green.vercel.app/   # 304 — NONE of them present
+```
+A fresh `200` response carries `X-Frame-Options`, `X-Content-Type-Options`,
+`Referrer-Policy`, `Permissions-Policy`, and `Content-Security-Policy-Report-Only`
+exactly as configured. A `304 Not Modified` — what any returning browser
+gets once it already has `index.html` cached and revalidates via
+`If-None-Match` (the page's own `Cache-Control: public, max-age=0,
+must-revalidate` forces this revalidation on literally every visit,
+which is correct — the bug is what comes back) — carries only
+`cache-control`/`date`/`etag`/`server`. Vercel's edge appears to resolve
+the 304 from its own cache/CDN layer without re-running the
+`headers` config at all.
+
+**Real-world effect**: a browser that already has `index.html` cached
+(same ETag, which barely ever changes since none of these header
+changes touch the HTML body itself) can keep enforcing a STALE set of
+headers — whatever was last associated with that cached entry in the
+browser's own HTTP cache — indefinitely across deploys that only touch
+`vercel.json`, because each revalidation returns 304 with nothing to
+update the stored headers with. Confirmed live: this exact session's
+browser, after the `style-src` fix deployed and `curl` proved the fresh
+`200` was correct, kept reporting the OLD (pre-fix) CSP violation on
+repeat navigations to `/tech` — even after fully unregistering the
+site's own service worker and clearing its Cache Storage, which ruled
+those out as the cause. Only the browser's own HTTP disk cache (not
+accessible to clear via page JavaScript) explains it.
+
+**Severity, honestly assessed**: moderate, not critical. A brand-new
+visitor with no cached `index.html` always gets the current, correct
+headers — confirmed above via plain `curl` with no conditional headers.
+This only affects *returning* visitors whose cache predates the latest
+header change, and every header change this project has made so far has
+only ever ADDED protection (none were ever weakened), so the practical
+exposure is "a returning visitor might not get a protection that didn't
+exist yet when they first cached the page," not "an active protection
+silently disappearing." It resolves itself as browser caches naturally
+evict, and isn't something an attacker can trigger on demand against a
+specific victim.
+
+**Not fixed this round, deliberately** — the likely real fix (Vercel
+Edge Middleware, which runs on every request including what would
+otherwise short-circuit to a 304, instead of the static `headers` array
+which apparently doesn't) is a genuine architecture change to how this
+SPA is served, and isn't something that can be verified from a local
+dev server the way `vercel.json`'s static config could be — it needs a
+real deploy-and-test cycle against the live Vercel edge to get right,
+same caution this file already applies to CSP enforcement itself.
+Flagging it here precisely so it isn't rediscovered from scratch, but
+leaving the actual fix for a deliberate, testable round rather than
+guessing at Middleware code blind.
