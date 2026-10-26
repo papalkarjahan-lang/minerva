@@ -75,7 +75,7 @@ export default function RequireBusinessAuth({ children }) {
               ? "This account isn't linked to this business."
               : 'Log in with the email you signed up with to open your console.'}
           </p>
-          <Link to="/login" style={{ display: 'inline-block', background: '#2D5FA8', color: '#fff', textDecoration: 'none', padding: '12px 28px', borderRadius: 10, fontSize: 14, fontWeight: 'bold' }}>
+          <Link to={`/login?redirect=${encodeURIComponent(window.location.pathname)}`} style={{ display: 'inline-block', background: '#2D5FA8', color: '#fff', textDecoration: 'none', padding: '12px 28px', borderRadius: 10, fontSize: 14, fontWeight: 'bold' }}>
             Go to login
           </Link>
           {session && (
