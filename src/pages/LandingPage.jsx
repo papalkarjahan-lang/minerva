@@ -10,7 +10,7 @@ const FAQS = [
   ['Do my technicians need to install an app?', 'No — it opens straight in their phone\'s browser from a text link. No app store, no install, no account to create.'],
   ['How long does setup actually take?', 'About 20 minutes: add your technicians, send them their link, add your first job. No hardware, no integration with anything else you use.'],
   ['What if a technician\'s phone loses signal?', 'Locations queue on the phone and send the moment it reconnects — nothing is lost, and the dispatcher view shows an "Offline" badge in the meantime.'],
-  ['Can I cancel anytime?', 'Yes — self-serve from your billing settings, no call required. Your 7-day trial isn\'t charged unless you keep using it past day 7.'],
+  ['Can I cancel anytime?', 'Yes — self-serve from your billing settings, no call required. Your 14-day trial isn\'t charged unless you keep using it past day 14.'],
   ['Is this locked into a long contract?', 'No contract. It\'s a monthly per-technician subscription, same as any SaaS tool — cancel whenever.'],
 ]
 
@@ -327,7 +327,7 @@ export default function LandingPage() {
             <Link to="/start" className="lp-cta-primary" onMouseMove={magneticMove} onMouseLeave={magneticLeave}>Start your free trial →</Link>
             <Link to="/demo" className="lp-cta-ghost" onMouseMove={magneticMove} onMouseLeave={magneticLeave}>Watch 60-sec demo</Link>
           </div>
-          <p style={{ color: '#888', fontSize: 13, margin: 0 }}>7-day free trial. Set up on the call. First charge after day 7.</p>
+          <p style={{ color: '#888', fontSize: 13, margin: 0 }}>14-day free trial. Set up on the call. First charge after day 14.</p>
         </div>
 
         <div className="lp-hero-glow" onMouseMove={spotlightMove}>

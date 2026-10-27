@@ -50,7 +50,7 @@ export default function Demo() {
 
       <div style={{ maxWidth: 680, margin: '40px auto 80px', padding: '0 24px', textAlign: 'center' }}>
         <Link to="/start" style={{ display: 'inline-block', background: '#1D9E75', color: '#fff', textDecoration: 'none', padding: '16px 44px', borderRadius: 12, fontSize: 16, fontWeight: 'bold', marginRight: 12 }}>
-          Start your free 7-day trial
+          Start your free 14-day trial
         </Link>
         <Link to="/pricing" style={{ display: 'inline-block', background: 'transparent', color: '#fff', textDecoration: 'none', padding: '16px 44px', borderRadius: 12, fontSize: 16, fontWeight: 'bold', border: '1px solid #2D5FA8' }}>
           See pricing

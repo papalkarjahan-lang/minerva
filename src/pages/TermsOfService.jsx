@@ -61,7 +61,7 @@ export default function TermsOfService() {
           <p>
             Minerva is billed per technician per month via Stripe, at the
             rate for your selected plan (Starter / Standard / Pro) shown at
-            signup. New accounts get a 7-day free trial — you will not be
+            signup. New accounts get a 14-day free trial — you will not be
             charged until the trial ends. After the trial, your saved
             payment method is charged automatically each billing period
             until you cancel. See our <Link to="/refund-policy" style={inlineLink}>Refund &amp; Cancellation Policy</Link> for

@@ -168,7 +168,7 @@ async function draftFollowup(apiKey: string, p: any, stage: number, demoUrl: str
         max_tokens: 300,
         messages: [{
           role: 'user',
-          content: `Write a brief, polite follow-up (#${stage} of 3) cold-email follow-up to ${p.company_name} (${p.trade_type || 'trade business'}), referencing that this is a follow-up to a prior unanswered email about Minerva (a GPS dispatch/tracking SaaS). Under 60 words, no guilt-tripping, one soft ask — a 7-day free trial, a quick call, or trying it themselves first with no commitment at ${demoUrl} — sign off "The Minerva team". End with a line telling them they can reply "unsubscribe" to stop hearing from us. Reply with ONLY valid JSON: {"subject": string, "body": string}.`,
+          content: `Write a brief, polite follow-up (#${stage} of 3) cold-email follow-up to ${p.company_name} (${p.trade_type || 'trade business'}), referencing that this is a follow-up to a prior unanswered email about Minerva (a GPS dispatch/tracking SaaS). Under 60 words, no guilt-tripping, one soft ask — a 14-day free trial, a quick call, or trying it themselves first with no commitment at ${demoUrl} — sign off "The Minerva team". End with a line telling them they can reply "unsubscribe" to stop hearing from us. Reply with ONLY valid JSON: {"subject": string, "body": string}.`,
         }],
       }),
     })

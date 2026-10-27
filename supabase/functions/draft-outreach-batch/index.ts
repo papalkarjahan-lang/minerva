@@ -68,7 +68,7 @@ const REAL_FEATURES_TRADE = `
 - A missed-call auto-text-back (requires pointing a phone number at Minerva)
 - An embeddable website chat widget that qualifies leads and texts the team
 - Starter $49/tech/month for live dispatch; Standard $79 adds whole-fleet route optimization (one click re-plans the whole team's day to cut driving distance), automated lead follow-up, client check-ins and invoice reminders; Pro $119 adds on-site invoicing, asset tracking, compliance checklists and Xero sync
-- 7-day free trial, ~20 minute setup, no app install
+- 14-day free trial, ~20 minute setup, no app install
 `.trim()
 
 const REAL_FEATURES_INDUSTRIAL = `
@@ -77,7 +77,7 @@ const REAL_FEATURES_INDUSTRIAL = `
 - Client verification packages that assemble evidence for compliance/audit handoff
 - An embeddable website chat widget that qualifies leads and texts the team
 - Starter $49/tech/month, Standard $79/tech/month (Pro isn't offered for Industrial — its invoicing/asset/compliance-checklist features are trade-console-only)
-- 7-day free trial, ~20 minute setup, no app install
+- 14-day free trial, ~20 minute setup, no app install
 `.trim()
 
 function realFeaturesFor(tradeType: string | null | undefined): string {

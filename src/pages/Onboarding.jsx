@@ -381,7 +381,7 @@ export default function Onboarding() {
               <p style={styles.totalPrice}>
                 ${techs.filter(t=>t.name.trim()).length * perTechPrice}/month
               </p>
-              <p style={styles.trialNote}>✓ 7-day free trial — no charge today</p>
+              <p style={styles.trialNote}>✓ 14-day free trial — no charge today</p>
             </div>
             <label style={styles.agreeRow}>
               <input type="checkbox" checked={agreedToTerms} onChange={e => setAgreedToTerms(e.target.checked)} style={{ marginTop: 2 }} />

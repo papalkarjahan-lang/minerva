@@ -261,7 +261,7 @@ serve(async (req: Request) => {
               body: JSON.stringify({
                 to: plan.welcomeEmailTo,
                 subject: `You're live on Minerva`,
-                html: `<p>Hi${biz?.name ? ' ' + escapeHtml(biz.name) : ''},</p><p>Your Minerva trial has started. Your 7-day free trial runs from today, and your card will be billed automatically when it ends unless you cancel first from your billing settings.</p><p>— The Minerva team</p>`,
+                html: `<p>Hi${biz?.name ? ' ' + escapeHtml(biz.name) : ''},</p><p>Your Minerva trial has started. Your 14-day free trial runs from today, and your card will be billed automatically when it ends unless you cancel first from your billing settings.</p><p>— The Minerva team</p>`,
               }),
             }).catch(err => console.error('stripe-webhook: welcome email failed', err))
           }
@@ -287,7 +287,7 @@ serve(async (req: Request) => {
               body: JSON.stringify({
                 to: operatorEmail,
                 subject: `[Minerva] New signup — ${biz?.name || plan.businessId}`,
-                html: `<p><strong>${escapeHtml(biz?.name || 'A business')}</strong> just completed checkout and started their 7-day trial. Worth a personal follow-up.</p>`,
+                html: `<p><strong>${escapeHtml(biz?.name || 'A business')}</strong> just completed checkout and started their 14-day trial. Worth a personal follow-up.</p>`,
               }),
             }).catch(err => console.error('stripe-webhook: new-signup operator alert failed', err))
           }

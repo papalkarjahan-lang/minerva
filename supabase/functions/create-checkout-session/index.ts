@@ -99,7 +99,7 @@ serve(async (req: Request) => {
       'payment_method_types[]': 'card',
       'line_items[0][price]': priceId,
       'line_items[0][quantity]': String(techCount),
-      'subscription_data[trial_period_days]': '7',
+      'subscription_data[trial_period_days]': '14',
       'customer_email': contactEmail,
       'metadata[business_id]': businessId,
       'metadata[business_name]': businessName,

@@ -97,7 +97,7 @@ export default function ProposalView() {
             : 'The cost above is the only estimate on this page — Minerva doesn’t have a published, cited savings benchmark for multi-site industrial operations the way it does for fleet route optimization, so we’re not putting a number on it. What you do get: live tracking of crews and assets across sites, arrival/departure check-ins for multi-day jobs, the site check-in log, safety incident log, asset register with maintenance alerts, and auto-assembled client verification packages for compliance handoff.'}
         </p>
 
-        <Link to="/start" className="no-print" style={styles.ctaBtn}>Start a free 7-day trial</Link>
+        <Link to="/start" className="no-print" style={styles.ctaBtn}>Start a free 14-day trial</Link>
         {hasFuelSavings && (
           <Link to="/demo" className="no-print" style={styles.secondaryLink}>
             See the fleet optimizer run on a sample fleet →

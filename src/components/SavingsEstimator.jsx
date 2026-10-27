@@ -68,7 +68,7 @@ export default function SavingsEstimator() {
         Industrial-sector accounts.
       </p>
       <Link to="/start" style={{ display: 'inline-block', marginTop: 18, background: '#1D9E75', color: '#fff', textDecoration: 'none', padding: '12px 26px', borderRadius: 10, fontSize: 14, fontWeight: 'bold' }}>
-        Start saving — free 7-day trial →
+        Start saving — free 14-day trial →
       </Link>
     </div>
   )

@@ -30,7 +30,7 @@ const SIZE_GUIDE = [
 
 const PRICING_FAQS = [
   ['Is this per technician or a flat fee?', 'Per technician, per month. Add or remove technicians anytime and your bill adjusts.'],
-  ['Can I cancel anytime?', 'Yes — self-serve from your billing settings, no call required. Your 7-day trial isn\'t charged unless you keep using it past day 7.'],
+  ['Can I cancel anytime?', 'Yes — self-serve from your billing settings, no call required. Your 14-day trial isn\'t charged unless you keep using it past day 14.'],
   ['Is this locked into a long contract?', 'No contract. It\'s a monthly subscription, same as any SaaS tool — cancel whenever.'],
   ['Can I switch tiers later?', 'Yes, upgrade or downgrade anytime from billing settings.'],
 ]
@@ -72,7 +72,7 @@ export default function Pricing() {
             </div>
           ))}
         </div>
-        <p style={{ color: '#888', fontSize: 13, textAlign: 'center', margin: '24px 0 0' }}>7-day free trial on any tier. First charge after day 7.</p>
+        <p style={{ color: '#888', fontSize: 13, textAlign: 'center', margin: '24px 0 0' }}>14-day free trial on any tier. First charge after day 14.</p>
       </div>
 
       <div style={{ maxWidth: 680, margin: '0 auto 70px', padding: '0 24px' }}>

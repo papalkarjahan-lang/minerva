@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import { useDocumentMeta } from '../hooks/useDocumentMeta'
 
 // Refund & Cancellation Policy — reflects the actual billing mechanics in
-// this codebase: 7-day Stripe trial, per-technician monthly subscription,
+// this codebase: 14-day Stripe trial, per-technician monthly subscription,
 // self-serve cancellation via the Stripe Billing Portal (Dispatch sidebar
 // -> "Manage billing / Cancel"). NOT reviewed by a lawyer — have this
 // checked against Australian Consumer Law's mandatory guarantees before
@@ -18,7 +18,7 @@ export default function RefundPolicy() {
 
         <Section title="Free trial">
           <p>
-            Every new Minerva account starts with a 7-day free trial. You
+            Every new Minerva account starts with a 14-day free trial. You
             will not be charged during the trial. If you cancel before the
             trial ends, you will not be charged at all.
           </p>

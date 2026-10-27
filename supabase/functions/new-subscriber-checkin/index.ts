@@ -20,10 +20,10 @@
 // good enough to ask permission to quote is a human call, made via the
 // operator alert below, never by this function.
 //
-// Fires once per business, 14-21 days after signup (created_at, same
+// Fires once per business, 21-28 days after signup (created_at, same
 // anchor isTrialExpired/businessAccess.js already uses — not the exact
 // moment they converted, since that would need a new timestamp column,
-// and most businesses convert within the 7-day trial anyway, so this
+// and most businesses convert within the 14-day trial anyway, so this
 // lands within the first ~1-2 weeks of being a real customer either way).
 // Only businesses that actually have stripe_sub_id set (genuinely
 // converted, not just signed up) and aren't cancelled. Claimed via
@@ -43,8 +43,13 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { escapeHtml } from "../_shared/html.ts"
 
-const MIN_AGE_MS = 14 * 24 * 60 * 60 * 1000
-const MAX_AGE_MS = 21 * 24 * 60 * 60 * 1000
+// Shifted +7 days (2026-10-27) when the signup trial moved from 7 to 14
+// days — this window is deliberately anchored to "1-2 weeks after
+// becoming a real paying customer" (see comment below), not to signup
+// age in the abstract, so it has to move with the trial length or it'd
+// start firing as early as the day the trial itself ends.
+const MIN_AGE_MS = 21 * 24 * 60 * 60 * 1000
+const MAX_AGE_MS = 28 * 24 * 60 * 60 * 1000
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {

@@ -2,9 +2,9 @@
 // Autonomous agent, run daily via pg_cron (see matching *_cron.sql delta).
 //
 // WHY: Minerva Max add-on trials already get a reminder 3 days before
-// they lapse (notify-addon-trial-ending). The main account's 7-day Stripe
+// they lapse (notify-addon-trial-ending). The main account's 14-day Stripe
 // trial — the one every signup starts on, set by create-checkout-session's
-// `trial_period_days: '7'` — never did, even though it ends in a real
+// `trial_period_days: '14'` — never did, even though it ends in a real
 // card charge rather than a feature quietly turning off. The one thing
 // softening this gap: stripe-webhook's checkout.session.completed handler
 // already sends a welcome email stating the terms upfront ("your card
