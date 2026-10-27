@@ -90,7 +90,12 @@ export const MAX_ADDONS = [
     name: 'Asset Intelligence',
     price: 39,
     tagline: 'Catch failing gear and idle assets before they cost you',
-    description: 'Predictive maintenance flags based on each asset\'s own telemetry trend, idle-asset alerts after 14+ days of no activity, plus consumables reorder alerts. Not cross-fleet ML.',
+    description: 'Predictive maintenance flags based on each asset\'s own telemetry trend, idle-asset alerts after 14+ days of no activity, consumables reorder alerts, plus real preventive-maintenance schedules (meter or calendar-based) that auto-raise an assignable work order the moment service is due. Not cross-fleet ML.',
+    // Preventive-maintenance schedules + work-order auto-raising folded
+    // in 2026-10-27 (sweep-maintenance-schedules) — same industrial_assets
+    // data domain and buyer as the rest of this addon, so it extends the
+    // existing SKU rather than adding a 10th one. See
+    // supabase_schema_delta_maintenance_schedules.sql.
     // Added 2026-10-08: its entire backend (detect-idle-assets,
     // predict-asset-maintenance) reads exclusively from
     // industrial_assets — a trade-sector business has no rows there at

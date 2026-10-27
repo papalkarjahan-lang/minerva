@@ -30,6 +30,8 @@ export default function IndustrialDispatcherView() {
   const [showAddLead, setShowAddLead] = useState(false)
   const [showAddSite, setShowAddSite] = useState(false)
   const [showAddAsset, setShowAddAsset] = useState(false)
+  const [showAddSchedule, setShowAddSchedule] = useState(false)
+  const [maintenanceSchedules, setMaintenanceSchedules] = useState([])
   const [showAddItem, setShowAddItem] = useState(false)
   const [showAddIncident, setShowAddIncident] = useState(false)
   const [busyId, setBusyId] = useState(null)
@@ -143,6 +145,14 @@ export default function IndustrialDispatcherView() {
     const { data: assetList } = await supabase.from('industrial_assets')
       .select('*').eq('business_id', businessId).order('created_at', { ascending: false })
     setAssets(assetList || [])
+
+    // Preventive maintenance schedules (added 2026-10-27) — see
+    // supabase_schema_delta_maintenance_schedules.sql. Due work orders
+    // raised from these show up as ordinary corrective_actions rows
+    // (source_type='maintenance_schedule'), loaded below with the rest.
+    const { data: scheduleList } = await supabase.from('maintenance_schedules')
+      .select('*').eq('business_id', businessId).order('created_at', { ascending: false })
+    setMaintenanceSchedules(scheduleList || [])
 
     const { data: itemList } = await supabase.from('consumables_items')
       .select('*').eq('business_id', businessId).order('name', { ascending: true })
@@ -546,10 +556,57 @@ export default function IndustrialDispatcherView() {
   async function closeCorrectiveAction(id) {
     if (busyId === id) return
     setBusyId(id)
+    const ticket = correctiveActions.find(a => a.id === id)
     const { error } = await supabase.from('corrective_actions')
       .update({ status: 'closed', closed_at: new Date().toISOString() }).eq('id', id)
+    if (error) { setBusyId(null); alert(`Couldn't close: ${error.message}`); return }
+
+    // A maintenance-sourced ticket needs its schedule reset on close, or
+    // sweep-maintenance-schedules would never raise the NEXT one — its
+    // claim column (work_order_raised_at) only clears here, not on a timer.
+    // Also records what the asset's engine hours actually were at service
+    // time, which is what the next 'meter' due-check measures from.
+    if (ticket?.source_type === 'maintenance_schedule') {
+      const schedule = maintenanceSchedules.find(s => s.id === ticket.source_id)
+      const asset = schedule ? assets.find(a => a.id === schedule.asset_id) : null
+      await supabase.from('maintenance_schedules').update({
+        last_completed_at: new Date().toISOString(),
+        last_completed_hours: asset?.engine_hours ?? schedule?.last_completed_hours ?? null,
+        work_order_raised_at: null,
+      }).eq('id', ticket.source_id)
+    }
+
     setBusyId(null)
-    if (error) { alert(`Couldn't close: ${error.message}`); return }
+    loadAll()
+  }
+
+  async function addSchedule(e) {
+    e.preventDefault()
+    if (formSubmitting) return
+    setFormSubmitting(true)
+    const f = new FormData(e.target)
+    const triggerType = f.get('trigger_type')
+    const { error } = await supabase.from('maintenance_schedules').insert({
+      business_id: businessId,
+      asset_id: f.get('asset_id'),
+      title: f.get('title'),
+      trigger_type: triggerType,
+      interval_hours: triggerType === 'meter' ? Number(f.get('interval_hours')) || null : null,
+      interval_days: triggerType === 'calendar' ? Number(f.get('interval_days')) || null : null,
+      instructions: f.get('instructions') || null,
+    })
+    setFormSubmitting(false)
+    if (error) { alert(`Couldn't add schedule: ${error.message}`); return }
+    setShowAddSchedule(false)
+    loadAll()
+  }
+
+  async function toggleScheduleActive(scheduleId, active) {
+    if (busyId === scheduleId) return
+    setBusyId(scheduleId)
+    const { error } = await supabase.from('maintenance_schedules').update({ active }).eq('id', scheduleId)
+    setBusyId(null)
+    if (error) { alert(`Couldn't update schedule: ${error.message}`); return }
     loadAll()
   }
 
@@ -902,6 +959,75 @@ export default function IndustrialDispatcherView() {
                 </div>
               )
             })()}
+
+            {(() => {
+              const enabled = business?.max_addons?.asset_intelligence === true
+              const trialing = isTrialing(business, 'asset_intelligence')
+              if (!enabled && !trialing) return null
+              const dueTickets = correctiveActions.filter(a => a.source_type === 'maintenance_schedule' && a.status !== 'closed')
+              return (
+                <>
+                  <div style={{ ...styles.sectionHead, marginTop: 20 }}>
+                    <p style={styles.sectionLabel}>Preventive maintenance</p>
+                    <button style={styles.addBtn} onClick={() => setShowAddSchedule(true)} disabled={assets.length === 0}>+ Add schedule</button>
+                  </div>
+                  {assets.length === 0 && <p style={styles.emptyText}>Add an asset first to schedule maintenance against it.</p>}
+
+                  {dueTickets.length > 0 && (
+                    <div style={{ marginBottom: 12 }}>
+                      <p style={{ ...styles.rowMeta, color: '#e07a7a', marginBottom: 6 }}>Due now — {dueTickets.length} work order{dueTickets.length === 1 ? '' : 's'}</p>
+                      {dueTickets.map(t => (
+                        <div key={t.id} style={styles.row}>
+                          <p style={styles.rowTitle}>{t.title}</p>
+                          <p style={styles.rowDesc}>{t.description}</p>
+                          <div style={styles.rowActions}>
+                            <span style={styles.statusBadge(t.status === 'in_progress' ? 'pending sign-off' : 'open')}>{t.status}</span>
+                            {t.due_date && <span style={styles.rowMeta}>due {t.due_date}</span>}
+                            <select
+                              aria-label={`Assign "${t.title}" to`}
+                              style={styles.smallSelect}
+                              disabled={busyId === t.id}
+                              defaultValue={t.assigned_to_technician_id || ''}
+                              onChange={e => assignCorrectiveAction(t.id, e.target.value)}
+                            >
+                              <option value="">Unassigned</option>
+                              {technicians.map(tech => <option key={tech.id} value={tech.id}>{tech.name}</option>)}
+                            </select>
+                            <button style={styles.smallBtn} disabled={busyId === t.id} onClick={() => closeCorrectiveAction(t.id)}>Mark serviced</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {maintenanceSchedules.length === 0 ? (
+                    <p style={styles.emptyText}>No preventive maintenance schedules yet.</p>
+                  ) : (
+                    maintenanceSchedules.map(s => {
+                      const asset = assets.find(a => a.id === s.asset_id)
+                      return (
+                        <div key={s.id} style={styles.row}>
+                          <p style={styles.rowTitle}>{s.title} <span style={{ color: '#666', fontWeight: 'normal' }}>— {asset?.name || 'unknown asset'}</span></p>
+                          <p style={styles.rowMeta}>
+                            {s.trigger_type === 'calendar'
+                              ? `Every ${s.interval_days} days`
+                              : `Every ${s.interval_hours} engine hours`}
+                            {s.last_completed_at ? ` · last serviced ${timeAgo(s.last_completed_at)}` : ' · never serviced'}
+                          </p>
+                          <div style={styles.rowActions}>
+                            <span style={styles.statusBadge(s.active ? 'available' : 'acknowledged')}>{s.active ? 'active' : 'paused'}</span>
+                            <button style={styles.smallBtn} disabled={busyId === s.id} onClick={() => toggleScheduleActive(s.id, !s.active)}>
+                              {s.active ? 'Pause' : 'Resume'}
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })
+                  )}
+                </>
+              )
+            })()}
+
             {assets.length === 0 && <p style={styles.emptyText}>No assets registered yet.</p>}
             {assets.map(a => (
               <div key={a.id} style={styles.row}>
@@ -1148,6 +1274,30 @@ export default function IndustrialDispatcherView() {
             <input aria-label="RFID / tracker tag ID" name="tag_id" placeholder="RFID / tracker tag ID (optional)" style={styles.input} />
             <div style={styles.modalActions}>
               <button type="button" style={styles.cancelBtn} onClick={() => setShowAddAsset(false)}>Cancel</button>
+              <button type="submit" disabled={formSubmitting} style={styles.submitBtn}>{formSubmitting ? 'Adding...' : 'Add'}</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {showAddSchedule && (
+        <div style={styles.modalOverlay} onClick={() => setShowAddSchedule(false)}>
+          <form style={styles.modal} onClick={e => e.stopPropagation()} onSubmit={addSchedule}>
+            <p style={styles.modalTitle}>Add maintenance schedule</p>
+            <select aria-label="Asset" name="asset_id" required style={styles.input} defaultValue="">
+              <option value="" disabled>Select an asset</option>
+              {assets.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+            <input aria-label="Schedule title" name="title" placeholder="e.g. 250-hour service" required style={styles.input} />
+            <select aria-label="Trigger type" name="trigger_type" style={styles.input} defaultValue="meter">
+              <option value="meter">Every N engine hours</option>
+              <option value="calendar">Every N days</option>
+            </select>
+            <input aria-label="Interval in engine hours" name="interval_hours" type="number" placeholder="Interval (engine hours) — if meter-based" style={styles.input} />
+            <input aria-label="Interval in days" name="interval_days" type="number" placeholder="Interval (days) — if calendar-based" style={styles.input} />
+            <input aria-label="Instructions (optional)" name="instructions" placeholder="Instructions (optional)" style={styles.input} />
+            <div style={styles.modalActions}>
+              <button type="button" style={styles.cancelBtn} onClick={() => setShowAddSchedule(false)}>Cancel</button>
               <button type="submit" disabled={formSubmitting} style={styles.submitBtn}>{formSubmitting ? 'Adding...' : 'Add'}</button>
             </div>
           </form>
