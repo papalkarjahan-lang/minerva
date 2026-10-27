@@ -81,12 +81,23 @@ const SECTIONS = [
     items: [
       ['🛰️', 'Asset telemetry & geofencing', 'Track engine hours, maintenance intervals, and geofenced site zones for equipment, not just people.'],
       ['📍', 'Multi-day site tracking', 'Sites carry their own scope of work with arrival/departure check-ins, for jobs that run over multiple days.'],
-      ['⚠️', 'Safety incident tracking', 'Log and acknowledge on-site safety incidents by severity.'],
-      ['📦', 'Consumables reorder alerts', 'Get flagged before on-site stock runs out.'],
+      ['⚠️', 'Safety incident tracking', 'Log and acknowledge on-site safety incidents by severity, each one turned into an assignable, due-dated ticket.'],
       ['📑', 'Client verification packages', 'Assemble evidence packages for client and compliance handoff.'],
     ],
   },
 ]
+// 2026-10-27: removed "Consumables reorder alerts" from this free section —
+// found while cross-checking outreach copy against the real gating code
+// that track-consumables has required the paid asset_intelligence add-on
+// since 2026-10-23 (see that function's own header comment and
+// src/maxAddons.js's dated note). This section claimed it as included on
+// every industrial plan for over a month; it was already correctly listed
+// under the Minerva Max add-ons grid below (rendered straight from
+// MAX_ADDONS), so removing it here just stops the double, contradictory
+// claim rather than losing the feature from the page. Also folded
+// "turned into an assignable, due-dated ticket" into the Safety incident
+// tracking bullet, since that's the corrective_actions workflow and was
+// previously only described on the /enterprise page, not here.
 
 export default function Features() {
   useDocumentMeta({ title: 'Features', description: 'Live GPS tracking, whole-fleet route optimization, automatic client ETA texts, dispatch scheduling, and lead intake — every feature Minerva ships, in one place.' })

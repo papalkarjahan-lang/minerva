@@ -5,6 +5,28 @@ promising something the live product can't yet back up. Check this before
 using any "smart"/"AI"/"adapts automatically" language from the pitch docs
 or the addendum.
 
+## CORRECTION (2026-10-27): "no card required to trial" is FALSE
+
+Found while auditing the real signup flow before a batch of outreach drafts
+went out. `Onboarding.jsx` step 4 always redirects to Stripe Checkout
+(`create-checkout-session`), and Stripe Checkout always collects a card —
+there is no card-free path through signup. `create-checkout-session` does
+set `subscription_data[trial_period_days]: '7'`, so the accurate claim is
+**"7-day free trial, card required up front but not charged until the
+trial ends, cancel anytime"** — never "no card required" or "no card
+needed." This had already been used in drafted outreach copy before the
+check caught it; those drafts need the line corrected before sending.
+
+Also found in the same pass, lower severity, not a false claim but a real
+gap: `send-setup-sms` (texts each technician their PIN setup link during
+onboarding, step 3) throws if `TWILIO_PHONE_NUMBER` isn't set — which it
+isn't yet (see `minerva_setup_progress` memory). Onboarding itself doesn't
+fail (the error is caught, shown as a non-fatal alert, technicians can
+still be set up manually via "Copy setup link"/"Resend text" in the
+dashboard after payment), but a real signup today gets a degraded first
+experience, not a broken one. Fine to launch with, worth fixing once
+Twilio's number is live.
+
 ## The core issue
 
 The Agent Operating System (Outreach/Marketing/Scheduling/Finance reasoning
