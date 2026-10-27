@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import { useEffect, useRef, useState } from 'react'
 import { SiteNav, SiteFooter } from '../components/SiteChrome'
 import { useReveal, Reveal } from '../hooks/useReveal'
-import { spotlightMove, magneticMove, magneticLeave, cardMove, cardLeave } from '../utils/interactions'
+import { spotlightMove, magneticMove, magneticLeave, cardMove, cardLeave, seamMove, seamLeave } from '../utils/interactions'
 import '../styles/interactive.css'
 import './LandingPage.css'
 
@@ -302,9 +302,13 @@ export default function LandingPage() {
     <div className="lp">
       <SiteNav />
 
-      {/* Hero */}
-      <div style={{ maxWidth: 1080, margin: '0 auto', padding: '70px 24px 30px', display: 'grid', gridTemplateColumns: 'minmax(280px, 480px) 1fr', gap: 40, alignItems: 'center' }}>
-        <div className={`lp-hero ${heroGo ? 'lp-go' : ''}`}>
+      {/* Hero — two ambient glowfields give the section a light source
+          instead of sitting uniformly dark; purely decorative, zero layout
+          impact (absolute + pointer-events:none via .lp-glowfield). */}
+      <div style={{ maxWidth: 1080, margin: '0 auto', padding: '70px 24px 30px', display: 'grid', gridTemplateColumns: 'minmax(280px, 480px) 1fr', gap: 40, alignItems: 'center', position: 'relative' }}>
+        <div className="lp-glowfield" style={{ width: 620, height: 620, right: '-8%', top: '-30%', background: 'radial-gradient(circle, rgba(29,158,117,.16), transparent 62%)' }} />
+        <div className="lp-glowfield" style={{ width: 420, height: 420, left: '-6%', bottom: '-20%', background: 'radial-gradient(circle, rgba(45,95,168,.12), transparent 65%)' }} />
+        <div className={`lp-hero ${heroGo ? 'lp-go' : ''}`} style={{ position: 'relative', zIndex: 1 }}>
           <span className="lp-pill"><i />LEAST COST · MOST JOBS DONE</span>
           <h1 className="lp-h1">
             {headline1.split(' ').map((w, i) => (
@@ -351,6 +355,8 @@ export default function LandingPage() {
         <SmsProof />
       </Reveal>
 
+      <div className="lp-seam" style={{ maxWidth: 1080, margin: '0 auto 100px' }} onMouseMove={seamMove} onMouseLeave={seamLeave} />
+
       {/* Editorial statement */}
       <div style={{ maxWidth: 820, margin: '0 auto 100px', padding: '0 24px' }}>
         <KineticLine text="Most &ldquo;where&apos;s my technician&rdquo; calls are really just a text message that never got sent." />
@@ -395,6 +401,8 @@ export default function LandingPage() {
         <h2 style={{ fontSize: 28, fontWeight: 'bold', margin: '0 0 24px', textAlign: 'center' }}>Common questions</h2>
         <Faq />
       </Reveal>
+
+      <div className="lp-seam" style={{ maxWidth: 1080, margin: '0 auto 100px' }} onMouseMove={seamMove} onMouseLeave={seamLeave} />
 
       {/* Pricing */}
       <Reveal style={{ maxWidth: 900, margin: '0 auto 40px', padding: '0 24px', textAlign: 'center' }}>

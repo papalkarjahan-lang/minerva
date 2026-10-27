@@ -3,7 +3,30 @@
    (LandingPage, Features, Enterprise, About). Same brand colors as the rest
    of the site (green #1D9E75, blue #2D5FA8, background #050811) — this
    file only adds motion/interaction on top of the existing palette.
+
+   Upgraded 2026-10-27: borrowed the *craft* (not the color identity) from
+   an external design exploration the user had sitting in Downloads — a
+   refined system-font stack instead of plain Arial, layered "material"
+   shadows that give cards/buttons real depth instead of a flat fill, and
+   two new reusable primitives (.lp-glowfield ambient blur, .lp-seam
+   hairline divider) borrowed from that file's own visual language.
+   Deliberately did NOT adopt its cyan/amber/violet palette — Minerva's
+   real green/blue identity already runs through the whole live app
+   (DispatcherView, Pricing, every other page), and recoloring just the
+   marketing pages would make them visually disagree with the product
+   they're selling. Every class name, every JSX call site, and the exact
+   brand colors are unchanged — this is additive polish only, safe to ship
+   without touching LandingPage.jsx or any other page's markup.
    ========================================================================== */
+
+:root {
+  --lp-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+  /* Layered depth: a hairline top highlight (the light source), a tight
+     contact shadow, and a soft ambient shadow — applied together, this is
+     what stops a card reading as a flat coloured rectangle. */
+  --lp-lift-1: 0 1px 0 rgba(255,255,255,.05) inset, 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -8px rgba(0,0,0,.55);
+  --lp-lift-2: 0 1px 0 rgba(255,255,255,.07) inset, 0 2px 4px rgba(0,0,0,.4), 0 18px 48px -14px rgba(0,0,0,.7);
+}
 
 /* ---------------------------------------------------------------- reveal --
    Sections fade/slide up the first time they cross into view. */
@@ -43,36 +66,45 @@
 @keyframes lp-blip { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
 
 /* --------------------------------------------------------------- buttons --
-   Magnetic on hover (JS sets transform via utils/interactions.js). */
+   Magnetic on hover (JS sets transform via utils/interactions.js). Gradient
+   fill + inset top highlight gives the primary button the same sense of a
+   lit, physical surface the rest of this upgrade applies to cards —
+   previously a flat single-color fill with only a shadow on hover. */
 .lp-cta-primary {
   display: inline-block;
-  background: #1D9E75;
+  background: linear-gradient(168deg, #35c495, #1D9E75);
   color: #fff;
   text-decoration: none;
   padding: 18px 44px;
   border-radius: 14px;
   font-size: 18px;
   font-weight: bold;
+  font-family: var(--lp-font);
+  box-shadow: 0 1px 0 rgba(255,255,255,.3) inset, 0 10px 28px -10px rgba(29, 158, 117, .55);
   transition: box-shadow .22s cubic-bezier(.16,1,.3,1);
   will-change: transform;
 }
 .lp-cta-primary:hover {
-  box-shadow: 0 10px 30px rgba(29, 158, 117, .35);
+  box-shadow: 0 1px 0 rgba(255,255,255,.4) inset, 0 16px 36px -10px rgba(29, 158, 117, .7);
 }
 .lp-cta-ghost {
   display: inline-block;
+  background: rgba(255,255,255,.03);
   color: #fff;
   text-decoration: none;
   padding: 18px 32px;
   border-radius: 14px;
   font-size: 16px;
   font-weight: 600;
+  font-family: var(--lp-font);
   border: 1px solid #2a3a55;
-  transition: border-color .22s cubic-bezier(.16,1,.3,1);
+  box-shadow: 0 0 0 1px rgba(255,255,255,.04);
+  transition: border-color .22s cubic-bezier(.16,1,.3,1), background .22s cubic-bezier(.16,1,.3,1);
   will-change: transform;
 }
 .lp-cta-ghost:hover {
   border-color: #4a9eff;
+  background: rgba(74, 158, 255, .06);
 }
 /* Smaller variant for secondary in-page CTAs (Features/Enterprise). */
 .lp-cta-primary.lp-cta-sm, .lp-cta-ghost.lp-cta-sm {
@@ -83,14 +115,19 @@
 
 /* ------------------------------------------------------------------ card --
    Cursor-reactive spotlight glow + 3D tilt (JS sets --mx/--my + transform
-   via utils/interactions.js). Used for feature/capability/pricing cards. */
+   via utils/interactions.js). Used for feature/capability/pricing cards.
+   Now sits on the lift-1/lift-2 shadow pair (a hairline top highlight plus
+   two stacked shadows) instead of a flat border with no shadow at rest —
+   the border alone read as a line on a dark background, not a raised
+   surface, until something was hovered. */
 .lp-card {
   position: relative;
-  background: #0a0f1d;
+  background: linear-gradient(168deg, rgba(255,255,255,.035), rgba(255,255,255,.008)), #0a0f1d;
   border-radius: 16px;
   padding: 26px;
   border: 1px solid #1e293b;
-  transition: border-color .25s, box-shadow .25s;
+  box-shadow: var(--lp-lift-1);
+  transition: border-color .25s, box-shadow .35s cubic-bezier(.16,1,.3,1), transform .35s cubic-bezier(.16,1,.3,1);
   will-change: transform;
 }
 .lp-card::before {
@@ -105,10 +142,46 @@
 }
 .lp-card:hover {
   border-color: #2D5FA8;
-  box-shadow: 0 16px 40px rgba(45, 95, 168, .18);
+  box-shadow: var(--lp-lift-2), 0 16px 40px rgba(45, 95, 168, .18);
+  transform: translateY(-2px);
 }
 .lp-card:hover::before {
   opacity: 1;
+}
+
+/* -------------------------------------------------------------- glowfield -
+   A soft, absolutely-positioned ambient light behind a section — gives a
+   section a light source instead of sitting uniformly dark. Pointer-events
+   none throughout, purely decorative; place one or two per hero/section
+   with inline top/left/width/height, same as LandingPage.jsx's existing
+   inline-style convention for one-off positioning. */
+.lp-glowfield {
+  position: absolute;
+  pointer-events: none;
+  z-index: 0;
+  filter: blur(90px);
+  opacity: .5;
+}
+
+/* ------------------------------------------------------------------ seam --
+   A hairline divider between sections that lights up along a radial glow
+   positioned at --gx (JS sets this from pointer x on mousemove, same
+   pattern as the card/pill spotlight effects above) — a considered
+   alternative to either a plain <hr> or no divider at all between major
+   page sections. */
+.lp-seam {
+  height: 1px;
+  position: relative;
+  background: #16213a;
+  overflow: visible;
+}
+.lp-seam::after {
+  content: '';
+  position: absolute;
+  inset: -1px 0;
+  background: radial-gradient(240px 3px at var(--gx, 50%) 50%, rgba(45, 95, 168, .7), transparent 70%);
+  opacity: var(--g, 0);
+  transition: opacity .25s;
 }
 
 /* ------------------------------------------------------------- kinetic line -

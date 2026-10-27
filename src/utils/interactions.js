@@ -32,3 +32,13 @@ export function tiltLeave(e) { e.currentTarget.style.transform = '' }
 // Combined handler for cards that want both the spotlight glow and the tilt.
 export function cardMove(e) { spotlightMove(e); tiltMove(e) }
 export const cardLeave = tiltLeave
+
+// Section-divider hairline that lights up where the cursor passes — pairs
+// with the .lp-seam class in interactive.css (--gx positions the glow,
+// --g fades it in/out). Added 2026-10-27 alongside .lp-seam itself.
+export function seamMove(e) {
+  const r = e.currentTarget.getBoundingClientRect()
+  e.currentTarget.style.setProperty('--gx', `${((e.clientX - r.left) / r.width) * 100}%`)
+  e.currentTarget.style.setProperty('--g', '1')
+}
+export function seamLeave(e) { e.currentTarget.style.setProperty('--g', '0') }
