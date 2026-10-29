@@ -3898,7 +3898,7 @@ export default function DispatcherView() {
           // page depends on the map either way (technician/job lists,
           // assignment, etc. all live in the sidebar), so dispatching still
           // works fully regardless of which of the two renders.
-          <LiveOpsBoard technicians={technicians} jobs={jobs} />
+          <LiveOpsBoard businessId={businessId} technicians={technicians} jobs={jobs} />
         ) : mapError ? (
           // A token IS configured but Mapbox rejected it at runtime, or a
           // style/tile failed to load — different cause from the panel
@@ -4351,8 +4351,33 @@ export default function DispatcherView() {
 // turn-by-turn context doesn't replace "see the whole fleet at a
 // glance," they're complementary, same reason ops rooms run multiple
 // displays).
-function LiveOpsBoard({ technicians, jobs }) {
+function LiveOpsBoard({ businessId, technicians, jobs }) {
   const canvasRef = useRef(null)
+  const [mode, setMode] = useState('live') // 'live' | 'heatmap'
+  const [heatmapPoints, setHeatmapPoints] = useState(null) // null = not fetched yet
+  const [heatmapLoading, setHeatmapLoading] = useState(false)
+
+  // Demand heatmap — a genuinely different kind of insight than the live
+  // view (where to grow, not what's happening right now), built on the
+  // same free canvas foundation. Fetched once per mount, not on every
+  // realtime update like the live view — job history doesn't change
+  // second to second, so there's no reason to re-query it that often.
+  // Every job with a located address, any status, capped at 500 (most
+  // recent) — real history, not a sample.
+  useEffect(() => {
+    if (mode !== 'heatmap' || heatmapPoints !== null) return
+    let cancelled = false
+    setHeatmapLoading(true)
+    supabase.from('jobs').select('client_lat, client_lng')
+      .eq('business_id', businessId)
+      .not('client_lat', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(500)
+      .then(({ data }) => {
+        if (!cancelled) { setHeatmapPoints(data || []); setHeatmapLoading(false) }
+      })
+    return () => { cancelled = true }
+  }, [mode, businessId, heatmapPoints])
 
   useEffect(() => {
     const cv = canvasRef.current
@@ -4373,6 +4398,45 @@ function LiveOpsBoard({ technicians, jobs }) {
       ctx.lineWidth = 1
       for (let gx = 0; gx <= W; gx += 44) { ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, H); ctx.stroke() }
       for (let gy = 0; gy <= H; gy += 44) { ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke() }
+
+      if (mode === 'heatmap') {
+        const points = (heatmapPoints || []).filter(p => p.client_lat != null && p.client_lng != null)
+        if (points.length === 0) {
+          ctx.fillStyle = '#666'
+          ctx.font = '14px -apple-system, BlinkMacSystemFont, sans-serif'
+          ctx.textAlign = 'center'
+          ctx.fillText(heatmapLoading ? 'Loading job history…' : 'No located job history yet', W / 2, H / 2)
+          return
+        }
+        const lats = points.map(p => p.client_lat), lngs = points.map(p => p.client_lng)
+        let minLat = Math.min(...lats), maxLat = Math.max(...lats)
+        let minLng = Math.min(...lngs), maxLng = Math.max(...lngs)
+        const latSpan = (maxLat - minLat) || 0.02
+        const lngSpan = (maxLng - minLng) || 0.02
+        minLat -= latSpan * 0.18; maxLat += latSpan * 0.18
+        minLng -= lngSpan * 0.18; maxLng += lngSpan * 0.18
+        const margin = 36
+        const project = (lat, lng) => [
+          margin + ((lng - minLng) / (maxLng - minLng)) * (W - margin * 2),
+          margin + (1 - (lat - minLat) / (maxLat - minLat)) * (H - margin * 2),
+        ]
+        // Classic additive-heat trick: many overlapping low-alpha blobs —
+        // areas with more job history naturally end up brighter/more
+        // saturated where points cluster, with no clustering math needed.
+        ctx.globalCompositeOperation = 'lighter'
+        points.forEach(p => {
+          const [x, y] = project(p.client_lat, p.client_lng)
+          const gradient = ctx.createRadialGradient(x, y, 0, x, y, 34)
+          gradient.addColorStop(0, 'rgba(224, 177, 85, .22)')
+          gradient.addColorStop(1, 'rgba(224, 177, 85, 0)')
+          ctx.fillStyle = gradient
+          ctx.beginPath()
+          ctx.arc(x, y, 34, 0, Math.PI * 2)
+          ctx.fill()
+        })
+        ctx.globalCompositeOperation = 'source-over'
+        return
+      }
 
       const techPoints = (technicians || []).filter(t => t.current_lat != null && t.current_lng != null)
       const jobPoints = (jobs || []).filter(j => j.client_lat != null && j.client_lng != null && j.status !== 'complete')
@@ -4432,7 +4496,7 @@ function LiveOpsBoard({ technicians, jobs }) {
     draw()
     window.addEventListener('resize', draw)
     return () => window.removeEventListener('resize', draw)
-  }, [technicians, jobs])
+  }, [technicians, jobs, mode, heatmapPoints, heatmapLoading])
 
   const liveCount = (technicians || []).filter(t => t.current_lat != null).length
   const jobCount = (jobs || []).filter(j => j.client_lat != null && j.status !== 'complete').length
@@ -4441,12 +4505,30 @@ function LiveOpsBoard({ technicians, jobs }) {
     <div style={{ position: 'absolute', inset: 0 }}>
       <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block' }} />
       <div style={{ position: 'absolute', top: 12, left: 12, background: 'rgba(5,8,17,.85)', border: '1px solid #1e293b', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#ccc' }}>
-        <strong style={{ color: '#fff' }}>Live Ops Board</strong> — schematic, not a street map
-        <div style={{ marginTop: 4, color: '#888' }}>
-          <span style={{ color: '#4ee6b3' }}>●</span> {liveCount} tracking &nbsp;
-          <span style={{ color: '#8fb8ff' }}>●</span> {jobCount} job{jobCount === 1 ? '' : 's'} located
-        </div>
+        {mode === 'heatmap' ? (
+          <>
+            <strong style={{ color: '#fff' }}>Demand heatmap</strong> — where your job history clusters
+            <div style={{ marginTop: 4, color: '#888' }}>
+              <span style={{ color: '#e0b155' }}>●</span> {(heatmapPoints || []).length} located job{(heatmapPoints || []).length === 1 ? '' : 's'} in history
+            </div>
+          </>
+        ) : (
+          <>
+            <strong style={{ color: '#fff' }}>Live Ops Board</strong> — schematic, not a street map
+            <div style={{ marginTop: 4, color: '#888' }}>
+              <span style={{ color: '#4ee6b3' }}>●</span> {liveCount} tracking &nbsp;
+              <span style={{ color: '#8fb8ff' }}>●</span> {jobCount} job{jobCount === 1 ? '' : 's'} located
+            </div>
+          </>
+        )}
       </div>
+      <button
+        type="button"
+        onClick={() => setMode(m => m === 'live' ? 'heatmap' : 'live')}
+        style={{ position: 'absolute', top: 12, right: 12, background: 'rgba(5,8,17,.85)', border: '1px solid #1e293b', borderRadius: 8, padding: '7px 12px', fontSize: 12, color: '#ccc', cursor: 'pointer' }}
+      >
+        {mode === 'heatmap' ? '← Back to live' : 'Show demand heatmap →'}
+      </button>
     </div>
   )
 }
