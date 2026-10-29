@@ -73,7 +73,7 @@ serve(async (req: Request) => {
 
     const { data: quote } = await supabase
       .from('quotes')
-      .select('id, business_id, status, client_name, total, businesses(contact_phone)')
+      .select('id, business_id, status, client_name, client_phone, total, description, lead_id, businesses(contact_phone)')
       .eq('id', quoteId)
       .maybeSingle()
 
@@ -132,6 +132,43 @@ serve(async (req: Request) => {
       ).catch(() => {})
     }
     notifySlack(supabaseUrl, supabaseServiceKey, quote.business_id, notifyText).catch(() => {})
+
+    // Quote-to-job bridge, added 2026-10-29: previously an accepted quote
+    // was just a status flip — someone still had to re-type the client's
+    // name, phone, and job description into a brand-new job by hand, work
+    // that was already done once at quote time. Auto-creates a draft job
+    // instead, fire-and-forget so a failure here can never block the
+    // client's own accept from succeeding (same resilience shape as the
+    // Slack/SMS notifications above).
+    //
+    // Honesty note on the address: neither `quotes` nor `leads` stores a
+    // full street address (leads only has `suburb`, a rough area, not
+    // something precise enough to geocode confidently) — this was never
+    // collected at quote time. Using the lead's suburb as a best-effort
+    // client_address is still strictly better than leaving it blank: if
+    // it's too vague to geocode, AddJobModal's own best-effort geocoding
+    // fix (2026-10-29) already handles that gracefully (job saved, no map
+    // pin yet) rather than failing. The job's notes make clear the exact
+    // address still needs confirming — this is a draft to save re-typing,
+    // not a claim that the address is already correct.
+    if (status === 'accepted') {
+      (async () => {
+        let suburb = null
+        if (quote.lead_id) {
+          const { data: lead } = await supabase.from('leads').select('suburb').eq('id', quote.lead_id).maybeSingle()
+          suburb = lead?.suburb || null
+        }
+        const { error: jobInsertErr } = await supabase.from('jobs').insert({
+          business_id: quote.business_id,
+          client_name: quote.client_name,
+          client_phone: quote.client_phone,
+          client_address: suburb,
+          notes: `Auto-created from accepted quote${quote.total != null ? ` ($${Number(quote.total).toFixed(2)})` : ''}. ${suburb ? 'Confirm the exact address — only the suburb was known at quote time.' : 'No address on file yet — add one before dispatching.'}${quote.description ? ` Original request: ${quote.description}` : ''}`,
+          status: 'scheduled',
+        })
+        if (jobInsertErr) console.error('respond-to-quote: job auto-creation failed:', jobInsertErr.message)
+      })().catch(() => {})
+    }
 
     // Fire-and-forget: a workflow misconfiguration/outage on the business's
     // end must never block the client's own accept/decline from succeeding.
