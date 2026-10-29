@@ -4553,11 +4553,20 @@ function TechQrModal({ tech, onClose }) {
 
 // ── ADD JOB MODAL ──────────────────────────────────────────
 function AddJobModal({ businessId, technicianCredentials, technicians, onClose }) {
+  const [mode, setMode] = useState('single') // 'single' | 'bulk'
   const [form, setForm] = useState({
     client_name: '', client_phone: '', client_address: '', scheduled_time: '', notes: '', urgency: '', required_credential_name: '', required_skill: ''
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+
+  // Bulk-import state — see AddTechnicianModal's own bulk mode for the
+  // same pattern (parse -> preview -> commit), applied here to jobs
+  // instead of technicians.
+  const [csvRows, setCsvRows] = useState([])
+  const [csvFileName, setCsvFileName] = useState(null)
+  const [csvError, setCsvError] = useState(null)
+  const [bulkProgress, setBulkProgress] = useState(null) // "N of M" while importing, or null
 
   // Distinct credential names already tracked for this business (Licence/
   // Ticket Expiry Guardian, Pro tier) — reused here so a dispatcher picks
@@ -4632,10 +4641,153 @@ function AddJobModal({ businessId, technicianCredentials, technicians, onClose }
 
   const f = (field) => (e) => setForm(prev => ({ ...prev, [field]: e.target.value }))
 
+  // Same loose real-world-header matching as AddTechnicianModal — a
+  // dispatcher's own spreadsheet or an export from whatever they're
+  // switching from is never going to match an exact expected template.
+  function handleCsvFile(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setCsvError(null)
+    setCsvRows([])
+    setCsvFileName(file.name)
+    const reader = new FileReader()
+    reader.onload = () => {
+      const { headers, rows } = parseCsv(String(reader.result))
+      if (headers.length === 0) { setCsvError('That file looks empty.'); return }
+      const nameCol = findCsvColumn(headers, ['client_name', 'client name', 'name', 'customer', 'customer name'])
+      const phoneCol = findCsvColumn(headers, ['client_phone', 'client phone', 'phone', 'mobile', 'phone number'])
+      const addressCol = findCsvColumn(headers, ['client_address', 'client address', 'address', 'site address', 'location'])
+      const timeCol = findCsvColumn(headers, ['scheduled_time', 'scheduled time', 'time', 'date', 'appointment'])
+      const notesCol = findCsvColumn(headers, ['notes', 'note', 'description', 'job description'])
+      if (!nameCol || !phoneCol || !addressCol) {
+        setCsvError(`Couldn't find a client name, phone and address column. Found: ${headers.join(', ')}`)
+        return
+      }
+      const mapped = rows
+        .map(r => ({
+          client_name: r[nameCol],
+          client_phone: r[phoneCol],
+          client_address: r[addressCol],
+          scheduled_time: timeCol ? r[timeCol] : '',
+          notes: notesCol ? r[notesCol] : '',
+        }))
+        .filter(r => r.client_name && r.client_phone && r.client_address)
+      if (mapped.length === 0) { setCsvError('No rows with a name, phone and address all present.'); return }
+      if (mapped.length > 150) { setCsvError(`${mapped.length} rows — bulk import is capped at 150 at a time (each one is geocoded individually). Split the file and import in batches.`); return }
+      setCsvRows(mapped)
+    }
+    reader.onerror = () => setCsvError("Couldn't read that file.")
+    reader.readAsText(file)
+  }
+
+  async function handleBulkSubmit() {
+    if (csvRows.length === 0 || loading) return
+    setLoading(true)
+    setError(null)
+    let succeeded = 0
+    let geocodeFailures = 0
+    try {
+      // Sequential, not Promise.all — this hits Mapbox's geocoding API
+      // once per row, and running 150 of those at once risks tripping a
+      // rate limit that a one-at-a-time loop won't. Slower, but correct;
+      // bulk imports aren't a latency-sensitive path.
+      for (let i = 0; i < csvRows.length; i++) {
+        setBulkProgress(`${i + 1} of ${csvRows.length}`)
+        const row = csvRows[i]
+        let lat = null, lng = null
+        try {
+          const geocoded = await geocodeAddress(row.client_address)
+          lat = geocoded.lat
+          lng = geocoded.lng
+        } catch (geoErr) {
+          geocodeFailures++
+          console.warn(`Row ${i + 1} added without a map location:`, geoErr.message)
+        }
+        // Same timezone handling as the single-add path below — only
+        // attempted if the CSV cell actually parses as a real date,
+        // otherwise left null rather than failing the whole row over an
+        // unparsable scheduled-time cell.
+        const parsedTime = row.scheduled_time ? new Date(row.scheduled_time) : null
+        const scheduled_time = parsedTime && !isNaN(parsedTime.getTime()) ? parsedTime.toISOString() : null
+        const { error: insertError } = await supabase.from('jobs').insert({
+          business_id: businessId,
+          client_name: row.client_name.trim(),
+          client_phone: row.client_phone.trim(),
+          client_address: row.client_address.trim(),
+          client_lat: lat,
+          client_lng: lng,
+          scheduled_time,
+          notes: row.notes?.trim() || null,
+          status: 'scheduled',
+        })
+        if (insertError) { console.error(`Row ${i + 1} failed to import:`, insertError.message); continue }
+        succeeded++
+      }
+      setBulkProgress(null)
+      if (succeeded === 0) {
+        setError('None of the rows could be imported — check the Console for the specific error on each.')
+      } else {
+        if (geocodeFailures > 0) {
+          alert(`${succeeded} of ${csvRows.length} jobs imported. ${geocodeFailures} couldn't be pinned on the map yet (Mapbox isn't connected) — they're saved, locations will fill in once it's set up.`)
+        }
+        onClose()
+      }
+    } catch (err) {
+      setBulkProgress(null)
+      setError(err.message)
+    }
+    setLoading(false)
+  }
+
   return (
     <div style={styles.modalOverlay}>
-      <div style={styles.modal}>
-        <h3 style={{ margin: '0 0 20px', color: '#1B2B4B', fontSize: 20 }}>Add New Job</h3>
+      <div style={{ ...styles.modal, maxWidth: mode === 'bulk' ? 520 : 420 }}>
+        <h3 style={{ margin: '0 0 16px', color: '#1B2B4B', fontSize: 20 }}>Add New Job</h3>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
+          <button type="button" onClick={() => setMode('single')}
+            style={{ ...styles.cancelBtn, ...(mode === 'single' ? { background: '#1B2B4B', color: '#fff' } : {}) }}>
+            Add one
+          </button>
+          <button type="button" onClick={() => setMode('bulk')}
+            style={{ ...styles.cancelBtn, ...(mode === 'bulk' ? { background: '#1B2B4B', color: '#fff' } : {}) }}>
+            Bulk import (CSV)
+          </button>
+        </div>
+        {mode === 'bulk' ? (
+          <div>
+            <label htmlFor="job-csv-file" style={styles.inputLabel}>CSV file — needs client name, phone and address columns (any common header name works)</label>
+            <input id="job-csv-file" type="file" accept=".csv,text/csv" onChange={handleCsvFile} style={{ margin: '8px 0 14px' }} />
+            {csvError && <p style={{ color: '#8A2525', fontSize: 13, marginBottom: 12 }}>{csvError}</p>}
+            {csvRows.length > 0 && (
+              <>
+                <p style={{ color: '#888', fontSize: 12, margin: '0 0 8px' }}>
+                  {csvFileName} — {csvRows.length} job{csvRows.length === 1 ? '' : 's'} found. Review before importing:
+                </p>
+                <div style={{ maxHeight: 180, overflowY: 'auto', border: '1px solid #e2e2e2', borderRadius: 8, marginBottom: 14 }}>
+                  {csvRows.map((r, i) => (
+                    <div key={i} style={{ padding: '6px 10px', borderBottom: i < csvRows.length - 1 ? '1px solid #f0f0f0' : 'none', fontSize: 13 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span>{r.client_name}</span>
+                        <span style={{ color: '#888' }}>{r.client_phone}</span>
+                      </div>
+                      <div style={{ color: '#888', fontSize: 12 }}>{r.client_address}</div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+            <p style={{ color: '#888', fontSize: 12, margin: '0 0 14px' }}>
+              Each address is geocoded for the map the same way a single job would be — rows whose address can&rsquo;t be pinned yet are still saved, just without a map location until that&rsquo;s sorted out.
+            </p>
+            {error && <p style={{ color: '#8A2525', fontSize: 13 }}>{error}</p>}
+            <div style={{ display: 'flex', gap: 10, marginTop: 8, alignItems: 'center' }}>
+              <button type="button" disabled={loading || csvRows.length === 0} onClick={handleBulkSubmit} style={styles.submitBtn}>
+                {loading ? (bulkProgress ? `Importing ${bulkProgress}...` : 'Importing...') : csvRows.length > 0 ? `Import ${csvRows.length} jobs` : 'Import'}
+              </button>
+              <button type="button" onClick={onClose} style={styles.cancelBtn}>Cancel</button>
+            </div>
+          </div>
+        ) : (
         <form onSubmit={handleSubmit}>
           {[
             ['Client name', 'client_name', 'text', true],
@@ -4699,6 +4851,7 @@ function AddJobModal({ businessId, technicianCredentials, technicians, onClose }
             <button type="button" onClick={onClose} style={styles.cancelBtn}>Cancel</button>
           </div>
         </form>
+        )}
       </div>
     </div>
   )
