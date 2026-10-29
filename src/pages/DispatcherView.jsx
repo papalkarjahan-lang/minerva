@@ -4603,7 +4603,7 @@ function HandoverReportModal({ businessId, technicians, onClose }) {
         const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).toISOString()
 
         const [{ data: jobs, error: jobsErr }, { data: incidentRows, error: incErr }] = await Promise.all([
-          supabase.from('jobs').select('id, client_name, technician_id, completed_at, status, no_show_reschedule_sms_sent_at')
+          supabase.from('jobs').select('id, client_name, technician_id, completed_at, status, no_show_reschedule_sms_sent_at, client_satisfaction')
             .eq('business_id', businessId)
             .gte('completed_at', startOfDay).lt('completed_at', endOfDay),
           supabase.from('technician_incidents').select('id, technician_id, category, description, created_at')
@@ -4628,6 +4628,8 @@ function HandoverReportModal({ businessId, technicians, onClose }) {
   const techName = (id) => technicians.find(t => t.id === id)?.name || 'Unassigned'
   const wastedTrips = completedJobs.filter(j => j.no_show_reschedule_sms_sent_at)
   const realCompletions = completedJobs.filter(j => !j.no_show_reschedule_sms_sent_at)
+  const goodRatings = completedJobs.filter(j => j.client_satisfaction === 'good').length
+  const notGreatRatings = completedJobs.filter(j => j.client_satisfaction === 'not_great').length
   const byTechnician = {}
   realCompletions.forEach(j => {
     const key = techName(j.technician_id)
@@ -4640,6 +4642,7 @@ function HandoverReportModal({ businessId, technicians, onClose }) {
     const lines = [`Shift handover — ${todayLabel}`, '']
     lines.push(`${realCompletions.length} job${realCompletions.length === 1 ? '' : 's'} completed across ${Object.keys(byTechnician).length} technician${Object.keys(byTechnician).length === 1 ? '' : 's'}.`)
     if (wastedTrips.length > 0) lines.push(`${wastedTrips.length} wasted trip${wastedTrips.length === 1 ? '' : 's'} (no-show, client offered a reschedule).`)
+    if (goodRatings + notGreatRatings > 0) lines.push(`Client satisfaction: ${goodRatings} 👍, ${notGreatRatings} 👎.`)
     lines.push('')
     Object.entries(byTechnician).forEach(([name, jobs]) => {
       lines.push(`${name}:`)
@@ -4676,6 +4679,7 @@ function HandoverReportModal({ businessId, technicians, onClose }) {
             <p style={{ color: '#333', fontSize: 14, margin: '0 0 14px' }}>
               <strong>{realCompletions.length}</strong> job{realCompletions.length === 1 ? '' : 's'} completed across <strong>{Object.keys(byTechnician).length}</strong> technician{Object.keys(byTechnician).length === 1 ? '' : 's'}
               {wastedTrips.length > 0 && <span style={{ color: '#A87C16' }}> · {wastedTrips.length} wasted trip{wastedTrips.length === 1 ? '' : 's'}</span>}
+              {(goodRatings + notGreatRatings) > 0 && <span> · {goodRatings} 👍 {notGreatRatings} 👎</span>}
             </p>
             <div style={{ maxHeight: 280, overflowY: 'auto', border: '1px solid #e2e2e2', borderRadius: 8, padding: '4px 12px', marginBottom: 14 }}>
               {Object.entries(byTechnician).map(([name, jobs]) => (

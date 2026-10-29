@@ -48,6 +48,26 @@ export default function TrackingView() {
   // straight to `leads` (status='new', source='rebooking') — reuses the
   // existing leads pipeline/tab the dispatcher already watches (leads has
   // realtime enabled), so this needed no new table or edge function.
+  // One-tap satisfaction pulse — the only existing client-sentiment
+  // signal (review_loop) is a paid add-on that sends clients to Google's
+  // own review page and never captures anything back into Minerva. This
+  // is a real, free, always-on signal instead. Goes through
+  // submit-job-satisfaction (a mediating edge function), not a direct
+  // anon write — `jobs` lost its "anon update" policy a while back for
+  // real security reasons, so a client-facing write has to hold the
+  // service-role key server-side, same pattern as submitRebooking's own
+  // notify-rebooking-request call.
+  const [satisfactionSubmitted, setSatisfactionSubmitted] = useState(false)
+  const [satisfactionSubmitting, setSatisfactionSubmitting] = useState(null) // which rating is in flight, or null
+
+  async function submitSatisfaction(rating) {
+    if (satisfactionSubmitting) return
+    setSatisfactionSubmitting(rating)
+    const { data, error: invokeError } = await supabase.functions.invoke('submit-job-satisfaction', { body: { jobId, rating } })
+    setSatisfactionSubmitting(null)
+    if (!invokeError && !data?.error) setSatisfactionSubmitted(true)
+  }
+
   const [showRebook, setShowRebook] = useState(false)
   const [rebookDetails, setRebookDetails] = useState('')
   const [rebookSubmitting, setRebookSubmitting] = useState(false)
@@ -197,6 +217,25 @@ export default function TrackingView() {
         <p style={{ fontSize: 40, margin: '0 0 12px' }}>✅</p>
         <h2 style={{ color: '#1D9E75', margin: '0 0 8px' }}>Job Complete</h2>
         <p style={{ color: '#555', margin: '0 0 18px' }}>{business?.name} has completed your service.</p>
+
+        {!satisfactionSubmitted && job.status === 'complete' && job.client_satisfaction == null && (
+          <div style={{ marginBottom: 18 }}>
+            <p style={{ color: '#555', fontSize: 13, margin: '0 0 8px' }}>How did we do?</p>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+              <button type="button" disabled={!!satisfactionSubmitting} onClick={() => submitSatisfaction('good')}
+                style={{ fontSize: 22, background: '#f4f4f4', border: 'none', borderRadius: 10, padding: '10px 18px', cursor: satisfactionSubmitting ? 'default' : 'pointer', opacity: satisfactionSubmitting === 'not_great' ? 0.5 : 1 }}>
+                👍
+              </button>
+              <button type="button" disabled={!!satisfactionSubmitting} onClick={() => submitSatisfaction('not_great')}
+                style={{ fontSize: 22, background: '#f4f4f4', border: 'none', borderRadius: 10, padding: '10px 18px', cursor: satisfactionSubmitting ? 'default' : 'pointer', opacity: satisfactionSubmitting === 'good' ? 0.5 : 1 }}>
+                👎
+              </button>
+            </div>
+          </div>
+        )}
+        {satisfactionSubmitted && (
+          <p style={{ color: '#1D9E75', fontSize: 13, margin: '0 0 18px' }}>Thanks for the feedback!</p>
+        )}
 
         {rebookDone ? (
           <p style={{ color: '#1D9E75', fontSize: 14, margin: 0 }}>
