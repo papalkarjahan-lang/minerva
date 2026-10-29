@@ -39,6 +39,10 @@ const SECTIONS = [
       ['🗂️', 'Dispatch board & job scheduling', 'Assign jobs to technicians and see the day\'s schedule at a glance.'],
       ['✅', 'Job start / complete tracking', 'Technicians mark jobs started and completed from their phone — the dispatcher view updates live.'],
       ['📶', 'Works offline', 'If a technician\'s phone loses signal, location updates queue on the phone and send the moment it reconnects. Nothing is lost.'],
+      ['🗺️', 'Live Ops Board', 'A live view of every tracking technician and located job, built from your own real data — works even before a street map is connected.'],
+      ['📥', 'Bulk import', 'Already running your team and schedule in a spreadsheet? Upload it — technicians and jobs populate in one go instead of typing each in by hand.'],
+      ['🔥', 'Demand heatmap', 'See where your job history actually clusters, so you know which areas to focus growth on — not just what\'s happening today.'],
+      ['📋', 'Shift handover report', 'A readable summary of today\'s completed jobs, grouped by technician, assembled automatically — copy it as text to hand off to the next shift.'],
     ],
   },
   {
@@ -47,6 +51,7 @@ const SECTIONS = [
       ['📱', 'Automatic ETA SMS', 'Clients get a text with a live tracking link once their technician is close by (within ~2km) — no app for the client to install either.'],
       ['💬', 'Automatic lead intake', 'A chat widget for your website triages enquiries and texts your team qualified leads, scored by urgency.'],
       ['🔁', 'Referral nudges', 'A single low-pressure referral-code text is sent to happy clients after a paid invoice — not a spam campaign. Included on every plan.'],
+      ['🧾', 'Client self-service portal', 'Clients get a private link to their own job history and invoices, and can request another job themselves — no phone call needed.'],
     ],
   },
   {
