@@ -74,6 +74,7 @@ export default function IndustrialDispatcherView() {
   const [siteCheckins, setSiteCheckins] = useState({}) // site_id -> site_checkins rows, fetched lazily
   const [ingestionKeyCopied, setIngestionKeyCopied] = useState(false)
   const [copiedBizCard, setCopiedBizCard] = useState(false)
+  const [showComplianceScorecard, setShowComplianceScorecard] = useState(false)
   const [regeneratingKey, setRegeneratingKey] = useState(false)
   // Minerva Max add-on management (Asset Intelligence only, so far, is
   // relevant to Track B) — mirrors DispatcherView's addonBusy pattern.
@@ -767,6 +768,10 @@ export default function IndustrialDispatcherView() {
               style={styles.smallBtn} title="A public page showing your real completed-jobs and team-size stats — link it from your own website or a tender submission.">
               {copiedBizCard ? 'Copied!' : '🔗 Copy my business card link'}
             </button>
+            <button type="button" onClick={() => setShowComplianceScorecard(true)} style={styles.smallBtn}
+              title="How well flagged safety and maintenance issues actually get resolved — the thing to actually hand a principal contractor when bidding for work.">
+              📊 Compliance scorecard
+            </button>
           </div>
           {billingPortalError && <p style={{ color: '#e07a7a', fontSize: 11, margin: '0 0 12px' }}>{billingPortalError}</p>}
         </div>
@@ -1354,6 +1359,66 @@ export default function IndustrialDispatcherView() {
           onClose={() => setShowSupportModal(false)}
         />
       )}
+
+      {/* Compliance Scorecard — feature 3 of the 3 approved this session.
+          Deliberately a different granularity than generate-compliance-
+          package/package-client-verification (both per-job/per-site
+          evidence packages, confirmed before building this) — this is a
+          whole-business trend: how reliably flagged safety and
+          maintenance issues actually get closed out, not a one-off
+          evidence bundle. Computed entirely client-side from
+          correctiveActions (already loaded for the whole business, see
+          loadAll()) — real counts, no invented weighting beyond a plain
+          average of the two real rates, and an honest "not enough data
+          yet" state when nothing's been raised at all. */}
+      {showComplianceScorecard && (() => {
+        const total = correctiveActions.length
+        const closed = correctiveActions.filter(a => a.status === 'closed').length
+        const resolutionRate = total > 0 ? closed / total : null
+        const closedWithDueDate = correctiveActions.filter(a => a.status === 'closed' && a.due_date && a.closed_at)
+        const onTime = closedWithDueDate.filter(a => new Date(a.closed_at) <= new Date(`${a.due_date}T23:59:59`)).length
+        const onTimeRate = closedWithDueDate.length > 0 ? onTime / closedWithDueDate.length : null
+        const currentlyOpen = total - closed
+        const rates = [resolutionRate, onTimeRate].filter(r => r != null)
+        const overallScore = rates.length > 0 ? Math.round((rates.reduce((a, b) => a + b, 0) / rates.length) * 100) : null
+
+        function scorecardText() {
+          const lines = [`${business?.name || 'Business'} — Compliance Scorecard`, '']
+          if (overallScore == null) {
+            lines.push('No safety or maintenance issues raised yet — nothing to score.')
+          } else {
+            lines.push(`Overall: ${overallScore}/100`)
+            if (resolutionRate != null) lines.push(`Resolution rate: ${Math.round(resolutionRate * 100)}% (${closed} of ${total} closed)`)
+            if (onTimeRate != null) lines.push(`On-time rate: ${Math.round(onTimeRate * 100)}% (${onTime} of ${closedWithDueDate.length} closed by their due date)`)
+            lines.push(`Currently open: ${currentlyOpen}`)
+          }
+          return lines.join('\n')
+        }
+
+        return (
+          <div style={styles.modalOverlay} onClick={() => setShowComplianceScorecard(false)}>
+            <div style={{ ...styles.modal, textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+              <p style={styles.modalTitle}>Compliance scorecard</p>
+              {overallScore == null ? (
+                <p style={{ color: '#666', fontSize: 14 }}>No safety or maintenance issues raised yet — nothing to score. This fills in as real incidents and maintenance items get flagged and closed out.</p>
+              ) : (
+                <>
+                  <p style={{ fontSize: 40, fontWeight: 'bold', color: overallScore >= 80 ? '#1D9E75' : overallScore >= 50 ? '#A87C16' : '#8A2525', margin: '4px 0' }}>{overallScore}<span style={{ fontSize: 18, color: '#888' }}>/100</span></p>
+                  {resolutionRate != null && <p style={{ fontSize: 13, color: '#555', margin: '4px 0' }}>{Math.round(resolutionRate * 100)}% resolution rate ({closed} of {total} closed)</p>}
+                  {onTimeRate != null && <p style={{ fontSize: 13, color: '#555', margin: '4px 0' }}>{Math.round(onTimeRate * 100)}% closed on time</p>}
+                  <p style={{ fontSize: 13, color: '#888', margin: '4px 0 0' }}>{currentlyOpen} currently open</p>
+                </>
+              )}
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 16 }}>
+                {overallScore != null && (
+                  <button type="button" onClick={() => navigator.clipboard.writeText(scorecardText())} style={styles.smallBtn}>Copy as text</button>
+                )}
+                <button type="button" onClick={() => setShowComplianceScorecard(false)} style={styles.smallBtn}>Close</button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {showNotificationSettings && (
         <div style={styles.modalOverlay} onClick={() => setShowNotificationSettings(false)}>
