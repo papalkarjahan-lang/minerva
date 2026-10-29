@@ -7,6 +7,7 @@ import ContactSupportModal from '../components/ContactSupportModal'
 import LoadingScreen from '../components/LoadingScreen'
 import { MAX_ADDONS, hasAddon, isTrialing, trialDaysLeft, hasUsedTrial, startTrialPatch, isAddonAvailableForSector } from '../maxAddons'
 import { isTrialExpired, SIGNUP_TRIAL_DAYS } from '../businessAccess'
+import QRCode from 'qrcode'
 import 'mapbox-gl/dist/mapbox-gl.css'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
@@ -214,6 +215,7 @@ export default function DispatcherView() {
   const [linkCopied, setLinkCopied] = useState(false)
   const [calendarLinkCopied, setCalendarLinkCopied] = useState(false)
   const [copiedTechId, setCopiedTechId] = useState(null)
+  const [qrTech, setQrTech] = useState(null) // technician currently shown in the QR modal, or null
   const [resendingTechId, setResendingTechId] = useState(null)
   const [slackWebhookInput, setSlackWebhookInput] = useState('')
   const [savingSettings, setSavingSettings] = useState(false)
@@ -2515,6 +2517,9 @@ export default function DispatcherView() {
                     <button style={styles.techLinkBtn} disabled={resendingTechId === tech.id} onClick={() => resendTechSMS(tech)}>
                       {resendingTechId === tech.id ? 'Sending...' : 'Resend text'}
                     </button>
+                    <button style={styles.techLinkBtn} onClick={(e) => { e.stopPropagation(); setQrTech(tech) }}>
+                      Show QR code
+                    </button>
                   </div>
                 )}
                 {tech.last_seen && tech.current_lat != null && (
@@ -4217,6 +4222,16 @@ export default function DispatcherView() {
         />
       )}
 
+      {/* Technician Setup QR Modal — a QR code encoding the exact same /tech?pin=
+          link "Copy setup link" already copies. Entirely client-side, no
+          Twilio/Resend/network call involved, so it works regardless of
+          whether SMS or email delivery is configured — scan it with the
+          technician's own phone camera on their first day instead of
+          waiting on a text. Added 2026-10-29. */}
+      {qrTech && (
+        <TechQrModal tech={qrTech} onClose={() => setQrTech(null)} />
+      )}
+
       {/* Add Asset Modal */}
       {showAddAsset && (
         <AddAssetModal
@@ -4375,6 +4390,49 @@ function AddTechnicianModal({ businessId, businessName, onSaved, onClose }) {
             <button type="button" onClick={onClose} style={styles.cancelBtn}>Cancel</button>
           </div>
         </form>
+      </div>
+    </div>
+  )
+}
+
+// ── TECHNICIAN SETUP QR MODAL ──────────────────────────────
+// Renders the exact same /tech?pin= link "Copy setup link" and the setup
+// SMS already use, as a scannable QR code. Generated entirely client-side
+// (the `qrcode` package draws straight to a canvas, no network call) — so
+// unlike the SMS, this works whether or not Twilio is configured, and
+// works for printing a sheet to hand a new hire on day one instead of
+// waiting on a text to land. Not a replacement for the SMS path, an
+// always-available fallback alongside it.
+function TechQrModal({ tech, onClose }) {
+  const canvasRef = useRef(null)
+  const [error, setError] = useState(null)
+  const appUrl = import.meta.env.VITE_APP_URL
+  const setupUrl = `${appUrl}/tech?pin=${tech.pin}`
+
+  useEffect(() => {
+    let cancelled = false
+    if (canvasRef.current) {
+      QRCode.toCanvas(canvasRef.current, setupUrl, { width: 240, margin: 2 }, (err) => {
+        if (!cancelled && err) setError(err.message)
+      })
+    }
+    return () => { cancelled = true }
+  }, [setupUrl])
+
+  return (
+    <div style={styles.modalOverlay} onClick={onClose}>
+      <div style={{ ...styles.modal, textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+        <h3 style={{ margin: '0 0 6px', color: '#1B2B4B', fontSize: 20 }}>{tech.name}&rsquo;s setup code</h3>
+        <p style={{ color: '#888', fontSize: 13, margin: '0 0 20px' }}>
+          Have them scan this with their phone&rsquo;s camera to open their tracking link — same link as &ldquo;Copy setup link&rdquo;, just as a code instead of a text message.
+        </p>
+        {error ? (
+          <p style={{ color: '#8A2525', fontSize: 13 }}>Couldn&rsquo;t generate the code: {error}</p>
+        ) : (
+          <canvas ref={canvasRef} style={{ margin: '0 auto', display: 'block' }} />
+        )}
+        <p style={{ color: '#aaa', fontSize: 11, margin: '16px 0 0', wordBreak: 'break-all' }}>{setupUrl}</p>
+        <button type="button" onClick={onClose} style={{ ...styles.cancelBtn, marginTop: 18 }}>Close</button>
       </div>
     </div>
   )
