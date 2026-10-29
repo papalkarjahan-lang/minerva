@@ -212,6 +212,7 @@ export default function DispatcherView() {
   const [replaySpeed, setReplaySpeed] = useState(60) // 1 real second of playback = 60 recorded seconds
   const [showAddJob, setShowAddJob] = useState(false)
   const [showAddTech, setShowAddTech] = useState(false)
+  const [showHandoverReport, setShowHandoverReport] = useState(false)
   const [linkCopied, setLinkCopied] = useState(false)
   const [calendarLinkCopied, setCalendarLinkCopied] = useState(false)
   const [copiedTechId, setCopiedTechId] = useState(null)
@@ -2430,6 +2431,10 @@ export default function DispatcherView() {
               )}
             </div>
           )}
+          <button style={{ ...styles.copyLinkBtn, marginTop: 8 }} onClick={() => setShowHandoverReport(true)}
+            title="A readable summary of today's jobs, who did what, and anything flagged — built fresh from today's real activity, not a raw log.">
+            📋 Today&rsquo;s shift handover
+          </button>
           {(() => {
             // Tomorrow's workload preview — deliberately NOT a new
             // optimization feature (that's a materially bigger, separately-
@@ -4217,6 +4222,14 @@ export default function DispatcherView() {
         />
       )}
 
+      {showHandoverReport && (
+        <HandoverReportModal
+          businessId={businessId}
+          technicians={technicians}
+          onClose={() => setShowHandoverReport(false)}
+        />
+      )}
+
       {/* Technician Setup QR Modal — a QR code encoding the exact same /tech?pin=
           link "Copy setup link" already copies. Entirely client-side, no
           Twilio/Resend/network call involved, so it works regardless of
@@ -4432,6 +4445,145 @@ function LiveOpsBoard({ technicians, jobs }) {
         <div style={{ marginTop: 4, color: '#888' }}>
           <span style={{ color: '#4ee6b3' }}>●</span> {liveCount} tracking &nbsp;
           <span style={{ color: '#8fb8ff' }}>●</span> {jobCount} job{jobCount === 1 ? '' : 's'} located
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── SHIFT HANDOVER REPORT ──────────────────────────────────
+// A readable document assembled from today's real activity, not a raw
+// activity log — the kind of handover a dispatcher currently either
+// types up from memory at the end of the day or just never writes at
+// all. Pure client-side query + formatting, no edge function, no new
+// external dependency: jobs completed today (grouped by technician),
+// any technician_incidents logged today, and wasted trips (jobs where
+// detect-wasted-trips already fired a no-show SMS today) pulled
+// straight from existing tables. Nothing here is computed or inferred —
+// every line is a real row from today, just organized into something a
+// person would actually want to read or hand off.
+function HandoverReportModal({ businessId, technicians, onClose }) {
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [completedJobs, setCompletedJobs] = useState([])
+  const [incidents, setIncidents] = useState([])
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      try {
+        // Local-day boundary, same reasoning as optimizeFleetDay's own
+        // localToday computation elsewhere in this file — a plain UTC-day
+        // filter would cut off a few hours wrong for an AU dispatcher.
+        const now = new Date()
+        const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString()
+        const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).toISOString()
+
+        const [{ data: jobs, error: jobsErr }, { data: incidentRows, error: incErr }] = await Promise.all([
+          supabase.from('jobs').select('id, client_name, technician_id, completed_at, status, no_show_reschedule_sms_sent_at')
+            .eq('business_id', businessId)
+            .gte('completed_at', startOfDay).lt('completed_at', endOfDay),
+          supabase.from('technician_incidents').select('id, technician_id, category, description, created_at')
+            .eq('business_id', businessId)
+            .gte('created_at', startOfDay).lt('created_at', endOfDay),
+        ])
+        if (jobsErr) throw jobsErr
+        if (incErr) throw incErr
+        if (!cancelled) {
+          setCompletedJobs(jobs || [])
+          setIncidents(incidentRows || [])
+        }
+      } catch (err) {
+        if (!cancelled) setError(err.message)
+      }
+      if (!cancelled) setLoading(false)
+    }
+    load()
+    return () => { cancelled = true }
+  }, [businessId])
+
+  const techName = (id) => technicians.find(t => t.id === id)?.name || 'Unassigned'
+  const wastedTrips = completedJobs.filter(j => j.no_show_reschedule_sms_sent_at)
+  const realCompletions = completedJobs.filter(j => !j.no_show_reschedule_sms_sent_at)
+  const byTechnician = {}
+  realCompletions.forEach(j => {
+    const key = techName(j.technician_id)
+    if (!byTechnician[key]) byTechnician[key] = []
+    byTechnician[key].push(j)
+  })
+  const todayLabel = new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long' })
+
+  function reportAsText() {
+    const lines = [`Shift handover — ${todayLabel}`, '']
+    lines.push(`${realCompletions.length} job${realCompletions.length === 1 ? '' : 's'} completed across ${Object.keys(byTechnician).length} technician${Object.keys(byTechnician).length === 1 ? '' : 's'}.`)
+    if (wastedTrips.length > 0) lines.push(`${wastedTrips.length} wasted trip${wastedTrips.length === 1 ? '' : 's'} (no-show, client offered a reschedule).`)
+    lines.push('')
+    Object.entries(byTechnician).forEach(([name, jobs]) => {
+      lines.push(`${name}:`)
+      jobs.forEach(j => lines.push(`  - ${j.client_name || 'Unnamed client'} (completed ${new Date(j.completed_at).toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit' })})`))
+    })
+    if (incidents.length > 0) {
+      lines.push('', 'Flagged:')
+      incidents.forEach(i => lines.push(`  - [${i.category}] ${techName(i.technician_id)}: ${i.description}`))
+    }
+    return lines.join('\n')
+  }
+
+  async function copyReport() {
+    try {
+      await navigator.clipboard.writeText(reportAsText())
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (_) { /* clipboard permission denied — button just won't show "Copied" */ }
+  }
+
+  return (
+    <div style={styles.modalOverlay} onClick={onClose}>
+      <div style={{ ...styles.modal, maxWidth: 480, textAlign: 'left' }} onClick={e => e.stopPropagation()}>
+        <h3 style={{ margin: '0 0 4px', color: '#1B2B4B', fontSize: 20 }}>Shift handover</h3>
+        <p style={{ color: '#888', fontSize: 13, margin: '0 0 18px' }}>{todayLabel}</p>
+        {loading ? (
+          <p style={{ color: '#888', fontSize: 13 }}>Pulling today&rsquo;s activity&hellip;</p>
+        ) : error ? (
+          <p style={{ color: '#8A2525', fontSize: 13 }}>{error}</p>
+        ) : realCompletions.length === 0 && incidents.length === 0 ? (
+          <p style={{ color: '#888', fontSize: 13 }}>Nothing completed or flagged yet today.</p>
+        ) : (
+          <>
+            <p style={{ color: '#333', fontSize: 14, margin: '0 0 14px' }}>
+              <strong>{realCompletions.length}</strong> job{realCompletions.length === 1 ? '' : 's'} completed across <strong>{Object.keys(byTechnician).length}</strong> technician{Object.keys(byTechnician).length === 1 ? '' : 's'}
+              {wastedTrips.length > 0 && <span style={{ color: '#A87C16' }}> · {wastedTrips.length} wasted trip{wastedTrips.length === 1 ? '' : 's'}</span>}
+            </p>
+            <div style={{ maxHeight: 280, overflowY: 'auto', border: '1px solid #e2e2e2', borderRadius: 8, padding: '4px 12px', marginBottom: 14 }}>
+              {Object.entries(byTechnician).map(([name, jobs]) => (
+                <div key={name} style={{ padding: '8px 0', borderBottom: '1px solid #f0f0f0' }}>
+                  <p style={{ fontWeight: 'bold', fontSize: 13, margin: '0 0 4px' }}>{name}</p>
+                  {jobs.map(j => (
+                    <p key={j.id} style={{ fontSize: 13, color: '#555', margin: '0 0 2px' }}>
+                      {j.client_name || 'Unnamed client'} <span style={{ color: '#aaa' }}>— {new Date(j.completed_at).toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit' })}</span>
+                    </p>
+                  ))}
+                </div>
+              ))}
+              {incidents.length > 0 && (
+                <div style={{ padding: '8px 0' }}>
+                  <p style={{ fontWeight: 'bold', fontSize: 13, margin: '0 0 4px', color: '#A87C16' }}>Flagged</p>
+                  {incidents.map(i => (
+                    <p key={i.id} style={{ fontSize: 13, color: '#555', margin: '0 0 2px' }}>
+                      [{i.category}] {techName(i.technician_id)}: {i.description}
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+        <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+          {!loading && !error && (realCompletions.length > 0 || incidents.length > 0) && (
+            <button type="button" onClick={copyReport} style={styles.submitBtn}>{copied ? 'Copied!' : 'Copy as text'}</button>
+          )}
+          <button type="button" onClick={onClose} style={styles.cancelBtn}>Close</button>
         </div>
       </div>
     </div>
