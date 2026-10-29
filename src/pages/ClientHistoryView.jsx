@@ -12,10 +12,25 @@ import LoadingScreen from '../components/LoadingScreen'
 export default function ClientHistoryView() {
   const { token } = useParams()
   const [business, setBusiness] = useState(null)
+  const [link, setLink] = useState(null)
   const [jobs, setJobs] = useState([])
   const [invoices, setInvoices] = useState([])
   const [error, setError] = useState(null)
   const [loaded, setLoaded] = useState(false)
+
+  // Request-another-job — previously this only existed on TrackingView's
+  // job-complete screen (a one-time, easy-to-lose moment right after a
+  // job finishes), not on this portal page a client would actually
+  // return to and bookmark. Same mechanism as TrackingView's own
+  // submitRebooking (insert into `leads`, source='rebooking', then
+  // notify-rebooking-request) — not a new pipeline, just making the
+  // existing one reachable from the page a repeat client is more likely
+  // to actually be on days or weeks later.
+  const [showRebook, setShowRebook] = useState(false)
+  const [rebookDetails, setRebookDetails] = useState('')
+  const [rebookSubmitting, setRebookSubmitting] = useState(false)
+  const [rebookDone, setRebookDone] = useState(false)
+  const [rebookError, setRebookError] = useState(null)
 
   useEffect(() => { loadHistory() }, [token])
 
@@ -27,6 +42,7 @@ export default function ClientHistoryView() {
       .maybeSingle()
     if (linkErr || !link) { setError('This link is invalid or has expired.'); return }
     setBusiness(link.businesses)
+    setLink(link)
 
     // Both errors checked explicitly (fixed 2026-10-02) — previously a
     // failed fetch here (RLS hiccup, transient network error) left jobList/
@@ -51,6 +67,30 @@ export default function ClientHistoryView() {
     if (invoicesErr) { setError("Couldn't load your history right now — please try refreshing."); return }
     setInvoices(invoiceList || [])
     setLoaded(true)
+  }
+
+  async function submitRebooking() {
+    if (rebookSubmitting || !link) return
+    setRebookSubmitting(true)
+    setRebookError(null)
+    const mostRecentJob = jobs[0] || null
+    const newLeadId = crypto.randomUUID()
+    const { error: insertErr } = await supabase.from('leads').insert({
+      id: newLeadId,
+      business_id: link.business_id,
+      client_name: mostRecentJob?.client_name || null,
+      client_phone: link.client_phone,
+      suburb: mostRecentJob?.client_address || null,
+      urgency: 'routine',
+      job_description: rebookDetails.trim() || `Repeat booking request from a past client via their service history page${mostRecentJob?.client_address ? ` (previous job: ${mostRecentJob.client_address})` : ''}.`,
+      status: 'new',
+      source: 'rebooking',
+      is_repeat_client: true,
+    })
+    setRebookSubmitting(false)
+    if (insertErr) { setRebookError("Couldn't send that request — please try again, or call them directly."); return }
+    setRebookDone(true)
+    supabase.functions.invoke('notify-rebooking-request', { body: { leadId: newLeadId } }).catch(() => {})
   }
 
   if (error) return (
@@ -98,6 +138,41 @@ export default function ClientHistoryView() {
             {invoices.length === 0 && <p style={styles.emptyText}>No invoices on file yet</p>}
           </>
         )}
+
+        <div style={{ marginTop: 24, paddingTop: 20, borderTop: '1px solid #1e293b' }}>
+          {rebookDone ? (
+            <p style={{ color: '#8fd0e8', fontSize: 14, lineHeight: 1.6, margin: 0 }}>
+              Request sent — {business?.name || 'they'}&rsquo;ll be in touch.
+            </p>
+          ) : showRebook ? (
+            <>
+              <label htmlFor="rebook-details" style={{ ...styles.sectionLabel, display: 'block', marginBottom: 8 }}>WHAT DO YOU NEED?</label>
+              <textarea
+                id="rebook-details"
+                value={rebookDetails}
+                onChange={e => setRebookDetails(e.target.value)}
+                placeholder="Same as last time, or describe what you need (optional)"
+                rows={3}
+                style={{ width: '100%', boxSizing: 'border-box', background: '#050811', border: '1px solid #1e293b', borderRadius: 8, color: '#fff', padding: '10px 12px', fontSize: 14, fontFamily: 'inherit', resize: 'vertical', marginBottom: 10 }}
+              />
+              {rebookError && <p style={{ color: '#e07a7a', fontSize: 13, margin: '0 0 10px' }}>{rebookError}</p>}
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button type="button" disabled={rebookSubmitting} onClick={submitRebooking}
+                  style={{ background: '#1D9E75', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 18px', fontSize: 14, fontWeight: 'bold', cursor: rebookSubmitting ? 'default' : 'pointer', opacity: rebookSubmitting ? 0.6 : 1 }}>
+                  {rebookSubmitting ? 'Sending...' : 'Send request'}
+                </button>
+                <button type="button" onClick={() => setShowRebook(false)} style={{ background: 'none', border: '1px solid #1e293b', color: '#aaa', borderRadius: 8, padding: '10px 18px', fontSize: 14, cursor: 'pointer' }}>
+                  Cancel
+                </button>
+              </div>
+            </>
+          ) : (
+            <button type="button" onClick={() => setShowRebook(true)}
+              style={{ width: '100%', background: '#2D5FA8', color: '#fff', border: 'none', borderRadius: 10, padding: '14px 0', fontSize: 15, fontWeight: 'bold', cursor: 'pointer' }}>
+              Request another job
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )

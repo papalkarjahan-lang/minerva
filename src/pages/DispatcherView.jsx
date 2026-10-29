@@ -216,6 +216,8 @@ export default function DispatcherView() {
   const [linkCopied, setLinkCopied] = useState(false)
   const [calendarLinkCopied, setCalendarLinkCopied] = useState(false)
   const [copiedTechId, setCopiedTechId] = useState(null)
+  const [copyingPortalJobId, setCopyingPortalJobId] = useState(null)
+  const [copiedPortalJobId, setCopiedPortalJobId] = useState(null)
   const [qrTech, setQrTech] = useState(null) // technician currently shown in the QR modal, or null
   const [resendingTechId, setResendingTechId] = useState(null)
   const [slackWebhookInput, setSlackWebhookInput] = useState('')
@@ -1480,6 +1482,30 @@ export default function DispatcherView() {
     navigator.clipboard.writeText(`${appUrl}/tech?pin=${tech.pin}`)
     setCopiedTechId(tech.id)
     setTimeout(() => setCopiedTechId(null), 2000)
+  }
+
+  // Lets the dispatcher hand a client their portal link proactively —
+  // previously the only way a client_portal_links row got created was the
+  // client clicking "View history" on TrackingView themselves, after a job
+  // was already complete. A dispatcher wanting to show a client (or a
+  // prospect, on a sales call) what the portal looks like had no way to
+  // get a link at all before then. Same upsert TrackingView's viewHistory()
+  // already does — reuses the one link per (business, client_phone) rather
+  // than minting a new token every time this is clicked.
+  async function copyClientPortalLink(job) {
+    if (!job.client_phone || copyingPortalJobId === job.id) return
+    setCopyingPortalJobId(job.id)
+    const { data, error } = await supabase
+      .from('client_portal_links')
+      .upsert({ business_id: businessId, client_phone: job.client_phone }, { onConflict: 'business_id,client_phone', ignoreDuplicates: false })
+      .select()
+      .single()
+    setCopyingPortalJobId(null)
+    if (error || !data) { alert("Couldn't generate that link — please try again."); return }
+    const appUrl = import.meta.env.VITE_APP_URL
+    navigator.clipboard.writeText(`${appUrl}/client/${data.token}`)
+    setCopiedPortalJobId(job.id)
+    setTimeout(() => setCopiedPortalJobId(null), 2000)
   }
 
   async function resendTechSMS(tech) {
@@ -2751,6 +2777,14 @@ export default function DispatcherView() {
                       onClick={() => cancelJob(job.id)}>
                       ✕ Cancel job
                     </button>
+                    {job.client_phone && (
+                      <button style={{ ...styles.leadActionSecondary, fontSize: 11, padding: '3px 8px' }}
+                        disabled={copyingPortalJobId === job.id}
+                        title="Copies a link to this client's own service history/portal page — useful to hand them directly, or to show a prospect what their customers would see."
+                        onClick={() => copyClientPortalLink(job)}>
+                        {copiedPortalJobId === job.id ? 'Copied!' : copyingPortalJobId === job.id ? 'Generating...' : '🔗 Client portal link'}
+                      </button>
+                    )}
                   </div>
                   {job.status === 'scheduled' && !job.technician_id && !job.assigned_subcontractor_id && (
                     <select aria-label="Assign technician" style={styles.assignSelect} disabled={assigningJobIds.has(job.id)}
