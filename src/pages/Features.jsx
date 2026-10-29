@@ -44,6 +44,8 @@ const SECTIONS = [
       ['🔥', 'Demand heatmap', 'See where your job history actually clusters, so you know which areas to focus growth on — not just what\'s happening today.'],
       ['📋', 'Shift handover report', 'A readable summary of today\'s completed jobs, grouped by technician, assembled automatically — copy it as text to hand off to the next shift.'],
       ['🌉', 'Quote-to-job bridge', 'When a client accepts a quote, a draft job is created automatically — no re-typing the name, phone and job description you already wrote once.'],
+      ['🗓️', 'The week ahead', 'What\'s scheduled this week, any day short on tracking technicians, and any credentials expiring soon — one briefing, built from real data.'],
+      ['💵', 'Revenue per hour', 'Real revenue per hour on site, from job duration and actual invoice totals — not an invented profit margin.'],
     ],
   },
   {
@@ -54,6 +56,7 @@ const SECTIONS = [
       ['🔁', 'Referral nudges', 'A single low-pressure referral-code text is sent to happy clients after a paid invoice — not a spam campaign. Included on every plan.'],
       ['🧾', 'Client self-service portal', 'Clients get a private link to their own job history and invoices, and can request another job themselves — no phone call needed.'],
       ['🌐', 'Public business card page', 'A shareable page showing your real jobs-completed and team-size stats — link it from your own website or Google listing.'],
+      ['👍', 'Client satisfaction pulse', 'A one-tap 👍/👎 once a job\'s complete — a real sentiment signal captured directly, not dependent on a Google review.'],
     ],
   },
   {
