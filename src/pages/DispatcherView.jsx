@@ -4576,7 +4576,22 @@ function AddJobModal({ businessId, technicianCredentials, technicians, onClose }
     setLoading(true)
     setError(null)
     try {
-      const { lat, lng } = await geocodeAddress(form.client_address)
+      // Geocoding is best-effort, not a precondition for the job to exist.
+      // Found 2026-10-29: this used to be `const { lat, lng } =
+      // await geocodeAddress(...)` with no catch — geocodeAddress throws
+      // outright whenever Mapbox isn't configured (see its own header),
+      // which meant the insert below never ran and NO job could be added
+      // through this form at all until a real Mapbox token was set. A
+      // client's address/phone/notes are real, useful data on their own;
+      // not having a map pin yet shouldn't mean losing the job entirely.
+      let lat = null, lng = null
+      try {
+        const geocoded = await geocodeAddress(form.client_address)
+        lat = geocoded.lat
+        lng = geocoded.lng
+      } catch (geoErr) {
+        console.warn('Job will be added without a map location:', geoErr.message)
+      }
       // scheduled_time is a `timestamptz` column, but the <input
       // type="datetime-local"> below yields a naive "YYYY-MM-DDTHH:mm"
       // string with no timezone info. Sending that raw string lets
@@ -4605,6 +4620,9 @@ function AddJobModal({ businessId, technicianCredentials, technicians, onClose }
         status: 'scheduled'
       })
       if (insertError) throw insertError
+      if (lat == null) {
+        alert(`Job for ${form.client_name} was added, but the address couldn't be pinned on the map yet (Mapbox isn't connected). The job itself is saved — the location will fill in automatically once Mapbox is set up.`)
+      }
       onClose()
     } catch (err) {
       setError(err.message)
