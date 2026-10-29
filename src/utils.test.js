@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { haversineKm, generatePin, generateReferralCode, timeAgo, insertTechniciansWithPinRetry, classifyPriority, normalizeAddressForGeocoding, pickBestGeocodeFeature, isMapboxTokenConfigured, computeReplayStats, interpolateReplayPosition, describeAuditEntry, computeTechnicianReliability, RELIABILITY_FATIGUE_BASELINE_HOURS, computeProspectPriority, roundMoney, computeGst, neutralizeFormula } from './utils'
+import { haversineKm, generatePin, generateReferralCode, timeAgo, insertTechniciansWithPinRetry, classifyPriority, normalizeAddressForGeocoding, pickBestGeocodeFeature, isMapboxTokenConfigured, computeReplayStats, interpolateReplayPosition, describeAuditEntry, computeTechnicianReliability, RELIABILITY_FATIGUE_BASELINE_HOURS, computeProspectPriority, roundMoney, computeGst, neutralizeFormula, parseCsv, findCsvColumn } from './utils'
 
 describe('haversineKm', () => {
   it('returns 0 for identical points', () => {
@@ -709,5 +709,71 @@ describe('neutralizeFormula', () => {
     const start = Date.now()
     neutralizeFormula(' '.repeat(500000))
     expect(Date.now() - start).toBeLessThan(100)
+  })
+})
+
+describe('parseCsv', () => {
+  it('parses a simple comma-separated file into header-keyed row objects', () => {
+    const { headers, rows } = parseCsv('name,phone\nJane Smith,0412345678\nTom Lee,0498765432')
+    expect(headers).toEqual(['name', 'phone'])
+    expect(rows).toEqual([
+      { name: 'Jane Smith', phone: '0412345678' },
+      { name: 'Tom Lee', phone: '0498765432' },
+    ])
+  })
+
+  it('handles a quoted field containing a comma, which a naive split(",") would corrupt', () => {
+    const { rows } = parseCsv('client_name,address\n"Smith & Sons","12 Smith St, Unit 4"')
+    expect(rows).toEqual([{ client_name: 'Smith & Sons', address: '12 Smith St, Unit 4' }])
+  })
+
+  it('handles an escaped double-quote ("") inside a quoted field', () => {
+    const { rows } = parseCsv('notes\n"She said ""call first"" before arriving"')
+    expect(rows[0].notes).toBe('She said "call first" before arriving')
+  })
+
+  it('normalizes CRLF line endings the same as plain \\n', () => {
+    const { rows } = parseCsv('name,phone\r\nJane,0412345678\r\n')
+    expect(rows).toEqual([{ name: 'Jane', phone: '0412345678' }])
+  })
+
+  it('skips blank lines rather than producing an empty row', () => {
+    const { rows } = parseCsv('name,phone\nJane,0412345678\n\n\nTom,0498765432')
+    expect(rows).toHaveLength(2)
+  })
+
+  it('trims whitespace around header and cell values', () => {
+    const { headers, rows } = parseCsv(' name , phone \n Jane , 0412345678 ')
+    expect(headers).toEqual(['name', 'phone'])
+    expect(rows).toEqual([{ name: 'Jane', phone: '0412345678' }])
+  })
+
+  it('returns empty headers/rows for empty or whitespace-only input', () => {
+    expect(parseCsv('')).toEqual({ headers: [], rows: [] })
+    expect(parseCsv('   \n  \n')).toEqual({ headers: [], rows: [] })
+  })
+
+  it('fills a missing trailing cell with an empty string rather than misaligning columns', () => {
+    const { rows } = parseCsv('name,phone,notes\nJane,0412345678')
+    expect(rows).toEqual([{ name: 'Jane', phone: '0412345678', notes: '' }])
+  })
+})
+
+describe('findCsvColumn', () => {
+  it('matches an exact header', () => {
+    expect(findCsvColumn(['name', 'phone'], ['phone'])).toBe('phone')
+  })
+
+  it('matches case-insensitively and ignores spaces/underscores/hyphens', () => {
+    expect(findCsvColumn(['Client Name', 'Mobile_Number'], ['mobilenumber'])).toBe('Mobile_Number')
+    expect(findCsvColumn(['Client Name'], ['clientname'])).toBe('Client Name')
+  })
+
+  it('tries each candidate in order and returns the first real-world spelling that matches', () => {
+    expect(findCsvColumn(['Mobile'], ['phone', 'mobile', 'phone_number'])).toBe('Mobile')
+  })
+
+  it('returns null when nothing matches', () => {
+    expect(findCsvColumn(['foo', 'bar'], ['phone', 'mobile'])).toBeNull()
   })
 })

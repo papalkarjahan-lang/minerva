@@ -532,3 +532,71 @@ export function estimateDollarsFromKm(km, ratePerKm = ATO_CENTS_PER_KM_2026_27) 
   const safeKm = Number(km) || 0
   return Math.round(safeKm * ratePerKm)
 }
+
+// ============================================================
+// CSV IMPORT PARSING
+// A real RFC-4180-ish parser (handles quoted fields, embedded commas,
+// embedded newlines inside quotes, and "" as an escaped quote) rather
+// than a naive text.split(','), which silently corrupts any field that
+// contains a comma (e.g. an address like "12 Smith St, Unit 4"). Used
+// by the technician and job bulk-import flows — added 2026-10-29 since
+// neither existed before: every row had to be typed in by hand, which is
+// the real reason a new signup's console starts empty.
+//
+// Row-count capped by the caller, not here — this function just parses
+// whatever text it's given. Returns { headers, rows } where headers is
+// the first row's cells (trimmed) and rows is an array of plain objects
+// keyed by header, so callers don't have to track column order.
+// ============================================================
+export function parseCsv(text) {
+  const raw = String(text ?? '')
+  const rows = []
+  let row = []
+  let field = ''
+  let inQuotes = false
+  let i = 0
+  while (i < raw.length) {
+    const c = raw[i]
+    if (inQuotes) {
+      if (c === '"') {
+        if (raw[i + 1] === '"') { field += '"'; i += 2; continue }
+        inQuotes = false; i++; continue
+      }
+      field += c; i++; continue
+    }
+    if (c === '"') { inQuotes = true; i++; continue }
+    if (c === ',') { row.push(field); field = ''; i++; continue }
+    if (c === '\r') { i++; continue } // normalize CRLF by just dropping \r
+    if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; i++; continue }
+    field += c; i++
+  }
+  // Last field/row, if the text doesn't end on a newline.
+  if (field.length > 0 || row.length > 0) { row.push(field); rows.push(row) }
+
+  const nonEmptyRows = rows.filter(r => r.some(cell => cell.trim() !== ''))
+  if (nonEmptyRows.length === 0) return { headers: [], rows: [] }
+
+  const headers = nonEmptyRows[0].map(h => h.trim())
+  const dataRows = nonEmptyRows.slice(1).map(r => {
+    const obj = {}
+    headers.forEach((h, idx) => { obj[h] = (r[idx] ?? '').trim() })
+    return obj
+  })
+  return { headers, rows: dataRows }
+}
+
+// Loose, best-effort match of a CSV header to one of several accepted
+// spellings — real-world exports and hand-made spreadsheets name columns
+// inconsistently ("Phone" vs "Mobile" vs "phone_number"), so a strict
+// exact-match would fail on most real files. Case-insensitive, ignores
+// spaces/underscores. Returns null if nothing in `candidates` matches any
+// header.
+export function findCsvColumn(headers, candidates) {
+  const normalize = s => s.toLowerCase().replace(/[\s_-]/g, '')
+  const normalizedHeaders = headers.map(normalize)
+  for (const candidate of candidates) {
+    const idx = normalizedHeaders.indexOf(normalize(candidate))
+    if (idx !== -1) return headers[idx]
+  }
+  return null
+}

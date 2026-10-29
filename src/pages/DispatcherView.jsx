@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import Map, { Marker, NavigationControl, FullscreenControl, ScaleControl, Popup, Source, Layer } from 'react-map-gl'
 import { supabase } from '../supabaseClient'
-import { timeAgo, geocodeAddress, insertTechniciansWithPinRetry, haversineKm, isMapboxTokenConfigured, computeReplayStats, interpolateReplayPosition, describeAuditEntry, computeTechnicianReliability, neutralizeFormula, estimateDollarsFromKm } from '../utils'
+import { timeAgo, geocodeAddress, insertTechniciansWithPinRetry, haversineKm, isMapboxTokenConfigured, computeReplayStats, interpolateReplayPosition, describeAuditEntry, computeTechnicianReliability, neutralizeFormula, estimateDollarsFromKm, parseCsv, findCsvColumn } from '../utils'
 import ContactSupportModal from '../components/ContactSupportModal'
 import LoadingScreen from '../components/LoadingScreen'
 import { MAX_ADDONS, hasAddon, isTrialing, trialDaysLeft, hasUsedTrial, startTrialPatch, isAddonAvailableForSector } from '../maxAddons'
@@ -4337,10 +4337,17 @@ export default function DispatcherView() {
 // open that link and start tracking — the new hire flows into billing
 // automatically via sync-technician-billing once their phone connects.
 function AddTechnicianModal({ businessId, businessName, onSaved, onClose }) {
+  const [mode, setMode] = useState('single') // 'single' | 'bulk'
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+
+  // Bulk-import state — kept separate from the single-add fields above so
+  // switching modes never mixes partial state from one into the other.
+  const [csvRows, setCsvRows] = useState([]) // [{ name, phone }], already column-mapped
+  const [csvFileName, setCsvFileName] = useState(null)
+  const [csvError, setCsvError] = useState(null)
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -4366,30 +4373,136 @@ function AddTechnicianModal({ businessId, businessName, onSaved, onClose }) {
     }
   }
 
+  // Reads the chosen file as text and parses it with the shared CSV
+  // parser, then maps whatever the real-world column names turn out to
+  // be (Name/Mobile/Phone Number/etc.) onto name/phone via findCsvColumn
+  // — a real export or hand-made spreadsheet is never going to match an
+  // exact expected header, so this is the difference between the feature
+  // working on real files or only on a template nobody actually has.
+  function handleCsvFile(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setCsvError(null)
+    setCsvRows([])
+    setCsvFileName(file.name)
+    const reader = new FileReader()
+    reader.onload = () => {
+      const { headers, rows } = parseCsv(String(reader.result))
+      if (headers.length === 0) { setCsvError('That file looks empty.'); return }
+      const nameCol = findCsvColumn(headers, ['name', 'technician', 'technician name', 'full name'])
+      const phoneCol = findCsvColumn(headers, ['phone', 'mobile', 'mobile number', 'phone number', 'cell'])
+      if (!nameCol || !phoneCol) {
+        setCsvError(`Couldn't find both a name and a phone column. Found: ${headers.join(', ')}`)
+        return
+      }
+      const mapped = rows
+        .map(r => ({ name: r[nameCol], phone: r[phoneCol] }))
+        .filter(r => r.name && r.phone)
+      if (mapped.length === 0) { setCsvError('No rows with both a name and a phone number.'); return }
+      if (mapped.length > 200) { setCsvError(`${mapped.length} rows — bulk import is capped at 200 at a time. Split the file and import in batches.`); return }
+      setCsvRows(mapped)
+    }
+    reader.onerror = () => setCsvError("Couldn't read that file.")
+    reader.readAsText(file)
+  }
+
+  async function handleBulkSubmit() {
+    if (csvRows.length === 0 || loading) return
+    setLoading(true)
+    setError(null)
+    try {
+      const techRows = csvRows.map(r => ({ business_id: businessId, name: r.name.trim(), phone: r.phone.trim() }))
+      const { data: inserted, error: insertErr } = await insertTechniciansWithPinRetry(supabase, techRows)
+      if (insertErr) throw new Error(insertErr.message)
+
+      // Best-effort setup text per technician, same non-fatal pattern as
+      // the single-add path and Onboarding.jsx's bulk insert — a failed
+      // text here never blocks the import, it's recoverable afterward via
+      // "Copy setup link" / "Show QR code" per technician.
+      const failedNames = []
+      for (const tech of inserted) {
+        const { data: smsData, error: smsError } = await supabase.functions.invoke('send-setup-sms', { body: { technicianId: tech.id } })
+        if (smsError || smsData?.error) failedNames.push(tech.name)
+      }
+      if (failedNames.length > 0) {
+        alert(`${inserted.length} technicians added. Setup texts didn't send to: ${failedNames.join(', ')}. Use "Copy setup link" or "Show QR code" next to their name for each.`)
+      }
+      onSaved?.(null, `${inserted.length} technicians (bulk import)`)
+      onClose()
+    } catch (err) {
+      setError(err.message)
+      setLoading(false)
+    }
+  }
+
   return (
     <div style={styles.modalOverlay}>
-      <div style={styles.modal}>
-        <h3 style={{ margin: '0 0 20px', color: '#1B2B4B', fontSize: 20 }}>Add Technician</h3>
-        <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: 14 }}>
-            <label htmlFor="add-tech-name" style={styles.inputLabel}>Name</label>
-            <input id="add-tech-name" type="text" required value={name} onChange={e => setName(e.target.value)} style={styles.input} />
+      <div style={{ ...styles.modal, maxWidth: mode === 'bulk' ? 520 : 420 }}>
+        <h3 style={{ margin: '0 0 16px', color: '#1B2B4B', fontSize: 20 }}>Add Technician</h3>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
+          <button type="button" onClick={() => setMode('single')}
+            style={{ ...styles.cancelBtn, ...(mode === 'single' ? { background: '#1B2B4B', color: '#fff' } : {}) }}>
+            Add one
+          </button>
+          <button type="button" onClick={() => setMode('bulk')}
+            style={{ ...styles.cancelBtn, ...(mode === 'bulk' ? { background: '#1B2B4B', color: '#fff' } : {}) }}>
+            Bulk import (CSV)
+          </button>
+        </div>
+
+        {mode === 'single' ? (
+          <form onSubmit={handleSubmit}>
+            <div style={{ marginBottom: 14 }}>
+              <label htmlFor="add-tech-name" style={styles.inputLabel}>Name</label>
+              <input id="add-tech-name" type="text" required value={name} onChange={e => setName(e.target.value)} style={styles.input} />
+            </div>
+            <div style={{ marginBottom: 14 }}>
+              <label htmlFor="add-tech-phone" style={styles.inputLabel}>Mobile (04xx...)</label>
+              <input id="add-tech-phone" type="tel" required value={phone} onChange={e => setPhone(e.target.value)} style={styles.input} />
+            </div>
+            <p style={{ color: '#888', fontSize: 12, margin: '0 0 14px' }}>
+              They'll be sent a setup text with their tracking link. Billing updates automatically once they open it.
+            </p>
+            {error && <p style={{ color: '#8A2525', fontSize: 13 }}>{error}</p>}
+            <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+              <button type="submit" disabled={loading} style={styles.submitBtn}>
+                {loading ? 'Adding...' : 'Add & send setup text'}
+              </button>
+              <button type="button" onClick={onClose} style={styles.cancelBtn}>Cancel</button>
+            </div>
+          </form>
+        ) : (
+          <div>
+            <label htmlFor="tech-csv-file" style={styles.inputLabel}>CSV file — needs a name column and a phone column (any common header name works)</label>
+            <input id="tech-csv-file" type="file" accept=".csv,text/csv" onChange={handleCsvFile} style={{ margin: '8px 0 14px' }} />
+            {csvError && <p style={{ color: '#8A2525', fontSize: 13, marginBottom: 12 }}>{csvError}</p>}
+            {csvRows.length > 0 && (
+              <>
+                <p style={{ color: '#888', fontSize: 12, margin: '0 0 8px' }}>
+                  {csvFileName} — {csvRows.length} technician{csvRows.length === 1 ? '' : 's'} found. Review before importing:
+                </p>
+                <div style={{ maxHeight: 180, overflowY: 'auto', border: '1px solid #e2e2e2', borderRadius: 8, marginBottom: 14 }}>
+                  {csvRows.map((r, i) => (
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 10px', borderBottom: i < csvRows.length - 1 ? '1px solid #f0f0f0' : 'none', fontSize: 13 }}>
+                      <span>{r.name}</span>
+                      <span style={{ color: '#888' }}>{r.phone}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+            <p style={{ color: '#888', fontSize: 12, margin: '0 0 14px' }}>
+              Each one gets a setup text with their tracking link, same as adding them individually. Billing updates automatically as each opens it.
+            </p>
+            {error && <p style={{ color: '#8A2525', fontSize: 13 }}>{error}</p>}
+            <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+              <button type="button" disabled={loading || csvRows.length === 0} onClick={handleBulkSubmit} style={styles.submitBtn}>
+                {loading ? 'Importing...' : csvRows.length > 0 ? `Import ${csvRows.length} technicians` : 'Import'}
+              </button>
+              <button type="button" onClick={onClose} style={styles.cancelBtn}>Cancel</button>
+            </div>
           </div>
-          <div style={{ marginBottom: 14 }}>
-            <label htmlFor="add-tech-phone" style={styles.inputLabel}>Mobile (04xx...)</label>
-            <input id="add-tech-phone" type="tel" required value={phone} onChange={e => setPhone(e.target.value)} style={styles.input} />
-          </div>
-          <p style={{ color: '#888', fontSize: 12, margin: '0 0 14px' }}>
-            They'll be sent a setup text with their tracking link. Billing updates automatically once they open it.
-          </p>
-          {error && <p style={{ color: '#8A2525', fontSize: 13 }}>{error}</p>}
-          <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
-            <button type="submit" disabled={loading} style={styles.submitBtn}>
-              {loading ? 'Adding...' : 'Add & send setup text'}
-            </button>
-            <button type="button" onClick={onClose} style={styles.cancelBtn}>Cancel</button>
-          </div>
-        </form>
+        )}
       </div>
     </div>
   )
