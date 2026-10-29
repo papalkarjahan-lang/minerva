@@ -213,6 +213,7 @@ export default function DispatcherView() {
   const [showAddJob, setShowAddJob] = useState(false)
   const [showAddTech, setShowAddTech] = useState(false)
   const [showHandoverReport, setShowHandoverReport] = useState(false)
+  const [copiedBizCard, setCopiedBizCard] = useState(false)
   const [linkCopied, setLinkCopied] = useState(false)
   const [calendarLinkCopied, setCalendarLinkCopied] = useState(false)
   const [copiedTechId, setCopiedTechId] = useState(null)
@@ -2460,6 +2461,11 @@ export default function DispatcherView() {
           <button style={{ ...styles.copyLinkBtn, marginTop: 8 }} onClick={() => setShowHandoverReport(true)}
             title="A readable summary of today's jobs, who did what, and anything flagged — built fresh from today's real activity, not a raw log.">
             📋 Today&rsquo;s shift handover
+          </button>
+          <button style={{ ...styles.copyLinkBtn, marginTop: 8 }}
+            onClick={() => { navigator.clipboard.writeText(`${import.meta.env.VITE_APP_URL}/biz/${businessId}`); setCopiedBizCard(true); setTimeout(() => setCopiedBizCard(false), 2000) }}
+            title="A public page showing your real jobs-completed and team-size stats — link it from your own website or Google listing.">
+            {copiedBizCard ? 'Copied!' : '🔗 Copy my business card link'}
           </button>
           {(() => {
             // Tomorrow's workload preview — deliberately NOT a new

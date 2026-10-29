@@ -73,6 +73,7 @@ export default function IndustrialDispatcherView() {
   const [expandedSiteId, setExpandedSiteId] = useState(null)
   const [siteCheckins, setSiteCheckins] = useState({}) // site_id -> site_checkins rows, fetched lazily
   const [ingestionKeyCopied, setIngestionKeyCopied] = useState(false)
+  const [copiedBizCard, setCopiedBizCard] = useState(false)
   const [regeneratingKey, setRegeneratingKey] = useState(false)
   // Minerva Max add-on management (Asset Intelligence only, so far, is
   // relevant to Track B) — mirrors DispatcherView's addonBusy pattern.
@@ -760,6 +761,11 @@ export default function IndustrialDispatcherView() {
             </button>
             <button type="button" onClick={() => setShowNotificationSettings(true)} style={styles.smallBtn}>
               🔔 Notification settings
+            </button>
+            <button type="button"
+              onClick={() => { navigator.clipboard.writeText(`${import.meta.env.VITE_APP_URL}/biz/${businessId}`); setCopiedBizCard(true); setTimeout(() => setCopiedBizCard(false), 2000) }}
+              style={styles.smallBtn} title="A public page showing your real completed-jobs and team-size stats — link it from your own website or a tender submission.">
+              {copiedBizCard ? 'Copied!' : '🔗 Copy my business card link'}
             </button>
           </div>
           {billingPortalError && <p style={{ color: '#e07a7a', fontSize: 11, margin: '0 0 12px' }}>{billingPortalError}</p>}

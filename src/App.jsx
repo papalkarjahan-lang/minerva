@@ -20,6 +20,7 @@ const TrackingView = lazy(() => import('./pages/TrackingView'))
 const InvoiceView = lazy(() => import('./pages/InvoiceView'))
 const QuoteView = lazy(() => import('./pages/QuoteView'))
 const ClientHistoryView = lazy(() => import('./pages/ClientHistoryView'))
+const BusinessCardView = lazy(() => import('./pages/BusinessCardView'))
 const SuccessPage = lazy(() => import('./pages/SuccessPage'))
 const IntakeAssistant = lazy(() => import('./pages/IntakeAssistant'))
 const DisputeView = lazy(() => import('./pages/DisputeView'))
@@ -100,6 +101,14 @@ export default function App() {
         {/* Client service-history portal (round-2 batch) - opaque token link,
             generated from TrackingView's job-complete screen. URL: /client/:token */}
         <Route path="/client/:token" element={<ClientHistoryView />} />
+
+        {/* Public business trust/profile page — real operational stats only
+            (jobs completed, team size, service area), no invented "years in
+            business" or fake ratings. businessId is already treated as
+            non-secret everywhere else public-facing (tracking/invoice/quote
+            links all carry it), so this needs no token. Meant to be linked
+            from the business's own website or Google listing. URL: /biz/:businessId */}
+        <Route path="/biz/:businessId" element={<BusinessCardView />} />
 
         {/* Dispatcher dashboard - accessed after login */}
         {/* URL: /dispatch/:businessId */}
