@@ -4568,6 +4568,21 @@ function AddJobModal({ businessId, technicianCredentials, technicians, onClose }
   const [csvError, setCsvError] = useState(null)
   const [bulkProgress, setBulkProgress] = useState(null) // "N of M" while importing, or null
 
+  // Post-import "reveal" — shown instead of just closing the modal once a
+  // bulk import succeeds. Calls the SAME optimize-fleet-day edge function
+  // the dispatcher's own "Optimize fleet day" button calls (see
+  // optimizeFleetDay() in the parent component) — never a separate or
+  // invented calculation, so the number shown here is exactly as real as
+  // that button's. optimize-fleet-day only has anything to optimize once
+  // jobs are scheduled for today AND at least one technician is actively
+  // sharing their location — right after a bulk import, neither may be
+  // true yet (imported jobs might be for any date; technicians may not
+  // have scanned their QR code/opened their tracking link yet), so this
+  // honestly reports the real `skipped` reason rather than forcing or
+  // faking a win. importedCount is tracked separately since it's true
+  // regardless of whether the reveal itself found anything to optimize.
+  const [revealState, setRevealState] = useState(null) // null | 'loading' | { importedCount, result }
+
   // Distinct credential names already tracked for this business (Licence/
   // Ticket Expiry Guardian, Pro tier) — reused here so a dispatcher picks
   // from real credentials instead of free-typing a name that won't match
@@ -4726,17 +4741,82 @@ function AddJobModal({ businessId, technicianCredentials, technicians, onClose }
       setBulkProgress(null)
       if (succeeded === 0) {
         setError('None of the rows could be imported — check the Console for the specific error on each.')
-      } else {
-        if (geocodeFailures > 0) {
-          alert(`${succeeded} of ${csvRows.length} jobs imported. ${geocodeFailures} couldn't be pinned on the map yet (Mapbox isn't connected) — they're saved, locations will fill in once it's set up.`)
-        }
-        onClose()
+        setLoading(false)
+        return
       }
+      if (geocodeFailures > 0) {
+        alert(`${succeeded} of ${csvRows.length} jobs imported. ${geocodeFailures} couldn't be pinned on the map yet (Mapbox isn't connected) — they're saved, locations will fill in once it's set up.`)
+      }
+      await runImportReveal(succeeded)
     } catch (err) {
       setBulkProgress(null)
       setError(err.message)
     }
     setLoading(false)
+  }
+
+  // Calls the real optimize-fleet-day function against whatever was just
+  // imported — see revealState's own comment above for why this can
+  // honestly come back empty (nothing scheduled for today, or no
+  // technician tracking yet) rather than always showing a number.
+  async function runImportReveal(importedCount) {
+    setRevealState('loading')
+    try {
+      const now = new Date()
+      const localToday = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+      const { data, error: optErr } = await supabase.functions.invoke('optimize-fleet-day', { body: { businessId, date: localToday } })
+      if (optErr || data?.error) {
+        setRevealState({ importedCount, result: null })
+        return
+      }
+      setRevealState({ importedCount, result: data })
+    } catch (_) {
+      setRevealState({ importedCount, result: null })
+    }
+  }
+
+  // Reveal screen takes over the whole modal once a bulk import finishes
+  // — shown instead of the normal Add Job content, not alongside it.
+  if (revealState) {
+    const loadingReveal = revealState === 'loading'
+    const { importedCount, result } = loadingReveal ? {} : revealState
+    return (
+      <div style={styles.modalOverlay}>
+        <div style={{ ...styles.modal, textAlign: 'center' }}>
+          {loadingReveal ? (
+            <>
+              <h3 style={{ margin: '0 0 10px', color: '#1B2B4B', fontSize: 20 }}>Checking today&rsquo;s plan&hellip;</h3>
+              <p style={{ color: '#888', fontSize: 13 }}>Seeing whether there&rsquo;s an optimized route to show you already.</p>
+            </>
+          ) : result && !result.skipped ? (
+            <>
+              <h3 style={{ margin: '0 0 10px', color: '#1D9E75', fontSize: 20 }}>{importedCount} job{importedCount === 1 ? '' : 's'} imported — and already optimized</h3>
+              <p style={{ color: '#333', fontSize: 15, lineHeight: 1.6, margin: '0 0 6px' }}>
+                Optimized {result.jobsSequenced} job{result.jobsSequenced === 1 ? '' : 's'} across {result.techniciansOptimized} technician{result.techniciansOptimized === 1 ? '' : 's'} — {result.jobsReassigned} reassigned.
+              </p>
+              <p style={{ color: '#1D9E75', fontSize: 22, fontWeight: 'bold', margin: '10px 0' }}>
+                ~{result.kmSaved}km saved — about ${estimateDollarsFromKm(result.kmSaved)} today
+              </p>
+              <p style={{ color: '#888', fontSize: 12, margin: '0 0 20px' }}>Real numbers, from your own imported jobs — the same calculation the &ldquo;Optimize fleet day&rdquo; button always runs.</p>
+            </>
+          ) : (
+            <>
+              <h3 style={{ margin: '0 0 10px', color: '#1B2B4B', fontSize: 20 }}>{importedCount} job{importedCount === 1 ? '' : 's'} imported</h3>
+              <p style={{ color: '#666', fontSize: 14, lineHeight: 1.6, margin: '0 0 20px' }}>
+                {{
+                  no_available_technicians: "No technicians are sharing their location right now, so there's nothing to optimize yet. Once your team's scanned their setup QR code, hit “Optimize fleet day” from the dispatcher view.",
+                  no_geocoded_jobs_today: "None of what's imported is scheduled for today specifically (or Mapbox isn't connected yet to place it on the map), so there's nothing to optimize right now — the jobs are safely saved either way.",
+                  already_near_optimal: "Your imported jobs are already assigned about as efficiently as they can be — nothing worth reshuffling. That's a good sign, not a miss.",
+                }[result?.skipped] || "Nothing to optimize yet — that needs today's jobs geocoded and at least one technician actively tracking. Once set up, hit “Optimize fleet day” from the dispatcher view."}
+              </p>
+            </>
+          )}
+          {!loadingReveal && (
+            <button type="button" onClick={onClose} style={styles.submitBtn}>Done</button>
+          )}
+        </div>
+      </div>
+    )
   }
 
   return (
