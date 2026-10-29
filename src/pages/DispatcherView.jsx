@@ -213,6 +213,7 @@ export default function DispatcherView() {
   const [showAddJob, setShowAddJob] = useState(false)
   const [showAddTech, setShowAddTech] = useState(false)
   const [showHandoverReport, setShowHandoverReport] = useState(false)
+  const [showWeekAhead, setShowWeekAhead] = useState(false)
   const [copiedBizCard, setCopiedBizCard] = useState(false)
   const [linkCopied, setLinkCopied] = useState(false)
   const [calendarLinkCopied, setCalendarLinkCopied] = useState(false)
@@ -2462,6 +2463,10 @@ export default function DispatcherView() {
             title="A readable summary of today's jobs, who did what, and anything flagged — built fresh from today's real activity, not a raw log.">
             📋 Today&rsquo;s shift handover
           </button>
+          <button style={{ ...styles.copyLinkBtn, marginTop: 8 }} onClick={() => setShowWeekAhead(true)}
+            title="What's scheduled this week, any day that's thin on tracking technicians, and any credentials expiring soon — forward-looking instead of a look back.">
+            🗓️ The week ahead
+          </button>
           <button style={{ ...styles.copyLinkBtn, marginTop: 8 }}
             onClick={() => { navigator.clipboard.writeText(`${import.meta.env.VITE_APP_URL}/biz/${businessId}`); setCopiedBizCard(true); setTimeout(() => setCopiedBizCard(false), 2000) }}
             title="A public page showing your real jobs-completed and team-size stats — link it from your own website or Google listing.">
@@ -4270,6 +4275,14 @@ export default function DispatcherView() {
         />
       )}
 
+      {showWeekAhead && (
+        <WeekAheadModal
+          businessId={businessId}
+          technicians={technicians}
+          onClose={() => setShowWeekAhead(false)}
+        />
+      )}
+
       {/* Technician Setup QR Modal — a QR code encoding the exact same /tech?pin=
           link "Copy setup link" already copies. Entirely client-side, no
           Twilio/Resend/network call involved, so it works regardless of
@@ -4708,6 +4721,144 @@ function HandoverReportModal({ businessId, technicians, onClose }) {
         <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
           {!loading && !error && (realCompletions.length > 0 || incidents.length > 0) && (
             <button type="button" onClick={copyReport} style={styles.submitBtn}>{copied ? 'Copied!' : 'Copy as text'}</button>
+          )}
+          <button type="button" onClick={onClose} style={styles.cancelBtn}>Close</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── THE WEEK AHEAD ──────────────────────────────────────────
+// Forward-looking companion to the Shift Handover Report above — same
+// "readable document assembled from real data" shape, pointed forward
+// instead of back. Three real signals: jobs already scheduled this week
+// grouped by day, any day where scheduled jobs outnumber technicians who
+// have ever connected (a coverage gap worth noticing before it's a
+// crisis, not a precise staffing model), and any technician credential
+// expiring in the next 14 days (reuses the same real threshold
+// check-credential-expiry's own 30/14/7-day warnings already use,
+// displayed here rather than waiting for that cron's own alert).
+function WeekAheadModal({ businessId, technicians, onClose }) {
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [upcomingJobs, setUpcomingJobs] = useState([])
+  const [expiringCredentials, setExpiringCredentials] = useState([])
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      try {
+        const now = new Date()
+        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+        const sevenDaysOut = new Date(startOfToday.getTime() + 7 * 24 * 60 * 60 * 1000)
+        const fourteenDaysOut = new Date(startOfToday.getTime() + 14 * 24 * 60 * 60 * 1000)
+
+        const [{ data: jobs, error: jobsErr }, { data: credentials, error: credErr }] = await Promise.all([
+          supabase.from('jobs').select('id, client_name, scheduled_time, status')
+            .eq('business_id', businessId)
+            .eq('status', 'scheduled')
+            .gte('scheduled_time', startOfToday.toISOString())
+            .lt('scheduled_time', sevenDaysOut.toISOString())
+            .order('scheduled_time', { ascending: true }),
+          supabase.from('technician_credentials').select('id, technician_id, credential_name, expiry_date')
+            .eq('business_id', businessId)
+            .gte('expiry_date', startOfToday.toISOString().slice(0, 10))
+            .lt('expiry_date', fourteenDaysOut.toISOString().slice(0, 10))
+            .order('expiry_date', { ascending: true }),
+        ])
+        if (jobsErr) throw jobsErr
+        // technician_credentials may not exist as a feature this business
+        // uses at all — a real error here (vs. just an empty result) isn't
+        // worth failing the whole briefing over, so it's logged, not thrown.
+        if (credErr) console.warn('WeekAheadModal: credentials fetch failed (non-fatal):', credErr.message)
+        if (!cancelled) {
+          setUpcomingJobs(jobs || [])
+          setExpiringCredentials(credentials || [])
+        }
+      } catch (err) {
+        if (!cancelled) setError(err.message)
+      }
+      if (!cancelled) setLoading(false)
+    }
+    load()
+    return () => { cancelled = true }
+  }, [businessId])
+
+  const techName = (id) => technicians.find(t => t.id === id)?.name || 'Unknown'
+  const connectedTechCount = technicians.filter(t => t.last_seen).length
+
+  const byDay = {}
+  upcomingJobs.forEach(j => {
+    const day = new Date(j.scheduled_time).toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'short' })
+    if (!byDay[day]) byDay[day] = []
+    byDay[day].push(j)
+  })
+  const thinDays = Object.entries(byDay).filter(([, jobs]) => connectedTechCount > 0 && jobs.length > connectedTechCount)
+
+  function briefingAsText() {
+    const lines = [`The week ahead — ${upcomingJobs.length} job${upcomingJobs.length === 1 ? '' : 's'} scheduled`, '']
+    Object.entries(byDay).forEach(([day, jobs]) => {
+      lines.push(`${day}: ${jobs.length} job${jobs.length === 1 ? '' : 's'}${thinDays.some(([d]) => d === day) ? ' — more jobs than connected technicians' : ''}`)
+    })
+    if (expiringCredentials.length > 0) {
+      lines.push('', 'Credentials expiring within 14 days:')
+      expiringCredentials.forEach(c => lines.push(`  - ${techName(c.technician_id)}: ${c.credential_name} (${c.expiry_date})`))
+    }
+    return lines.join('\n')
+  }
+
+  async function copyBriefing() {
+    try {
+      await navigator.clipboard.writeText(briefingAsText())
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (_) { /* clipboard permission denied */ }
+  }
+
+  return (
+    <div style={styles.modalOverlay} onClick={onClose}>
+      <div style={{ ...styles.modal, maxWidth: 480, textAlign: 'left' }} onClick={e => e.stopPropagation()}>
+        <h3 style={{ margin: '0 0 4px', color: '#1B2B4B', fontSize: 20 }}>The week ahead</h3>
+        <p style={{ color: '#888', fontSize: 13, margin: '0 0 18px' }}>Next 7 days</p>
+        {loading ? (
+          <p style={{ color: '#888', fontSize: 13 }}>Pulling what&rsquo;s scheduled&hellip;</p>
+        ) : error ? (
+          <p style={{ color: '#8A2525', fontSize: 13 }}>{error}</p>
+        ) : upcomingJobs.length === 0 && expiringCredentials.length === 0 ? (
+          <p style={{ color: '#888', fontSize: 13 }}>Nothing scheduled in the next 7 days yet, and no credentials expiring soon.</p>
+        ) : (
+          <>
+            <p style={{ color: '#333', fontSize: 14, margin: '0 0 14px' }}>
+              <strong>{upcomingJobs.length}</strong> job{upcomingJobs.length === 1 ? '' : 's'} scheduled this week
+              {thinDays.length > 0 && <span style={{ color: '#A87C16' }}> · {thinDays.length} day{thinDays.length === 1 ? '' : 's'} thin on coverage</span>}
+            </p>
+            <div style={{ maxHeight: 280, overflowY: 'auto', border: '1px solid #e2e2e2', borderRadius: 8, padding: '4px 12px', marginBottom: 14 }}>
+              {Object.entries(byDay).map(([day, jobs]) => (
+                <div key={day} style={{ padding: '8px 0', borderBottom: '1px solid #f0f0f0' }}>
+                  <p style={{ fontWeight: 'bold', fontSize: 13, margin: '0 0 2px' }}>
+                    {day} <span style={{ color: '#888', fontWeight: 'normal' }}>— {jobs.length} job{jobs.length === 1 ? '' : 's'}</span>
+                    {thinDays.some(([d]) => d === day) && <span style={{ color: '#A87C16', fontSize: 11 }}> ⚠ more jobs than connected technicians</span>}
+                  </p>
+                </div>
+              ))}
+              {expiringCredentials.length > 0 && (
+                <div style={{ padding: '8px 0' }}>
+                  <p style={{ fontWeight: 'bold', fontSize: 13, margin: '0 0 4px', color: '#A87C16' }}>Credentials expiring within 14 days</p>
+                  {expiringCredentials.map(c => (
+                    <p key={c.id} style={{ fontSize: 13, color: '#555', margin: '0 0 2px' }}>
+                      {techName(c.technician_id)}: {c.credential_name} <span style={{ color: '#aaa' }}>({c.expiry_date})</span>
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+        <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+          {!loading && !error && (upcomingJobs.length > 0 || expiringCredentials.length > 0) && (
+            <button type="button" onClick={copyBriefing} style={styles.submitBtn}>{copied ? 'Copied!' : 'Copy as text'}</button>
           )}
           <button type="button" onClick={onClose} style={styles.cancelBtn}>Close</button>
         </div>
