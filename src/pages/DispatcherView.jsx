@@ -3886,19 +3886,14 @@ export default function DispatcherView() {
           // Mapbox's own placeholder value until a real one is pasted in
           // (see isMapboxTokenConfigured's comment in utils.js) — rendering
           // <Map> anyway would just show a broken grey tile grid with a
-          // console full of 401s. This panel is the honest, actionable
-          // stand-in until then; nothing else on this page depends on the
-          // map (technician/job lists, assignment, etc. all live in the
-          // sidebar), so dispatching still works fully without it.
-          <div style={styles.mapUnconfigured}>
-            <p style={{ fontSize: 32, margin: '0 0 10px' }}>🗺️</p>
-            <p style={{ color: '#ccc', fontSize: 15, fontWeight: 'bold', margin: '0 0 6px' }}>Live map isn&apos;t connected yet</p>
-            <p style={{ color: '#888', fontSize: 13, margin: 0, maxWidth: 320, textAlign: 'center', lineHeight: 1.5 }}>
-              Add a real Mapbox token to <code style={styles.mapUnconfiguredCode}>VITE_MAPBOX_TOKEN</code> (in Vercel&apos;s
-              Environment Variables and your local .env.local) to see technicians and jobs on the 3D map here.
-              Everything else on this page works normally in the meantime.
-            </p>
-          </div>
+          // console full of 401s. Replaced 2026-10-29 with LiveOpsBoard — a
+          // genuinely live, real-data schematic view instead of an apology
+          // panel, since there's no reason a street map specifically being
+          // unavailable should mean no visual at all. Nothing else on this
+          // page depends on the map either way (technician/job lists,
+          // assignment, etc. all live in the sidebar), so dispatching still
+          // works fully regardless of which of the two renders.
+          <LiveOpsBoard technicians={technicians} jobs={jobs} />
         ) : mapError ? (
           // A token IS configured but Mapbox rejected it at runtime, or a
           // style/tile failed to load — different cause from the panel
@@ -4326,6 +4321,119 @@ export default function DispatcherView() {
           onClose={() => setShowSupportModal(false)}
         />
       )}
+    </div>
+  )
+}
+
+// ── LIVE OPS BOARD ──────────────────────────────────────────
+// Replaces the "live map isn't connected yet" placeholder with something
+// genuinely alive instead of an apology — real technician and job
+// positions, redrawn the instant the realtime subscription updates
+// `technicians`/`jobs` (no polling of its own, it just redraws on prop
+// change). Deliberately NOT presented as a street map: there's no tile
+// data without Mapbox, so this normalizes real lat/lng into a schematic
+// grid instead — a radar board, not a disguised placeholder. Honest
+// about what it is in its own label, and it stays useful even once
+// Mapbox IS connected (the real map a dispatcher would still want for
+// turn-by-turn context doesn't replace "see the whole fleet at a
+// glance," they're complementary, same reason ops rooms run multiple
+// displays).
+function LiveOpsBoard({ technicians, jobs }) {
+  const canvasRef = useRef(null)
+
+  useEffect(() => {
+    const cv = canvasRef.current
+    if (!cv) return
+    const ctx = cv.getContext('2d')
+
+    function draw() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2)
+      const W = cv.clientWidth, H = cv.clientHeight
+      if (W === 0 || H === 0) return
+      cv.width = W * dpr
+      cv.height = H * dpr
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+
+      ctx.fillStyle = '#050811'
+      ctx.fillRect(0, 0, W, H)
+      ctx.strokeStyle = 'rgba(45, 95, 168, .14)'
+      ctx.lineWidth = 1
+      for (let gx = 0; gx <= W; gx += 44) { ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, H); ctx.stroke() }
+      for (let gy = 0; gy <= H; gy += 44) { ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke() }
+
+      const techPoints = (technicians || []).filter(t => t.current_lat != null && t.current_lng != null)
+      const jobPoints = (jobs || []).filter(j => j.client_lat != null && j.client_lng != null && j.status !== 'complete')
+      const allLats = [...techPoints.map(t => t.current_lat), ...jobPoints.map(j => j.client_lat)]
+      const allLngs = [...techPoints.map(t => t.current_lng), ...jobPoints.map(j => j.client_lng)]
+
+      if (allLats.length === 0) {
+        ctx.fillStyle = '#666'
+        ctx.font = '14px -apple-system, BlinkMacSystemFont, sans-serif'
+        ctx.textAlign = 'center'
+        ctx.fillText('No technicians tracking or jobs located yet', W / 2, H / 2)
+        return
+      }
+
+      let minLat = Math.min(...allLats), maxLat = Math.max(...allLats)
+      let minLng = Math.min(...allLngs), maxLng = Math.max(...allLngs)
+      // A single point (or several at the exact same spot) would divide
+      // by zero below — give it a small fixed span instead of collapsing
+      // to a point at the center.
+      const latSpan = (maxLat - minLat) || 0.02
+      const lngSpan = (maxLng - minLng) || 0.02
+      minLat -= latSpan * 0.18; maxLat += latSpan * 0.18
+      minLng -= lngSpan * 0.18; maxLng += lngSpan * 0.18
+
+      const margin = 36
+      const project = (lat, lng) => [
+        margin + ((lng - minLng) / (maxLng - minLng)) * (W - margin * 2),
+        // Latitude increases northward; canvas y increases downward.
+        margin + (1 - (lat - minLat) / (maxLat - minLat)) * (H - margin * 2),
+      ]
+
+      jobPoints.forEach(j => {
+        const [x, y] = project(j.client_lat, j.client_lng)
+        ctx.beginPath()
+        ctx.arc(x, y, 5, 0, Math.PI * 2)
+        ctx.fillStyle = j.status === 'in_progress' ? '#e0b155' : '#2D5FA8'
+        ctx.fill()
+      })
+
+      techPoints.forEach(t => {
+        const [x, y] = project(t.current_lat, t.current_lng)
+        ctx.beginPath()
+        ctx.arc(x, y, 10, 0, Math.PI * 2)
+        ctx.fillStyle = 'rgba(29, 158, 117, .25)'
+        ctx.fill()
+        ctx.beginPath()
+        ctx.arc(x, y, 5, 0, Math.PI * 2)
+        ctx.fillStyle = '#1D9E75'
+        ctx.fill()
+        ctx.fillStyle = '#ccc'
+        ctx.font = '11px -apple-system, BlinkMacSystemFont, sans-serif'
+        ctx.textAlign = 'center'
+        ctx.fillText(t.name, x, y - 16)
+      })
+    }
+
+    draw()
+    window.addEventListener('resize', draw)
+    return () => window.removeEventListener('resize', draw)
+  }, [technicians, jobs])
+
+  const liveCount = (technicians || []).filter(t => t.current_lat != null).length
+  const jobCount = (jobs || []).filter(j => j.client_lat != null && j.status !== 'complete').length
+
+  return (
+    <div style={{ position: 'absolute', inset: 0 }}>
+      <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block' }} />
+      <div style={{ position: 'absolute', top: 12, left: 12, background: 'rgba(5,8,17,.85)', border: '1px solid #1e293b', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#ccc' }}>
+        <strong style={{ color: '#fff' }}>Live Ops Board</strong> — schematic, not a street map
+        <div style={{ marginTop: 4, color: '#888' }}>
+          <span style={{ color: '#4ee6b3' }}>●</span> {liveCount} tracking &nbsp;
+          <span style={{ color: '#8fb8ff' }}>●</span> {jobCount} job{jobCount === 1 ? '' : 's'} located
+        </div>
+      </div>
     </div>
   )
 }
