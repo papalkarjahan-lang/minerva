@@ -214,6 +214,7 @@ export default function DispatcherView() {
   const [showAddTech, setShowAddTech] = useState(false)
   const [showHandoverReport, setShowHandoverReport] = useState(false)
   const [showWeekAhead, setShowWeekAhead] = useState(false)
+  const [showJobEfficiency, setShowJobEfficiency] = useState(false)
   const [copiedBizCard, setCopiedBizCard] = useState(false)
   const [linkCopied, setLinkCopied] = useState(false)
   const [calendarLinkCopied, setCalendarLinkCopied] = useState(false)
@@ -2467,6 +2468,10 @@ export default function DispatcherView() {
             title="What's scheduled this week, any day that's thin on tracking technicians, and any credentials expiring soon — forward-looking instead of a look back.">
             🗓️ The week ahead
           </button>
+          <button style={{ ...styles.copyLinkBtn, marginTop: 8 }} onClick={() => setShowJobEfficiency(true)}
+            title="Real revenue per hour on site, from GPS-derived job duration and actual invoice totals — not an invented profit margin (materials cost isn't tracked, so this doesn't pretend to be one).">
+            💵 Revenue per hour
+          </button>
           <button style={{ ...styles.copyLinkBtn, marginTop: 8 }}
             onClick={() => { navigator.clipboard.writeText(`${import.meta.env.VITE_APP_URL}/biz/${businessId}`); setCopiedBizCard(true); setTimeout(() => setCopiedBizCard(false), 2000) }}
             title="A public page showing your real jobs-completed and team-size stats — link it from your own website or Google listing.">
@@ -4283,6 +4288,13 @@ export default function DispatcherView() {
         />
       )}
 
+      {showJobEfficiency && (
+        <JobEfficiencyModal
+          businessId={businessId}
+          onClose={() => setShowJobEfficiency(false)}
+        />
+      )}
+
       {/* Technician Setup QR Modal — a QR code encoding the exact same /tech?pin=
           link "Copy setup link" already copies. Entirely client-side, no
           Twilio/Resend/network call involved, so it works regardless of
@@ -4860,6 +4872,98 @@ function WeekAheadModal({ businessId, technicians, onClose }) {
           {!loading && !error && (upcomingJobs.length > 0 || expiringCredentials.length > 0) && (
             <button type="button" onClick={copyBriefing} style={styles.submitBtn}>{copied ? 'Copied!' : 'Copy as text'}</button>
           )}
+          <button type="button" onClick={onClose} style={styles.cancelBtn}>Close</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── JOB EFFICIENCY (REVENUE PER HOUR) ───────────────────────
+// Feature 3 of the 3 approved this round. Deliberately NOT a "profit
+// margin" feature — that would need a real materials-cost figure per
+// job, which this codebase doesn't track anywhere (consumables_items is
+// industrial-only inventory counts, not a $ cost basis; invoice
+// line_items are revenue, not cost). Revenue-per-hour-on-site is the
+// honest version of the same idea: real GPS-derived job duration
+// (jobs.started_at/completed_at, set by the technician tapping Start/
+// Complete) paired with the real invoice total for that job — both
+// facts Minerva actually has, no invented number.
+function JobEfficiencyModal({ businessId, onClose }) {
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  const [rows, setRows] = useState([]) // [{ jobId, clientName, hours, total, perHour }]
+
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      try {
+        const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()
+        const [{ data: jobs, error: jobsErr }, { data: invoices, error: invErr }] = await Promise.all([
+          supabase.from('jobs').select('id, client_name, started_at, completed_at')
+            .eq('business_id', businessId)
+            .eq('status', 'complete')
+            .not('started_at', 'is', null)
+            .not('completed_at', 'is', null)
+            .gte('completed_at', thirtyDaysAgo),
+          supabase.from('invoices').select('job_id, total').eq('business_id', businessId).not('job_id', 'is', null),
+        ])
+        if (jobsErr) throw jobsErr
+        if (invErr) throw invErr
+        const invoiceByJob = {}
+        ;(invoices || []).forEach(inv => { if (!invoiceByJob[inv.job_id]) invoiceByJob[inv.job_id] = inv })
+        const computed = (jobs || [])
+          .map(j => {
+            const inv = invoiceByJob[j.id]
+            if (!inv) return null
+            const hours = (new Date(j.completed_at).getTime() - new Date(j.started_at).getTime()) / (1000 * 60 * 60)
+            // Guards against a job with a clock/data glitch (completed
+            // before started, or under a minute on site) producing a
+            // meaningless or divide-by-near-zero $/hour figure.
+            if (hours < (1 / 60)) return null
+            return { jobId: j.id, clientName: j.client_name || 'Unnamed client', hours, total: Number(inv.total) || 0, perHour: (Number(inv.total) || 0) / hours }
+          })
+          .filter(Boolean)
+          .sort((a, b) => b.perHour - a.perHour)
+        if (!cancelled) setRows(computed)
+      } catch (err) {
+        if (!cancelled) setError(err.message)
+      }
+      if (!cancelled) setLoading(false)
+    }
+    load()
+    return () => { cancelled = true }
+  }, [businessId])
+
+  const avgPerHour = rows.length > 0 ? rows.reduce((sum, r) => sum + r.perHour, 0) / rows.length : null
+
+  return (
+    <div style={styles.modalOverlay} onClick={onClose}>
+      <div style={{ ...styles.modal, maxWidth: 480, textAlign: 'left' }} onClick={e => e.stopPropagation()}>
+        <h3 style={{ margin: '0 0 4px', color: '#1B2B4B', fontSize: 20 }}>Revenue per hour</h3>
+        <p style={{ color: '#888', fontSize: 13, margin: '0 0 18px' }}>Last 30 days, invoiced jobs only</p>
+        {loading ? (
+          <p style={{ color: '#888', fontSize: 13 }}>Calculating&hellip;</p>
+        ) : error ? (
+          <p style={{ color: '#8A2525', fontSize: 13 }}>{error}</p>
+        ) : rows.length === 0 ? (
+          <p style={{ color: '#888', fontSize: 13 }}>No completed, invoiced jobs with both a start and complete time in the last 30 days yet — this fills in as real jobs are tracked start-to-finish.</p>
+        ) : (
+          <>
+            <p style={{ color: '#333', fontSize: 14, margin: '0 0 14px' }}>
+              Average: <strong style={{ color: '#1D9E75' }}>${avgPerHour.toFixed(0)}/hr</strong> across {rows.length} job{rows.length === 1 ? '' : 's'}
+            </p>
+            <div style={{ maxHeight: 280, overflowY: 'auto', border: '1px solid #e2e2e2', borderRadius: 8, padding: '4px 12px' }}>
+              {rows.map(r => (
+                <div key={r.jobId} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid #f0f0f0', fontSize: 13 }}>
+                  <span style={{ color: '#333' }}>{r.clientName} <span style={{ color: '#aaa' }}>({r.hours.toFixed(1)}h, ${r.total.toFixed(0)})</span></span>
+                  <strong style={{ color: r.perHour >= avgPerHour ? '#1D9E75' : '#A87C16' }}>${r.perHour.toFixed(0)}/hr</strong>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+        <div style={{ marginTop: 16 }}>
           <button type="button" onClick={onClose} style={styles.cancelBtn}>Close</button>
         </div>
       </div>
