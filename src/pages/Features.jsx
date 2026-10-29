@@ -43,6 +43,7 @@ const SECTIONS = [
       ['📥', 'Bulk import', 'Already running your team and schedule in a spreadsheet? Upload it — technicians and jobs populate in one go instead of typing each in by hand.'],
       ['🔥', 'Demand heatmap', 'See where your job history actually clusters, so you know which areas to focus growth on — not just what\'s happening today.'],
       ['📋', 'Shift handover report', 'A readable summary of today\'s completed jobs, grouped by technician, assembled automatically — copy it as text to hand off to the next shift.'],
+      ['🌉', 'Quote-to-job bridge', 'When a client accepts a quote, a draft job is created automatically — no re-typing the name, phone and job description you already wrote once.'],
     ],
   },
   {
@@ -52,6 +53,7 @@ const SECTIONS = [
       ['💬', 'Automatic lead intake', 'A chat widget for your website triages enquiries and texts your team qualified leads, scored by urgency.'],
       ['🔁', 'Referral nudges', 'A single low-pressure referral-code text is sent to happy clients after a paid invoice — not a spam campaign. Included on every plan.'],
       ['🧾', 'Client self-service portal', 'Clients get a private link to their own job history and invoices, and can request another job themselves — no phone call needed.'],
+      ['🌐', 'Public business card page', 'A shareable page showing your real jobs-completed and team-size stats — link it from your own website or Google listing.'],
     ],
   },
   {
@@ -88,6 +90,7 @@ const SECTIONS = [
       ['📍', 'Multi-day site tracking', 'Sites carry their own scope of work with arrival/departure check-ins, for jobs that run over multiple days.'],
       ['⚠️', 'Safety incident tracking', 'Log and acknowledge on-site safety incidents by severity, each one turned into an assignable, due-dated ticket.'],
       ['📑', 'Client verification packages', 'Assemble evidence packages for client and compliance handoff.'],
+      ['📊', 'Compliance scorecard', 'A real resolution rate and on-time rate for flagged safety and maintenance issues, business-wide — the number to hand a principal contractor when bidding for work.'],
     ],
   },
 ]
