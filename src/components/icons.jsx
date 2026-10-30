@@ -93,3 +93,25 @@ export function BatteryIcon({ size = 23, style, level = 0.85 }) {
     </svg>
   )
 }
+
+// Used on the /demo "it keeps running after the van leaves" timeline —
+// invoice, review and win-back steps that happen after dispatch, not during it.
+export function ReceiptIcon({ size = 16, style }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
+      <path
+        d="M6 2.5h12a.5.5 0 0 1 .5.5v18.3c0 .4-.45.63-.78.4l-1.47-1.02a.5.5 0 0 0-.58 0l-1.42 1a.5.5 0 0 1-.58 0l-1.42-1a.5.5 0 0 0-.58 0l-1.42 1a.5.5 0 0 1-.58 0l-1.42-1a.5.5 0 0 0-.58 0l-1.42 1a.5.5 0 0 1-.58 0L5.78 21.3a.5.5 0 0 1-.78-.4V3a.5.5 0 0 1 .5-.5z"
+        stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"
+      />
+      <path d="M8.3 8h7.4M8.3 12h7.4M8.3 16h4.6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+export function StarIcon({ size = 14, style }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
+      <path d="M12 2.5l2.9 6.26 6.6.63-5 4.66 1.4 6.95L12 17.77l-5.9 3.23 1.4-6.95-5-4.66 6.6-.63L12 2.5z" fill="currentColor" />
+    </svg>
+  )
+}

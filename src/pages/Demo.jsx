@@ -10,6 +10,7 @@ import Map3D, { RouteLine } from '../components/Map3D'
 import { isMapboxTokenConfigured } from '../utils'
 import { PHONE_ROUTE_START, PHONE_ROUTE_END, PHONE_ROUTE_COORDS, PHONE_ROUTE_DISTANCE_M, PHONE_ROUTE_DURATION_S } from '../data/demoGeo'
 import CrewTypes from '../components/CrewTypes'
+import AutomationTimeline from '../components/AutomationTimeline'
 
 // Public, no-signup, no-login "watch it work" page. Built 2026-09-15 to
 // close a real gap: dozens of already-written outreach email drafts
@@ -63,6 +64,8 @@ export default function Demo() {
       <div style={{ maxWidth: 360, margin: '0 auto 24px', padding: '0 24px', position: 'relative' }}>
         <PhoneMockup />
       </div>
+
+      <AutomationTimeline />
 
       <div style={{ maxWidth: 680, margin: '140px auto 0', padding: '0 24px', textAlign: 'center', position: 'relative' }}>
         <Eyebrow color="#1D9E75">Whole-fleet optimizer</Eyebrow>
