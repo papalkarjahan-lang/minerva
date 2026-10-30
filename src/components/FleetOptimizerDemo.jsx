@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { estimateDollarsFromKm } from '../utils'
 import { BoltIcon, CheckCircleIcon } from './icons'
-import { FleetMapBackdrop, MapZoomControl, MapCompass } from './MapScene'
+import { FleetMapBackdrop, MapToolbar, RouteGlowFilter } from './MapScene'
 
 // Public, no-signup interactive demo of the real optimize-fleet-day
 // mechanism — same algorithm shape as
@@ -250,106 +250,127 @@ export default function FleetOptimizerDemo() {
     }, 900)
   }
 
+  const maxKm = Math.max(before.totalKm, after.totalKm)
+
   return (
-    <div style={{ background: '#0a0f1d', border: '1px solid #1e293b', borderRadius: 20, padding: '28px 24px', boxShadow: '0 20px 60px rgba(0,0,0,0.35)' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
-        <div>
-          <div style={{ fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#E8A33D', fontWeight: 700, marginBottom: 4 }}>
-            Try it — whole-fleet optimizer
-          </div>
+    <div style={{ background: '#0a0f1d', border: '1px solid #1b2336', borderRadius: 16, overflow: 'hidden', boxShadow: '0 24px 60px -20px rgba(0,0,0,0.5)' }}>
+      {/* App-window titlebar — the one authenticity cue real dashboard
+          screenshots almost always carry, kept small and quiet. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 16px', borderBottom: '1px solid #151c2c' }}>
+        <span style={{ width: 8, height: 8, borderRadius: 99, background: '#2a3346' }} />
+        <span style={{ width: 8, height: 8, borderRadius: 99, background: '#2a3346' }} />
+        <span style={{ width: 8, height: 8, borderRadius: 99, background: '#2a3346' }} />
+        <span style={{ fontSize: 12, color: '#5c6684', marginLeft: 6 }}>Minerva — Today's routes (sample)</span>
+      </div>
+
+      <div style={{ padding: '20px 24px 24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
           <div style={{ fontSize: 13, color: '#8a93a8' }}>
             Sample fleet · 3 technicians, 8 jobs · not a real business
           </div>
+          <button
+            onClick={handleOptimize}
+            disabled={optimized || animating}
+            style={{
+              fontFamily: 'inherit', fontWeight: 700, fontSize: 14, border: 'none', borderRadius: 9,
+              padding: '11px 18px', cursor: optimized ? 'default' : 'pointer',
+              display: 'inline-flex', alignItems: 'center', gap: 8,
+              background: optimized ? '#142a20' : '#1D9E75', color: optimized ? '#5fae8e' : '#06130e',
+              opacity: animating ? 0.7 : 1, transition: 'opacity 0.2s',
+            }}
+          >
+            {optimized ? <CheckCircleIcon size={15} /> : <BoltIcon size={13} />}
+            {optimized ? 'Optimized' : animating ? 'Optimizing…' : 'Optimize this fleet'}
+          </button>
         </div>
-        <button
-          onClick={handleOptimize}
-          disabled={optimized || animating}
-          style={{
-            fontFamily: 'inherit', fontWeight: 700, fontSize: 14, border: 'none', borderRadius: 10,
-            padding: '12px 20px', cursor: optimized ? 'default' : 'pointer',
-            display: 'inline-flex', alignItems: 'center', gap: 8,
-            background: optimized ? '#1b3a2c' : '#1D9E75', color: '#fff',
-            opacity: animating ? 0.7 : 1, transition: 'opacity 0.2s',
-          }}
-        >
-          {optimized ? <CheckCircleIcon size={15} /> : <BoltIcon size={13} />}
-          {optimized ? 'Optimized' : animating ? 'Optimizing…' : 'Optimize this fleet'}
-        </button>
-      </div>
 
-      {/* Hand-built SVG street scene behind the routes (see MapScene.jsx) —
-          not Mapbox/Google Maps, no tile layer or API key involved. A dark
-          "casing" stroke under each colored route (same technique real
-          map renderers use) keeps crossing routes legible against it. */}
-      <div style={{
-        position: 'relative', height: 260, borderRadius: 14, overflow: 'hidden', marginBottom: 18,
-        boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.05), inset 0 20px 40px rgba(0,0,0,0.25)',
-      }}>
-        <FleetMapBackdrop />
-        <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse at 50% 35%, transparent 50%, rgba(5,8,17,0.5) 100%)' }} />
+        {/* Hairline-grid map + one glowing route per technician — not a
+            toy town (see MapScene.jsx). No Mapbox/Google Maps involved. */}
+        <div style={{ position: 'relative', height: 240, borderRadius: 12, overflow: 'hidden', marginBottom: 20 }}>
+          <FleetMapBackdrop />
 
-        <svg width="100%" height="100%" style={{ position: 'absolute', top: 0, left: 0 }} preserveAspectRatio="none" viewBox="0 0 100 100">
-          {paths.map(p => (
-            <path key={`${p.techId}-case`} d={p.d} stroke="#05070d" strokeWidth="2.6" fill="none" opacity="0.55"
-              strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" style={{ transition: 'd 0.6s ease' }} />
-          ))}
-          {paths.map(p => (
-            <path key={p.techId} d={p.d} stroke={p.color} strokeWidth="1.3" fill="none" opacity="0.95"
-              strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" style={{ transition: 'd 0.6s ease' }} />
-          ))}
-          {JOBS.map(j => (
-            <g key={j.id}>
-              <ellipse cx={j.x} cy={j.y + 1.1} rx="1.5" ry="0.55" fill="rgba(0,0,0,0.4)" />
-              <circle cx={j.x} cy={j.y} r="1.5" fill="#0c1324" stroke="#fff" strokeWidth="0.9" vectorEffect="non-scaling-stroke" />
-            </g>
-          ))}
-          {TECHNICIANS.map(t => (
-            <g key={t.id}>
-              <ellipse cx={t.x} cy={t.y + 1.7} rx="3" ry="1" fill="rgba(0,0,0,0.42)" />
-              <circle cx={t.x} cy={t.y} r="3.8" fill={t.color} opacity="0.22" />
-              <circle cx={t.x} cy={t.y} r="2.7" fill={t.color} stroke="#0a0f1d" strokeWidth="0.7" vectorEffect="non-scaling-stroke" />
-              <text x={t.x} y={t.y} textAnchor="middle" dominantBaseline="central" fontSize="2.9" fontWeight="800" fill="#0a0f1d">
-                {t.name[0]}
-              </text>
-            </g>
-          ))}
-        </svg>
+          <svg width="100%" height="100%" style={{ position: 'absolute', top: 0, left: 0 }} preserveAspectRatio="none" viewBox="0 0 100 100">
+            <defs>
+              <RouteGlowFilter id="route-glow-fleet" />
+            </defs>
+            {paths.map(p => (
+              <path key={p.techId} d={p.d} stroke={p.color} strokeWidth="1.1" fill="none" opacity="0.95"
+                strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke"
+                filter="url(#route-glow-fleet)" style={{ transition: 'd 0.6s ease' }} />
+            ))}
+            {JOBS.map(j => (
+              <circle key={j.id} cx={j.x} cy={j.y} r="1.3" fill="#0a0f1d" stroke="#fff" strokeWidth="0.8" vectorEffect="non-scaling-stroke" />
+            ))}
+            {TECHNICIANS.map(t => (
+              <g key={t.id}>
+                <circle cx={t.x} cy={t.y} r="3.4" fill={t.color} opacity="0.18" />
+                <circle cx={t.x} cy={t.y} r="2.4" fill={t.color} stroke="#0a0f1d" strokeWidth="0.6" vectorEffect="non-scaling-stroke" />
+                <text x={t.x} y={t.y} textAnchor="middle" dominantBaseline="central" fontSize="2.6" fontWeight="800" fill="#0a0f1d">
+                  {t.name[0]}
+                </text>
+              </g>
+            ))}
+          </svg>
 
-        <MapCompass />
-        <MapZoomControl />
+          <MapToolbar />
 
-        <div style={{ position: 'absolute', bottom: 10, left: 12, display: 'flex', gap: 14, fontSize: 11, color: '#9fb8d8' }}>
-          {TECHNICIANS.map(t => (
-            <span key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-              <span style={{ width: 8, height: 8, borderRadius: 99, background: t.color, display: 'inline-block' }} />
-              {t.name}
-            </span>
-          ))}
+          <div style={{ position: 'absolute', bottom: 10, left: 12, display: 'flex', gap: 14, fontSize: 11, color: '#9fb8d8' }}>
+            {TECHNICIANS.map(t => (
+              <span key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <span style={{ width: 7, height: 7, borderRadius: 99, background: t.color, display: 'inline-block' }} />
+                {t.name}
+              </span>
+            ))}
+          </div>
         </div>
-      </div>
 
-      <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
-        <Stat label="Current plan" value={`${before.totalKm.toFixed(0)} km`} dim={optimized} />
-        <Stat label="Optimized plan" value={optimized ? `${after.totalKm.toFixed(0)} km` : '—'} highlight={optimized} />
-        <Stat label="Saved" value={optimized ? `${kmSaved.toFixed(0)} km (${pctSaved}%)` : '—'} highlight={optimized} accent />
-        <Stat label="≈ est. cost saved" value={optimized ? `$${estimateDollarsFromKm(kmSaved)}` : '—'} highlight={optimized} accent />
+        {/* Comparison bars make the improvement legible at a glance,
+            instead of four disconnected numbers the reader has to do
+            subtraction on themselves. */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 18 }}>
+          <DistanceBar label="Current plan" km={before.totalKm} max={maxKm} color="#4a5578" />
+          <DistanceBar label="Optimized plan" km={optimized ? after.totalKm : null} max={maxKm} color="#1D9E75" />
+        </div>
+
+        <div style={{ display: 'flex', gap: 28, flexWrap: 'wrap', paddingTop: 2 }}>
+          <Stat label="Saved" value={optimized ? `${kmSaved.toFixed(0)} km (${pctSaved}%)` : '—'} highlight={optimized} accent />
+          <Stat label="≈ est. cost saved" value={optimized ? `$${estimateDollarsFromKm(kmSaved)}` : '—'} highlight={optimized} accent />
+        </div>
+        <p style={{ fontSize: 12, color: '#5c6684', margin: '18px 0 0', lineHeight: 1.6 }}>
+          This is the same reassign-and-reroute logic Minerva runs for real, Standard-tier trade businesses —
+          it only ever applies a change when it's a genuine improvement over what you already had. On this
+          fixed sample it finds one; on a day that's already well-planned, it would say so and change nothing.
+          Dollar figure is an estimate using the ATO's 2026-27 all-inclusive vehicle running-cost rate
+          (91c/km), not a measured cost for any real fleet.
+        </p>
       </div>
-      <p style={{ fontSize: 12, color: '#888', margin: '16px 0 0', lineHeight: 1.6 }}>
-        This is the same reassign-and-reroute logic Minerva runs for real, Standard-tier trade businesses —
-        it only ever applies a change when it's a genuine improvement over what you already had. On this
-        fixed sample it finds one; on a day that's already well-planned, it would say so and change nothing.
-        Dollar figure is an estimate using the ATO's 2026-27 all-inclusive vehicle running-cost rate
-        (91c/km), not a measured cost for any real fleet.
-      </p>
     </div>
   )
 }
 
-function Stat({ label, value, dim, highlight, accent }) {
+function Stat({ label, value, highlight, accent }) {
   return (
-    <div style={{ opacity: dim ? 0.45 : 1 }}>
-      <div style={{ fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#6b7488', marginBottom: 4 }}>{label}</div>
-      <div style={{ fontSize: 22, fontWeight: 700, color: accent && highlight ? '#1D9E75' : '#fff', fontVariantNumeric: 'tabular-nums' }}>{value}</div>
+    <div>
+      <div style={{ fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#6b7488', marginBottom: 5 }}>{label}</div>
+      <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.01em', color: accent && highlight ? '#1D9E75' : '#fff', fontVariantNumeric: 'tabular-nums' }}>{value}</div>
+    </div>
+  )
+}
+
+// Horizontal comparison bar — km rendered as a proportional width against
+// the larger of the two plans, so the improvement is legible as a shape,
+// not just a number the reader has to subtract themselves.
+function DistanceBar({ label, km, max, color }) {
+  const pct = km == null ? 0 : Math.max(4, (km / max) * 100)
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#8a93a8', marginBottom: 5 }}>
+        <span>{label}</span>
+        <span style={{ fontVariantNumeric: 'tabular-nums', color: '#cbd3e6', fontWeight: 600 }}>{km == null ? '—' : `${km.toFixed(0)} km`}</span>
+      </div>
+      <div style={{ height: 8, borderRadius: 99, background: '#131a2b', overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${pct}%`, borderRadius: 99, background: color, transition: 'width 0.7s cubic-bezier(0.22, 1, 0.36, 1)' }} />
+      </div>
     </div>
   )
 }
