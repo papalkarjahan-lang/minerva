@@ -137,7 +137,7 @@ function PhoneMockup() {
           </div>
 
           {/* Map — hairline grid + one glowing route, not a toy town (see MapScene.jsx) */}
-          <div style={{ position: 'relative', height: 208, margin: '0 10px', borderRadius: 16, overflow: 'hidden' }}>
+          <div style={{ position: 'relative', aspectRatio: '170 / 110', margin: '0 10px', borderRadius: 16, overflow: 'hidden' }}>
             <PhoneMapBackdrop />
 
             <svg width="100%" height="100%" style={{ position: 'absolute', top: 0, left: 0 }} preserveAspectRatio="none" viewBox="0 0 100 100">
@@ -153,11 +153,21 @@ function PhoneMockup() {
                 filter="url(#route-glow-phone)" />
             </svg>
 
-            <PinIcon size={18} style={{ position: 'absolute', right: '9%', top: '11%', color: '#fff', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.6))' }} />
+            <div style={{ position: 'absolute', right: '8%', top: '11%', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+              <PinIcon size={18} style={{ color: '#fff', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.6))' }} />
+              <span style={{ marginTop: -2, fontSize: 9.5, fontWeight: 600, color: '#dfe5f5', background: 'rgba(6,9,15,0.8)', padding: '1px 6px', borderRadius: 5, whiteSpace: 'nowrap' }}>
+                Sarah's workshop
+              </span>
+            </div>
 
-            <div style={{ position: 'absolute', left: '10%', top: '63%', transform: 'translate(-50%, -50%)' }}>
-              <span className="minerva-live-pulse" />
-              <span style={{ position: 'relative', display: 'block', width: 11, height: 11, borderRadius: 99, background: '#1D9E75', border: '2px solid #06090f' }} />
+            <div style={{ position: 'absolute', left: '10%', top: '63%', transform: 'translate(-50%, -50%)', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <span style={{ position: 'relative' }}>
+                <span className="minerva-live-pulse" />
+                <span style={{ position: 'relative', display: 'block', width: 11, height: 11, borderRadius: 99, background: '#1D9E75', border: '2px solid #06090f' }} />
+              </span>
+              <span style={{ marginTop: 3, fontSize: 9.5, fontWeight: 600, color: '#dfe5f5', background: 'rgba(6,9,15,0.8)', padding: '1px 6px', borderRadius: 5, whiteSpace: 'nowrap' }}>
+                Dave
+              </span>
             </div>
 
             <MapToolbar compact corner="bottom-right" />

@@ -286,7 +286,7 @@ export default function FleetOptimizerDemo() {
 
         {/* Hairline-grid map + one glowing route per technician — not a
             toy town (see MapScene.jsx). No Mapbox/Google Maps involved. */}
-        <div style={{ position: 'relative', height: 240, borderRadius: 12, overflow: 'hidden', marginBottom: 20 }}>
+        <div style={{ position: 'relative', aspectRatio: '220 / 130', borderRadius: 12, overflow: 'hidden', marginBottom: 20 }}>
           <FleetMapBackdrop />
 
           <svg width="100%" height="100%" style={{ position: 'absolute', top: 0, left: 0 }} preserveAspectRatio="none" viewBox="0 0 100 100">
