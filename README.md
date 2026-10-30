@@ -416,6 +416,34 @@ button in Settings shows a setup message instead of connecting. No
 QuickBooks/Intuit equivalent is built yet — CSV export remains the only
 QuickBooks path.
 
+### ServiceM8 connect (2026-10-30, backend only — no UI yet)
+A second OAuth integration, same shape as Xero above, for a different
+purpose: not accounting export, but letting a business keep ServiceM8 for
+dispatch/invoicing while connecting it to Minerva for whole-fleet route
+optimization, AI call handling, and review/win-back automation — the
+pieces ServiceM8 is weakest at. Backend is built
+(`servicem8-oauth-connect`, `servicem8-oauth-callback`,
+`supabase_schema_delta_servicem8_oauth.sql` +
+`_registration.sql`) but **three things are still genuinely open, not
+done**:
+1. Register a free app at developer.servicem8.com (same "has to be the
+   account holder, not completable on your behalf" rule as Xero), set its
+   redirect URI to `<SUPABASE_URL>/functions/v1/servicem8-oauth-callback`,
+   set `SERVICEM8_CLIENT_ID`/`SERVICEM8_CLIENT_SECRET` secrets.
+2. **Not yet smoke-tested against a live ServiceM8 sandbox** — endpoints
+   and the token-exchange request shape are from ServiceM8's published
+   docs, not verified against a real response the way Xero's flow has
+   been. Do a real connect attempt once step 1 is done before trusting it.
+3. **No frontend UI, no pricing/tier decision, nothing wired into
+   DispatcherView.jsx yet.** The OAuth plumbing (the part with real
+   security risk — forged-callback protection, ownership checks) is
+   built and mirrors Xero's already-hardened pattern; the part that
+   actually pulls a business's ServiceM8 jobs and runs the fleet
+   optimizer against them is NOT built yet. That's real, separate work,
+   deliberately not rushed into the same pass as the OAuth scaffold —
+   see `BIG_CONTRACTS_PLAYBOOK.md`/the founder's own notes for the
+   product/pricing shape before building it.
+
 ### Compliance document templates
 `COMPLIANCE_TEMPLATES.md` has generic starting-point templates (terms of
 service, privacy notice, job sign-off, subcontractor onboarding paperwork
