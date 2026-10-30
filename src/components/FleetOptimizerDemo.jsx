@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { estimateDollarsFromKm } from '../utils'
 import { BoltIcon, CheckCircleIcon } from './icons'
+import { FleetMapBackdrop, MapZoomControl, MapCompass } from './MapScene'
 
 // Public, no-signup interactive demo of the real optimize-fleet-day
 // mechanism — same algorithm shape as
@@ -276,17 +277,20 @@ export default function FleetOptimizerDemo() {
         </button>
       </div>
 
-      {/* A faint dot-grid reads as a map tile at a glance, and a dark
+      {/* Hand-built SVG street scene behind the routes (see MapScene.jsx) —
+          not Mapbox/Google Maps, no tile layer or API key involved. A dark
           "casing" stroke under each colored route (same technique real
-          map renderers use) keeps crossing routes legible instead of
-          reading as random lines connecting dots. */}
+          map renderers use) keeps crossing routes legible against it. */}
       <div style={{
         position: 'relative', height: 260, borderRadius: 14, overflow: 'hidden', marginBottom: 18,
-        background: 'radial-gradient(circle at 20px 20px, rgba(159,184,216,0.12) 1px, transparent 1.4px) 0 0/24px 24px, linear-gradient(135deg, #15213a 0%, #0c1324 100%)',
+        boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.05), inset 0 20px 40px rgba(0,0,0,0.25)',
       }}>
+        <FleetMapBackdrop />
+        <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse at 50% 35%, transparent 50%, rgba(5,8,17,0.5) 100%)' }} />
+
         <svg width="100%" height="100%" style={{ position: 'absolute', top: 0, left: 0 }} preserveAspectRatio="none" viewBox="0 0 100 100">
           {paths.map(p => (
-            <path key={`${p.techId}-case`} d={p.d} stroke="#05070d" strokeWidth="2.6" fill="none" opacity="0.5"
+            <path key={`${p.techId}-case`} d={p.d} stroke="#05070d" strokeWidth="2.6" fill="none" opacity="0.55"
               strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" style={{ transition: 'd 0.6s ease' }} />
           ))}
           {paths.map(p => (
@@ -294,10 +298,14 @@ export default function FleetOptimizerDemo() {
               strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" style={{ transition: 'd 0.6s ease' }} />
           ))}
           {JOBS.map(j => (
-            <circle key={j.id} cx={j.x} cy={j.y} r="1.5" fill="#0c1324" stroke="#fff" strokeWidth="0.9" vectorEffect="non-scaling-stroke" />
+            <g key={j.id}>
+              <ellipse cx={j.x} cy={j.y + 1.1} rx="1.5" ry="0.55" fill="rgba(0,0,0,0.4)" />
+              <circle cx={j.x} cy={j.y} r="1.5" fill="#0c1324" stroke="#fff" strokeWidth="0.9" vectorEffect="non-scaling-stroke" />
+            </g>
           ))}
           {TECHNICIANS.map(t => (
             <g key={t.id}>
+              <ellipse cx={t.x} cy={t.y + 1.7} rx="3" ry="1" fill="rgba(0,0,0,0.42)" />
               <circle cx={t.x} cy={t.y} r="3.8" fill={t.color} opacity="0.22" />
               <circle cx={t.x} cy={t.y} r="2.7" fill={t.color} stroke="#0a0f1d" strokeWidth="0.7" vectorEffect="non-scaling-stroke" />
               <text x={t.x} y={t.y} textAnchor="middle" dominantBaseline="central" fontSize="2.9" fontWeight="800" fill="#0a0f1d">
@@ -306,6 +314,10 @@ export default function FleetOptimizerDemo() {
             </g>
           ))}
         </svg>
+
+        <MapCompass />
+        <MapZoomControl />
+
         <div style={{ position: 'absolute', bottom: 10, left: 12, display: 'flex', gap: 14, fontSize: 11, color: '#9fb8d8' }}>
           {TECHNICIANS.map(t => (
             <span key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
