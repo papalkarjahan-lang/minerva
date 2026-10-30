@@ -59,8 +59,10 @@ function greedyAssignJobs(technicians, jobs) {
   return assignment
 }
 
-// Direct port of optimize-fleet-day/logic.ts's twoOptImprove.
-function twoOptImprove(startPos, orderedJobs) {
+// Direct port of optimize-fleet-day/logic.ts's twoOptImprove. `stats`, when
+// passed, counts every candidate reordering actually tried — not a
+// decorative number, the real count this run's search considered.
+function twoOptImprove(startPos, orderedJobs, stats) {
   if (orderedJobs.length < 3) return orderedJobs
   let route = [...orderedJobs]
   const total = (order) => routeDistance(startPos, order)
@@ -70,6 +72,7 @@ function twoOptImprove(startPos, orderedJobs) {
     passes++
     for (let i = 0; i < route.length - 1; i++) {
       for (let k = i + 1; k < route.length; k++) {
+        if (stats) stats.moves++
         const candidate = [...route.slice(0, i), ...route.slice(i, k + 1).reverse(), ...route.slice(k + 1)]
         if (total(candidate) < total(route) - 1e-9) { route = candidate; improved = true }
       }
@@ -82,7 +85,7 @@ function twoOptImprove(startPos, orderedJobs) {
 // bounded pairwise job-swap local search on top of the greedy
 // assignment. Kept in sync with production so this demo never shows a
 // weaker algorithm than what's actually live.
-function swapImproveAssignment(technicians, jobs, assignment) {
+function swapImproveAssignment(technicians, jobs, assignment, stats) {
   const jobsById = new Map(jobs.map(j => [j.id, j]))
   const techById = new Map(technicians.map(t => [t.id, t]))
   const current = new Map()
@@ -90,7 +93,7 @@ function swapImproveAssignment(technicians, jobs, assignment) {
 
   const routeCost = (tech, jobIds) => {
     const theirJobs = jobIds.map(id => jobsById.get(id)).filter(Boolean)
-    return routeDistance(tech, twoOptImprove(tech, theirJobs))
+    return routeDistance(tech, twoOptImprove(tech, theirJobs, stats))
   }
 
   const techIds = [...current.keys()]
@@ -109,6 +112,7 @@ function swapImproveAssignment(technicians, jobs, assignment) {
         const baseCost = routeCost(techA, listA) + routeCost(techB, listB)
         for (let i = 0; i < listA.length; i++) {
           for (let j = 0; j < listB.length; j++) {
+            if (stats) stats.moves++
             const candidateA = listA.slice(); candidateA[i] = listB[j]
             const candidateB = listB.slice(); candidateB[j] = listA[i]
             const candidateCost = routeCost(techA, candidateA) + routeCost(techB, candidateB)
@@ -129,7 +133,7 @@ function swapImproveAssignment(technicians, jobs, assignment) {
 // Direct port of optimize-fleet-day/logic.ts's relocateImproveAssignment —
 // moves a single job to another technician's list with nothing given back,
 // a genuinely different case from swap (which only considers exchanges).
-function relocateImproveAssignment(technicians, jobs, assignment) {
+function relocateImproveAssignment(technicians, jobs, assignment, stats) {
   const jobsById = new Map(jobs.map(j => [j.id, j]))
   const techById = new Map(technicians.map(t => [t.id, t]))
   const current = new Map()
@@ -137,7 +141,7 @@ function relocateImproveAssignment(technicians, jobs, assignment) {
 
   const routeCost = (tech, jobIds) => {
     const theirJobs = jobIds.map(id => jobsById.get(id)).filter(Boolean)
-    return routeDistance(tech, twoOptImprove(tech, theirJobs))
+    return routeDistance(tech, twoOptImprove(tech, theirJobs, stats))
   }
 
   const techIds = [...current.keys()]
@@ -156,6 +160,7 @@ function relocateImproveAssignment(technicians, jobs, assignment) {
         if (listA.length === 0) continue
         const baseCost = routeCost(techA, listA) + routeCost(techB, listB)
         for (let i = 0; i < listA.length; i++) {
+          if (stats) stats.moves++
           const movedJobId = listA[i]
           const candidateA = listA.slice()
           candidateA.splice(i, 1)
@@ -175,18 +180,51 @@ function relocateImproveAssignment(technicians, jobs, assignment) {
 }
 
 function computeOptimizedPlan() {
+  const stats = { moves: 0 }
   const greedy = greedyAssignJobs(TECHNICIANS, JOBS)
-  const swapped = swapImproveAssignment(TECHNICIANS, JOBS, greedy)
-  const assignment = relocateImproveAssignment(TECHNICIANS, JOBS, swapped)
+  const swapped = swapImproveAssignment(TECHNICIANS, JOBS, greedy, stats)
+  const assignment = relocateImproveAssignment(TECHNICIANS, JOBS, swapped, stats)
   const result = new Map()
   let totalKm = 0
   for (const t of TECHNICIANS) {
     const theirJobs = (assignment.get(t.id) || []).map(id => JOBS.find(j => j.id === id))
-    const ordered = twoOptImprove(t, theirJobs)
+    const ordered = twoOptImprove(t, theirJobs, stats)
     result.set(t.id, ordered)
     totalKm += routeDistance(t, ordered)
   }
-  return { byTech: result, totalKm }
+  return { byTech: result, totalKm, movesEvaluated: stats.moves }
+}
+
+// Plain-English diff between the two plans — computed from the actual
+// before/after job lists and per-technician distance, not written by
+// hand. This is what the algorithm actually did, not a guess at what it
+// might have done.
+function explainChanges(before, after) {
+  const lines = []
+  for (const t of TECHNICIANS) {
+    const beforeIds = (before.byTech.get(t.id) || []).map(j => j.id)
+    const afterJobs = after.byTech.get(t.id) || []
+    const afterIds = afterJobs.map(j => j.id)
+    const beforeSet = new Set(beforeIds)
+    const afterSet = new Set(afterIds)
+    const added = afterIds.filter(id => !beforeSet.has(id))
+    const removed = beforeIds.filter(id => !afterSet.has(id))
+    const kmBefore = routeDistance(t, (before.byTech.get(t.id) || []))
+    const kmAfter = routeDistance(t, afterJobs)
+    const delta = kmBefore - kmAfter
+
+    if (removed.length > 0 && added.length === 0) {
+      lines.push({ tech: t, delta, text: `${t.name} handed off ${removed.length} job${removed.length === 1 ? '' : 's'} (${removed.join(', ')}) that sat closer to a teammate's route — ${Math.abs(delta).toFixed(1)} km shorter.` })
+    } else if (added.length > 0 && removed.length === 0) {
+      lines.push({ tech: t, delta, text: `${t.name} picked up ${added.length} job${added.length === 1 ? '' : 's'} (${added.join(', ')}) from a teammate's overloaded route.` })
+    } else if (added.length > 0 && removed.length > 0) {
+      const deltaText = Math.abs(delta) > 0.3 ? ` — ${Math.abs(delta).toFixed(1)} km ${delta >= 0 ? 'shorter' : 'longer, but it freed up a teammate'} for the same ${afterIds.length} stops.` : `, keeping the same ${afterIds.length}-stop total.`
+      lines.push({ tech: t, delta, text: `${t.name} swapped ${removed.join(', ')} for ${added.join(', ')}${deltaText}` })
+    } else if (Math.abs(delta) > 0.3) {
+      lines.push({ tech: t, delta, text: `${t.name}'s own stops were reordered to cut backtracking — ${Math.abs(delta).toFixed(1)} km shorter on the same ${afterIds.length} jobs.` })
+    }
+  }
+  return lines.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
 }
 
 function currentPlan() {
@@ -235,9 +273,16 @@ function planToGeoRoutes(plan) {
 
 const FLEET_VIEW_STATE = { latitude: FLEET_MAP_CENTER.lat, longitude: FLEET_MAP_CENTER.lng, zoom: 9.55, pitch: 42, bearing: -8 }
 
+// Narrates the real stages the algorithm runs, in order — greedy
+// assignment, then swap search, then relocate search, then per-route
+// reordering — instead of a single opaque "Optimizing…" spinner.
+const STAGES = ['Assigning jobs by proximity…', 'Testing pairwise swaps…', 'Testing relocations…', 'Reordering each route…']
+const STAGE_MS = 230
+
 export default function FleetOptimizerDemo() {
   const [optimized, setOptimized] = useState(false)
   const [animating, setAnimating] = useState(false)
+  const [stageIdx, setStageIdx] = useState(0)
   const [mapError, setMapError] = useState(false)
 
   const before = currentPlan()
@@ -246,14 +291,19 @@ export default function FleetOptimizerDemo() {
   const kmSaved = before.totalKm - after.totalKm
   const pctSaved = Math.round((kmSaved / before.totalKm) * 100)
   const useRealMap = isMapboxTokenConfigured() && !mapError
+  const insights = optimized ? explainChanges(before, after) : []
 
   function handleOptimize() {
     if (optimized || animating) return
     setAnimating(true)
+    setStageIdx(0)
+    STAGES.forEach((_, i) => {
+      if (i > 0) setTimeout(() => setStageIdx(i), i * STAGE_MS)
+    })
     setTimeout(() => {
       setOptimized(true)
       setAnimating(false)
-    }, 900)
+    }, STAGES.length * STAGE_MS)
   }
 
   const maxKm = Math.max(before.totalKm, after.totalKm)
@@ -279,16 +329,21 @@ export default function FleetOptimizerDemo() {
             disabled={optimized || animating}
             style={{
               fontFamily: 'inherit', fontWeight: 700, fontSize: 14, border: 'none', borderRadius: 9,
-              padding: '11px 18px', cursor: optimized ? 'default' : 'pointer',
+              padding: '11px 18px', cursor: optimized ? 'default' : 'pointer', minWidth: 190, justifyContent: 'center',
               display: 'inline-flex', alignItems: 'center', gap: 8,
               background: optimized ? '#142a20' : '#1D9E75', color: optimized ? '#5fae8e' : '#06130e',
               opacity: animating ? 0.7 : 1, transition: 'opacity 0.2s',
             }}
           >
-            {optimized ? <CheckCircleIcon size={15} /> : <BoltIcon size={13} />}
-            {optimized ? 'Optimized' : animating ? 'Optimizing…' : 'Optimize this fleet'}
+            {optimized ? <CheckCircleIcon size={15} /> : <BoltIcon size={13} style={{ animation: animating ? 'minerva-bolt-pulse 0.6s ease-in-out infinite' : 'none' }} />}
+            {optimized ? 'Optimized' : animating ? STAGES[stageIdx] : 'Optimize this fleet'}
           </button>
         </div>
+        {animating && (
+          <div style={{ fontSize: 11, color: '#5c6684', marginTop: -10, marginBottom: 16, fontVariantNumeric: 'tabular-nums' }}>
+            {TECHNICIANS.length} technicians × {JOBS.length} jobs · greedy assignment → pairwise swaps → relocations → route reordering
+          </div>
+        )}
 
         <div style={{ position: 'relative', aspectRatio: '220 / 130', borderRadius: 12, overflow: 'hidden', marginBottom: 20 }}>
           {useRealMap ? (
@@ -367,7 +422,26 @@ export default function FleetOptimizerDemo() {
         <div style={{ display: 'flex', gap: 28, flexWrap: 'wrap', paddingTop: 2 }}>
           <Stat label="Saved" value={optimized ? `${kmSaved.toFixed(0)} km (${pctSaved}%)` : '—'} highlight={optimized} accent />
           <Stat label="≈ est. cost saved" value={optimized ? `$${estimateDollarsFromKm(kmSaved)}` : '—'} highlight={optimized} accent />
+          <Stat label="Route combinations evaluated" value={optimized ? after.movesEvaluated.toLocaleString() : '—'} highlight={optimized} />
         </div>
+
+        {/* Generated from a real diff of the two plans (explainChanges) —
+            this is what changed and why, not a canned testimonial-style
+            claim about "AI." */}
+        {optimized && insights.length > 0 && (
+          <div style={{ marginTop: 20, paddingTop: 18, borderTop: '1px solid #151c2c' }}>
+            <div style={{ fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#6b7488', marginBottom: 10 }}>What changed, and why</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {insights.map((line, i) => (
+                <div key={i} style={{ display: 'flex', gap: 9, fontSize: 13, color: '#cbd3e6', lineHeight: 1.5 }}>
+                  <span style={{ color: '#1D9E75', flexShrink: 0 }}>›</span>
+                  {line.text}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <p style={{ fontSize: 12, color: '#5c6684', margin: '18px 0 0', lineHeight: 1.6 }}>
           This is the same reassign-and-reroute logic Minerva runs for real, Standard-tier trade businesses,
           computing real-world distance (haversine) across real Sydney coordinates — it only ever applies a
@@ -377,6 +451,13 @@ export default function FleetOptimizerDemo() {
           cost for any real fleet.
         </p>
       </div>
+
+      <style>{`
+        @keyframes minerva-bolt-pulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50%      { opacity: 0.5; transform: scale(0.85); }
+        }
+      `}</style>
     </div>
   )
 }

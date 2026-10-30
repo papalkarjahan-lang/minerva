@@ -58,3 +58,38 @@ export function ArrowRightIcon({ size = 12, style }) {
     </svg>
   )
 }
+
+// Real iOS-style status bar glyphs, replacing a literal "●●●" placeholder
+// that was the single most obvious "this is a mockup, not a photo"
+// tell on the phone demo (flagged directly: "looks childish").
+export function SignalIcon({ size = 13, style }) {
+  return (
+    <svg width={size} height={size * 0.72} viewBox="0 0 17 12" fill="none" style={style}>
+      <rect x="0" y="7" width="3" height="5" rx="0.6" fill="currentColor" />
+      <rect x="4.5" y="5" width="3" height="7" rx="0.6" fill="currentColor" />
+      <rect x="9" y="3" width="3" height="9" rx="0.6" fill="currentColor" />
+      <rect x="13.5" y="0" width="3" height="12" rx="0.6" fill="currentColor" />
+    </svg>
+  )
+}
+
+export function WifiIcon({ size = 14, style }) {
+  return (
+    <svg width={size} height={size * 0.75} viewBox="0 0 16 12" fill="none" style={style}>
+      <path d="M1 4.2C5.8-0.4 10.2-0.4 15 4.2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" fill="none" />
+      <path d="M3.4 7C6.5 4 9.5 4 12.6 7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" fill="none" />
+      <circle cx="8" cy="10.3" r="1.3" fill="currentColor" />
+    </svg>
+  )
+}
+
+export function BatteryIcon({ size = 23, style, level = 0.85 }) {
+  const innerW = 15.5 * Math.max(0, Math.min(1, level))
+  return (
+    <svg width={size} height={size * 0.48} viewBox="0 0 25 12" fill="none" style={style}>
+      <rect x="0.75" y="0.75" width="19.5" height="10.5" rx="2.6" stroke="currentColor" strokeOpacity="0.4" strokeWidth="1" />
+      <rect x="2.25" y="2.25" width={innerW} height="7.5" rx="1.4" fill="currentColor" />
+      <path d="M21.5 4v4c.9-.35 1.5-1.2 1.5-2s-.6-1.65-1.5-2z" fill="currentColor" fillOpacity="0.4" />
+    </svg>
+  )
+}

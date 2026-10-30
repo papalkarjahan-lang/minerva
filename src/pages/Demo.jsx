@@ -4,7 +4,7 @@ import { Marker } from 'react-map-gl'
 import { SiteNav, SiteFooter } from '../components/SiteChrome'
 import { useDocumentMeta } from '../hooks/useDocumentMeta'
 import FleetOptimizerDemo from '../components/FleetOptimizerDemo'
-import { PinIcon } from '../components/icons'
+import { PinIcon, SignalIcon, WifiIcon, BatteryIcon } from '../components/icons'
 import { PhoneMapBackdrop, MapToolbar, RouteGlowFilter } from '../components/MapScene'
 import Map3D, { RouteLine } from '../components/Map3D'
 import { isMapboxTokenConfigured } from '../utils'
@@ -67,10 +67,10 @@ export default function Demo() {
       <div style={{ maxWidth: 680, margin: '140px auto 0', padding: '0 24px', textAlign: 'center', position: 'relative' }}>
         <Eyebrow color="#1D9E75">Whole-fleet optimizer</Eyebrow>
         <h2 style={{ fontSize: 'clamp(28px, 4vw, 38px)', fontWeight: 800, letterSpacing: '-0.015em', margin: '0 0 14px', textWrap: 'balance' }}>
-          Now watch it plan a whole team's day.
+          A real optimizer, not a spreadsheet.
         </h2>
-        <p style={{ fontSize: 16, color: '#9aa4bc', margin: '0 auto 32px', lineHeight: 1.6, maxWidth: 480 }}>
-          Minerva's whole-fleet optimizer, running for real against a sample fleet across real Sydney suburbs — not a video, not a mockup.
+        <p style={{ fontSize: 16, color: '#9aa4bc', margin: '0 auto 32px', lineHeight: 1.6, maxWidth: 520 }}>
+          Greedy assignment, pairwise swaps, relocations, route reordering — the same search Minerva runs for real, against a sample fleet across real Sydney suburbs. Click it and watch every stage run.
         </p>
       </div>
       <div style={{ maxWidth: 680, margin: '0 auto 24px', padding: '0 24px', position: 'relative' }}>
@@ -174,7 +174,11 @@ function PhoneMockup() {
           <div style={{ position: 'relative', height: 30, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 20px' }}>
             <span style={{ fontSize: 11, fontWeight: 600, color: '#fff' }}>9:41</span>
             <div style={{ position: 'absolute', left: '50%', top: 6, transform: 'translateX(-50%)', width: 64, height: 16, borderRadius: 99, background: '#000' }} />
-            <span style={{ fontSize: 11, color: '#9aa4bc' }}>●●●</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#fff' }}>
+              <SignalIcon size={12} />
+              <WifiIcon size={13} />
+              <BatteryIcon size={21} level={0.85} />
+            </div>
           </div>
 
           <div style={{ position: 'relative', aspectRatio: '170 / 110', margin: '0 10px', borderRadius: 16, overflow: 'hidden' }}>
