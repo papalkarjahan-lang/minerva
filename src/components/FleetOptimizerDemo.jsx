@@ -1,49 +1,32 @@
 import { useState } from 'react'
-import { estimateDollarsFromKm } from '../utils'
+import { Marker } from 'react-map-gl'
+import { estimateDollarsFromKm, haversineKm, isMapboxTokenConfigured } from '../utils'
 import { BoltIcon, CheckCircleIcon } from './icons'
 import { FleetMapBackdrop, MapToolbar, RouteGlowFilter } from './MapScene'
+import Map3D, { RouteLine } from './Map3D'
+import { TECHNICIANS, JOBS, CURRENT_ASSIGNMENT, FLEET_MAP_CENTER } from '../data/demoGeo'
 
 // Public, no-signup interactive demo of the real optimize-fleet-day
 // mechanism — same algorithm shape as
 // supabase/functions/optimize-fleet-day/logic.ts (greedyAssignJobs +
 // swapImproveAssignment + relocateImproveAssignment + twoOptImprove),
-// reimplemented client-side against a fixed synthetic sample fleet so a
-// cold prospect can click it and watch the actual reassignment happen, no
-// login required. Distance here is flat-plane (synthetic 0-100 canvas),
-// not haversine, since this isn't a real map — the algorithm logic is
-// otherwise identical to production. Sample data and the resulting
-// improvement were verified with a standalone script before shipping
-// (42% / ~133 units saved on this fixed input, deterministic, not
-// randomized or cherry-picked per visit — re-verified after adding the
-// relocate pass, which found more than swap alone did on this same input).
-// Honesty convention matches Demo.jsx: explicitly labeled sample data,
-// never implies a real business, real technician, or a guaranteed result
-// for any other fleet.
-
-const TECHNICIANS = [
-  { id: 'A', name: 'Dave', x: 10, y: 80, color: '#1D9E75' },
-  { id: 'B', name: 'Sam', x: 50, y: 85, color: '#2D5FA8' },
-  { id: 'C', name: 'Priya', x: 85, y: 75, color: '#E8A33D' },
-]
-
-const JOBS = [
-  { id: 'J1', x: 15, y: 60 },
-  { id: 'J2', x: 40, y: 70 },
-  { id: 'J3', x: 55, y: 55 },
-  { id: 'J4', x: 75, y: 60 },
-  { id: 'J5', x: 20, y: 30 },
-  { id: 'J6', x: 45, y: 25 },
-  { id: 'J7', x: 70, y: 30 },
-  { id: 'J8', x: 90, y: 45 },
-]
-
-// Realistic baseline: jobs assigned in the order they came in, not by
-// geography — the same "whatever's already on the job" baseline
-// optimize-fleet-day's own currentPlanDistanceKm compares against.
-const CURRENT_ASSIGNMENT = { A: ['J1', 'J4', 'J7'], B: ['J2', 'J5', 'J8'], C: ['J3', 'J6'] }
+// reimplemented client-side against a fixed sample fleet so a cold
+// prospect can click it and watch the actual reassignment happen, no
+// login required.
+//
+// As of 2026-10-30 this runs on real Sydney coordinates (src/data/
+// demoGeo.js) with production's own haversineKm — the earlier version
+// used flat-plane distance on a synthetic 0-100 canvas because there was
+// no real map to put it on yet. There is now (VITE_MAPBOX_TOKEN holds a
+// real token — see Map3D.jsx), so the distance math and the map under it
+// finally agree with each other. Re-verified with a standalone script
+// against these exact coordinates before shipping: 74.9km -> 40.4km, 46%
+// / ~34.5km saved — not cherry-picked or rounded up. Falls back to the
+// hand-built SVG scene (MapScene.jsx) if the token is ever missing or
+// Mapbox errors at runtime, same pattern DispatcherView uses.
 
 function dist(a, b) {
-  return Math.hypot(a.x - b.x, a.y - b.y)
+  return haversineKm(a.lat, a.lng, b.lat, b.lng)
 }
 
 function routeDistance(startPos, orderedJobs) {
@@ -56,11 +39,10 @@ function routeDistance(startPos, orderedJobs) {
   return total
 }
 
-// Direct port of optimize-fleet-day/logic.ts's greedyAssignJobs, swapping
-// haversineKm for flat-plane distance.
+// Direct port of optimize-fleet-day/logic.ts's greedyAssignJobs.
 function greedyAssignJobs(technicians, jobs) {
   const assignment = new Map(technicians.map(t => [t.id, []]))
-  const techPos = new Map(technicians.map(t => [t.id, { x: t.x, y: t.y }]))
+  const techPos = new Map(technicians.map(t => [t.id, { lat: t.lat, lng: t.lng }]))
   const unassigned = [...jobs]
   while (unassigned.length > 0) {
     let bestTechId = null, bestJobIdx = -1, bestDist = Infinity
@@ -72,7 +54,7 @@ function greedyAssignJobs(technicians, jobs) {
     }
     const job = unassigned.splice(bestJobIdx, 1)[0]
     assignment.get(bestTechId).push(job.id)
-    techPos.set(bestTechId, { x: job.x, y: job.y })
+    techPos.set(bestTechId, { lat: job.lat, lng: job.lng })
   }
   return assignment
 }
@@ -218,28 +200,52 @@ function currentPlan() {
   return { byTech: result, totalKm }
 }
 
-function planToPaths(plan) {
+// SVG-space (0-100) path, for the MapScene.jsx fallback only.
+function planToSvgPaths(plan) {
+  const lngs = JOBS.map(j => j.lng).concat(TECHNICIANS.map(t => t.lng))
+  const lats = JOBS.map(j => j.lat).concat(TECHNICIANS.map(t => t.lat))
+  const lngMin = Math.min(...lngs), lngMax = Math.max(...lngs)
+  const latMin = Math.min(...lats), latMax = Math.max(...lats)
+  const toXY = (p) => ({
+    x: 6 + ((p.lng - lngMin) / (lngMax - lngMin)) * 88,
+    y: 94 - ((p.lat - latMin) / (latMax - latMin)) * 88,
+  })
   const paths = []
   for (const t of TECHNICIANS) {
     const stops = plan.byTech.get(t.id) || []
     if (stops.length === 0) continue
-    const points = [{ x: t.x, y: t.y }, ...stops]
-    const d = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
+    const points = [toXY(t), ...stops.map(toXY)]
+    const d = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ')
     paths.push({ techId: t.id, color: t.color, d })
   }
-  return paths
+  return { paths, toXY }
 }
+
+// Real GeoJSON coordinates ([lng, lat]) per technician, for the Mapbox
+// route layer.
+function planToGeoRoutes(plan) {
+  const routes = []
+  for (const t of TECHNICIANS) {
+    const stops = plan.byTech.get(t.id) || []
+    if (stops.length === 0) continue
+    routes.push({ techId: t.id, color: t.color, coords: [[t.lng, t.lat], ...stops.map(s => [s.lng, s.lat])] })
+  }
+  return routes
+}
+
+const FLEET_VIEW_STATE = { latitude: FLEET_MAP_CENTER.lat, longitude: FLEET_MAP_CENTER.lng, zoom: 9.55, pitch: 42, bearing: -8 }
 
 export default function FleetOptimizerDemo() {
   const [optimized, setOptimized] = useState(false)
   const [animating, setAnimating] = useState(false)
+  const [mapError, setMapError] = useState(false)
 
   const before = currentPlan()
   const after = computeOptimizedPlan()
   const plan = optimized ? after : before
-  const paths = planToPaths(plan)
   const kmSaved = before.totalKm - after.totalKm
   const pctSaved = Math.round((kmSaved / before.totalKm) * 100)
+  const useRealMap = isMapboxTokenConfigured() && !mapError
 
   function handleOptimize() {
     if (optimized || animating) return
@@ -266,7 +272,7 @@ export default function FleetOptimizerDemo() {
       <div style={{ padding: '20px 24px 24px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
           <div style={{ fontSize: 13, color: '#8a93a8' }}>
-            Sample fleet · 3 technicians, 8 jobs · not a real business
+            Sample fleet across real Sydney suburbs · 3 technicians, 8 jobs · not a real business
           </div>
           <button
             onClick={handleOptimize}
@@ -284,44 +290,70 @@ export default function FleetOptimizerDemo() {
           </button>
         </div>
 
-        {/* Hairline-grid map + one glowing route per technician — not a
-            toy town (see MapScene.jsx). No Mapbox/Google Maps involved. */}
         <div style={{ position: 'relative', aspectRatio: '220 / 130', borderRadius: 12, overflow: 'hidden', marginBottom: 20 }}>
-          <FleetMapBackdrop />
+          {useRealMap ? (
+            <Map3D viewState={FLEET_VIEW_STATE} onError={() => setMapError(true)}>
+              {planToGeoRoutes(plan).map(r => (
+                <RouteLine key={r.techId} id={`fleet-route-${r.techId}`} coordinates={r.coords} color={r.color} width={3} />
+              ))}
+              {JOBS.map(j => (
+                <Marker key={j.id} latitude={j.lat} longitude={j.lng} anchor="center">
+                  <div style={{ width: 9, height: 9, borderRadius: 99, background: '#0a0f1d', border: '2px solid #fff', boxShadow: '0 1px 4px rgba(0,0,0,0.5)' }} />
+                </Marker>
+              ))}
+              {TECHNICIANS.map(t => (
+                <Marker key={t.id} latitude={t.lat} longitude={t.lng} anchor="center">
+                  <div style={{
+                    width: 24, height: 24, borderRadius: 99, background: t.color, border: '2px solid #0a0f1d',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0a0f1d', fontWeight: 800, fontSize: 11,
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.5)',
+                  }}>{t.name[0]}</div>
+                </Marker>
+              ))}
+            </Map3D>
+          ) : (() => {
+            const { paths, toXY } = planToSvgPaths(plan)
+            return (
+              <>
+                <FleetMapBackdrop />
+                <svg width="100%" height="100%" style={{ position: 'absolute', top: 0, left: 0 }} preserveAspectRatio="none" viewBox="0 0 100 100">
+                  <defs><RouteGlowFilter id="route-glow-fleet" /></defs>
+                  {paths.map(p => (
+                    <path key={p.techId} d={p.d} stroke={p.color} strokeWidth="1.1" fill="none" opacity="0.95"
+                      strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke"
+                      filter="url(#route-glow-fleet)" style={{ transition: 'd 0.6s ease' }} />
+                  ))}
+                  {JOBS.map(j => {
+                    const p = toXY(j)
+                    return <circle key={j.id} cx={p.x} cy={p.y} r="1.3" fill="#0a0f1d" stroke="#fff" strokeWidth="0.8" vectorEffect="non-scaling-stroke" />
+                  })}
+                  {TECHNICIANS.map(t => {
+                    const p = toXY(t)
+                    return (
+                      <g key={t.id}>
+                        <circle cx={p.x} cy={p.y} r="3.4" fill={t.color} opacity="0.18" />
+                        <circle cx={p.x} cy={p.y} r="2.4" fill={t.color} stroke="#0a0f1d" strokeWidth="0.6" vectorEffect="non-scaling-stroke" />
+                        <text x={p.x} y={p.y} textAnchor="middle" dominantBaseline="central" fontSize="2.6" fontWeight="800" fill="#0a0f1d">{t.name[0]}</text>
+                      </g>
+                    )
+                  })}
+                </svg>
+                <MapToolbar />
+              </>
+            )
+          })()}
+        </div>
 
-          <svg width="100%" height="100%" style={{ position: 'absolute', top: 0, left: 0 }} preserveAspectRatio="none" viewBox="0 0 100 100">
-            <defs>
-              <RouteGlowFilter id="route-glow-fleet" />
-            </defs>
-            {paths.map(p => (
-              <path key={p.techId} d={p.d} stroke={p.color} strokeWidth="1.1" fill="none" opacity="0.95"
-                strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke"
-                filter="url(#route-glow-fleet)" style={{ transition: 'd 0.6s ease' }} />
-            ))}
-            {JOBS.map(j => (
-              <circle key={j.id} cx={j.x} cy={j.y} r="1.3" fill="#0a0f1d" stroke="#fff" strokeWidth="0.8" vectorEffect="non-scaling-stroke" />
-            ))}
-            {TECHNICIANS.map(t => (
-              <g key={t.id}>
-                <circle cx={t.x} cy={t.y} r="3.4" fill={t.color} opacity="0.18" />
-                <circle cx={t.x} cy={t.y} r="2.4" fill={t.color} stroke="#0a0f1d" strokeWidth="0.6" vectorEffect="non-scaling-stroke" />
-                <text x={t.x} y={t.y} textAnchor="middle" dominantBaseline="central" fontSize="2.6" fontWeight="800" fill="#0a0f1d">
-                  {t.name[0]}
-                </text>
-              </g>
-            ))}
-          </svg>
-
-          <MapToolbar />
-
-          <div style={{ position: 'absolute', bottom: 10, left: 12, display: 'flex', gap: 14, fontSize: 11, color: '#9fb8d8' }}>
-            {TECHNICIANS.map(t => (
-              <span key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                <span style={{ width: 7, height: 7, borderRadius: 99, background: t.color, display: 'inline-block' }} />
-                {t.name}
-              </span>
-            ))}
-          </div>
+        {/* Kept off the map itself (rather than overlaid in a corner) so
+            it never fights with Mapbox's own required attribution
+            control, which also lives bottom-right. */}
+        <div style={{ display: 'flex', gap: 16, fontSize: 12, color: '#9fb8d8', marginBottom: 20 }}>
+          {TECHNICIANS.map(t => (
+            <span key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <span style={{ width: 7, height: 7, borderRadius: 99, background: t.color, display: 'inline-block' }} />
+              {t.name}
+            </span>
+          ))}
         </div>
 
         {/* Comparison bars make the improvement legible at a glance,
@@ -337,11 +369,12 @@ export default function FleetOptimizerDemo() {
           <Stat label="≈ est. cost saved" value={optimized ? `$${estimateDollarsFromKm(kmSaved)}` : '—'} highlight={optimized} accent />
         </div>
         <p style={{ fontSize: 12, color: '#5c6684', margin: '18px 0 0', lineHeight: 1.6 }}>
-          This is the same reassign-and-reroute logic Minerva runs for real, Standard-tier trade businesses —
-          it only ever applies a change when it's a genuine improvement over what you already had. On this
-          fixed sample it finds one; on a day that's already well-planned, it would say so and change nothing.
-          Dollar figure is an estimate using the ATO's 2026-27 all-inclusive vehicle running-cost rate
-          (91c/km), not a measured cost for any real fleet.
+          This is the same reassign-and-reroute logic Minerva runs for real, Standard-tier trade businesses,
+          computing real-world distance (haversine) across real Sydney coordinates — it only ever applies a
+          change when it's a genuine improvement over what you already had. On this fixed sample it finds
+          one; on a day that's already well-planned, it would say so and change nothing. Dollar figure is an
+          estimate using the ATO's 2026-27 all-inclusive vehicle running-cost rate (91c/km), not a measured
+          cost for any real fleet.
         </p>
       </div>
     </div>

@@ -1,21 +1,33 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { Marker } from 'react-map-gl'
 import { SiteNav, SiteFooter } from '../components/SiteChrome'
 import { useDocumentMeta } from '../hooks/useDocumentMeta'
 import FleetOptimizerDemo from '../components/FleetOptimizerDemo'
 import { PinIcon } from '../components/icons'
 import { PhoneMapBackdrop, MapToolbar, RouteGlowFilter } from '../components/MapScene'
+import Map3D, { RouteLine } from '../components/Map3D'
+import { isMapboxTokenConfigured } from '../utils'
+import { PHONE_ROUTE_START, PHONE_ROUTE_END, PHONE_ROUTE_COORDS, PHONE_ROUTE_DISTANCE_M, PHONE_ROUTE_DURATION_S } from '../data/demoGeo'
+import CrewTypes from '../components/CrewTypes'
 
 // Public, no-signup, no-login "watch it work" page. Built 2026-09-15 to
 // close a real gap: dozens of already-written outreach email drafts
 // (EXACT_OUTREACH_EMAIL_DRAFTS.md, OUTREACH_DRAFTS_TOP_PICKS.md) reference
 // a "[demo link]" that didn't actually exist anywhere in the app.
 //
-// Deliberately does NOT use react-map-gl/Mapbox — VITE_MAPBOX_TOKEN is
-// still a placeholder (unset, one of the standing bank-account-gated
-// blockers), so a real map would render broken for every visitor. Instead
-// this is a self-contained CSS/SVG animation with clearly-labeled sample
-// data — honest by construction, matches SALES_CLAIMS_ACCURACY_NOTE.md:
-// nothing here claims to be a real job, real customer, or real SMS send.
+// Through 2026-10-29 this deliberately avoided react-map-gl/Mapbox because
+// VITE_MAPBOX_TOKEN was still Mapbox's own placeholder value. As of
+// 2026-10-30 it holds a real, verified token (confirmed live against
+// Mapbox's API), so both widgets below now run on the same real Mapbox
+// GL stack as the authenticated app (dark-v11, terrain, 3D building
+// extrusions — see Map3D.jsx) instead of hand-built SVG. The map and the
+// buildings on it are real; the technician, customer, and fleet are
+// still fully fictional — same honesty rule as always
+// (SALES_CLAIMS_ACCURACY_NOTE.md), just carried by clearer labeling now
+// that the backdrop itself could otherwise read as real. Falls back to
+// the hand-built scene (MapScene.jsx) if the token is ever missing or
+// Mapbox errors at runtime, same pattern DispatcherView uses.
 //
 // Visual language rebuilt 2026-10-30 after an isometric-toy-town version
 // read as cluttered and amateurish. Calibrated instead against how
@@ -27,39 +39,47 @@ export default function Demo() {
   useDocumentMeta({ title: 'Demo', description: 'Watch it work in 60 seconds, no signup — see what your client sees the moment your technician is on the way.' })
   return (
     <div style={{ background: '#080c16', minHeight: '100vh', color: '#fff' }}>
+      <div style={{
+        position: 'absolute', top: -120, left: '50%', transform: 'translateX(-50%)', width: 900, height: 500,
+        background: 'radial-gradient(ellipse at center, rgba(45,95,168,0.18) 0%, rgba(29,158,117,0.08) 45%, transparent 75%)',
+        pointerEvents: 'none',
+      }} />
+
       <SiteNav />
 
-      <div style={{ maxWidth: 720, margin: '0 auto', textAlign: 'center', padding: '88px 24px 36px' }}>
+      <div style={{ maxWidth: 720, margin: '0 auto', textAlign: 'center', padding: '88px 24px 36px', position: 'relative' }}>
         <Eyebrow color="#1D9E75">Live, interactive demo</Eyebrow>
         <h1 style={{ fontSize: 'clamp(40px, 6vw, 64px)', fontWeight: 800, lineHeight: 1.05, letterSpacing: '-0.02em', margin: '0 0 20px', textWrap: 'balance' }}>
           Watch it work.<br />60 seconds, no signup.
         </h1>
         <p style={{ fontSize: 19, color: '#9aa4bc', margin: '0 auto 10px', lineHeight: 1.6, maxWidth: 520 }}>
-          This is what your client sees the moment your technician is on the way.
+          This is what your client sees the moment your technician is on the way — on a real street map, not an illustration.
         </p>
         <p style={{ fontSize: 13, color: '#5c6684', margin: 0 }}>
-          Sample demonstration with simulated data — not a real job, technician, or customer.
+          Real Sydney map and a real ~1km driving route · simulated job, technician, and customer.
         </p>
       </div>
 
-      <div style={{ maxWidth: 360, margin: '0 auto 24px', padding: '0 24px' }}>
+      <div style={{ maxWidth: 360, margin: '0 auto 24px', padding: '0 24px', position: 'relative' }}>
         <PhoneMockup />
       </div>
 
-      <div style={{ maxWidth: 680, margin: '140px auto 0', padding: '0 24px', textAlign: 'center' }}>
+      <div style={{ maxWidth: 680, margin: '140px auto 0', padding: '0 24px', textAlign: 'center', position: 'relative' }}>
         <Eyebrow color="#1D9E75">Whole-fleet optimizer</Eyebrow>
         <h2 style={{ fontSize: 'clamp(28px, 4vw, 38px)', fontWeight: 800, letterSpacing: '-0.015em', margin: '0 0 14px', textWrap: 'balance' }}>
           Now watch it plan a whole team's day.
         </h2>
         <p style={{ fontSize: 16, color: '#9aa4bc', margin: '0 auto 32px', lineHeight: 1.6, maxWidth: 480 }}>
-          Minerva's whole-fleet optimizer, running for real against a sample fleet below — not a video, not a mockup.
+          Minerva's whole-fleet optimizer, running for real against a sample fleet across real Sydney suburbs — not a video, not a mockup.
         </p>
       </div>
-      <div style={{ maxWidth: 680, margin: '0 auto 24px', padding: '0 24px' }}>
+      <div style={{ maxWidth: 680, margin: '0 auto 24px', padding: '0 24px', position: 'relative' }}>
         <FleetOptimizerDemo />
       </div>
 
-      <div style={{ maxWidth: 680, margin: '64px auto 100px', padding: '0 24px', textAlign: 'center' }}>
+      <CrewTypes />
+
+      <div style={{ maxWidth: 680, margin: '64px auto 100px', padding: '0 24px', textAlign: 'center', position: 'relative' }}>
         <Link to="/start" style={{ display: 'inline-block', background: '#1D9E75', color: '#06130e', textDecoration: 'none', padding: '17px 40px', borderRadius: 10, fontSize: 16, fontWeight: 700, marginRight: 12 }}>
           Start your free 14-day trial
         </Link>
@@ -71,10 +91,6 @@ export default function Demo() {
       <SiteFooter />
 
       <style>{`
-        @keyframes minerva-fade-in {
-          from { opacity: 0; transform: translateY(6px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
         @keyframes minerva-pulse-ring {
           0%   { transform: translate(-50%, -50%) scale(0.6); opacity: 0.5; }
           100% { transform: translate(-50%, -50%) scale(2.6); opacity: 0; }
@@ -93,6 +109,10 @@ export default function Demo() {
           background: #1D9E75;
           animation: minerva-pulse-ring 2s ease-out infinite;
         }
+        @keyframes minerva-fade-in {
+          from { opacity: 0; transform: translateY(6px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
         .minerva-sms-1 { animation: minerva-fade-in 0.4s ease-out 0.6s both; }
         .minerva-sms-2 { animation: minerva-fade-in 0.4s ease-out 3.2s both; }
         .minerva-sms-3 { animation: minerva-fade-in 0.4s ease-out 5.8s both; }
@@ -110,7 +130,28 @@ function Eyebrow({ color, children }) {
   )
 }
 
+const PHONE_VIEW_STATE = {
+  latitude: (PHONE_ROUTE_START.lat + PHONE_ROUTE_END.lat) / 2,
+  longitude: (PHONE_ROUTE_START.lng + PHONE_ROUTE_END.lng) / 2,
+  zoom: 15.6, pitch: 55, bearing: -15,
+}
+
 function PhoneMockup() {
+  const [mapError, setMapError] = useState(false)
+  const [vanIdx, setVanIdx] = useState(0)
+  const useRealMap = isMapboxTokenConfigured() && !mapError
+
+  // Drives the live-location dot along the real Directions-API route
+  // fetched for src/data/demoGeo.js — an actual 48-point LineString, not
+  // a handful of CSS keyframe waypoints.
+  useEffect(() => {
+    if (!useRealMap) return
+    const id = setInterval(() => setVanIdx(i => (i + 1) % PHONE_ROUTE_COORDS.length), 170)
+    return () => clearInterval(id)
+  }, [useRealMap])
+
+  const vanPos = PHONE_ROUTE_COORDS[vanIdx]
+
   return (
     <div style={{ position: 'relative' }}>
       <div style={{
@@ -136,45 +177,72 @@ function PhoneMockup() {
             <span style={{ fontSize: 11, color: '#9aa4bc' }}>●●●</span>
           </div>
 
-          {/* Map — hairline grid + one glowing route, not a toy town (see MapScene.jsx) */}
           <div style={{ position: 'relative', aspectRatio: '170 / 110', margin: '0 10px', borderRadius: 16, overflow: 'hidden' }}>
-            <PhoneMapBackdrop />
+            {useRealMap ? (
+              <Map3D viewState={PHONE_VIEW_STATE} onError={() => setMapError(true)}>
+                <RouteLine id="phone-route" coordinates={PHONE_ROUTE_COORDS} color="#1D9E75" width={4} />
 
-            <svg width="100%" height="100%" style={{ position: 'absolute', top: 0, left: 0 }} preserveAspectRatio="none" viewBox="0 0 100 100">
-              <defs>
-                <linearGradient id="route-grad" x1="0" y1="100" x2="100" y2="0" gradientUnits="userSpaceOnUse">
-                  <stop offset="0%" stopColor="#2D5FA8" />
-                  <stop offset="100%" stopColor="#1D9E75" />
-                </linearGradient>
-                <RouteGlowFilter id="route-glow-phone" />
-              </defs>
-              <path d="M10,64 C 24,52 34,42 38,40 C 50,46 55,51 60,56 C 68,46 74,36 78,31 C 82,26 86,23 88,16"
-                stroke="url(#route-grad)" strokeWidth="1.4" fill="none" strokeLinecap="round" vectorEffect="non-scaling-stroke"
-                filter="url(#route-glow-phone)" />
-            </svg>
+                <Marker latitude={PHONE_ROUTE_END.lat} longitude={PHONE_ROUTE_END.lng} anchor="bottom">
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                    <span style={{ fontSize: 9.5, fontWeight: 600, color: '#dfe5f5', background: 'rgba(6,9,15,0.85)', padding: '1px 6px', borderRadius: 5, whiteSpace: 'nowrap', marginBottom: 2 }}>
+                      Sarah's workshop
+                    </span>
+                    <PinIcon size={18} style={{ color: '#fff', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.6))' }} />
+                  </div>
+                </Marker>
 
-            <div style={{ position: 'absolute', right: '8%', top: '11%', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-              <PinIcon size={18} style={{ color: '#fff', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.6))' }} />
-              <span style={{ marginTop: -2, fontSize: 9.5, fontWeight: 600, color: '#dfe5f5', background: 'rgba(6,9,15,0.8)', padding: '1px 6px', borderRadius: 5, whiteSpace: 'nowrap' }}>
-                Sarah's workshop
-              </span>
-            </div>
+                <Marker latitude={vanPos[1]} longitude={vanPos[0]} anchor="center">
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                    <span style={{ position: 'relative', display: 'block', width: 13, height: 13 }}>
+                      <span className="minerva-live-pulse" />
+                      <span style={{ position: 'relative', display: 'block', width: 13, height: 13, borderRadius: 99, background: '#1D9E75', border: '2px solid #06090f' }} />
+                    </span>
+                    <span style={{ marginTop: 3, fontSize: 9.5, fontWeight: 600, color: '#dfe5f5', background: 'rgba(6,9,15,0.85)', padding: '1px 6px', borderRadius: 5, whiteSpace: 'nowrap' }}>
+                      Dave
+                    </span>
+                  </div>
+                </Marker>
+              </Map3D>
+            ) : (
+              <>
+                <PhoneMapBackdrop />
+                <svg width="100%" height="100%" style={{ position: 'absolute', top: 0, left: 0 }} preserveAspectRatio="none" viewBox="0 0 100 100">
+                  <defs>
+                    <linearGradient id="route-grad" x1="0" y1="100" x2="100" y2="0" gradientUnits="userSpaceOnUse">
+                      <stop offset="0%" stopColor="#2D5FA8" />
+                      <stop offset="100%" stopColor="#1D9E75" />
+                    </linearGradient>
+                    <RouteGlowFilter id="route-glow-phone" />
+                  </defs>
+                  <path d="M10,64 C 24,52 34,42 38,40 C 50,46 55,51 60,56 C 68,46 74,36 78,31 C 82,26 86,23 88,16"
+                    stroke="url(#route-grad)" strokeWidth="1.4" fill="none" strokeLinecap="round" vectorEffect="non-scaling-stroke"
+                    filter="url(#route-glow-phone)" />
+                </svg>
 
-            <div style={{ position: 'absolute', left: '10%', top: '63%', transform: 'translate(-50%, -50%)', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <span style={{ position: 'relative' }}>
-                <span className="minerva-live-pulse" />
-                <span style={{ position: 'relative', display: 'block', width: 11, height: 11, borderRadius: 99, background: '#1D9E75', border: '2px solid #06090f' }} />
-              </span>
-              <span style={{ marginTop: 3, fontSize: 9.5, fontWeight: 600, color: '#dfe5f5', background: 'rgba(6,9,15,0.8)', padding: '1px 6px', borderRadius: 5, whiteSpace: 'nowrap' }}>
-                Dave
-              </span>
-            </div>
+                <div style={{ position: 'absolute', right: '8%', top: '11%', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                  <PinIcon size={18} style={{ color: '#fff', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.6))' }} />
+                  <span style={{ marginTop: -2, fontSize: 9.5, fontWeight: 600, color: '#dfe5f5', background: 'rgba(6,9,15,0.8)', padding: '1px 6px', borderRadius: 5, whiteSpace: 'nowrap' }}>
+                    Sarah's workshop
+                  </span>
+                </div>
 
-            <MapToolbar compact corner="bottom-right" />
+                <div style={{ position: 'absolute', left: '10%', top: '63%', transform: 'translate(-50%, -50%)', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <span style={{ position: 'relative' }}>
+                    <span className="minerva-live-pulse" />
+                    <span style={{ position: 'relative', display: 'block', width: 11, height: 11, borderRadius: 99, background: '#1D9E75', border: '2px solid #06090f' }} />
+                  </span>
+                  <span style={{ marginTop: 3, fontSize: 9.5, fontWeight: 600, color: '#dfe5f5', background: 'rgba(6,9,15,0.8)', padding: '1px 6px', borderRadius: 5, whiteSpace: 'nowrap' }}>
+                    Dave
+                  </span>
+                </div>
 
-            <div style={{ position: 'absolute', bottom: 8, left: 8, display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(6,9,15,0.75)', backdropFilter: 'blur(6px)', padding: '5px 9px', borderRadius: 7, fontSize: 10.5, color: '#9aa4bc', fontWeight: 500 }}>
+                <MapToolbar compact corner="bottom-right" />
+              </>
+            )}
+
+            <div style={{ position: 'absolute', bottom: 8, left: 8, display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(6,9,15,0.75)', backdropFilter: 'blur(6px)', padding: '5px 9px', borderRadius: 7, fontSize: 10.5, color: '#9aa4bc', fontWeight: 500, zIndex: 3 }}>
               <span style={{ width: 5, height: 5, borderRadius: 99, background: '#1D9E75', display: 'inline-block', animation: 'minerva-dot-pulse 1.6s ease-in-out infinite' }} />
-              Live · sample data
+              {useRealMap ? `${(PHONE_ROUTE_DISTANCE_M / 1000).toFixed(1)} km · ${Math.round(PHONE_ROUTE_DURATION_S / 60)} min · sample data` : 'Live · sample data'}
             </div>
           </div>
 
