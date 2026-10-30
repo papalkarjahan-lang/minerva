@@ -233,3 +233,51 @@ range `BIG_ACCOUNT_EXECUTION_KIT.md` already gives per target type, since
 no real conversation has tested whether a sharper pitch actually converts
 better. This is a prioritization of WHICH targets this specific angle is
 most honestly true for, not a new forecast.
+
+## 10. New verticals the 18-target list never covered (2026-10-30)
+
+Checked the real signup dropdown (`TRADE_TYPES` in `Onboarding.jsx`) against
+every target researched so far. The 18 named targets above cover Plumbing,
+Electrical, Locksmith, Cleaning, FM (cross-trade), Security, and one
+council — but **5 of the 11 real supported trade types have zero named
+targets**: HVAC/Refrigeration, Pool Service, Courier/Delivery, Automotive
+Mobile Service, Mobile Veterinary. (Also: "Garage Door" — 2 of the existing
+18 — isn't a real option in the signup dropdown at all; those 2 leads would
+have to go in as "Other.") One first-pass search per the 3 most promising
+gaps, same honesty standard as the rest of this file — not yet verified to
+the two-full-passes depth the original 18 got, so treat these as discovery-
+call candidates, not confirmed-fit targets:
+
+- **AJ Baker & Sons (Perth, WA) — HVAC/Refrigeration, strongest new
+  candidate.** Fourth-generation family-owned, commercial refrigeration
+  and air conditioning since 1920. **Real trigger signal, not assumed**:
+  recently acquired Hill Equipment & Refrigeration (SA), its chairman
+  describing it as "a family business buying out another family business"
+  — this is exactly the "grew faster than our systems" moment
+  `BIG_ACCOUNT_EXECUTION_KIT.md` §4 already identifies as the real reason
+  multi-van owners say yes, except here it's two merging fleets instead of
+  organic growth. Fleet size not yet confirmed — first discovery-call
+  question should be the real vehicle count.
+- **Courier/delivery — real fit, but with the same trap as Programmed
+  (§3 above).** Allied Express (1,000+ vehicles, ~700 owner-operators,
+  privately-owned, not a conglomerate) and Jet Couriers (450+ vehicles) are
+  the two biggest independent players, but at that scale they almost
+  certainly already run dispatch/TMS software and have a formal
+  procurement process — the same reason this file already rules out
+  Programmed as a shortcut. Worth a discovery call to find out, not worth
+  assuming is winnable fast. ANC (privately-owned fleet distribution,
+  smaller/less documented scale) is a softer, possibly more reachable
+  entry point in the same vertical, unverified.
+- **Pool service — does NOT produce a big-account candidate.** Every
+  independent operator found tops out around 2-5 vans (PC Pool Care,
+  Pools Foam & Rubber, The Poolstore), and the one at real scale
+  (Poolwerx) is a franchise network — the same non-single-decision-maker
+  problem Jim's Group already ruled out in §2. Pool service belongs on the
+  SMB local-outreach list (30-50/week plan), not the big-account list.
+- **Not yet researched**: Automotive Mobile Service, Mobile Veterinary.
+  No candidates found or claimed — flagged honestly as unresearched rather
+  than guessed at.
+
+None of these have contact details or drafts yet — same as every target in
+this file, finding and verifying the actual decision-maker is manual work
+for whoever runs outreach, not something generated here.
