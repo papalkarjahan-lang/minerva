@@ -59,9 +59,17 @@
     <meta name="theme-color" content="#050811" />
     <!-- Mapbox CSS required for map to render correctly -->
     <link href="https://api.mapbox.com/mapbox-gl-js/v3.4.0/mapbox-gl.css" rel="stylesheet" />
+    <!-- Arial read as dated/unpolished next to the rest of the product UI —
+         Inter is the de-facto default for modern SaaS products for a reason
+         (built for UI text at small sizes, real weight range). Arial stays
+         first in the fallback stack below so nothing breaks if the request
+         is ever blocked. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <style>
       * { box-sizing: border-box; margin: 0; padding: 0; }
-      body { font-family: Arial, sans-serif; }
+      body { font-family: 'Inter', Arial, Helvetica, sans-serif; }
       /* Without this, mobile Safari/Chrome auto-boost small text blocks to
          a "readable" size regardless of the declared font-size or the
          width=device-width viewport meta above — found live at 375px:

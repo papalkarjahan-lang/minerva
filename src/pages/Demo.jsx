@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { SiteNav, SiteFooter } from '../components/SiteChrome'
 import { useDocumentMeta } from '../hooks/useDocumentMeta'
 import FleetOptimizerDemo from '../components/FleetOptimizerDemo'
+import { PinIcon, VanIcon } from '../components/icons'
 
 // Public, no-signup, no-login "watch it work" page. Built 2026-09-15 to
 // close a real gap: dozens of already-written outreach email drafts
@@ -17,7 +18,7 @@ import FleetOptimizerDemo from '../components/FleetOptimizerDemo'
 export default function Demo() {
   useDocumentMeta({ title: 'Demo', description: 'Watch it work in 60 seconds, no signup — see what your client sees the moment your technician is on the way.' })
   return (
-    <div style={{ fontFamily: 'Arial, sans-serif', background: '#050811', minHeight: '100vh', color: '#fff' }}>
+    <div style={{ background: '#050811', minHeight: '100vh', color: '#fff' }}>
       <SiteNav />
 
       <div style={{ maxWidth: 680, margin: '0 auto', textAlign: 'center', padding: '60px 24px 30px' }}>
@@ -71,8 +72,26 @@ export default function Demo() {
           from { opacity: 0; transform: translateY(6px); }
           to   { opacity: 1; transform: translateY(0); }
         }
+        @keyframes minerva-pulse-ring {
+          0%   { transform: translate(-50%, -50%) scale(0.7); opacity: 0.55; }
+          100% { transform: translate(-50%, -50%) scale(2.1); opacity: 0; }
+        }
+        @keyframes minerva-dot-pulse {
+          0%, 100% { opacity: 1; }
+          50%      { opacity: 0.35; }
+        }
         .minerva-van {
           animation: minerva-van-move 6s ease-in-out infinite alternate;
+        }
+        .minerva-van-pulse {
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          width: 26px;
+          height: 26px;
+          border-radius: 99px;
+          background: #1D9E75;
+          animation: minerva-pulse-ring 1.8s ease-out infinite;
         }
         .minerva-sms-1 { animation: minerva-fade-in 0.4s ease-out 0.6s both; }
         .minerva-sms-2 { animation: minerva-fade-in 0.4s ease-out 3.2s both; }
@@ -85,29 +104,56 @@ export default function Demo() {
 function PhoneMockup() {
   return (
     <div style={{ background: '#0a0f1d', border: '1px solid #1e293b', borderRadius: 28, padding: 14, boxShadow: '0 20px 60px rgba(0,0,0,0.4)' }}>
-      {/* "Map" area — pure CSS/SVG, no Mapbox dependency */}
-      <div style={{ position: 'relative', height: 220, borderRadius: 18, overflow: 'hidden', background: 'linear-gradient(135deg, #142033 0%, #0d1526 100%)', marginBottom: 14 }}>
+      {/* "Map" area — pure CSS/SVG, no Mapbox dependency. A faint dot-grid
+          plus two soft blurred blocks stand in for map tiles/city blocks —
+          enough to read as a map at a glance without pretending to be one. */}
+      <div style={{
+        position: 'relative', height: 220, borderRadius: 18, overflow: 'hidden',
+        background: 'radial-gradient(circle at 18px 18px, rgba(159,184,216,0.14) 1px, transparent 1.4px) 0 0/22px 22px, linear-gradient(135deg, #15213a 0%, #0c1324 100%)',
+      }}>
+        <div style={{ position: 'absolute', width: 120, height: 70, left: '6%', top: '58%', borderRadius: 10, background: 'rgba(255,255,255,0.025)' }} />
+        <div style={{ position: 'absolute', width: 90, height: 100, right: '4%', top: '8%', borderRadius: 10, background: 'rgba(255,255,255,0.025)' }} />
+
         <svg width="100%" height="100%" style={{ position: 'absolute', top: 0, left: 0 }} preserveAspectRatio="none" viewBox="0 0 100 100">
+          <defs>
+            <linearGradient id="route-grad" x1="0" y1="100" x2="100" y2="0" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stopColor="#2D5FA8" />
+              <stop offset="100%" stopColor="#1D9E75" />
+            </linearGradient>
+          </defs>
           <path d="M8,62 C 25,50 35,40 38,38 C 50,45 55,50 60,55 C 68,45 74,35 78,30 C 82,25 86,22 90,18"
-            stroke="#2D5FA8" strokeWidth="1.2" fill="none" strokeDasharray="2,2" opacity="0.6" vectorEffect="non-scaling-stroke" />
+            stroke="url(#route-grad)" strokeWidth="1.6" fill="none" strokeLinecap="round" opacity="0.85" vectorEffect="non-scaling-stroke" />
         </svg>
-        <div style={{ position: 'absolute', right: '8%', top: '15%', fontSize: 20 }}>🏠</div>
-        <div className="minerva-van" style={{ position: 'absolute', fontSize: 22, transform: 'translate(-50%, -50%)' }}>🚐</div>
-        <div style={{ position: 'absolute', bottom: 8, left: 10, background: 'rgba(0,0,0,0.5)', padding: '4px 10px', borderRadius: 8, fontSize: 11, color: '#9fb8d8' }}>
+
+        <PinIcon size={22} style={{ position: 'absolute', right: '6.5%', top: '9%', color: '#fff', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.5))' }} />
+
+        <div className="minerva-van" style={{ position: 'absolute', transform: 'translate(-50%, -50%)' }}>
+          <span className="minerva-van-pulse" />
+          <span style={{
+            position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            width: 26, height: 26, borderRadius: 99, background: '#1D9E75', color: '#fff',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.45)',
+          }}>
+            <VanIcon size={14} />
+          </span>
+        </div>
+
+        <div style={{ position: 'absolute', bottom: 10, left: 10, display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(5,8,17,0.65)', backdropFilter: 'blur(2px)', padding: '5px 10px', borderRadius: 8, fontSize: 11, color: '#9fb8d8' }}>
+          <span style={{ width: 6, height: 6, borderRadius: 99, background: '#1D9E75', display: 'inline-block', animation: 'minerva-dot-pulse 1.6s ease-in-out infinite' }} />
           Live tracking · sample data
         </div>
       </div>
 
       {/* Simulated SMS thread */}
-      <div style={{ minHeight: 130 }}>
-        <div className="minerva-sms-1" style={{ background: '#1D9E75', color: '#fff', padding: '10px 14px', borderRadius: 14, fontSize: 13, marginBottom: 8, maxWidth: '85%' }}>
-          Hi Sarah, this is Minerva Plumbing — your technician Dave is on the way. Track him live: minerva.link/j8x2 🚐
+      <div style={{ minHeight: 130, marginTop: 14 }}>
+        <div className="minerva-sms-1" style={{ background: '#1D9E75', color: '#fff', padding: '10px 14px', borderRadius: '14px 14px 14px 4px', fontSize: 13, lineHeight: 1.45, marginBottom: 8, maxWidth: '85%' }}>
+          Hi Sarah, this is Minerva Plumbing — your technician Dave is on the way. Track him live: minerva.link/j8x2
         </div>
-        <div className="minerva-sms-2" style={{ background: '#1D9E75', color: '#fff', padding: '10px 14px', borderRadius: 14, fontSize: 13, marginBottom: 8, maxWidth: '85%' }}>
+        <div className="minerva-sms-2" style={{ background: '#1D9E75', color: '#fff', padding: '10px 14px', borderRadius: '14px 14px 14px 4px', fontSize: 13, lineHeight: 1.45, marginBottom: 8, maxWidth: '85%' }}>
           Dave is approximately 4 minutes away.
         </div>
-        <div className="minerva-sms-3" style={{ background: '#1D9E75', color: '#fff', padding: '10px 14px', borderRadius: 14, fontSize: 13, maxWidth: '85%' }}>
-          Dave has arrived. Job completed at 2:41pm ✅
+        <div className="minerva-sms-3" style={{ background: '#1D9E75', color: '#fff', padding: '10px 14px', borderRadius: '14px 14px 14px 4px', fontSize: 13, lineHeight: 1.45, maxWidth: '85%' }}>
+          Dave has arrived. Job completed at 2:41pm — thank you for choosing us.
         </div>
       </div>
     </div>

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { estimateDollarsFromKm } from '../utils'
+import { BoltIcon, CheckCircleIcon } from './icons'
 
 // Public, no-signup interactive demo of the real optimize-fleet-day
 // mechanism — same algorithm shape as
@@ -265,25 +266,44 @@ export default function FleetOptimizerDemo() {
           style={{
             fontFamily: 'inherit', fontWeight: 700, fontSize: 14, border: 'none', borderRadius: 10,
             padding: '12px 20px', cursor: optimized ? 'default' : 'pointer',
+            display: 'inline-flex', alignItems: 'center', gap: 8,
             background: optimized ? '#1b3a2c' : '#1D9E75', color: '#fff',
             opacity: animating ? 0.7 : 1, transition: 'opacity 0.2s',
           }}
         >
-          {optimized ? '✓ Optimized' : animating ? 'Optimizing…' : '⚡ Optimize this fleet'}
+          {optimized ? <CheckCircleIcon size={15} /> : <BoltIcon size={13} />}
+          {optimized ? 'Optimized' : animating ? 'Optimizing…' : 'Optimize this fleet'}
         </button>
       </div>
 
-      <div style={{ position: 'relative', height: 260, borderRadius: 14, overflow: 'hidden', background: 'linear-gradient(135deg, #142033 0%, #0d1526 100%)', marginBottom: 18 }}>
+      {/* A faint dot-grid reads as a map tile at a glance, and a dark
+          "casing" stroke under each colored route (same technique real
+          map renderers use) keeps crossing routes legible instead of
+          reading as random lines connecting dots. */}
+      <div style={{
+        position: 'relative', height: 260, borderRadius: 14, overflow: 'hidden', marginBottom: 18,
+        background: 'radial-gradient(circle at 20px 20px, rgba(159,184,216,0.12) 1px, transparent 1.4px) 0 0/24px 24px, linear-gradient(135deg, #15213a 0%, #0c1324 100%)',
+      }}>
         <svg width="100%" height="100%" style={{ position: 'absolute', top: 0, left: 0 }} preserveAspectRatio="none" viewBox="0 0 100 100">
           {paths.map(p => (
-            <path key={p.techId} d={p.d} stroke={p.color} strokeWidth="1" fill="none" opacity="0.75"
-              style={{ transition: 'd 0.6s ease' }} />
+            <path key={`${p.techId}-case`} d={p.d} stroke="#05070d" strokeWidth="2.6" fill="none" opacity="0.5"
+              strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" style={{ transition: 'd 0.6s ease' }} />
+          ))}
+          {paths.map(p => (
+            <path key={p.techId} d={p.d} stroke={p.color} strokeWidth="1.3" fill="none" opacity="0.95"
+              strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" style={{ transition: 'd 0.6s ease' }} />
           ))}
           {JOBS.map(j => (
-            <circle key={j.id} cx={j.x} cy={j.y} r="1.6" fill="#fff" opacity="0.9" />
+            <circle key={j.id} cx={j.x} cy={j.y} r="1.5" fill="#0c1324" stroke="#fff" strokeWidth="0.9" vectorEffect="non-scaling-stroke" />
           ))}
           {TECHNICIANS.map(t => (
-            <circle key={t.id} cx={t.x} cy={t.y} r="2.4" fill={t.color} stroke="#0a0f1d" strokeWidth="0.6" />
+            <g key={t.id}>
+              <circle cx={t.x} cy={t.y} r="3.8" fill={t.color} opacity="0.22" />
+              <circle cx={t.x} cy={t.y} r="2.7" fill={t.color} stroke="#0a0f1d" strokeWidth="0.7" vectorEffect="non-scaling-stroke" />
+              <text x={t.x} y={t.y} textAnchor="middle" dominantBaseline="central" fontSize="2.9" fontWeight="800" fill="#0a0f1d">
+                {t.name[0]}
+              </text>
+            </g>
           ))}
         </svg>
         <div style={{ position: 'absolute', bottom: 10, left: 12, display: 'flex', gap: 14, fontSize: 11, color: '#9fb8d8' }}>
