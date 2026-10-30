@@ -118,19 +118,22 @@ one-time nudge per trigger — never a sequence, never a sales pitch.
     `try/catch` with `continue` — one business's Stripe API error is
     logged and skipped, and every other business in that run still gets
     checked.
-  - `daily-digest` shares one outer `try/catch` around its whole
-    per-business loop — a thrown error partway through *does* stop that
-    run from reaching the remaining businesses that cron cycle. The
-    function itself still returns cleanly (doesn't crash the runtime), and
-    the next scheduled run picks up normally — but a business late in the
-    loop could, in principle, wait for the next cycle if an earlier
-    business's query throws. No cross-tenant data leakage occurs either
-    way; the exposure is availability (delay), not confidentiality.
-  - The honest summary: **no daemon crashes the platform, and no tenant's
-    data ever becomes visible to another's** — but "every business gets
-    served identically well on every single run" is not true of every
-    daemon today. `reconcile-billing`'s pattern is the correct one; not
-    every cron sweep has been retrofitted to match it yet.
+  - **Corrected 2026-10-30 — stale as of this doc's last verification
+    (Round 41, 2026-09-24).** This section used to name `daily-digest` as
+    a live exception (one outer `try/catch`, no per-business isolation).
+    Checked the current code directly rather than trust the old claim:
+    `daily-digest` was retrofitted to `reconcile-billing`'s pattern (own
+    per-business `try/catch`, plus bounded-concurrency batching) on
+    2026-10-08, per its own header comment. `SCALE_READINESS_NOTES_ROUND2.md`
+    confirms this wasn't a one-off — by that date, **every one of the
+    ~35 cron-scheduled functions in the codebase had been individually
+    read and either fixed to this pattern or confirmed already fine**,
+    with the reasoning written down per function, not assumed.
+  - The honest summary, now accurate rather than historical: **no daemon
+    crashes the platform, no tenant's data ever becomes visible to
+    another's, and per-business failure isolation is now the actual
+    applied standard across every cron sweep** — not just
+    `reconcile-billing`'s alone.
 - **Serving "many clients simultaneously"** is real in the sense that
   matters most for a SaaS: every query, insight, draft, and SMS is scoped
   to one `business_id`, so growth in tenant count doesn't mean growth in
