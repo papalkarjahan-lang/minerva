@@ -10,6 +10,7 @@ import './SiteChrome.css'
 // here — these are all fully public, unauthenticated pages.
 
 const NAV_LINKS = [
+  ['/platform', 'Platform'],
   ['/features', 'Features'],
   ['/demo', 'Demo'],
   ['/pricing', 'Pricing'],
