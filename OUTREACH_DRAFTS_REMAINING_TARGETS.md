@@ -58,8 +58,7 @@ I build Minerva — here's what that looks like in practice:
   invoice — not a campaign, just a single text at the right moment.
 
 No pressure — here's a 60-second self-serve demo, no signup:
-https://minerva-green.vercel.app/demo, or the complete list of everything
-it does: minerva-green.vercel.app/platform
+https://minerva-green.vercel.app/demo, or the complete list — filtered to show only what applies to a business like yours — at minerva-green.vercel.app/platform
 
 [your name] / [phone]
 
@@ -151,6 +150,8 @@ I build Minerva — here's what that looks like at your scale:
 - New enquiries get captured and followed up automatically even after
   hours, and a daily summary each morning keeps you across all 15+ vans
   without compiling anything by hand.
+- If you run Xero, invoices sync across automatically as drafts for your
+  review — nothing gets typed twice between the two systems.
 
 20 minutes to set up, no app download. See exactly what the client
 receives, 60 seconds, no signup: https://minerva-green.vercel.app/demo
@@ -191,7 +192,7 @@ I build Minerva — for a 7-van team, here's what it adds:
   invoice — one text, not a campaign.
 
 No pressure — 60-second self-serve demo: https://minerva-green.vercel.app/demo,
-or the complete list: minerva-green.vercel.app/platform
+or the complete list, already filtered to a business your size: minerva-green.vercel.app/platform
 
 [your name] / [phone]
 
@@ -282,8 +283,7 @@ Priced per technician, not a flat enterprise fee, so it scales with your
 actual fleet size.
 
 No need to reply to any of this — here's a 60-second look, no signup:
-https://minerva-green.vercel.app/demo. The complete list of everything it
-does is at minerva-green.vercel.app/platform. If it's relevant and you'd
+https://minerva-green.vercel.app/demo. The complete list — filtered to show only what applies to a business like yours — is at minerva-green.vercel.app/platform. If it's relevant and you'd
 like real numbers for your actual fleet rather than general ones, just
 reply with roughly how many technicians/vans you run nationally and I'll
 put them together — no cost, no obligation.
@@ -383,9 +383,10 @@ nobody remembered to chase it. A missed call from a client still gets
 captured and followed up automatically, even after hours.
 
 No need to reply to any of this — here's a 60-second look, no signup:
-https://minerva-green.vercel.app/demo. The complete list of everything it
-does is at minerva-green.vercel.app/platform. If it's relevant and you'd
-like real numbers for a team your actual size, just reply with roughly
+https://minerva-green.vercel.app/demo. The complete list — filtered to
+show only what applies to a business like yours — is at
+minerva-green.vercel.app/platform. If it's relevant and you'd like real
+numbers for a team your actual size, just reply with roughly
 how many licensed technicians you run day-to-day and I'll put them
 together — no cost, no obligation.
 
@@ -462,7 +463,7 @@ reputation:
   invoice — one text, not a campaign.
 
 60-second self-serve demo, no signup: https://minerva-green.vercel.app/demo,
-or the complete list: minerva-green.vercel.app/platform
+or the complete list, already filtered to a business your size: minerva-green.vercel.app/platform
 
 [your name] / [phone]
 
@@ -497,8 +498,7 @@ like yours:
 - A happy client also gets a single quiet referral nudge after a job's
   paid — one text, not a campaign.
 
-60-second demo: https://minerva-green.vercel.app/demo (the complete list
-of everything it does: minerva-green.vercel.app/platform)
+60-second demo: https://minerva-green.vercel.app/demo (the complete list, filtered to a business your size: minerva-green.vercel.app/platform)
 
 [your name] / [phone]
 

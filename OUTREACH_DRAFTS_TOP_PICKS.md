@@ -85,6 +85,8 @@ Here's what that actually looks like once it's running, in plain terms:
 - A daily summary every morning of the last 24 hours across all 30 vans,
   so you start the day already knowing what happened yesterday instead
   of digging through separate systems.
+- If you run Xero, invoices sync across automatically as drafts for your
+  review — nothing gets typed twice between the two systems.
 
 Everything above runs automatically once it's set up — nothing sends to a
 client without the underlying event actually happening, and nothing
@@ -171,14 +173,15 @@ ServiceTitan already does well:
   scheduling.
 - A daily summary of the last 24 hours across the full 140+ team, each
   morning, without anyone compiling it by hand.
+- If compliance/fleet records ever need to reconcile against Xero,
+  invoices sync across automatically as drafts for review — a separate
+  layer from anything ServiceTitan handles.
 
 None of this asks you to change how ServiceTitan handles jobs,
 scheduling, or billing — it sits alongside it, covering things that tend
 to fall outside a job-management platform's core focus: proving exactly
 what happened on a job, keeping compliance records current without
-manual upkeep, and a few more besides. The complete list — every piece,
-with what it actually means day to day — is at
-minerva-green.vercel.app/platform.
+manual upkeep, and a few more besides. The complete list, already filtered to show only what applies to a trade business like Ken Hall — every piece, with what it actually means day to day — is at minerva-green.vercel.app/platform.
 
 Given your fleet size, I'd like to put together the actual numbers for
 Ken Hall specifically — no cost, no obligation, and no pressure to change
@@ -365,8 +368,7 @@ like yours:
 None of this changes how your technicians actually work — it runs in the
 background and surfaces automatically at the moments that matter (a
 worried customer waiting, a dispute, a happy customer worth asking for a
-review). The complete list of everything it does is at
-minerva-green.vercel.app/platform.
+review). The complete list — filtered to show only what applies to a business like yours — is at minerva-green.vercel.app/platform.
 
 No pressure at all — happy to send a 2-minute self-serve demo if that's
 easier than a call: https://minerva-green.vercel.app/demo.
@@ -430,9 +432,10 @@ At your scale, here's what that actually covers:
 - A daily summary every morning of the last 24 hours across however many
   sites you're running, so you start the day already knowing what
   happened rather than piecing it together from separate reports.
+- If invoicing ever runs through this for any site, Xero sync means
+  nothing gets typed twice between the two systems.
 
-The complete list of everything it does is at
-minerva-green.vercel.app/platform. I'd suggest starting small and proving
+The complete list — filtered to show only what applies to a business like yours — is at minerva-green.vercel.app/platform. I'd suggest starting small and proving
 it rather than a company-wide rollout — a handful of Brisbane-region sites as a trial, so you can see
 the actual logs before considering anything broader.
 
