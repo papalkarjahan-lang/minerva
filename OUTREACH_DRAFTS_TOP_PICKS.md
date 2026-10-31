@@ -28,7 +28,7 @@ and Matt," or verify by phone if you want a single addressee.
 
 ### Email draft — send to service@twinelectrics.com.au
 
-Subject: 🟢 What 40+ years and 30 vans at Twin Electrics might be quietly costing in office time
+Subject: 🟡 What 40+ years and 30 vans at Twin Electrics might be quietly costing in office time
 
 Hi Darren and Matt,
 
@@ -126,7 +126,7 @@ doesn't.
 
 ### Email draft — send to service@callken.com.au
 
-Subject: 🟢 A layer underneath ServiceTitan, not a replacement for it
+Subject: 🟡 A layer underneath ServiceTitan, not a replacement for it
 
 Hi Brad,
 
@@ -224,7 +224,7 @@ head-office email is unlikely to reach a decision-maker.
 
 ### Email draft
 
-Subject: 🟢 the "no update call" ETA problem — Metropolitan Plumbing
+Subject: 🟡 the "no update call" ETA problem — Metropolitan Plumbing
 
 [Do not reference pricing model or any review in this email — ask only
 the operational ETA question.]
@@ -286,7 +286,7 @@ send to "Hi there."
 
 ### Email draft — send to info@abbottlocks.com.au
 
-Subject: 🟢 A note on A. Abbott's reputation, not a sales pitch
+Subject: 🟡 A note on A. Abbott's reputation, not a sales pitch
 
 Hi there,
 
@@ -355,7 +355,7 @@ for Brisbane-area sites, not head office.
 
 ### Email draft
 
-Subject: 🟢 verifying arrival at 400 sites — Associated Cleaning
+Subject: 🟡 verifying arrival at 400 sites — Associated Cleaning
 
 [Pilot framing only — do not claim multi-region production readiness.]
 

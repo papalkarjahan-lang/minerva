@@ -18,7 +18,7 @@ rather than a list. Subjects stay 🟢-marked; live Gmail drafts match.
 reviews, SCEC-approved) — reputation-protection angle. Find owner/manager
 name first.
 
-Subject: 🟢 a small idea for CLASS Locksmiths' next busy season
+Subject: 🟡 a small idea for CLASS Locksmiths' next busy season
 
 Hi there,
 
@@ -61,7 +61,7 @@ Jahan / [phone]
 dispatch — plausible angle, UNCONFIRMED as a pain point. Ask, don't
 assume.
 
-Subject: 🟢 how M.A.S.S. Electrics dispatches a 1-2hr emergency callout
+Subject: 🟡 how M.A.S.S. Electrics dispatches a 1-2hr emergency callout
 
 Hi there,
 
@@ -103,7 +103,7 @@ years, grew from one van. Real email **info@mrsplashplumbing.com.au**.
 
 ### Email draft — send to info@mrsplashplumbing.com.au
 
-Subject: 🟢 What 20 years of growth at Mr Splash might be quietly costing in office time
+Subject: 🟡 What 20 years of growth at Mr Splash might be quietly costing in office time
 
 Hi Jon and Tara,
 
@@ -149,7 +149,7 @@ Jahan / [phone]
 **Confirmed fleet: 7 vans.** Smallest confirmed target — 4.8 stars, 241
 reviews. Good low-stakes first call to rehearse the discovery script.
 
-Subject: 🟢 quick question for Multisparx
+Subject: 🟡 quick question for Multisparx
 
 Hi there,
 
@@ -182,7 +182,7 @@ Jahan / [phone]
 **UNCONFIRMED fleet/technician size.** This email's only real job is to
 get a number and a name.
 
-Subject: 🟢 a quick question about AFM's technician fleet
+Subject: 🟡 a quick question about AFM's technician fleet
 
 Hi there,
 
@@ -223,7 +223,7 @@ Jahan / [phone]
 **UNCONFIRMED fleet/technician size.** Same honest discovery-first
 approach as AFM.
 
-Subject: 🟢 a quick question about your technician fleet
+Subject: 🟡 a quick question about your technician fleet
 
 Hi there,
 
@@ -265,7 +265,7 @@ Jahan / [phone]
 provider. **Verify before sending anything.** Qualifying question stays
 first and alone, followed by the full picture only for context.
 
-Subject: 🟢 a quick question about your field team
+Subject: 🟡 a quick question about your field team
 
 Hi there,
 
@@ -295,7 +295,7 @@ Jahan / [phone]
 contractors, not employed technicians.** Verify on the first call.
 Qualifying question stays first.
 
-Subject: 🟢 A question before anything else, and why I'm asking it
+Subject: 🟡 A question before anything else, and why I'm asking it
 
 Hi there,
 
@@ -345,7 +345,7 @@ the question above first.**
 **UNCONFIRMED size** — "one of Melbourne's largest privately owned
 security installers." Genuine wildcard.
 
-Subject: 🟢 a quick question about Australian Security's technician team
+Subject: 🟡 a quick question about Australian Security's technician team
 
 Hi there,
 
@@ -385,7 +385,7 @@ Jahan / [phone]
 **CAUTION: real risk this isn't a single-decision-maker business.**
 Structural question stays first.
 
-Subject: 🟢 a quick question about how Best Doors' branches are run
+Subject: 🟡 a quick question about how Best Doors' branches are run
 
 Hi there,
 
@@ -418,7 +418,7 @@ Jahan / [phone]
 
 ### Email draft — send to info@dorringtonplumbing.com.au
 
-Subject: 🟢 A note on Dorrington's reputation across three trades
+Subject: 🟡 A note on Dorrington's reputation across three trades
 
 Hi Craig,
 
@@ -471,7 +471,7 @@ Jahan
 **UNCONFIRMED field-tech count.** 60+ years family-owned (Van Den Broek
 family).
 
-Subject: 🟢 quick question about Garage Door Solutions' technician team
+Subject: 🟡 quick question about Garage Door Solutions' technician team
 
 Hi there,
 
