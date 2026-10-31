@@ -580,7 +580,186 @@ filtered to a business your size: minerva-green.vercel.app/platform)
 
 ---
 
-## 13. Liverpool City Council — Liverpool, NSW — DO NOT cold-email this one
+## 14. AJ Baker & Sons — Osborne Park, Perth WA — HVAC/Refrigeration
+**Real company, real trigger signal, no confirmed fleet size or contact
+email.** Fourth-generation family-owned, commercial refrigeration and air
+conditioning since 1920. Real signal, not assumed: recently acquired Hill
+Equipment & Refrigeration (SA) — described by its own chairman as "a family
+business buying out another family business," the exact "grew faster than
+our systems" moment that tends to make a multi-van owner actually say yes.
+Website ajbaker.com.au, phone (08) 9242 5000 (Osborne Park office) — no
+verified email found; a data vendor guesses first-name.last-name@
+ajbaker.com.au but that's inferred, not confirmed, so don't send to a
+guessed address. **First job of this email is getting a real fleet number
+and a real contact — this vertical had zero named targets before today.**
+
+Subject: 🔴 a Hill Equipment acquisition and a question about your service fleet
+
+Hi there,
+
+I saw AJ Baker & Sons recently brought Hill Equipment & Refrigeration into
+the business — a family business buying another family business is a
+specific, real moment, and it's usually also the moment two sets of
+scheduling, compliance records and service history need to actually merge
+into one system rather than run in parallel.
+
+I build Minerva, GPS, dispatch and compliance software for trade and
+refrigeration/HVAC businesses. I couldn't find a public technician or
+service-vehicle count for AJ Baker — could you tell me roughly how many
+technicians or vans you're running across both sites now, and how
+location, job assignment and compliance records are currently handled?
+
+If any of that's still being reconciled by hand post-acquisition, here's
+roughly what it would look like merged into one system:
+
+**Dispatch across two merged fleets**
+- A live GPS map covering every technician at both sites, so dispatch is
+  one view, not two separate systems.
+- Automatic client ETA texts, and a timestamped, photo-backed record of
+  every callout — useful the moment a client from either business asks
+  for proof of what was done.
+
+**Compliance, merged cleanly**
+- Vehicle checks and licence/credential expiry tracked per technician,
+  automatically, regardless of which business they came from.
+- A compliance evidence package assembles on request.
+
+14-day trial, card needed to start it, not charged until it ends. No
+pressure — here's a 60-second self-serve demo, no signup:
+https://minerva-green.vercel.app/demo, and the complete list of everything
+it does is at minerva-green.vercel.app/platform.
+
+[your name] / [phone]
+
+**Do not claim:** any specific fleet size, savings figure, or detail about
+how the Hill Equipment integration is actually going internally — all of
+that is unconfirmed; the email above only references the acquisition as
+public record, not insider knowledge.
+
+---
+
+## 15. Paramount Airconditioning — Melbourne & Sydney VIC/NSW
+**Real company, no confirmed fleet size or contact email.** Family-owned
+and operated, 40+ years, service department covering 500+ sites across
+Melbourne and Victoria — a real, stated scale signal, though it describes
+sites serviced, not technician or vehicle count.
+
+Subject: 🔴 a quick question about the team behind 500+ serviced sites
+
+Hi there,
+
+Servicing 500+ sites across Melbourne and Victoria, after 40+ years as a
+family-owned business, is a genuinely large operation to run — I couldn't
+find a public technician or vehicle count behind that number, which is
+really what determines whether dispatch is still manageable by memory or
+has already outgrown it.
+
+I build Minerva, GPS, dispatch and compliance software for trade and HVAC
+businesses. Roughly how many technicians or service vehicles are covering
+those 500+ sites, and how is job assignment and compliance record-keeping
+handled today?
+
+**What it would add, if useful at that scale**
+- A live GPS map for dispatch across the whole team, automatic client ETA
+  texts, and a timestamped record of every job — proof of what was done
+  and when, across however many sites you're running.
+- Compliance records (vehicle checks, licence/credential expiry) tracked
+  automatically per technician, with an alert before anything lapses.
+- Automatic re-engagement on quotes gone quiet and automatic
+  overdue-invoice reminders, so nothing falls through at that scale simply
+  because nobody remembered to chase it.
+
+14-day trial, card needed to start it, not charged until it ends. No
+pressure — here's a 60-second self-serve demo, no signup:
+https://minerva-green.vercel.app/demo, or the complete list at
+minerva-green.vercel.app/platform.
+
+[your name] / [phone]
+
+**Do not claim:** a specific technician or vehicle count — it's genuinely
+unconfirmed; the email asks rather than assumes.
+
+---
+
+## 16. Endeavour Air Conditioning — Sydney, NSW
+**Real company, no confirmed fleet size or contact email.** Family-owned,
+30+ years in commercial air conditioning, works closely with clients on
+commercial projects per its own site. Thinner signal than Paramount — no
+stated scale number at all, genuinely a cold discovery email.
+
+Subject: 🔴 a quick question about Endeavour's technician team
+
+Hi there,
+
+I build Minerva, GPS, dispatch and compliance software for trade and HVAC
+businesses. I couldn't find a public technician count for Endeavour Air
+Conditioning — 30+ years in commercial work is a real, established track
+record, so I'd guess there's a real fleet behind it, but wanted to ask
+rather than assume.
+
+Roughly how many technicians or service vehicles are you running day to
+day, and how is dispatch and compliance record-keeping handled currently?
+
+If it's useful: a live GPS map for dispatch, automatic client ETA texts, a
+timestamped record of every job, and compliance records (vehicle checks,
+licence/credential expiry) tracked automatically per technician — all
+priced per technician, not a flat enterprise fee.
+
+14-day trial, card needed to start it, not charged until it ends. No need
+to reply to any of this — here's a 60-second look, no signup:
+https://minerva-green.vercel.app/demo, or the complete list at
+minerva-green.vercel.app/platform. If it's relevant and you'd like real
+numbers for your actual fleet, just reply with roughly how many
+technicians you run and I'll put them together — no cost, no obligation.
+
+[your name] / [phone]
+
+---
+
+## 17. Suburban Pest Management — Brisbane, QLD (Northside/SEQ)
+**Real company, weakest signal of this batch — include with real caution.**
+Describes itself as an established, family-owned business serving domestic
+and commercial sectors across South East Queensland. No stated fleet size,
+no confirmed commercial-vs-residential split, no confirmed email. Pest
+control as a vertical turned out NOT to have a genuine independent
+big-account candidate at this list's usual confidence tier — the two
+"largest independent" names found (Amalgamated, Murray) are both now part
+of Flick Anticimex / Orkin, i.e. already enterprise-owned. This is a
+smaller, more speculative inclusion than the HVAC candidates above, kept
+in because it's a real business with a real commercial claim, not because
+the signal is strong.
+
+Subject: 🔴 a quick question about Suburban Pest Management's technician team
+
+Hi there,
+
+I build Minerva, GPS, dispatch and compliance software for trade
+businesses — mostly fleets, but it applies just as well to a pest control
+team managing recurring commercial contracts. I couldn't find a public
+technician count for Suburban Pest Management — roughly how many
+technicians are running commercial and domestic jobs across South East
+Queensland, and how is scheduling and recurring-visit tracking handled
+today?
+
+If useful: automatic reminders before a recurring treatment is due,
+automatic client ETA texts, a timestamped record of every visit, and
+automatic re-engagement if a quote goes quiet — priced per technician, not
+a flat enterprise fee.
+
+14-day trial, card needed to start it, not charged until it ends. No need
+to reply to any of this — here's a 60-second look, no signup:
+https://minerva-green.vercel.app/demo, or the complete list at
+minerva-green.vercel.app/platform.
+
+[your name] / [phone]
+
+**Do not claim:** that this is a confirmed big-account fit — this is the
+weakest-signal target in the file; treat a non-reply as expected, not as
+information.
+
+---
+
+## 18. Liverpool City Council — Liverpool, NSW — DO NOT cold-email this one
 **This target needs fundamentally different handling, not an email
 sequence.** Confirmed: already runs fleet tracking via Navman + RAC
 (~75 vehicles) — GPS is not the gap here, compliance/incident-logging is.
