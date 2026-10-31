@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { SiteNav, SiteFooter } from '../components/SiteChrome'
 import { useDocumentMeta } from '../hooks/useDocumentMeta'
@@ -124,7 +125,8 @@ const GROUPS = [
   },
   {
     name: 'Industrial sector',
-    blurb: 'For industrial and heavy-equipment site operations specifically — a different customer, the same honest-automation rules as everything above.',
+    sector: 'industrial',
+    blurb: 'For industrial and heavy-equipment site operations — the same honest-automation rules as everything else, built for a different kind of customer.',
     items: [
       ['Matches an urgent lead to the nearest available asset and flags it for your team — never auto-commits equipment', 'draft', 'A fast, informed starting point for an urgent job — the decision to commit equipment still stays with your team.'],
       ['Suggests the nearest unassigned asset for any site that doesn’t have one yet', 'auto', 'Assets get matched to sites automatically, every 30 minutes, instead of someone checking manually.'],
@@ -147,6 +149,8 @@ export default function Platform() {
     title: 'Platform',
     description: 'The real list of what’s already running inside Minerva, every day, for every business on it — not a roadmap, the actual system.',
   })
+  const [sector, setSector] = useState('trade')
+  const visibleGroups = GROUPS.filter(g => (g.sector || 'trade') === sector)
   return (
     <div style={{ background: '#080c16', minHeight: '100vh', color: '#fff' }}>
       <div style={{
@@ -162,9 +166,29 @@ export default function Platform() {
         <h1 style={{ fontSize: 'clamp(36px, 5.6vw, 56px)', fontWeight: 800, lineHeight: 1.08, letterSpacing: '-0.02em', margin: '0 0 20px', textWrap: 'balance' }}>
           Every day, without you touching it.
         </h1>
-        <p style={{ fontSize: 18, color: '#9aa4bc', margin: '0 auto', lineHeight: 1.6, maxWidth: 580 }}>
-          This isn’t a roadmap or a pitch — it’s the real list of what’s already running inside Minerva, right now, for every business on it. Dispatch and the fleet optimizer are the part you’ve seen. This is the rest: what each one actually does, and what it changes for you day to day.
+        <p style={{ fontSize: 18, color: '#9aa4bc', margin: '0 auto 28px', lineHeight: 1.6, maxWidth: 580 }}>
+          This isn’t a roadmap or a pitch — it’s the real list of what’s already running inside Minerva, right now. Dispatch and the fleet optimizer are the part you’ve seen. This is the rest: what each one actually does, and what it changes for you day to day.
         </p>
+        <div style={{ display: 'inline-flex', background: '#0e1424', border: '1px solid #1b2336', borderRadius: 99, padding: 4 }}>
+          <button
+            onClick={() => setSector('trade')}
+            style={{
+              padding: '9px 20px', borderRadius: 99, border: 'none', cursor: 'pointer', fontSize: 13.5, fontWeight: 700,
+              background: sector === 'trade' ? '#1D9E75' : 'transparent', color: sector === 'trade' ? '#06130e' : '#9aa4bc',
+            }}
+          >
+            I run a trade business
+          </button>
+          <button
+            onClick={() => setSector('industrial')}
+            style={{
+              padding: '9px 20px', borderRadius: 99, border: 'none', cursor: 'pointer', fontSize: 13.5, fontWeight: 700,
+              background: sector === 'industrial' ? '#1D9E75' : 'transparent', color: sector === 'industrial' ? '#06130e' : '#9aa4bc',
+            }}
+          >
+            I run industrial / heavy-equipment sites
+          </button>
+        </div>
       </div>
 
       <div style={{ maxWidth: 920, margin: '56px auto 0', padding: '0 24px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
@@ -174,7 +198,7 @@ export default function Platform() {
       </div>
 
       <div style={{ maxWidth: 820, margin: '90px auto 0', padding: '0 24px' }}>
-        {GROUPS.map(group => (
+        {visibleGroups.map(group => (
           <div key={group.name} style={{ marginBottom: 46 }}>
             <h2 style={{ fontSize: 13, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase', color: '#5c6684', margin: '0 0 8px', paddingBottom: 0, border: 'none' }}>
               {group.name}
@@ -211,7 +235,7 @@ export default function Platform() {
 
       <div style={{ maxWidth: 620, margin: '20px auto 110px', padding: '0 24px', textAlign: 'center' }}>
         <p style={{ fontSize: 13, color: '#5c6684', lineHeight: 1.6, marginBottom: 36 }}>
-          Which of these apply depends on your plan and your sector — the Industrial sector group above runs for industrial/heavy-equipment site operations, not trade businesses, and everything else is the reverse. See <Link to="/pricing" style={{ color: '#9aa4bc' }}>Pricing</Link> for what’s included at each tier. Nothing above is simulated or planned — it’s the real system, running today.
+          Which of these apply also depends on your plan, not just your sector — see <Link to="/pricing" style={{ color: '#9aa4bc' }}>Pricing</Link> for what’s included at each tier. Nothing above is simulated or planned — it’s the real system, running today.
         </p>
         <Link to="/start" style={{ display: 'inline-block', background: '#1D9E75', color: '#06130e', textDecoration: 'none', padding: '17px 40px', borderRadius: 10, fontSize: 16, fontWeight: 700, marginRight: 12 }}>
           Start your free 14-day trial
