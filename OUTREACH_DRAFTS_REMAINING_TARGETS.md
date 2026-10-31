@@ -38,7 +38,7 @@ angle, same framing as A. Abbott Locksmiths.
 
 **Find first:** the actual owner/manager name via their site or a direct call.
 
-Subject: a small idea for CLASS Locksmiths' next busy season
+Subject: 🔴 a small idea for CLASS Locksmiths' next busy season
 
 Hi there,
 
@@ -80,7 +80,7 @@ clients (McDonald's, Bunnings, IGA), offers 24hr emergency breakdown with
 1-2hr dispatch — plausible dispatch-efficiency angle, but UNCONFIRMED as an
 actual pain point. Ask, don't assume.
 
-Subject: how M.A.S.S. Electrics dispatches a 1-2hr emergency callout
+Subject: 🔴 how M.A.S.S. Electrics dispatches a 1-2hr emergency callout
 
 Hi there,
 
@@ -131,7 +131,7 @@ who started the business, but no formal title is published for either.
 
 ### Email draft — send to info@mrsplashplumbing.com.au
 
-Subject: What 20 years of growth at Mr Splash might be quietly costing in office time
+Subject: 🔴 What 20 years of growth at Mr Splash might be quietly costing in office time
 
 Hi Jon and Tara,
 
@@ -192,7 +192,7 @@ target — 4.8 stars, 241 reviews. Genuinely useful as a low-stakes first
 call to rehearse the discovery script before the bigger targets, not
 because it's the biggest opportunity.
 
-Subject: quick question for Multisparx
+Subject: 🔴 quick question for Multisparx
 
 Hi there,
 
@@ -224,7 +224,7 @@ minerva-green.vercel.app/platform
 size found via public search. This email's only real job is to get a
 number and a name — don't pitch numbers you don't have.
 
-Subject: a quick question about AFM's technician fleet
+Subject: 🔴 a quick question about AFM's technician fleet
 
 Hi there,
 
@@ -270,7 +270,7 @@ obligation.
 **UNCONFIRMED fleet/technician size.** Same honest discovery-first
 approach as AFM — no reviews, size, or pain point found.
 
-Subject: a quick question about your technician fleet
+Subject: 🔴 a quick question about your technician fleet
 
 Hi there,
 
@@ -322,7 +322,7 @@ qualifying question, not a pitch. Expanding it with a full feature list
 before confirming it's even the right company would be effort wasted on a
 possible mismatch.
 
-Subject: a quick question about your field team
+Subject: 🔴 a quick question about your field team
 
 Hi there,
 
@@ -353,7 +353,7 @@ address was also found already sitting in the connected Gmail account
 from 2026-10-29 — merged its better opening framing into the version below
 and it should replace that older one (same subject, dated today).
 
-Subject: A question before anything else, and why I'm asking it
+Subject: 🔴 A question before anything else, and why I'm asking it
 
 Hi there,
 
@@ -404,7 +404,7 @@ privately owned security system installers" since 1986, "a large team of
 licensed security technicians," no exact count. A genuine wildcard —
 could be large, could be modest. Ask directly.
 
-Subject: a quick question about Australian Security's technician team
+Subject: 🔴 a quick question about Australian Security's technician team
 
 Hi there,
 
@@ -453,7 +453,7 @@ as FMS and Fortis FM: the decision-structure question determines who
 should even receive a fuller pitch, so it has to come first, not after a
 feature list.
 
-Subject: a quick question about how Best Doors' branches are run
+Subject: 🔴 a quick question about how Best Doors' branches are run
 
 Hi there,
 
@@ -485,7 +485,7 @@ his name, not the "[name]" placeholder the original draft had.
 
 ### Email draft — send to info@dorringtonplumbing.com.au
 
-Subject: A note on Dorrington's reputation across three trades
+Subject: 🔴 A note on Dorrington's reputation across three trades
 
 Hi Craig,
 
@@ -551,7 +551,7 @@ now — either is a fine answer.
 admin). 60+ years family-owned (Van Den Broek family). Reputation-
 protection framing, ask for the real field-tech number.
 
-Subject: quick question about Garage Door Solutions' technician team
+Subject: 🔴 quick question about Garage Door Solutions' technician team
 
 Hi there,
 
