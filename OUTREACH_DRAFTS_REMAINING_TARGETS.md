@@ -504,10 +504,14 @@ Jahan / [phone]
 
 ## 13. AJ Baker & Sons — Osborne Park, Perth WA — HVAC/Refrigeration
 **Real company, real trigger signal, no confirmed fleet size or contact
-email.** Fourth-generation family-owned since 1920. Real signal: recently
-acquired Hill Equipment & Refrigeration (SA).
+email — re-searched 2026-10-31, still no named owner/director found**
+(a "Branch Manager Grant O'Connor" who turned up is at an unrelated
+company, Actrol). Fourth-generation family-owned since 1920. Real
+signal: recently acquired Hill Equipment & Refrigeration (SA). Website
+ajbaker.com.au, phone (08) 9242 5000 — call and ask for whoever handles
+fleet/technician decisions by role, not a guessed name.
 
-Subject: 🟢 a Hill Equipment acquisition and a question about your service fleet
+Subject: 🟡 a Hill Equipment acquisition and a question about your service fleet
 
 Hi there,
 
@@ -546,11 +550,17 @@ about how the Hill Equipment integration is actually going internally.
 
 ---
 
-## 14. Paramount Airconditioning — Melbourne & Sydney VIC/NSW
-**Real company, no confirmed fleet size or contact email.** Family-owned,
-40+ years, 500+ sites serviced.
+## 14. Paramount Airconditioning — Mulgrave, Melbourne VIC
+**Real company, confirmed address/phone, name still unverified.**
+Family-owned, 40+ years, 500+ sites serviced. Registered address 39-41
+Geddes St, Mulgrave VIC 3170; main line (03) 9561 3333; site
+paramountair.com.au. **A data vendor (Prospeo/GetProspect) names
+"Dominik Ashe" (Owner) and "Marcus Ashe" (Director/Business
+Development) — scraped third-party data, NOT confirmed on the
+company's own site.** Call and verify by role before addressing anyone
+by that name; do not open with "Hi Dominik" on a guess.
 
-Subject: 🟢 a quick question about the team behind 500+ serviced sites
+Subject: 🟡 a quick question about the team behind 500+ serviced sites
 
 Hi there,
 
@@ -586,11 +596,16 @@ genuinely unconfirmed.
 
 ---
 
-## 15. Endeavour Air Conditioning — Sydney, NSW
-**Real company, no confirmed fleet size or contact email.** Family-owned,
-30+ years in commercial work. Thinnest signal of the HVAC targets.
+## 15. Endeavour Air Conditioning — Mortdale, Sydney NSW
+**Real company, confirmed address/ABN, no name found.** Family-owned,
+30+ years in commercial work. Registered address 72 Roberts Avenue,
+Mortdale NSW; ABN 27 060 777 880 (verifiable on ABN Lookup); legal name
+Endeavour Air Conditioning Pty Ltd. Their own press contact is listed
+only as "Media Relations" — no owner/director name found even on a
+second pass. Check ASIC's company register (lists directors for any Pty
+Ltd) or call the Mortdale office directly.
 
-Subject: 🟢 a quick question about Endeavour's technician team
+Subject: 🟡 a quick question about Endeavour's technician team
 
 Hi there,
 
@@ -624,40 +639,21 @@ Jahan / [phone]
 
 ---
 
-## 16. Suburban Pest Management — Brisbane, QLD
-**Weakest signal of this batch.** Pest control as a vertical did not
-produce a genuine independent big-account candidate — the two "largest
-independent" names found are both now enterprise-owned. Speculative
-inclusion. Treat a non-reply as expected.
-
-Subject: 🟢 a quick question about Suburban Pest Management's technician team
-
-Hi there,
-
-I build Minerva, GPS, dispatch and compliance software for trade
-businesses — mostly fleets, but it applies just as well to a pest control
-team managing recurring commercial contracts. I couldn't find a public
-technician count for Suburban Pest Management — roughly how many
-technicians are running commercial and domestic jobs across South East
-Queensland, and how is scheduling and recurring-visit tracking handled
-today?
-
-Here's what it would actually change: a client gets an automatic
-reminder before a recurring treatment is due, instead of forgetting until
-you call. Dispatch becomes one glance at a live map, with an automatic
-ETA text to the client. A quote that's gone quiet gets a second,
-better-timed shot at closing, and an unpaid invoice gets chased
-automatically. Every visit leaves a timestamped record on its own, and
-technician credentials get tracked without anyone checking a spreadsheet.
-
-Priced per technician, not a flat enterprise fee. 14-day trial, card
-needed to start it, not charged until it ends.
-
-No need to reply to any of this — here's a 60-second look, no signup:
-https://minerva-green.vercel.app/demo, or the complete list at
-minerva-green.vercel.app/platform.
-
-Jahan / [phone]
+## 16. ~~Suburban Pest Management — Brisbane, QLD~~ — RETIRED 2026-10-31,
+##     DO NOT SEND
+**Enterprise-owned, not independent — confirmed via their own Rentokil
+Initial careers page**, which describes it as "Suburban Pest Management,
+Australia's #1 Company" under the Rentokil brand, with a named Branch
+Manager (Tom Aldridge), not an owner. The earlier "family owned, 25
+years" description was stale branch-level self-description that
+predates or ignores the acquisition. Same disqualifying pattern already
+applied to Amalgamated Pest Control (Flick Anticimex) and Murray Pest
+Control (Orkin) — pest control as a vertical genuinely does not produce
+an independent big-account candidate; every name checked turned out to
+already be enterprise-owned. A branch manager has no authority to adopt
+new company-wide software. Pulled from the active list entirely — the
+Gmail draft is kept only as a record of why, clearly marked ⛔ DO NOT
+SEND.
 
 ---
 
@@ -682,5 +678,5 @@ Confirmed-fleet targets first, then discovery-first ones, 2-3 per week:
   Airconditioning, Endeavour Air Conditioning.
 - **Week 4:** Fortis FM (after confirming employment structure), Best
   Doors (after confirming decision structure), FMS (after confirming
-  entity), Suburban Pest Management (lowest priority).
+  entity). Suburban Pest Management retired — do not send.
 - **Liverpool City Council:** LinkedIn connection request only, any time.
