@@ -100,8 +100,8 @@ Following up in case this got buried.
 
 You've got [N] vans — Minerva runs $[N x 79]/month, under $14 a day to know
 where every van is live and stop taking "where is my plumber" calls.
-7-day free trial — card's needed to start it, you're not charged until the
-7 days are up, cancel anytime.
+14-day free trial — card's needed to start it, you're not charged until the
+14 days are up, cancel anytime.
 
 Worth knowing while I've got you: for that same price, Minerva also
 automatically re-texts quotes that went quiet trying to win the job back,
@@ -173,7 +173,7 @@ watches each tech's hours and emergency-job load through the week and
 flags it before someone's quietly heading toward burnout — useful when you
 can least afford to lose your best tech.
 
-7-day free trial — card's needed to start it, not charged until the trial
+14-day free trial — card's needed to start it, not charged until the trial
 ends.
 
 [Your name] / [Your mobile]
@@ -285,7 +285,7 @@ same subscription starts automatically chasing overdue invoices and
 re-engaging clients who've gone quiet, instead of that sitting on
 someone's to-do list.
 
-7-day free trial — card's needed to start it, not charged until the trial
+14-day free trial — card's needed to start it, not charged until the trial
 ends.
 
 [Your name] / [Your mobile]
@@ -340,7 +340,7 @@ you having to remember, plus overdue-invoice reminders and a one-click
 re-plan of the whole roster if an emergency call blows up the day's
 schedule.
 
-7-day free trial — card's needed to start it, not charged until the trial
+14-day free trial — card's needed to start it, not charged until the trial
 ends.
 
 [Your name] / [Your mobile]
@@ -396,7 +396,7 @@ outdoor treatments it checks the forecast and drafts a reschedule text
 before bad weather hits. You approve both before anything goes to a
 client.
 
-7-day free trial — card's needed to start it, not charged until the trial
+14-day free trial — card's needed to start it, not charged until the trial
 ends.
 
 [Your name] / [Your mobile]
@@ -448,7 +448,7 @@ reminders; Pro ($119/tech) adds the forecast-based reschedule texts before
 bad weather hits and weekly ad drafts for under-booked suburbs. You
 approve both before anything goes out, at whichever tier has them.
 
-7-day free trial — card's needed to start it, not charged until the trial
+14-day free trial — card's needed to start it, not charged until the trial
 ends.
 
 [Your name] / [Your mobile]

@@ -13,14 +13,21 @@ matching the standing honesty discipline (`SALES_CLAIMS_ACCURACY_NOTE.md`).
 (1-4 below) → unconfirmed-but-real targets (5-11) → the two that need
 different handling entirely, not a cold email (12-13).
 
-**Lengthened 2026-10-31, on request — same note as `OUTREACH_DRAFTS_TOP_PICKS.md`:**
-9 of these 12 (everything except FMS, Fortis FM, and Best Doors) are now a
-fuller, benefit-by-benefit pitch instead of one sharp hook. Those three
-stay short on purpose: each one leads with a qualifying question (is this
-even the right company / do they have any employed technicians / who
-actually makes this decision) that has to be answered before a full pitch
-makes sense — lengthening them first would bury the one question that
-matters.
+**Rewritten 2026-10-31 (second pass):** trial length corrected to 14 days
+everywhere (was wrongly stated as 7 — see `SALES_CLAIMS_ACCURACY_NOTE.md`'s
+2026-10-31 correction; the real code sets `trial_period_days: '14'`).
+Mr Splash and Dorrington also had a second, pre-existing draft already
+sitting in the connected Gmail account from 2026-10-29 — well-written, but
+both cited the same unverified "demo fleet" stat (313km cut to 180km, 42%
+less driving) as if it applied to the recipient's own fleet, which this
+file's own accuracy discipline rules out. Merged the better narrative
+framing and honest trial-terms block from those into the versions below,
+dropped the fabricated stat. 9 of these 12 (everything except FMS, Fortis
+FM, and Best Doors) now cover the full customer-facing Pantheon under short
+subheadings rather than one flat bullet list. Those three stay short on
+purpose: each leads with a qualifying question that has to be answered
+before a full pitch makes sense — lengthening them first would bury the
+one question that matters.
 
 ---
 
@@ -33,32 +40,33 @@ angle, same framing as A. Abbott Locksmiths.
 
 Subject: a small idea for CLASS Locksmiths' next busy season
 
-Hi [name],
+Hi there,
 
 I noticed CLASS Locksmiths has built a genuinely strong reputation since
 1986 — SCEC-approved tradesmen and 165 reviews averaging 4.6 stars is hard
 to find for a locksmith business your size. I'm not reaching out because
-something's broken; I'm reaching out because that reputation is worth
-making visible to every new customer, not just the ones who already know you.
+something's broken; that reputation is worth making visible to every new
+customer, not just the ones who already know you.
 
-I build Minerva — here's what that looks like in practice:
+**Making the trust visible**
+- Live GPS tracking so a customer can watch your technician's ETA on their
+  phone instead of calling to ask.
+- A timestamped job record for every callout, automatically — sits there
+  quietly as proof if one's ever questioned.
+- A happy client gets a single quiet referral nudge and an automatic
+  review request after a paid invoice — not a campaign, just timed right.
 
-- Live GPS tracking so a customer can watch your technician's ETA on
-  their phone instead of calling to ask.
-- A timestamped job record for every callout, automatically — useful if a
-  job's ever questioned, and otherwise just sits there quietly as a
-  record.
-- Automatic review requests once the job's done — for a reputation like
-  yours, that keeps the review count climbing without anyone having to
-  remember to ask.
-- Given SCEC approval matters for the work you do, compliance and
-  credential records are tracked per technician too, with an alert before
-  anything lapses.
-- A happy client also gets one quiet referral nudge after a paid
-  invoice — not a campaign, just a single text at the right moment.
+**Compliance, since SCEC approval matters**
+- Credential and compliance records tracked per technician, with an alert
+  before anything lapses — found before it's a problem, not after.
+- A compliance evidence package assembles on request, ready to hand to a
+  client if one's ever needed.
 
-No pressure — here's a 60-second self-serve demo, no signup:
-https://minerva-green.vercel.app/demo, or the complete list — filtered to show only what applies to a business like yours — at minerva-green.vercel.app/platform
+14-day trial, card needed to start it, not charged until it ends. No
+pressure — here's a 60-second self-serve demo, no signup:
+https://minerva-green.vercel.app/demo, or the complete list — filtered to
+show only what applies to a business like yours — at
+minerva-green.vercel.app/platform
 
 [your name] / [phone]
 
@@ -74,36 +82,34 @@ actual pain point. Ask, don't assume.
 
 Subject: how M.A.S.S. Electrics dispatches a 1-2hr emergency callout
 
-Hi [name],
+Hi there,
 
 I saw M.A.S.S. Electrics offers a 1-2hr emergency dispatch window for
-approved commercial clients — that's a genuinely fast SLA to hit
-consistently. Quick, direct question: when one of those calls comes in,
-how do you currently work out which of your 9 vans is closest, and how
-does the client find out someone's actually on the way?
+approved commercial clients — a genuinely fast SLA to hit consistently.
+Quick, direct question: when one of those calls comes in, how do you
+currently work out which of your 9 vans is closest, and how does the
+client find out someone's actually on the way?
 
-I build Minerva — here's specifically what closes that gap:
-
+**Hitting the window**
 - A live GPS map of all 9 vans, so dispatch is "closest tech, one glance"
   instead of a round of phone calls.
-- An automatic ETA text to the client the moment a technician is close
-  by, so your team isn't the one fielding "is someone coming" calls
-  during an emergency window.
-- Automatic re-engagement on quotes that have gone quiet, and automatic
-  reminders on overdue invoices — for commercial clients on account
-  terms, that's usually real money sitting uncollected somewhere in the
-  pipeline.
-- A timestamped record of every emergency callout — useful if a
-  commercial client's own compliance team ever asks for proof of
-  response time.
-- A missed call from a commercial client still gets captured and
-  followed up automatically, so a job enquiry doesn't go cold just
-  because the line was busy.
+- An automatic ETA text the moment a tech is close by, so your team isn't
+  fielding "is someone coming" calls during the emergency window.
+- A timestamped record of every callout — useful if a commercial client's
+  own compliance team ever asks for proof of response time.
 
-If that 1-2hr window is already easy for you to hit, this probably isn't
-news you need — but if dispatch is still a few phone calls, worth a
-10-minute look: https://minerva-green.vercel.app/demo (the complete
-feature list is at minerva-green.vercel.app/platform)
+**Money and calls you're not chasing**
+- Automatic re-engagement on quotes gone quiet and automatic reminders on
+  overdue invoices — for commercial clients on account terms, that's
+  usually real money sitting uncollected.
+- A missed call still gets captured and followed up automatically, so an
+  enquiry doesn't go cold just because the line was busy.
+
+14-day trial, card needed to start it, not charged until it ends. If that
+window's already easy to hit, this probably isn't news — but if dispatch
+is still a few phone calls, worth a 10-minute look:
+https://minerva-green.vercel.app/demo (the complete feature list is at
+minerva-green.vercel.app/platform)
 
 [your name] / [phone]
 
@@ -125,39 +131,56 @@ who started the business, but no formal title is published for either.
 
 ### Email draft — send to info@mrsplashplumbing.com.au
 
-Subject: quick question about Mr Splash Plumbing's ETA calls
+Subject: What 20 years of growth at Mr Splash might be quietly costing in office time
 
 Hi Jon and Tara,
 
-Growing from one van to 15+ across Sydney over 20 years is a real
-achievement — most plumbing businesses that scale that much also
-outgrow being able to personally track every van by phone call.
+Growing Mr Splash from one van to 15+ across Sydney over 20 years is a real
+achievement, and that kind of growth usually crosses a specific threshold —
+the point where tracking every van by phone call stops being realistically
+possible. Past that point someone on the team is usually losing real hours
+a week to "where's my plumber" calls, rarely measured directly.
 
-I build Minerva — here's what that looks like at your scale:
+I build Minerva, dispatch and compliance software for trade businesses,
+and a few things about running a fleet at your size seemed worth putting
+in front of you.
 
-- A live map of every van, with an automatic text to the client once
-  their technician is close by (within about 2km), so your team isn't
-  fielding "where is he" calls all day.
-- Automatic re-engagement on quotes that go quiet, trying to win the job
-  back without anyone having to remember to follow up.
-- Automatic reminders on overdue invoices, so collections aren't riding
-  on someone's to-do list.
-- One-click re-optimisation of the whole day's roster across all 15+ vans
-  if a job falls through or an emergency comes in — not just one
-  technician's route.
-- A timestamped, GPS-backed record of every job, so growth doesn't come
-  with more "he said, she said" disputes as the team gets bigger.
+**Office time back**
+- Automatic texting the moment a technician is within about 2km removes
+  most "where is he" calls before anyone has to answer the phone.
+- If a job falls through or an emergency comes in, the whole day's roster
+  re-plans in one click — not just one technician's route.
 - New enquiries get captured and followed up automatically even after
   hours, and a daily summary each morning keeps you across all 15+ vans
   without compiling anything by hand.
-- If you run Xero, invoices sync across automatically as drafts for your
-  review — nothing gets typed twice between the two systems.
 
-20 minutes to set up, no app download. See exactly what the client
-receives, 60 seconds, no signup: https://minerva-green.vercel.app/demo
-(everything it does, laid out in full: minerva-green.vercel.app/platform)
+**Revenue that's currently unchased**
+- Quotes that go quiet get an automatic re-engagement text trying to win
+  the job back, without anyone having to remember to follow up.
+- Overdue invoices get the same automatic reminder every 3 days, so
+  collections aren't riding on someone's to-do list.
+- If you run Xero, invoices sync across automatically as drafts for
+  review — nothing typed twice between the two systems.
 
-Worth a 10-minute look this week?
+**Proof, as the team gets bigger**
+- Every callout gets a timestamped, photo-backed, GPS-located record
+  automatically — real evidence if pricing or workmanship is ever
+  questioned.
+- Credential expiry across 15+ technicians gets flagged 30, 14 and 7 days
+  out, rather than tracked by hand.
+
+What the trial includes: 14 days, free, nothing to undo if you don't
+continue; your current technician and job list bulk-imported in one go,
+so any number you see is your own fleet's, not a demo's; phone-based GPS,
+no hardware; hands off to Xero rather than trying to replace it.
+
+Priced per van. There's a 60-second look at exactly what a client
+receives, no signup: https://minerva-green.vercel.app/demo. Everything it
+does, laid out in full: minerva-green.vercel.app/platform
+
+If a short look this week or next would be useful, I'd welcome it — your
+schedule, not mine. If it's not the right time, that's completely fine
+too, just let me know and I'll leave it there.
 
 [your name] / [phone]
 
@@ -171,28 +194,26 @@ because it's the biggest opportunity.
 
 Subject: quick question for Multisparx
 
-Hi [name],
+Hi there,
 
 Multisparx's review record (4.8 stars, 241 reviews) is genuinely strong
 for an electrical business your size — I'm not reaching out because
 anything's broken.
 
-I build Minerva — for a 7-van team, here's what it adds:
-
-- Live GPS tracking of your vans, so dispatch and ETAs are handled from
-  one screen instead of phone calls.
-- An automatic "technician is on the way" text to the client, so nobody
-  on your team has to make that call.
-- An automatic review request once a job's marked done — a small, cheap
-  way to make an already-strong reputation visible to the next customer
-  searching for an electrician.
+**For a 7-van team**
+- Live GPS tracking plus an automatic "technician is on the way" text, so
+  nobody on your team has to make that call.
+- An automatic review request once a job's marked done, and a single
+  quiet referral nudge after a paid invoice — a small, cheap way to make
+  an already-strong reputation visible to the next customer searching for
+  an electrician.
 - A timestamped record of every job, quietly sitting there as proof if
   one's ever questioned.
-- A happy client also gets a single quiet referral nudge after a paid
-  invoice — one text, not a campaign.
 
-No pressure — 60-second self-serve demo: https://minerva-green.vercel.app/demo,
-or the complete list, already filtered to a business your size: minerva-green.vercel.app/platform
+14-day trial, card needed to start it, not charged until it ends. No
+pressure — 60-second self-serve demo: https://minerva-green.vercel.app/demo,
+or the complete list, already filtered to a business your size:
+minerva-green.vercel.app/platform
 
 [your name] / [phone]
 
@@ -205,12 +226,6 @@ number and a name — don't pitch numbers you don't have.
 
 Subject: a quick question about AFM's technician fleet
 
-**Restructured 2026-10-31** — the original version asked for their fleet
-size as the opening move, before giving any reason to answer a stranger.
-This version leads with what Minerva does (no ask at all), makes the
-self-serve link the primary low-friction action, and makes the
-information-ask optional and secondary, not the price of engaging at all.
-
 Hi there,
 
 I'll be upfront: this is a cold message, and I don't know anything
@@ -218,30 +233,34 @@ specific about AFM beyond what's public — so no pressure to reply at all.
 
 I build Minerva, a GPS/compliance tracking tool for facilities-management
 and trade businesses with a technician fleet. Here's what it actually
-does, in case it's relevant to how AFM runs today:
+does, in case it's relevant:
 
-- A live GPS map for dispatch decisions — see every technician at once,
-  assign the closest one in seconds.
-- Automatic client ETA texts, so a client watches a technician's live
-  tracking link instead of calling to ask.
-- Compliance records (vehicle checks, licence/credential expiry) that
-  track themselves, with an alert before anything lapses.
-- An automatic follow-up layer that re-engages quotes gone quiet and
-  chases overdue invoices, without anyone having to remember to do it.
+**Dispatch & compliance**
+- A live GPS map for dispatch decisions, automatic client ETA texts via a
+  live tracking link, and compliance records (vehicle checks,
+  licence/credential expiry) that track themselves with an alert before
+  anything lapses.
+- A compliance evidence package assembles on request, ready to hand a
+  client or inspector.
+
+**Leads & getting paid**
 - Missed calls and after-hours enquiries get captured and followed up
-  automatically, and a daily summary each morning of the last 24 hours
-  means nothing needs piecing together from separate systems.
+  automatically.
+- Quotes gone quiet and overdue invoices both get automatic follow-up,
+  and a daily summary each morning covers the last 24 hours so nothing
+  needs piecing together from separate systems.
 
-It's priced per technician, not a flat enterprise fee, so cost scales
-with your actual fleet.
+It's priced per technician, not a flat enterprise fee, so cost scales with
+your actual fleet. 14-day trial, card needed to start it, not charged
+until it ends.
 
-No need to reply to any of this — here's a 60-second look at exactly how
-it works, no signup: https://minerva-green.vercel.app/demo. The complete
-list of everything it does, with what each one means for a business like
-yours, is at minerva-green.vercel.app/platform. If it looks relevant and
-you'd like real numbers worked up for your actual fleet rather than
-general ones, just reply with roughly how many technicians/vans you run
-and I'll put them together — no cost, no obligation.
+No need to reply to any of this — here's a 60-second look, no signup:
+https://minerva-green.vercel.app/demo. The complete list of everything it
+does, with what each one means for a business like yours, is at
+minerva-green.vercel.app/platform. If it looks relevant and you'd like
+real numbers worked up for your actual fleet, just reply with roughly how
+many technicians/vans you run and I'll put them together — no cost, no
+obligation.
 
 [your name] / [phone]
 
@@ -253,10 +272,6 @@ approach as AFM — no reviews, size, or pain point found.
 
 Subject: a quick question about your technician fleet
 
-**Restructured 2026-10-31** — same fix as AFM above: lead with what it
-does, no ask at all; self-serve link is the primary action; the
-information-ask is optional and comes last.
-
 Hi there,
 
 I'll be upfront: this is a cold message, and I couldn't find a public
@@ -264,29 +279,31 @@ technician count or much else about FM Services Australia specifically —
 so no pressure to reply at all.
 
 I build Minerva, a GPS/compliance tracking tool for facilities-management
-businesses. Here's what it actually does, in case it's relevant to how
-you operate:
+businesses. Here's what it actually does:
 
-- A live GPS map for dispatch — every technician visible at once,
-  closest one assigned in seconds.
-- Automatic client ETA texts via a live tracking link, so your team isn't
-  fielding "where is he" calls.
-- Compliance records (vehicle checks, licence/credential expiry) tracked
-  automatically, with alerts before anything lapses.
-- Automatic re-engagement on quotes gone quiet and automatic
-  overdue-invoice reminders, without manual chasing.
+**Dispatch & compliance**
+- A live GPS map for dispatch, automatic client ETA texts via a live
+  tracking link, and compliance records (vehicle checks, licence/
+  credential expiry) tracked automatically with alerts before anything
+  lapses.
+
+**Leads & getting paid**
 - Missed calls and after-hours enquiries still get captured and followed
-  up automatically, and a daily summary each morning covers the last 24
-  hours across your fleet.
+  up automatically.
+- Automatic re-engagement on quotes gone quiet and automatic
+  overdue-invoice reminders, without manual chasing, plus a daily summary
+  each morning covering the last 24 hours across your fleet.
 
-Priced per technician, not a flat enterprise fee, so it scales with your
-actual fleet size.
+Priced per technician, not a flat enterprise fee. 14-day trial, card
+needed to start it, not charged until it ends.
 
 No need to reply to any of this — here's a 60-second look, no signup:
-https://minerva-green.vercel.app/demo. The complete list — filtered to show only what applies to a business like yours — is at minerva-green.vercel.app/platform. If it's relevant and you'd
-like real numbers for your actual fleet rather than general ones, just
-reply with roughly how many technicians/vans you run nationally and I'll
-put them together — no cost, no obligation.
+https://minerva-green.vercel.app/demo. The complete list — filtered to
+show only what applies to a business like yours — is at
+minerva-green.vercel.app/platform. If it's relevant and you'd like real
+numbers for your actual fleet, just reply with roughly how many
+technicians/vans you run nationally and I'll put them together — no cost,
+no obligation.
 
 [your name] / [phone]
 
@@ -300,7 +317,7 @@ company and the right service model before sending anything.** If it turns
 out to be an NDIS provider rather than a facilities/trade fleet, skip this
 target entirely rather than sending a mismatched pitch.
 
-**Kept short on purpose, even in this lengthened pass** — this is a
+**Kept short on purpose, even in the full-Pantheon pass** — this is a
 qualifying question, not a pitch. Expanding it with a full feature list
 before confirming it's even the right company would be effort wasted on a
 possible mismatch.
@@ -329,23 +346,51 @@ weaker ask. **Verify actual employment structure on the first call before
 treating this as a standard target** — the email below asks this directly
 rather than assuming.
 
-**Kept short on purpose, even in this lengthened pass** — same reasoning
+**Kept short on purpose, even in the full-Pantheon pass** — same reasoning
 as FMS: the contractor-vs-employee question has to be answered before any
-feature pitch is even relevant, so a long email here would be pitching
-into the exact uncertainty the question is meant to resolve first.
+feature pitch is even relevant. A second, different draft to this exact
+address was also found already sitting in the connected Gmail account
+from 2026-10-29 — merged its better opening framing into the version below
+and it should replace that older one (same subject, dated today).
 
-Subject: a quick question about how Fortis FM's contractor network works
+Subject: A question before anything else, and why I'm asking it
 
 Hi there,
 
-I build Minerva, a GPS/compliance tracking tool for facilities-management
-businesses — but it's built around tracking a fleet of employed
-technicians, and I saw Fortis FM operates through a network of
-independent certified contractors instead. Before I say anything else:
-does Fortis also run any employed technicians directly, or is it 100%
-contractor-based? That genuinely changes whether this is a fit.
+Before I describe what Minerva does, I want to ask something plainly,
+because I'd rather know the honest answer than send a pitch that doesn't
+fit: from what I can see, Fortis FM operates through a network of
+independent, certified contractors rather than employed technicians. Is
+that the whole picture, or does Fortis also run an employed-technician
+side directly?
 
-[your name] / [phone]
+The reason I'm asking first rather than leading with a pitch: tracking and
+compliance software is built for a team you employ. Asking an independent
+contractor to install something on their own device, for a company that
+isn't their employer, is a genuinely different and weaker ask — and if
+that's the entire structure at Fortis, this isn't a fit, and I'd rather
+hear that now than waste your time.
+
+I build Minerva, dispatch and compliance software for trade and
+facilities businesses. If there's an employed-technician side to Fortis,
+a few things would be worth putting in front of you: automatic
+proof-of-coverage packages for clients who ask whether sites are being
+serviced properly, automatic check-in/check-out logging that catches a
+missed site before a client notices, and after-hours calls answered and
+logged as a lead automatically instead of ringing out. The complete list,
+if it turns out to be relevant, is at minerva-green.vercel.app/platform.
+
+If the answer is yes, a trial would look like: 14 days, phone-based
+setup, no hardware, technicians live the same day you add them —
+genuinely low-effort to try and easy to walk away from if it isn't
+useful.
+
+And if it's genuinely a fully contractor-based operation, I'd rather hear
+that directly than keep the conversation going on a false premise. Either
+way, thanks for reading this far.
+
+[your name]
+[phone]
 
 **Do not send the standard GPS-tracking pitch here without an answer to
 the question above first** — if 100% contractor-based, this target is
@@ -361,10 +406,6 @@ could be large, could be modest. Ask directly.
 
 Subject: a quick question about Australian Security's technician team
 
-**Restructured 2026-10-31** — kept the one real hook (their own public
-self-description) but moved the headcount question from an opening
-demand to an optional close, same fix as AFM/FM Services Australia above.
-
 Hi there,
 
 I build Minerva, a GPS/compliance tracking tool for trade businesses with
@@ -373,22 +414,28 @@ Melbourne's largest privately-owned security installers since 1986 — I
 don't know your actual team size beyond that, so apologies if any of this
 isn't relevant.
 
-Here's what it actually covers: a live GPS map for dispatch decisions,
-automatic ETA texts to clients, and compliance record-keeping — tracking
-licence/credential expiry automatically so nothing lapses without anyone
-noticing, which seemed worth mentioning given your technicians are
-licensed. There's also an automatic follow-up layer for quotes and
-invoices that have gone quiet, so nothing falls through simply because
-nobody remembered to chase it. A missed call from a client still gets
-captured and followed up automatically, even after hours.
+**Dispatch & compliance**
+- A live GPS map for dispatch decisions, automatic ETA texts to clients,
+  and compliance record-keeping — tracking licence/credential expiry
+  automatically so nothing lapses without anyone noticing, which seemed
+  worth mentioning given your technicians are licensed.
 
-No need to reply to any of this — here's a 60-second look, no signup:
+**Leads, invoices, proof**
+- An automatic follow-up layer for quotes and invoices that have gone
+  quiet, so nothing falls through because nobody remembered to chase it.
+- A missed call still gets captured and followed up automatically, even
+  after hours.
+- A timestamped, photo-backed job record settles a dispute in minutes if
+  one's ever questioned.
+
+14-day trial, card needed to start it, not charged until it ends. No need
+to reply to any of this — here's a 60-second look, no signup:
 https://minerva-green.vercel.app/demo. The complete list — filtered to
 show only what applies to a business like yours — is at
 minerva-green.vercel.app/platform. If it's relevant and you'd like real
-numbers for a team your actual size, just reply with roughly
-how many licensed technicians you run day-to-day and I'll put them
-together — no cost, no obligation.
+numbers for a team your actual size, just reply with roughly how many
+licensed technicians you run day-to-day and I'll put them together — no
+cost, no obligation.
 
 [your name] / [phone]
 
@@ -401,7 +448,7 @@ branch network. **Verify decision-making structure (single HQ owner vs.
 semi-independent regional branches) on the first call before investing
 further effort.** Lead with that question, not a numbers pitch.
 
-**Kept short on purpose, even in this lengthened pass** — same reasoning
+**Kept short on purpose, even in the full-Pantheon pass** — same reasoning
 as FMS and Fortis FM: the decision-structure question determines who
 should even receive a fuller pitch, so it has to come first, not after a
 feature list.
@@ -438,34 +485,64 @@ his name, not the "[name]" placeholder the original draft had.
 
 ### Email draft — send to info@dorringtonplumbing.com.au
 
-Subject: quick question about Dorrington Plumbing's fleet
+Subject: A note on Dorrington's reputation across three trades
 
 Hi Craig,
 
 Dorrington's reviews are consistently strong across ProductReview and
-Yelp — punctuality and fair pricing come up again and again, which is
-genuinely rare. I'm not reaching out because anything's broken.
+Yelp, with punctuality and fair pricing coming up again and again — a
+genuinely rare pattern to see repeated that consistently. I'm not writing
+because anything looks broken; that kind of trust is usually worth making
+visible on purpose rather than leaving entirely to word of mouth.
 
-Quick question: roughly how many vans/technicians are you running day to
-day? I build Minerva — here's what it would add for a business with your
-reputation:
+I build Minerva, dispatch and compliance software for trade businesses,
+and a few things about running a licensed multi-trade operation seemed
+relevant.
 
-- Live GPS tracking so a customer can watch their technician's ETA
-  instead of calling to ask.
-- A timestamped record for every job, automatically — quietly sitting
-  there as proof if one's ever questioned.
-- An automatic review request once a job's done, to keep that strong
-  review record compounding without anyone having to remember to ask.
-- Compliance records (vehicle checks, licence expiry) tracked per
-  technician, with alerts before anything lapses, since you're also
-  licensed for gas and electrical work.
-- A happy client also gets a single quiet referral nudge after a paid
-  invoice — one text, not a campaign.
+**The moment trust is decided**
+- A live tracking link and an automatic text the moment a technician is
+  close by replaces an anxious wait with reassurance — for gas or
+  electrical callouts specifically, which are often genuine emergencies,
+  that tends to matter more than it does for most trades.
+- A gas or electrical emergency that isn't answered doesn't wait for a
+  callback — it moves to the next name. Minerva answers, identifies the
+  need, and logs it as a lead automatically; a genuinely missed call
+  still gets a text back quickly enough that most people hold off before
+  trying someone else.
 
-60-second self-serve demo, no signup: https://minerva-green.vercel.app/demo,
-or the complete list, already filtered to a business your size: minerva-green.vercel.app/platform
+**Three licences, one system**
+- Being licensed in plumbing, gas and electrical means three different
+  sets of "what exactly did you do" questions a customer could raise. A
+  timestamped, photo-backed, GPS-located record on every callout settles
+  that in minutes rather than leaving it to recollection.
+- Tracking expiry across three separate trade licences by hand is exactly
+  the kind of thing that slips — this flags each one automatically, 30,
+  14 and 7 days out.
+- A happy client also gets a single quiet referral nudge and an automatic
+  review request after a paid invoice — one text, not a campaign.
 
-[your name] / [phone]
+**Getting paid**
+- The invoice goes out the moment a job's marked complete, and a client
+  who can pay online immediately tends to pay faster than one waiting for
+  an in-person visit. Overdue invoices get an automatic reminder every 3
+  days after that.
+
+What the trial includes: 14 days, starting whenever you're ready;
+technicians live on the fleet map the same day you add them; phone-based
+GPS only, no dash cams, no vehicle-wired hardware; tracks licence expiry
+across all three trades, doesn't manage the licences themselves.
+
+I couldn't find your current fleet size publicly — roughly how many vans
+or technicians are you running day to day? Priced per technician either
+way. The complete list of everything it does is at
+minerva-green.vercel.app/platform, and there's a 60-second self-serve
+demo if that's easier than a call: https://minerva-green.vercel.app/demo
+
+Happy to talk whenever suits, or not at all if this isn't useful right
+now — either is a fine answer.
+
+[your name]
+[phone]
 
 ---
 
@@ -482,23 +559,22 @@ Hi there,
 back it up — prompt service, experienced technicians, a 10-year labour
 guarantee. I'm not reaching out because anything's broken.
 
-Quick question: roughly how many of your team are field technicians
-(vs. office/admin)? I build Minerva — here's what it adds for a business
-like yours:
-
+**Backing up the guarantee**
 - Live GPS tracking so a customer can watch your technician's ETA on the
   day of a callout.
-- A timestamped job record for every visit, automatically, backing up
+- A timestamped job record for every visit, automatically — backs up
   that 10-year labour guarantee with an actual record of what was done
   and when.
-- An automatic review request once a job's marked complete, to keep a
-  60-year reputation visibly growing rather than just resting on it.
-- Technician credential tracking, so nothing relevant to that labour
-  guarantee lapses without someone noticing.
-- A happy client also gets a single quiet referral nudge after a job's
-  paid — one text, not a campaign.
+- Technician credential tracking, so nothing relevant to that guarantee
+  lapses without someone noticing.
 
-60-second demo: https://minerva-green.vercel.app/demo (the complete list, filtered to a business your size: minerva-green.vercel.app/platform)
+**Keeping the reputation growing**
+- An automatic review request once a job's marked complete, and a single
+  quiet referral nudge after it's paid — one text, not a campaign.
+
+14-day trial, card needed to start it, not charged until it ends.
+60-second demo: https://minerva-green.vercel.app/demo (the complete list,
+filtered to a business your size: minerva-green.vercel.app/platform)
 
 [your name] / [phone]
 

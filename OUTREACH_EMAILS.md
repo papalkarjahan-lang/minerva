@@ -75,8 +75,8 @@ Following up in case this got buried — happy to keep this short.
 
 If you've got [N] technicians on the road, Minerva runs $[N x 79]/month total — so
 under $[round(N*79/30, 2)] a day to know exactly where every van is, live, without a
-single phone call. No contract, cancel anytime. 7-day free trial — card's needed to
-start it, but you're not charged until the 7 days are up.
+single phone call. No contract, cancel anytime. 14-day free trial — card's needed to
+start it, but you're not charged until the 14 days are up.
 
 Worth knowing while I've got you: dispatch is the part you asked about, but it's not all
 Minerva does. It also automatically re-texts quotes that went quiet, reminds clients

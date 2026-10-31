@@ -10,12 +10,26 @@ or the addendum.
 Found while auditing the real signup flow before a batch of outreach drafts
 went out. `Onboarding.jsx` step 4 always redirects to Stripe Checkout
 (`create-checkout-session`), and Stripe Checkout always collects a card —
-there is no card-free path through signup. `create-checkout-session` does
-set `subscription_data[trial_period_days]: '7'`, so the accurate claim is
-**"7-day free trial, card required up front but not charged until the
-trial ends, cancel anytime"** — never "no card required" or "no card
-needed." This had already been used in drafted outreach copy before the
-check caught it; those drafts need the line corrected before sending.
+there is no card-free path through signup. As of that date,
+`create-checkout-session` set `subscription_data[trial_period_days]: '7'`,
+so the accurate claim was "7-day free trial, card required up front but
+not charged until the trial ends, cancel anytime" — never "no card
+required" or "no card needed."
+
+**CORRECTION (2026-10-31): the trial length itself changed, and this note
+went stale.** Checked `create-checkout-session/index.ts` directly — it now
+sets `trial_period_days: '14'`, matching the "Start your free 14-day
+trial" button already on the live site (`Platform.jsx` and others). Found
+while writing new outreach copy and noticing two internal docs disagreed
+(this note said 7, the site's own CTA said 14) — the code is the one
+source of truth, and it says 14. **Current accurate claim: "14-day free
+trial, card required up front but not charged until the trial ends,
+cancel anytime."** Every outreach doc still saying "7-day" is stale as of
+this date and needs the same fix — checked and fixed in
+`EXACT_OUTREACH_EMAIL_DRAFTS.md`, `OUTREACH_EMAILS.md`, and the two
+big-account target files as part of this correction; the rest (several
+plan/playbook docs also say "7-day") were not swept — whoever next edits
+one of those should fix it then rather than trust the old number.
 
 Also found in the same pass, lower severity, not a false claim but a real
 gap: `send-setup-sms` (texts each technician their PIN setup link during
