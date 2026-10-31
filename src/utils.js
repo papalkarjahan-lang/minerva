@@ -600,3 +600,25 @@ export function findCsvColumn(headers, candidates) {
   }
   return null
 }
+
+// Deliberate frontend mirror of supabase/functions/sweep-maintenance-
+// schedules/logic.ts's isScheduleDue — same due/overdue rule, used by
+// DispatcherView.jsx's trade-sector equipment maintenance UI instead of
+// going through that function's cron sweep + corrective_actions ticket
+// (an industrial-only table/workflow). Trade just needs a due/not-due
+// badge and a "mark serviced" action, computed directly from already-
+// loaded data — no ticket, no extra round trip. Kept in sync by hand;
+// if the backend rule changes, this should change with it.
+export function isAssetServiceDue(schedule, currentUsageHours, now) {
+  if (schedule.trigger_type === 'calendar') {
+    if (!schedule.last_completed_at) return true
+    if (!schedule.interval_days || schedule.interval_days <= 0) return false
+    const dueAt = new Date(schedule.last_completed_at).getTime() + schedule.interval_days * 24 * 60 * 60 * 1000
+    return now.getTime() >= dueAt
+  }
+
+  // 'meter' (default)
+  if (!schedule.interval_hours || schedule.interval_hours <= 0) return false
+  const hoursSinceService = (currentUsageHours || 0) - (schedule.last_completed_hours || 0)
+  return hoursSinceService >= schedule.interval_hours
+}

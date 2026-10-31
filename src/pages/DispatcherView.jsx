@@ -187,6 +187,9 @@ export default function DispatcherView() {
   const [auditLogLoaded, setAuditLogLoaded] = useState(false)
   const [showAddAsset, setShowAddAsset] = useState(false)
   const [showAddInventory, setShowAddInventory] = useState(false)
+  const [maintenanceSchedules, setMaintenanceSchedules] = useState([]) // trade equipment maintenance, Pro tier, asset_sector='trade'
+  const [scheduleForAsset, setScheduleForAsset] = useState(null) // asset object the Add Schedule modal is open for
+  const [busyScheduleId, setBusyScheduleId] = useState(null)
   const [selected, setSelected] = useState(null) // selected technician
   const [showTrail, setShowTrail] = useState(false) // today's GPS breadcrumb trail for `selected`
   // Drag-and-drop job reassignment on the map: dragging a job pin onto a
@@ -507,6 +510,18 @@ export default function DispatcherView() {
         .eq('business_id', businessId)
         .order('created_at', { ascending: false })
       setAssets(assetList || [])
+
+      // Trade-sector equipment maintenance scheduling — reuses the
+      // maintenance_schedules engine built for industrial, scoped to
+      // asset_sector='trade'. See supabase_schema_delta_trade_asset_
+      // maintenance.sql for why this needed its own discriminator column.
+      const { data: scheduleList } = await supabase
+        .from('maintenance_schedules')
+        .select('*')
+        .eq('business_id', businessId)
+        .eq('asset_sector', 'trade')
+        .eq('active', true)
+      setMaintenanceSchedules(scheduleList || [])
 
       const { data: invoiceList } = await supabase
         .from('invoices')

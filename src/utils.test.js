@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { haversineKm, generatePin, generateReferralCode, timeAgo, insertTechniciansWithPinRetry, classifyPriority, normalizeAddressForGeocoding, pickBestGeocodeFeature, isMapboxTokenConfigured, computeReplayStats, interpolateReplayPosition, describeAuditEntry, computeTechnicianReliability, RELIABILITY_FATIGUE_BASELINE_HOURS, computeProspectPriority, roundMoney, computeGst, neutralizeFormula, parseCsv, findCsvColumn } from './utils'
+import { haversineKm, generatePin, generateReferralCode, timeAgo, insertTechniciansWithPinRetry, classifyPriority, normalizeAddressForGeocoding, pickBestGeocodeFeature, isMapboxTokenConfigured, computeReplayStats, interpolateReplayPosition, describeAuditEntry, computeTechnicianReliability, RELIABILITY_FATIGUE_BASELINE_HOURS, computeProspectPriority, roundMoney, computeGst, neutralizeFormula, parseCsv, findCsvColumn, isAssetServiceDue } from './utils'
 
 describe('haversineKm', () => {
   it('returns 0 for identical points', () => {
@@ -775,5 +775,39 @@ describe('findCsvColumn', () => {
 
   it('returns null when nothing matches', () => {
     expect(findCsvColumn(['foo', 'bar'], ['phone', 'mobile'])).toBeNull()
+  })
+})
+
+describe('isAssetServiceDue', () => {
+  const now = new Date('2026-10-29T00:00:00.000Z')
+
+  it('meter: never-serviced measures from zero, not due before the first interval', () => {
+    const schedule = { trigger_type: 'meter', interval_hours: 250, interval_days: null, last_completed_at: null, last_completed_hours: null }
+    expect(isAssetServiceDue(schedule, 10, now)).toBe(false)
+  })
+
+  it('meter: due once usage hours cross the interval', () => {
+    const schedule = { trigger_type: 'meter', interval_hours: 250, interval_days: null, last_completed_at: '2026-10-01T00:00:00.000Z', last_completed_hours: 100 }
+    expect(isAssetServiceDue(schedule, 360, now)).toBe(true)
+  })
+
+  it('meter: not due below the interval', () => {
+    const schedule = { trigger_type: 'meter', interval_hours: 250, interval_days: null, last_completed_at: '2026-10-01T00:00:00.000Z', last_completed_hours: 100 }
+    expect(isAssetServiceDue(schedule, 300, now)).toBe(false)
+  })
+
+  it('calendar: due immediately when never serviced', () => {
+    const schedule = { trigger_type: 'calendar', interval_hours: null, interval_days: 90, last_completed_at: null, last_completed_hours: null }
+    expect(isAssetServiceDue(schedule, null, now)).toBe(true)
+  })
+
+  it('calendar: due once interval_days has elapsed', () => {
+    const schedule = { trigger_type: 'calendar', interval_hours: null, interval_days: 10, last_completed_at: '2026-10-01T00:00:00.000Z', last_completed_hours: null }
+    expect(isAssetServiceDue(schedule, null, now)).toBe(true)
+  })
+
+  it('calendar: not due before interval_days has elapsed', () => {
+    const schedule = { trigger_type: 'calendar', interval_hours: null, interval_days: 90, last_completed_at: '2026-10-01T00:00:00.000Z', last_completed_hours: null }
+    expect(isAssetServiceDue(schedule, null, now)).toBe(false)
   })
 })
