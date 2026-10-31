@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import Map, { Marker, NavigationControl, FullscreenControl, ScaleControl, Popup, Source, Layer } from 'react-map-gl'
 import { supabase } from '../supabaseClient'
-import { timeAgo, geocodeAddress, insertTechniciansWithPinRetry, haversineKm, isMapboxTokenConfigured, computeReplayStats, interpolateReplayPosition, describeAuditEntry, computeTechnicianReliability, neutralizeFormula, estimateDollarsFromKm, parseCsv, findCsvColumn } from '../utils'
+import { timeAgo, geocodeAddress, insertTechniciansWithPinRetry, haversineKm, isMapboxTokenConfigured, computeReplayStats, interpolateReplayPosition, describeAuditEntry, computeTechnicianReliability, neutralizeFormula, estimateDollarsFromKm, parseCsv, findCsvColumn, getUniqueRegions } from '../utils'
 import ContactSupportModal from '../components/ContactSupportModal'
 import LoadingScreen from '../components/LoadingScreen'
 import { MAX_ADDONS, hasAddon, isTrialing, trialDaysLeft, hasUsedTrial, startTrialPatch, isAddonAvailableForSector } from '../maxAddons'
@@ -27,6 +27,15 @@ export default function DispatcherView() {
   const [business, setBusiness] = useState(null)
   const [businessLoadError, setBusinessLoadError] = useState(null)
   const [technicians, setTechnicians] = useState([])
+  // Region/site filter — purely a viewing convenience for multi-site or
+  // multi-branch businesses (e.g. a regional cleaning contract, a
+  // multi-branch franchise) to see just their own patch on the map and
+  // roster. Deliberately NOT a new access-control boundary: every
+  // technician stays fully visible/assignable everywhere else (job
+  // assignment dropdowns, fleet optimization, billing) regardless of this
+  // filter — it only narrows what's rendered in the roster list and on
+  // the map. See supabase_schema_delta_technician_region.sql.
+  const [regionFilter, setRegionFilter] = useState('all')
   const [jobs, setJobs] = useState([])
   const [leads, setLeads] = useState([])
   const [lostLeads, setLostLeads] = useState([])
@@ -2459,6 +2468,23 @@ export default function DispatcherView() {
           <p style={styles.billingNote} title="Billing is based on technicians who have opened their phone link and started tracking at least once, not just how many were added at signup.">
             {technicians.filter(t => t.last_seen).length} of {technicians.length} billed (phone connected)
           </p>
+          {(() => {
+            const regions = getUniqueRegions(technicians)
+            if (regions.length === 0) return null
+            return (
+              <div style={{ margin: '8px 0' }}>
+                <label htmlFor="region-filter" style={{ ...styles.inputLabel, fontSize: 11 }}>
+                  Region / site view {regionFilter !== 'all' && '(roster and map narrowed — everyone stays assignable)'}
+                </label>
+                <select id="region-filter" value={regionFilter} onChange={e => setRegionFilter(e.target.value)} style={{ ...styles.input, padding: '6px 8px', fontSize: 13 }}>
+                  <option value="all">All regions ({technicians.length})</option>
+                  {regions.map(r => (
+                    <option key={r} value={r}>{r} ({technicians.filter(t => t.region === r).length})</option>
+                  ))}
+                </select>
+              </div>
+            )
+          })()}
           {(business?.subscription_tier === 'standard' || business?.subscription_tier === 'pro') && business?.sector === 'trade' && (
             <div style={{ margin: '8px 0', padding: 10, background: '#0f1420', borderRadius: 8, border: '1px solid #1e293b' }}>
               <button style={styles.copyLinkBtn} disabled={optimizingFleet} onClick={optimizeFleetDay}
@@ -2532,7 +2558,7 @@ export default function DispatcherView() {
               </div>
             )
           })()}
-          {technicians.map((tech, i) => {
+          {(regionFilter === 'all' ? technicians : technicians.filter(t => t.region === regionFilter)).map((tech, i) => {
             const job = jobs.find(j => j.id === tech.current_job_id)
             const reliability = computeTechnicianReliability(tech, flaggedPhotoCounts[tech.id])
             return (
@@ -2546,7 +2572,7 @@ export default function DispatcherView() {
                     }
                   }}>
                   <div style={{ cursor: 'pointer', flex: 1 }}>
-                    <p style={styles.techName}>{tech.name}</p>
+                    <p style={styles.techName}>{tech.name}{tech.region && <span style={{ color: '#1D9E75', fontSize: 11, fontWeight: 400, marginLeft: 6 }}>· {tech.region}</span>}</p>
                     <p style={styles.techMeta}>
                       {job ? `On job: ${job.client_name}` : 'Available'}
                     </p>
@@ -4030,7 +4056,7 @@ export default function DispatcherView() {
           {/* Technician markers — scale up + glow while a job pin is being
               dragged near them, as a drop-target hint for the drag-to-assign
               gesture below. */}
-          {technicians.map((tech, i) => tech.current_lat && (
+          {(regionFilter === 'all' ? technicians : technicians.filter(t => t.region === regionFilter)).map((tech, i) => tech.current_lat && (
             <Marker
               key={tech.id}
               latitude={tech.current_lat}
@@ -4996,12 +5022,13 @@ function AddTechnicianModal({ businessId, businessName, onSaved, onClose }) {
   const [mode, setMode] = useState('single') // 'single' | 'bulk'
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
+  const [region, setRegion] = useState('') // optional — see getUniqueRegions in ../utils
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
   // Bulk-import state — kept separate from the single-add fields above so
   // switching modes never mixes partial state from one into the other.
-  const [csvRows, setCsvRows] = useState([]) // [{ name, phone }], already column-mapped
+  const [csvRows, setCsvRows] = useState([]) // [{ name, phone, region }], already column-mapped
   const [csvFileName, setCsvFileName] = useState(null)
   const [csvError, setCsvError] = useState(null)
 
@@ -5011,7 +5038,7 @@ function AddTechnicianModal({ businessId, businessName, onSaved, onClose }) {
     setError(null)
     try {
       const { data: inserted, error: insertErr } = await insertTechniciansWithPinRetry(supabase, [
-        { business_id: businessId, name: name.trim(), phone: phone.trim() }
+        { business_id: businessId, name: name.trim(), phone: phone.trim(), region: region.trim() || null }
       ])
       if (insertErr) throw new Error(insertErr.message)
 
@@ -5047,12 +5074,15 @@ function AddTechnicianModal({ businessId, businessName, onSaved, onClose }) {
       if (headers.length === 0) { setCsvError('That file looks empty.'); return }
       const nameCol = findCsvColumn(headers, ['name', 'technician', 'technician name', 'full name'])
       const phoneCol = findCsvColumn(headers, ['phone', 'mobile', 'mobile number', 'phone number', 'cell'])
+      // Region is optional — a file without it still imports fine, region
+      // just stays unset for everyone (same as not using the feature).
+      const regionCol = findCsvColumn(headers, ['region', 'site', 'branch', 'area', 'territory'])
       if (!nameCol || !phoneCol) {
         setCsvError(`Couldn't find both a name and a phone column. Found: ${headers.join(', ')}`)
         return
       }
       const mapped = rows
-        .map(r => ({ name: r[nameCol], phone: r[phoneCol] }))
+        .map(r => ({ name: r[nameCol], phone: r[phoneCol], region: regionCol ? r[regionCol] : '' }))
         .filter(r => r.name && r.phone)
       if (mapped.length === 0) { setCsvError('No rows with both a name and a phone number.'); return }
       if (mapped.length > 200) { setCsvError(`${mapped.length} rows — bulk import is capped at 200 at a time. Split the file and import in batches.`); return }
@@ -5067,7 +5097,7 @@ function AddTechnicianModal({ businessId, businessName, onSaved, onClose }) {
     setLoading(true)
     setError(null)
     try {
-      const techRows = csvRows.map(r => ({ business_id: businessId, name: r.name.trim(), phone: r.phone.trim() }))
+      const techRows = csvRows.map(r => ({ business_id: businessId, name: r.name.trim(), phone: r.phone.trim(), region: r.region?.trim() || null }))
       const { data: inserted, error: insertErr } = await insertTechniciansWithPinRetry(supabase, techRows)
       if (insertErr) throw new Error(insertErr.message)
 
@@ -5116,6 +5146,10 @@ function AddTechnicianModal({ businessId, businessName, onSaved, onClose }) {
               <label htmlFor="add-tech-phone" style={styles.inputLabel}>Mobile (04xx...)</label>
               <input id="add-tech-phone" type="tel" required value={phone} onChange={e => setPhone(e.target.value)} style={styles.input} />
             </div>
+            <div style={{ marginBottom: 14 }}>
+              <label htmlFor="add-tech-region" style={styles.inputLabel}>Region / site (optional)</label>
+              <input id="add-tech-region" type="text" placeholder="e.g. Brisbane, Branch 3" value={region} onChange={e => setRegion(e.target.value)} style={styles.input} />
+            </div>
             <p style={{ color: '#888', fontSize: 12, margin: '0 0 14px' }}>
               They'll be sent a setup text with their tracking link. Billing updates automatically once they open it.
             </p>
@@ -5129,7 +5163,7 @@ function AddTechnicianModal({ businessId, businessName, onSaved, onClose }) {
           </form>
         ) : (
           <div>
-            <label htmlFor="tech-csv-file" style={styles.inputLabel}>CSV file — needs a name column and a phone column (any common header name works)</label>
+            <label htmlFor="tech-csv-file" style={styles.inputLabel}>CSV file — needs a name column and a phone column (any common header name works). A region/site/branch column is optional.</label>
             <input id="tech-csv-file" type="file" accept=".csv,text/csv" onChange={handleCsvFile} style={{ margin: '8px 0 14px' }} />
             {csvError && <p style={{ color: '#8A2525', fontSize: 13, marginBottom: 12 }}>{csvError}</p>}
             {csvRows.length > 0 && (
@@ -5139,8 +5173,9 @@ function AddTechnicianModal({ businessId, businessName, onSaved, onClose }) {
                 </p>
                 <div style={{ maxHeight: 180, overflowY: 'auto', border: '1px solid #e2e2e2', borderRadius: 8, marginBottom: 14 }}>
                   {csvRows.map((r, i) => (
-                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 10px', borderBottom: i < csvRows.length - 1 ? '1px solid #f0f0f0' : 'none', fontSize: 13 }}>
+                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '6px 10px', borderBottom: i < csvRows.length - 1 ? '1px solid #f0f0f0' : 'none', fontSize: 13 }}>
                       <span>{r.name}</span>
+                      {r.region && <span style={{ color: '#1D9E75', fontSize: 11 }}>{r.region}</span>}
                       <span style={{ color: '#888' }}>{r.phone}</span>
                     </div>
                   ))}

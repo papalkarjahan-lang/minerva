@@ -1,0 +1,35 @@
+-- ============================================================
+-- MINERVA — technicians.region (2026-10-31)
+--
+-- WHY: several big-account prospects (Associated Cleaning's 400 sites,
+-- Best Doors' 11-branch network) stalled on the same real question —
+-- "can we pilot just our region, not commit the whole company?" Minerva
+-- had no concept of a sub-group within a business at all: one flat
+-- technician list, no way to view or filter by site/branch/region.
+--
+-- This adds a single optional text column and a DispatcherView filter
+-- built on it — deliberately NOT a new multi-tenant or access-control
+-- boundary (no new RLS policy, no new table, no per-region login). Every
+-- technician stays fully visible and assignable everywhere else
+-- (job assignment, fleet optimization, billing) regardless of this
+-- value — it only narrows what's rendered in the roster list and on the
+-- map, so a regional manager can see their own patch without Minerva
+-- pretending to offer real organizational sub-accounts it doesn't have.
+-- That's a materially bigger, separately-scoped feature if ever needed;
+-- this is the honest, safe-to-ship slice of it.
+--
+-- IMPORTANT — run this BEFORE deploying the DispatcherView.jsx change
+-- that references technicians.region. The add/bulk-import technician
+-- flows now send a `region` field on insert; without this column, those
+-- inserts will fail with an unknown-column error. Safe to run any time,
+-- idempotent, zero effect on existing rows (region defaults to null,
+-- meaning "no region set" — the filter dropdown stays hidden for any
+-- business that never uses it).
+-- ============================================================
+
+alter table technicians add column if not exists region text;
+
+-- Verify after running:
+--   select column_name from information_schema.columns
+--   where table_name = 'technicians' and column_name = 'region';
+-- should return one row.

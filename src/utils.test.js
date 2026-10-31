@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { haversineKm, generatePin, generateReferralCode, timeAgo, insertTechniciansWithPinRetry, classifyPriority, normalizeAddressForGeocoding, pickBestGeocodeFeature, isMapboxTokenConfigured, computeReplayStats, interpolateReplayPosition, describeAuditEntry, computeTechnicianReliability, RELIABILITY_FATIGUE_BASELINE_HOURS, computeProspectPriority, roundMoney, computeGst, neutralizeFormula, parseCsv, findCsvColumn, isAssetServiceDue } from './utils'
+import { haversineKm, generatePin, generateReferralCode, timeAgo, insertTechniciansWithPinRetry, classifyPriority, normalizeAddressForGeocoding, pickBestGeocodeFeature, isMapboxTokenConfigured, computeReplayStats, interpolateReplayPosition, describeAuditEntry, computeTechnicianReliability, RELIABILITY_FATIGUE_BASELINE_HOURS, computeProspectPriority, roundMoney, computeGst, neutralizeFormula, parseCsv, findCsvColumn, isAssetServiceDue, getUniqueRegions } from './utils'
 
 describe('haversineKm', () => {
   it('returns 0 for identical points', () => {
@@ -809,5 +809,32 @@ describe('isAssetServiceDue', () => {
   it('calendar: not due before interval_days has elapsed', () => {
     const schedule = { trigger_type: 'calendar', interval_hours: null, interval_days: 90, last_completed_at: '2026-10-01T00:00:00.000Z', last_completed_hours: null }
     expect(isAssetServiceDue(schedule, null, now)).toBe(false)
+  })
+})
+
+describe('getUniqueRegions', () => {
+  it('returns an empty array when no technician has a region', () => {
+    expect(getUniqueRegions([{ id: 1, name: 'Dave' }, { id: 2, name: 'Priya', region: null }])).toEqual([])
+  })
+
+  it('returns distinct regions, sorted, ignoring blank/whitespace-only values', () => {
+    const techs = [
+      { id: 1, region: 'Brisbane' },
+      { id: 2, region: 'Gold Coast' },
+      { id: 3, region: 'Brisbane' },
+      { id: 4, region: '' },
+      { id: 5, region: '   ' },
+      { id: 6, region: null },
+      { id: 7, region: 'Adelaide' },
+    ]
+    expect(getUniqueRegions(techs)).toEqual(['Adelaide', 'Brisbane', 'Gold Coast'])
+  })
+
+  it('trims surrounding whitespace before dedupe', () => {
+    expect(getUniqueRegions([{ region: 'Perth' }, { region: ' Perth ' }])).toEqual(['Perth'])
+  })
+
+  it('handles an empty technician list', () => {
+    expect(getUniqueRegions([])).toEqual([])
   })
 })

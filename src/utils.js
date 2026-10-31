@@ -622,3 +622,15 @@ export function isAssetServiceDue(schedule, currentUsageHours, now) {
   const hoursSinceService = (currentUsageHours || 0) - (schedule.last_completed_hours || 0)
   return hoursSinceService >= schedule.interval_hours
 }
+
+// Distinct, non-empty technicians.region values, sorted alphabetically.
+// Feeds DispatcherView's region/site filter dropdown — returns [] (no
+// dropdown shown) for a business that's never set a region on anyone,
+// so this is invisible until a multi-site business actually uses it.
+export function getUniqueRegions(technicians) {
+  const set = new Set()
+  for (const t of technicians) {
+    if (t.region && t.region.trim()) set.add(t.region.trim())
+  }
+  return [...set].sort((a, b) => a.localeCompare(b))
+}
