@@ -75,7 +75,7 @@ serve(async (req: Request) => {
 
     const { data: candidates, error } = await supabase
       .from('businesses')
-      .select('id, name, contact_email, stripe_sub_id')
+      .select('id, name, contact_email, stripe_sub_id, sector')
       .not('stripe_sub_id', 'is', null)
       .neq('subscription_tier', 'cancelled')
       .is('trial_ending_reminder_sent_at', null)
@@ -161,13 +161,21 @@ async function notifyOneBusinessTrialEnding(
   const safeName = escapeHtml(bizName)
 
   try {
+    // Login link added 2026-11-01 — same gap found across every other
+    // "do something in your billing settings" email in this codebase
+    // (stripe-webhook's welcome/payment-failed/cancellation emails): this
+    // one said "cancel... from your billing settings in the app" with no
+    // actual link either.
+    const appUrl = Deno.env.get('APP_URL')
+    const consolePath = biz.sector === 'industrial' ? `/industrial/${biz.id}` : `/dispatch/${biz.id}`
+    const loginLink = appUrl ? `${appUrl}/login?redirect=${encodeURIComponent(consolePath)}` : null
     const emailRes = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${supabaseServiceKey}` },
       body: JSON.stringify({
         to: biz.contact_email,
         subject: `Your Minerva trial ${whenText}`,
-        html: `<p>Hi,</p><p>Your free trial for <strong>${safeName}</strong> ${whenText}, and your card will then be billed automatically for your plan — same as we mentioned when you signed up.</p><p>Nothing to do if you want to keep going. If you'd rather not continue, cancel any time before then from your billing settings in the app, and you won't be charged.</p><p>— The Minerva team</p>`,
+        html: `<p>Hi,</p><p>Your free trial for <strong>${safeName}</strong> ${whenText}, and your card will then be billed automatically for your plan — same as we mentioned when you signed up.</p><p>Nothing to do if you want to keep going. If you'd rather not continue, cancel any time before then${loginLink ? `: <a href="${loginLink}">open your billing settings →</a>` : ' from your billing settings in the app'}, and you won't be charged.</p><p>— The Minerva team</p>`,
       }),
     })
     if (!emailRes.ok) console.error(`notify-trial-ending: send-email returned ${emailRes.status} for business ${biz.id}`)
