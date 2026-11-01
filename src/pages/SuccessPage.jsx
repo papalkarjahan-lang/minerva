@@ -64,11 +64,16 @@ export default function SuccessPage() {
           Your technicians have been sent their setup links. They open the link, tap "Start Tracking," and they appear on your map.
         </p>
         {businessId && (
-          <Link
-            to={consoleUrl}
-            style={{ display: 'block', background: '#1D9E75', color: '#fff', textDecoration: 'none', padding: '16px 0', borderRadius: 12, fontSize: 16, fontWeight: 'bold', marginBottom: 16 }}>
-            {sector === 'industrial' ? 'Open your operations console →' : 'Open your dispatch map →'}
-          </Link>
+          <>
+            <Link
+              to={`/login?redirect=${encodeURIComponent(consoleUrl)}`}
+              style={{ display: 'block', background: '#1D9E75', color: '#fff', textDecoration: 'none', padding: '16px 0', borderRadius: 12, fontSize: 16, fontWeight: 'bold', marginBottom: 8 }}>
+              {sector === 'industrial' ? 'Open your operations console →' : 'Open your dispatch map →'}
+            </Link>
+            <p style={{ color: '#666', fontSize: 12, margin: '0 0 16px', lineHeight: 1.5 }}>
+              No account exists yet on this device — enter the email you signed up with and we'll send a one-time login link, no password needed.
+            </p>
+          </>
         )}
         {businessId && (
           <div style={{ background: '#050811', border: '1px solid #1e293b', borderRadius: 12, padding: 18, textAlign: 'left', marginBottom: 16 }}>
