@@ -229,7 +229,7 @@ serve(async (req: Request) => {
 
         const plan = planCheckoutSessionCompleted(session, subItemId)
         if (plan) {
-          const { data: biz } = await supabaseAdmin.from('businesses').select('name, stripe_customer_id').eq('id', plan.businessId).maybeSingle()
+          const { data: biz } = await supabaseAdmin.from('businesses').select('name, stripe_customer_id, sector').eq('id', plan.businessId).maybeSingle()
 
           // Cross-tenant hijack guard — see shouldApplyCheckoutCompletion's
           // header comment in logic.ts. create-checkout-session has no
@@ -254,14 +254,29 @@ serve(async (req: Request) => {
           // Best-effort welcome email — send-email no-ops cleanly if
           // RESEND_API_KEY isn't configured, so this never blocks the
           // webhook's real job (saving the Stripe IDs above).
+          //
+          // Login link added 2026-11-01: this email previously had NO link
+          // back to the site at all — just a confirmation with no next
+          // step. SuccessPage.jsx is the only other place a new owner is
+          // ever told how to get in, and that's a single browser tab that
+          // can be closed, lost, or never revisited if Stripe Checkout's
+          // own redirect is slow or the owner steps away mid-flow. Email
+          // is the one channel that outlives a closed tab, so it needs its
+          // own way back in — same /login?redirect= pattern SuccessPage.jsx
+          // uses, built here from APP_URL (already a required secret for
+          // this project, shared with create-checkout-session) rather than
+          // trusting any client-supplied origin.
           if (plan.welcomeEmailTo) {
+            const appUrl = Deno.env.get('APP_URL')
+            const consolePath = biz?.sector === 'industrial' ? `/industrial/${plan.businessId}` : `/dispatch/${plan.businessId}`
+            const loginLink = appUrl ? `${appUrl}/login?redirect=${encodeURIComponent(consolePath)}` : null
             fetch(`${Deno.env.get('SUPABASE_URL')!}/functions/v1/send-email`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!}` },
               body: JSON.stringify({
                 to: plan.welcomeEmailTo,
                 subject: `You're live on Minerva`,
-                html: `<p>Hi${biz?.name ? ' ' + escapeHtml(biz.name) : ''},</p><p>Your Minerva trial has started. Your 14-day free trial runs from today, and your card will be billed automatically when it ends unless you cancel first from your billing settings.</p><p>— The Minerva team</p>`,
+                html: `<p>Hi${biz?.name ? ' ' + escapeHtml(biz.name) : ''},</p><p>Your Minerva trial has started. Your 14-day free trial runs from today, and your card will be billed automatically when it ends unless you cancel first from your billing settings.</p>${loginLink ? `<p><a href="${loginLink}">Open your ${biz?.sector === 'industrial' ? 'operations console' : 'dispatch map'} →</a><br>Enter this email address there and we'll send you a one-time login link — no password needed.</p>` : ''}<p>— The Minerva team</p>`,
               }),
             }).catch(err => console.error('stripe-webhook: welcome email failed', err))
           }
