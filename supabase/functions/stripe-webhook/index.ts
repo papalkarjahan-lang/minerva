@@ -350,9 +350,16 @@ serve(async (req: Request) => {
             if (biz.contact_email) {
               const bizName = biz.name || 'your account'
               const subject = plan.involuntary ? `Your Minerva subscription has been cancelled` : `Minerva subscription cancelled — confirmed`
+              // Resign-up link added 2026-11-01 — same gap class as the
+              // welcome/payment-failed emails: both branches told the
+              // business to "sign up again from the app" with no actual
+              // link, the worst possible place for that gap since this is
+              // the email sent right as a real customer is being lost.
+              const appUrl = Deno.env.get('APP_URL')
+              const resignupLink = appUrl ? `${appUrl}/start` : null
               const html = plan.involuntary
-                ? `<p>Hi,</p><p>Your Minerva subscription for <strong>${escapeHtml(bizName)}</strong> has been cancelled after repeated payment attempts failed. Dispatch and tracking for your business have stopped.</p><p>If this wasn't intentional, you can start a new subscription any time from the app at the same sign-up link you used originally.</p><p>— The Minerva team</p>`
-                : `<p>Hi,</p><p>This confirms your Minerva subscription for <strong>${escapeHtml(bizName)}</strong> has been cancelled, as requested. Dispatch and tracking for your business have stopped.</p><p>You're welcome back any time — just sign up again from the app.</p><p>— The Minerva team</p>`
+                ? `<p>Hi,</p><p>Your Minerva subscription for <strong>${escapeHtml(bizName)}</strong> has been cancelled after repeated payment attempts failed. Dispatch and tracking for your business have stopped.</p><p>If this wasn't intentional, you can start a new subscription any time${resignupLink ? `: <a href="${resignupLink}">sign up again →</a>` : ' from the app'}.</p><p>— The Minerva team</p>`
+                : `<p>Hi,</p><p>This confirms your Minerva subscription for <strong>${escapeHtml(bizName)}</strong> has been cancelled, as requested. Dispatch and tracking for your business have stopped.</p><p>You're welcome back any time${resignupLink ? `: <a href="${resignupLink}">sign up again →</a>` : ' — just sign up again from the app'}.</p><p>— The Minerva team</p>`
               fetch(`${Deno.env.get('SUPABASE_URL')!}/functions/v1/send-email`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!}` },
@@ -475,7 +482,7 @@ serve(async (req: Request) => {
             .from('businesses')
             .update(plan.update)
             .eq('stripe_sub_id', plan.subscriptionId)
-            .select('id, name, contact_email')
+            .select('id, name, contact_email, sector')
             .maybeSingle()
           if (error) throw new Error(`Failed to record payment_failed_at: ${error.message}`)
 
@@ -510,13 +517,23 @@ serve(async (req: Request) => {
           // alert above — each Stripe retry is genuinely new information
           // ("we tried again, still declined"), not a duplicate.
           if (biz?.contact_email) {
+            // Login link added 2026-11-01 — same gap as the welcome email:
+            // "update your card from your billing settings in the app" had
+            // no actual link, in the single most time-pressured email this
+            // codebase sends (real money/service at risk, not a nice-to-
+            // have). Billing settings live behind login, so this points at
+            // the console path — the owner reaches the billing portal
+            // button from there the same way they always do.
+            const appUrl = Deno.env.get('APP_URL')
+            const consolePath = biz.sector === 'industrial' ? `/industrial/${biz.id}` : `/dispatch/${biz.id}`
+            const loginLink = appUrl ? `${appUrl}/login?redirect=${encodeURIComponent(consolePath)}` : null
             fetch(`${Deno.env.get('SUPABASE_URL')!}/functions/v1/send-email`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!}` },
               body: JSON.stringify({
                 to: biz.contact_email,
                 subject: `Action needed: your Minerva payment didn't go through`,
-                html: `<p>Hi,</p><p>Your most recent payment for <strong>${escapeHtml(biz.name || 'your account')}</strong> didn't go through — your bank or card issuer declined the charge. Stripe will automatically retry over the next few days, but if it keeps failing your account will eventually be cancelled.</p><p>Update your card from your billing settings in the app as soon as you can to avoid any interruption.</p><p>— The Minerva team</p>`,
+                html: `<p>Hi,</p><p>Your most recent payment for <strong>${escapeHtml(biz.name || 'your account')}</strong> didn't go through — your bank or card issuer declined the charge. Stripe will automatically retry over the next few days, but if it keeps failing your account will eventually be cancelled.</p><p>Update your card as soon as you can to avoid any interruption${loginLink ? `: <a href="${loginLink}">open your billing settings →</a>` : ' from your billing settings in the app'}.</p><p>— The Minerva team</p>`,
               }),
             }).catch(err => console.error('stripe-webhook: business payment-failed email failed', err))
           }
