@@ -40,6 +40,13 @@ const FEATURE_PRIORITIES_INDUSTRIAL = [
 // blurb for any tier with no industrial-specific copy (Starter/Pro, whose
 // base blurbs are already sector-neutral or industrial-inapplicable via
 // the Pro-filter below).
+// Annual prepay (added 2026-11-01): 10 months charged for 12 months of
+// service, a genuine discount priced in Stripe itself (see
+// create-checkout-session's header for the 3 new annual price-id
+// secrets), computed from this one constant here so the displayed price
+// can't drift from the real discount depth without this file changing too.
+const ANNUAL_MONTHS_CHARGED = 10
+
 const TIERS = [
   { id: 'starter', name: 'Starter', price: 49, blurb: 'Live GPS map, client ETA SMS, job start/complete, dispatch board, intake chat & lead scoring, job scheduling' },
   {
@@ -57,6 +64,13 @@ export default function Onboarding() {
   const [featurePriorities, setFeaturePriorities] = useState([])
   const [techs, setTechs] = useState([{ name: '', phone: '' }])
   const [tier, setTier] = useState('standard')
+  // Annual prepay (added 2026-11-01) — a genuine 2-months-free annual
+  // price per tier, priced in Stripe itself (create-checkout-session's own
+  // header documents the 3 new STRIPE_PRICE_ID_*_ANNUAL secrets this
+  // relies on). ANNUAL_MONTHS_CHARGED making the discount explicit here
+  // rather than a hardcoded "2 months free" string that could drift from
+  // the real Stripe price if either side is ever changed without the other.
+  const [billingCycle, setBillingCycle] = useState('monthly')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [agreedToTerms, setAgreedToTerms] = useState(false)
@@ -203,7 +217,8 @@ export default function Onboarding() {
           contactEmail: biz.contact_email,
           techCount,
           tier,
-          checkoutToken: token
+          checkoutToken: token,
+          billingCycle
         }
       })
       if (response.error) throw new Error(response.error.message)
@@ -375,13 +390,46 @@ export default function Onboarding() {
               <p style={styles.reviewLine}><strong>Technicians:</strong> {techs.filter(t=>t.name.trim()).length}</p>
               <p style={styles.reviewLine}><strong>Plan:</strong> {TIERS.find(t => t.id === tier).name}</p>
               <div style={styles.divider} />
-              <p style={styles.priceCalc}>
-                {techs.filter(t=>t.name.trim()).length} {techs.filter(t=>t.name.trim()).length === 1 ? 'technician' : 'technicians'} × ${perTechPrice}/month
-              </p>
-              <p style={styles.totalPrice}>
-                ${techs.filter(t=>t.name.trim()).length * perTechPrice}/month
-              </p>
-              <p style={styles.trialNote}>✓ 14-day free trial — no charge today</p>
+              <div style={styles.fieldGroup}>
+                <label style={styles.label}>Billing</label>
+                <div style={styles.sectorToggle} role="radiogroup" aria-label="Billing cycle">
+                  <div onClick={() => setBillingCycle('monthly')} onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), setBillingCycle('monthly'))}
+                    role="radio" aria-checked={billingCycle === 'monthly'} tabIndex={0}
+                    style={{ ...styles.sectorOption, ...(billingCycle === 'monthly' ? styles.sectorOptionActive : {}) }}>
+                    <p style={styles.sectorOptionName}>Monthly</p>
+                    <p style={styles.sectorOptionBlurb}>Pay month to month, cancel any time.</p>
+                  </div>
+                  <div onClick={() => setBillingCycle('annual')} onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), setBillingCycle('annual'))}
+                    role="radio" aria-checked={billingCycle === 'annual'} tabIndex={0}
+                    style={{ ...styles.sectorOption, ...(billingCycle === 'annual' ? styles.sectorOptionActive : {}) }}>
+                    <p style={styles.sectorOptionName}>Annual — 2 months free</p>
+                    <p style={styles.sectorOptionBlurb}>Pay once a year, {ANNUAL_MONTHS_CHARGED} months charged for 12 months of service.</p>
+                  </div>
+                </div>
+              </div>
+              {billingCycle === 'annual' ? (
+                <>
+                  <p style={styles.priceCalc}>
+                    {techs.filter(t=>t.name.trim()).length} {techs.filter(t=>t.name.trim()).length === 1 ? 'technician' : 'technicians'} × ${perTechPrice}/month × {ANNUAL_MONTHS_CHARGED} months
+                  </p>
+                  <p style={styles.totalPrice}>
+                    ${techs.filter(t=>t.name.trim()).length * perTechPrice * ANNUAL_MONTHS_CHARGED}/year
+                  </p>
+                  <p style={styles.priceCalc}>
+                    (equivalent to ${(perTechPrice * ANNUAL_MONTHS_CHARGED / 12).toFixed(2)}/technician/month)
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p style={styles.priceCalc}>
+                    {techs.filter(t=>t.name.trim()).length} {techs.filter(t=>t.name.trim()).length === 1 ? 'technician' : 'technicians'} × ${perTechPrice}/month
+                  </p>
+                  <p style={styles.totalPrice}>
+                    ${techs.filter(t=>t.name.trim()).length * perTechPrice}/month
+                  </p>
+                </>
+              )}
+              <p style={styles.trialNote}>✓ 14-day free trial — no charge today{billingCycle === 'annual' ? ', then billed annually' : ''}</p>
             </div>
             <label style={styles.agreeRow}>
               <input type="checkbox" checked={agreedToTerms} onChange={e => setAgreedToTerms(e.target.checked)} style={{ marginTop: 2 }} />

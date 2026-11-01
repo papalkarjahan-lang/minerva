@@ -39,3 +39,24 @@ export function shouldAllowCheckoutCreation(
 // entry for the full trace). Re-exported here so nothing that already
 // imports `isTierAvailableForSector` from this file breaks.
 export { isTierAvailableForSector } from "../_shared/tierEligibility.ts"
+
+// Annual-prepay billing (added 2026-11-01) — the only mechanism that can
+// pull a full year of cash into one payment instead of trickling in over
+// 12 monthly charges. A genuine 2-months-free discount (10 months billed
+// for 12 months of service), not a fabricated "save 40%" figure — priced
+// in Stripe itself as a separate annual price per tier, not computed here.
+//
+// Pure env-KEY-NAME selector, not an env-VALUE reader — Deno.env.get stays
+// in index.ts (same split as every other logic.ts in this project) so this
+// is testable without a Deno runtime. Returns which secret name to look
+// up; index.ts still has to handle that secret being unset the same way
+// it already does for every other price ID (a clear "not configured"
+// error, never a silent fallback to charging the wrong amount).
+export function priceEnvKeyFor(tier: string | null | undefined, billingCycle: string | null | undefined): string {
+  const annual = billingCycle === 'annual'
+  if (tier === 'starter') return annual ? 'STRIPE_PRICE_ID_STARTER_ANNUAL' : 'STRIPE_PRICE_ID_STARTER'
+  if (tier === 'pro') return annual ? 'STRIPE_PRICE_ID_PRO_ANNUAL' : 'STRIPE_PRICE_ID_PRO'
+  // 'standard' or unrecognised tier — same default-to-Standard behavior
+  // index.ts already used for the monthly-only version of this choice.
+  return annual ? 'STRIPE_PRICE_ID_STD_ANNUAL' : 'STRIPE_PRICE_ID_STD'
+}

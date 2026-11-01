@@ -9,6 +9,17 @@
 //   STRIPE_PRICE_ID_PRO           (price ID for $119/tech/month Pro plan)
 //   APP_URL                       (your production URL, e.g. https://minerva-green.vercel.app)
 //
+// Optional, for the annual-prepay option (added 2026-11-01) — the request
+// body's `billingCycle: "annual"` selects these instead of the monthly
+// ones above. If any of these three is unset, annual checkout for that
+// tier fails with a clear "No Stripe price configured" error rather than
+// silently charging the monthly amount — create these in Stripe as a
+// genuine 10-months-for-12 annual price (not computed client-side) before
+// offering annual to anyone:
+//   STRIPE_PRICE_ID_STARTER_ANNUAL
+//   STRIPE_PRICE_ID_STD_ANNUAL
+//   STRIPE_PRICE_ID_PRO_ANNUAL
+//
 // Health wiring added 2026-09-23: this was registered in agent_functions
 // but never called record_agent_run — a failure here (a real prospective
 // business unable to sign up) was 100% invisible, same bug class as the
@@ -32,7 +43,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
-import { shouldAllowCheckoutCreation, isTierAvailableForSector } from "./logic.ts"
+import { shouldAllowCheckoutCreation, isTierAvailableForSector, priceEnvKeyFor } from "./logic.ts"
 
 const corsHeaders = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' }
 
@@ -44,7 +55,7 @@ serve(async (req: Request) => {
   const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
 
   try {
-    const { businessId, businessName, contactEmail, techCount, tier, checkoutToken } = await req.json()
+    const { businessId, businessName, contactEmail, techCount, tier, checkoutToken, billingCycle } = await req.json()
 
     const STRIPE_KEY = Deno.env.get('STRIPE_SECRET_KEY')
     const APP_URL = Deno.env.get('APP_URL')
@@ -78,20 +89,18 @@ serve(async (req: Request) => {
       throw new Error('Pro tier is not yet available for Industrial-sector businesses — Starter or Standard are available now.')
     }
 
-    // Pick the Stripe price id for the chosen tier.
-    let priceId: string | undefined
-    if (tier === 'starter') {
-      priceId = Deno.env.get('STRIPE_PRICE_ID_STARTER')
-    } else if (tier === 'pro') {
-      priceId = Deno.env.get('STRIPE_PRICE_ID_PRO')
-    } else {
-      // 'standard' or unrecognised tier — default to Standard, Minerva's
-      // original/primary plan, rather than failing the checkout outright.
-      priceId = Deno.env.get('STRIPE_PRICE_ID_STD')
-    }
+    // Pick the Stripe price id for the chosen tier + billing cycle.
+    // Annual prepay (added 2026-11-01): a genuine 2-months-free annual
+    // price per tier, priced in Stripe itself (not computed here) — see
+    // priceEnvKeyFor's own header in logic.ts. Falls back to monthly for
+    // any unrecognised billingCycle value rather than erroring, same
+    // "default to the safe known case" posture as the tier fallback below
+    // it always had.
+    const priceEnvKey = priceEnvKeyFor(tier, billingCycle)
+    const priceId = Deno.env.get(priceEnvKey)
 
     if (!priceId) {
-      throw new Error(`No Stripe price configured for tier "${tier}"`)
+      throw new Error(`No Stripe price configured for tier "${tier}" (${billingCycle === 'annual' ? 'annual' : 'monthly'}) — missing secret ${priceEnvKey}`)
     }
 
     const params = new URLSearchParams({
@@ -104,6 +113,7 @@ serve(async (req: Request) => {
       'metadata[business_id]': businessId,
       'metadata[business_name]': businessName,
       'metadata[tech_count]': String(techCount),
+      'metadata[billing_cycle]': billingCycle === 'annual' ? 'annual' : 'monthly',
       'success_url': `${APP_URL}/success?business_id=${businessId}&session_id={CHECKOUT_SESSION_ID}`,
       'cancel_url': `${APP_URL}/start`,
     })
